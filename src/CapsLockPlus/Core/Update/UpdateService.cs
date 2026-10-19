@@ -113,12 +113,43 @@ public sealed class UpdateService
         }
     }
 
+    /// <summary>
+    /// 下载目录。优先放在数据目录下的 updates/，这样在 %TEMP% 被策略限制的环境里
+    /// 也能正常更新；确认可用后才回退到系统临时目录。
+    /// </summary>
+    private static string ResolveDownloadDir()
+    {
+        try
+        {
+            string dir = System.IO.Path.Combine(AppPaths.DataDir, "updates");
+            Directory.CreateDirectory(dir);
+            // 写一个探针文件确认真的可写
+            string probe = System.IO.Path.Combine(dir, ".probe");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return dir;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("数据目录不可用于下载，改用系统临时目录：" + ex.Message);
+            return System.IO.Path.GetTempPath();
+        }
+    }
+
     /// <summary>下载到临时文件，返回文件路径。</summary>
     public async Task<(bool Ok, string Path, string Error)> DownloadAsync(
         UpdateInfo info, IProgress<double>? progress = null, CancellationToken ct = default)
     {
-        string temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
-            $"CapsLockPlus-{info.Version}-{Guid.NewGuid():N}.exe");
+        string temp;
+        try
+        {
+            temp = System.IO.Path.Combine(ResolveDownloadDir(),
+                $"CapsLockPlus-{info.Version}-{Guid.NewGuid():N}.exe");
+        }
+        catch (Exception ex)
+        {
+            return (false, "", "无法创建下载目录：" + ex.Message);
+        }
         try
         {
             using var resp = await Http.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct)
@@ -201,31 +232,48 @@ public sealed class UpdateService
         }
     }
 
-    /// <summary>启动时清理上次更新留下的 .old-*.exe。</summary>
+    /// <summary>启动时清理上次更新留下的 .old-*.exe 与下载残留。</summary>
     public static void CleanupLeftovers()
     {
+        string? current = Environment.ProcessPath;
+
+        // 1) 程序目录里上一次替换留下的旧文件
         try
         {
-            string? current = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(current)) return;
-            string dir = System.IO.Path.GetDirectoryName(current)!;
-            foreach (var f in Directory.GetFiles(dir, "*.old-*.exe"))
+            if (!string.IsNullOrEmpty(current))
             {
-                try { File.Delete(f); } catch { /* 可能仍被占用，下次再删 */ }
-            }
-            // 临时下载残留
-            foreach (var f in Directory.GetFiles(System.IO.Path.GetTempPath(), "CapsLockPlus-*.exe"))
-            {
-                try
+                string dir = System.IO.Path.GetDirectoryName(current)!;
+                foreach (var f in Directory.GetFiles(dir, "*.old-*.exe"))
                 {
-                    if (DateTime.Now - File.GetLastWriteTime(f) > TimeSpan.FromHours(6)) File.Delete(f);
+                    try { File.Delete(f); } catch { /* 可能仍被占用，下次再删 */ }
                 }
-                catch { }
             }
         }
         catch (Exception ex)
         {
-            CoreLog.Warn("清理更新残留失败：" + ex.Message);
+            CoreLog.Warn("清理旧版本残留失败：" + ex.Message);
+        }
+
+        // 2) 下载目录里超过 6 小时的残留安装包
+        foreach (var dir in new[] { System.IO.Path.Combine(AppPaths.DataDir, "updates"),
+                                    System.IO.Path.GetTempPath() })
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+                foreach (var f in Directory.GetFiles(dir, "CapsLockPlus-*.exe"))
+                {
+                    try
+                    {
+                        if (DateTime.Now - File.GetLastWriteTime(f) > TimeSpan.FromHours(6)) File.Delete(f);
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Warn($"清理下载残留失败（{dir}）：{ex.Message}");
+            }
         }
     }
 

@@ -25,6 +25,29 @@ public static class SelfTest
 
     public static int Run()
     {
+        // 整体包一层：自检里任何一步意外抛异常，也要保证写出报告并返回退出码，
+        // 否则命令行会一直等（之前写 %TEMP% 失败就出现过挂死）。
+        try
+        {
+            RunAll();
+        }
+        catch (Exception ex)
+        {
+            _failed++;
+            Log.AppendLine();
+            Log.AppendLine($"[FATAL] 自检中断：{ex.GetType().Name}: {ex.Message}");
+            Log.AppendLine(ex.StackTrace);
+            CoreLog.Error("自检中断", ex);
+        }
+
+        Log.AppendLine();
+        Log.AppendLine($"==== 通过 {_passed} 项，失败 {_failed} 项 ====");
+        WriteReport();
+        return _failed == 0 ? 0 : 1;
+    }
+
+    private static void RunAll()
+    {
         Section("环境");
         Check("Windows 版本 >= 10", Environment.OSVersion.Version.Major >= 10);
         Check("64 位进程", Environment.Is64BitProcess);
@@ -62,17 +85,33 @@ public static class SelfTest
 
         Section("组合键引擎");
         TestEngine();
+    }
 
-        Log.AppendLine();
-        Log.AppendLine($"==== 通过 {_passed} 项，失败 {_failed} 项 ====");
+    /// <summary>写出自检报告（数据目录 + 控制台可用时也打印）。</summary>
+    private static void WriteReport()
+    {
+        string report = Log.ToString();
         try
         {
             Directory.CreateDirectory(AppPaths.DataDir);
-            File.WriteAllText(Path.Combine(AppPaths.DataDir, "selftest.log"), Log.ToString());
+            File.WriteAllText(Path.Combine(AppPaths.DataDir, "selftest.log"), report);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("写自检报告失败：" + ex.Message);
+        }
+
+        try
+        {
+            if (NativeConsoleAvailable()) Console.WriteLine(report);
         }
         catch { }
-        return _failed == 0 ? 0 : 1;
     }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    private static bool NativeConsoleAvailable() => GetConsoleWindow() != IntPtr.Zero;
 
     private static void Section(string name)
     {
@@ -243,44 +282,57 @@ public static class SelfTest
 
     private static void TestLegacyImport()
     {
-        string path = Path.Combine(Path.GetTempPath(), "capslockplus_selftest.ini");
-        string content = string.Join("\r\n", new[]
+        // 不要写系统临时目录：某些环境下 %TEMP% 不可写（组策略 / 沙箱），
+        // 之前这里抛出的未捕获异常会让 --selftest 整个挂住。统一写到数据目录。
+        string path = Path.Combine(AppPaths.DataDir, "selftest_legacy.ini");
+        try
         {
-            "[Global]",
-            "autostart=1",
-            "mouseSpeed=6",
-            "[Keys]",
-            "caps_q=keyFunc_qbar",
-            "caps_a=keyFunc_moveWordLeft(3)",
-            "caps_1=keyFunc_winbind_activate(1)",
-            "caps_lalt_z=keyFunc_putWinToBottom",
-            "caps_f3=keyFunc_translate",
-            "[QSearch]",
-            "default=https://www.bing.com/search?q={q}",
-            "bd=https://www.baidu.com/s?wd={q}",
-            "[QRun]",
-            "ie=C:\\Program Files\\Internet Explorer\\iexplore.exe",
-            "*runas ",
-            "[QWeb]",
-            "gh=https://github.com",
-            "[TabHotString]",
-            "clp=CapsLock+",
-        });
-        File.WriteAllText(path, content, new UnicodeEncoding(false, true));
-        var result = LegacyIniImporter.Import(path);
-        Check("能识别 UTF-16 的旧设置", result.Keys >= 5);
-        CheckEqual("迁移 Qbar 绑定", result.Settings.FindBinding("caps_q")?.Action, "qbar");
-        CheckEqual("迁移带参数的动作", result.Settings.FindBinding("caps_a")?.Arg, "3");
-        CheckEqual("迁移窗口绑定动作", result.Settings.FindBinding("caps_1")?.Action, "winbindActivate1");
-        CheckEqual("迁移置底动作", result.Settings.FindBinding("caps_lalt_z")?.Action, "winSendToBottom");
-        CheckEqual("迁移翻译动作", result.Settings.FindBinding("caps_f3")?.Action, "translate");
-        Check("迁移搜索指令", result.Settings.Search.Any(s => s.Key == "bd"));
-        Check("迁移程序条目", result.Settings.Run.Any(r => r.Key == "ie"));
-        Check("迁移网址条目", result.Settings.Web.Any(w => w.Key == "gh"));
-        Check("迁移热字串", result.Settings.HotStrings.Any(h => h.Key == "clp"));
-        CheckEqual("迁移开机自启", result.Settings.Global.StartWithWindows, true);
-        CheckEqual("迁移鼠标速度", result.Settings.Global.MouseSpeed, 6);
-        try { File.Delete(path); } catch { }
+            Directory.CreateDirectory(AppPaths.DataDir);
+            string content = string.Join("\r\n", new[]
+            {
+                "[Global]",
+                "autostart=1",
+                "mouseSpeed=6",
+                "[Keys]",
+                "caps_q=keyFunc_qbar",
+                "caps_a=keyFunc_moveWordLeft(3)",
+                "caps_1=keyFunc_winbind_activate(1)",
+                "caps_lalt_z=keyFunc_putWinToBottom",
+                "caps_f3=keyFunc_translate",
+                "[QSearch]",
+                "default=https://www.bing.com/search?q={q}",
+                "bd=https://www.baidu.com/s?wd={q}",
+                "[QRun]",
+                "ie=C:\\Program Files\\Internet Explorer\\iexplore.exe",
+                "*runas ",
+                "[QWeb]",
+                "gh=https://github.com",
+                "[TabHotString]",
+                "clp=CapsLock+",
+            });
+            File.WriteAllText(path, content, new UnicodeEncoding(false, true));
+            var result = LegacyIniImporter.Import(path);
+            Check("能识别 UTF-16 的旧设置", result.Keys >= 5);
+            CheckEqual("迁移 Qbar 绑定", result.Settings.FindBinding("caps_q")?.Action, "qbar");
+            CheckEqual("迁移带参数的动作", result.Settings.FindBinding("caps_a")?.Arg, "3");
+            CheckEqual("迁移窗口绑定动作", result.Settings.FindBinding("caps_1")?.Action, "winbindActivate1");
+            CheckEqual("迁移置底动作", result.Settings.FindBinding("caps_lalt_z")?.Action, "winSendToBottom");
+            CheckEqual("迁移翻译动作", result.Settings.FindBinding("caps_f3")?.Action, "translate");
+            Check("迁移搜索指令", result.Settings.Search.Any(s => s.Key == "bd"));
+            Check("迁移程序条目", result.Settings.Run.Any(r => r.Key == "ie"));
+            Check("迁移网址条目", result.Settings.Web.Any(w => w.Key == "gh"));
+            Check("迁移热字串", result.Settings.HotStrings.Any(h => h.Key == "clp"));
+            CheckEqual("迁移开机自启", result.Settings.Global.StartWithWindows, true);
+            CheckEqual("迁移鼠标速度", result.Settings.Global.MouseSpeed, 6);
+        }
+        catch (Exception ex)
+        {
+            Check("旧版 ini 迁移（读取/写入）", false, ex.Message);
+        }
+        finally
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
     }
 
     private static void TestActionCatalog()

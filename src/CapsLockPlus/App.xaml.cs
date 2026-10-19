@@ -19,18 +19,31 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             CoreLog.Error("未处理异常", args.ExceptionObject as Exception);
 
+        bool isSelfTest = e.Args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase));
+
+        // 诊断模式：不走 WPF 的消息循环，直接跑完用 Environment.Exit 硬退出。
+        // 用 Shutdown() 依赖消息循环正常运转，一旦中途抛异常就会永远等下去
+        // （之前 %TEMP% 不可写时就出现过命令行挂死）。
+        if (isSelfTest)
+        {
+            int code;
+            try
+            {
+                code = SelfTest.Run();
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error("自检异常", ex);
+                code = 2;
+            }
+            Environment.Exit(code);
+            return;
+        }
+
         // 无控制台时 Console.WriteLine 会抛 IOException（"can't open file for write"），
         // 这里统一兜住，避免诊断命令打出无意义的噪声。
         Console.SetOut(TextWriter.Null);
         Console.SetError(TextWriter.Null);
-
-        bool isSelfTest = e.Args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase));
-        if (isSelfTest)
-        {
-            int code = SelfTest.Run();
-            Shutdown(code);
-            return;
-        }
 
         // 需要管理员权限才能操作提权窗口；普通启动时自动提权一次
         if (ElevationHelper.TryRelaunchElevated(e.Args))
@@ -59,8 +72,17 @@ public partial class App : Application
             string outDir = renderIndex + 1 < e.Args.Length
                 ? e.Args[renderIndex + 1]
                 : Path.Combine(AppPaths.DataDir, "render");
-            int code = RenderTools.Run(Host, outDir);
-            Shutdown(code);
+            int renderCode;
+            try
+            {
+                renderCode = RenderTools.Run(Host, outDir);
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error("离屏渲染异常", ex);
+                renderCode = 2;
+            }
+            Environment.Exit(renderCode);
             return;
         }
 
