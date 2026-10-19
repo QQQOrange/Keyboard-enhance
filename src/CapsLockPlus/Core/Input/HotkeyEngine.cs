@@ -75,8 +75,23 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>重装钩子（自愈用）。</summary>
     public void RestartHook() => _hook.Restart();
 
+    /// <summary>诊断：让钩子把收到的按键写进日志。</summary>
+    public void EnableKeyTrace() => _hook.TraceKeys = true;
+
+    /// <summary>诊断：钩子累计收到的按键数。</summary>
+    public long KeyEventCount => _hook.KeyEventCount;
+
     /// <summary>直接喂一个按键给状态机（不经过真实钩子），用于自检。</summary>
     public bool SimulateKey(int vk, bool down) => OnKeyEvent(vk, down, injected: false);
+
+    /// <summary>
+    /// 仅供自检 / 探针：把注入的按键也当作真实按键处理。
+    ///
+    /// 正常运行时这个开关必须保持 false —— 否则自己发出的合成按键会被自己再次拦截，
+    /// 形成自我触发。但自动化测试无法产生“真实硬件按键”，
+    /// 只能靠 SendInput 合成，因此测试时需要临时打开它来验证完整链路。
+    /// </summary>
+    public bool AcceptInjectedForTest { get; set; }
 
     private bool IsCapsLockOn => (GetKeyState(VK.CapsLock) & 1) != 0;
 
@@ -86,8 +101,8 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
-        if (injected) return false;                 // 自己注入的按键直接放行
-        if (!Enabled || Suspended) return false;    // 暂停状态
+        if (injected && !AcceptInjectedForTest) return false;   // 自己注入的按键直接放行
+        if (!Enabled || Suspended) return false;                // 暂停状态
 
         if (vk == VK.CapsLock)
         {

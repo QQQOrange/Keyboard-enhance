@@ -20,6 +20,7 @@ public partial class App : Application
             CoreLog.Error("未处理异常", args.ExceptionObject as Exception);
 
         bool isSelfTest = e.Args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase));
+        bool isDiag = e.Args.Any(a => a.Equals("--diag", StringComparison.OrdinalIgnoreCase));
 
         // 诊断模式：不走 WPF 的消息循环，直接跑完用 Environment.Exit 硬退出。
         // 用 Shutdown() 依赖消息循环正常运转，一旦中途抛异常就会永远等下去
@@ -40,22 +41,58 @@ public partial class App : Application
             return;
         }
 
+        if (isDiag)
+        {
+            int code;
+            try
+            {
+                code = Core.KeyDiagnostics.Run();
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error("诊断异常", ex);
+                code = 2;
+            }
+            Environment.Exit(code);
+            return;
+        }
+
         // 无控制台时 Console.WriteLine 会抛 IOException（"can't open file for write"），
         // 这里统一兜住，避免诊断命令打出无意义的噪声。
         Console.SetOut(TextWriter.Null);
         Console.SetError(TextWriter.Null);
 
-        // 需要管理员权限才能操作提权窗口；普通启动时自动提权一次
-        if (ElevationHelper.TryRelaunchElevated(e.Args))
+        // ---- 单实例必须在提权之前判定 ----
+        //
+        // 顺序很重要：先判断“是否已有实例”，再决定要不要提权重启。
+        // 反过来做会出现这样的竞态：
+        //   旧进程发起 runas → 立即退出 → 新进程同时启动
+        //   → 旧进程还没释放互斥体 → 新进程误判“已有实例”而退出
+        //   → 两个进程都没了，钩子没装上，表现就是“按任何键都没反应”。
+        bool elevatedFlag = e.Args.Any(a => a.Equals("--elevated", StringComparison.OrdinalIgnoreCase));
+        if (!elevatedFlag && !SingleInstance.TryAcquire(out bool running))
         {
-            Shutdown(0);
+            CoreLog.Info("已有实例在运行，唤醒它并退出");
+            SingleInstance.ActivateExisting();
+            Environment.Exit(0);
             return;
         }
 
-        if (!SingleInstance.TryAcquire(out bool running))
+        // 需要管理员权限才能操作提权窗口；普通启动时自动提权一次
+        bool relaunched = false;
+        try
         {
-            SingleInstance.ActivateExisting();
-            Shutdown(0);
+            relaunched = ElevationHelper.TryRelaunchElevated(e.Args);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("提权重启失败，将按普通权限继续", ex);
+        }
+        if (relaunched)
+        {
+            CoreLog.Info("已拉起提权实例，当前进程退出");
+            SingleInstance.Release();   // 让提权实例能顺利接管
+            Environment.Exit(0);
             return;
         }
 
@@ -89,6 +126,13 @@ public partial class App : Application
         bool startHidden = e.Args.Any(a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
         string? page = ParsePageArg(e.Args);
         bool justUpdated = e.Args.Any(a => a.Equals("--updated", StringComparison.OrdinalIgnoreCase));
+
+        // 诊断：--trace 会把钩子收到的每个按键写进日志，用于排查“按键没反应”
+        if (e.Args.Any(a => a.Equals("--trace", StringComparison.OrdinalIgnoreCase)))
+        {
+            Host.EnableKeyTrace();
+            CoreLog.Info("已开启按键追踪（--trace）");
+        }
 
         // 清理上次更新留下的 .old-*.exe
         UpdateService.CleanupLeftovers();

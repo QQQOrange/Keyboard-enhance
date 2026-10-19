@@ -71,6 +71,22 @@
                         <CheckBox Grid.Column="1" x:Name="ToastBox" Style="{StaticResource ToggleSwitch}"
                                   VerticalAlignment="Center" Click="OnToastChanged" />
                     </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="显示按键反馈" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="每次组合键生效时在屏幕角落闪一下功能名，用来确认按键有没有被识别"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="FeedbackBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnFeedbackChanged" />
+                    </Grid>
                 </StackPanel>
             </Border>
 

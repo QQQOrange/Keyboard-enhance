@@ -90,6 +90,12 @@ public sealed class GlobalOptions
     /// <summary>动作执行后在屏幕右下角显示轻提示。</summary>
     public bool ShowToast { get; set; } = true;
 
+    /// <summary>
+    /// 每次组合键触发时在屏幕上显示动作名称。
+    /// 默认关闭；开启后能一眼看出“按键有没有被识别”，排查问题时非常有用。
+    /// </summary>
+    public bool ShowActionFeedback { get; set; }
+
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
 

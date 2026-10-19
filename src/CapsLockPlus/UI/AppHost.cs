@@ -85,6 +85,14 @@ public sealed class AppHost : IDisposable
 
         Engine = new HotkeyEngine(_queue, () => Settings, InvokeAction);
         Engine.CapsHeldChanged += held => _dispatcher.BeginInvoke(() => CapsHeldChanged?.Invoke(held));
+        // 反馈模式：每次组合键触发都在屏幕上闪一下动作名，
+        // 便于确认“按键到底有没有被识别”。
+        Engine.ActionTriggered += action => _dispatcher.BeginInvoke(() =>
+        {
+            if (!Settings.Global.ShowActionFeedback) return;
+            string title = Actions.Get(action)?.Title ?? action;
+            ToastWindow.Show(title, "feedback");
+        });
 
         WireEvents();
 
@@ -95,15 +103,20 @@ public sealed class AppHost : IDisposable
 
     private void WireEvents()
     {
-        Context.QbarRequested += () => _dispatcher.BeginInvoke(ShowQbar);
-        Context.MathBoardRequested += () => _dispatcher.BeginInvoke(ShowMathBoard);
-        Context.SettingsRequested += () => _dispatcher.BeginInvoke(ShowMainWindow);
+        // 注意：这里必须用 lambda 包一层。
+        // 直接写 BeginInvoke(ShowQbar) 会走 Delegate 的反射调用，
+        // 而 ShowQbar 带可选参数（string? prefill），反射按“1 个参数”调用，
+        // 与 Action 的 0 参数签名不匹配，会抛 TargetParameterCountException，
+        // 结果就是按 Caps+Q 完全没反应。
+        Context.QbarRequested += () => _dispatcher.BeginInvoke(() => ShowQbar());
+        Context.MathBoardRequested += () => _dispatcher.BeginInvoke(() => ShowMathBoard());
+        Context.SettingsRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow());
         Context.HelpRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("help"));
         Context.BindingsRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("bindings"));
-        Context.ClipboardHistoryRequested += () => _dispatcher.BeginInvoke(ShowClipboardHistory);
-        Context.TranslateRequested += () => _dispatcher.BeginInvoke(ShowTranslate);
-        Context.ReloadRequested += () => _dispatcher.BeginInvoke(ReloadAll);
-        Context.ToggleEnabledRequested += () => _dispatcher.BeginInvoke(ToggleEnabled);
+        Context.ClipboardHistoryRequested += () => _dispatcher.BeginInvoke(() => ShowClipboardHistory());
+        Context.TranslateRequested += () => _dispatcher.BeginInvoke(() => ShowTranslate());
+        Context.ReloadRequested += () => _dispatcher.BeginInvoke(() => ReloadAll());
+        Context.ToggleEnabledRequested += () => _dispatcher.BeginInvoke(() => ToggleEnabled());
         Context.ScreenshotRequested += () => _dispatcher.BeginInvoke(() => Context.Screenshot());
     }
 
@@ -124,7 +137,16 @@ public sealed class AppHost : IDisposable
     }
 
     // ---------------- 动作 ----------------
-    public bool InvokeAction(string action, string arg) => Actions.Invoke(action, arg);
+    public bool InvokeAction(string action, string arg)
+    {
+        bool ok = Actions.Invoke(action, arg);
+        if (!ok) CoreLog.Warn($"动作未执行：{action}（可能未在动作目录中注册）");
+        else CoreLog.Info($"动作：{action}{(string.IsNullOrEmpty(arg) ? "" : " " + arg)}");
+        return ok;
+    }
+
+    /// <summary>诊断开关：把钩子收到的每个按键写进日志。</summary>
+    public void EnableKeyTrace() => Engine.EnableKeyTrace();
 
     public void Notify(string message)
     {

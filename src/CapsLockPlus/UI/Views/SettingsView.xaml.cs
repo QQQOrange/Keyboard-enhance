@@ -30,6 +30,7 @@ public partial class SettingsView : UserControl
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
         ToastBox.IsChecked = g.ShowToast;
+        FeedbackBox.IsChecked = g.ShowActionFeedback;
         DoubleTapBox.IsChecked = g.DoubleTapCaps;
         RepeatBox.IsChecked = g.RepeatWhenHeld;
         MouseSpeedSlider.Value = g.MouseSpeed;
@@ -84,6 +85,15 @@ public partial class SettingsView : UserControl
         if (_host == null || _suppress) return;
         _host.Settings.Global.ShowToast = ToastBox.IsChecked == true;
         Save();
+    }
+
+    private void OnFeedbackChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        _host.Settings.Global.ShowActionFeedback = FeedbackBox.IsChecked == true;
+        Save();
+        if (FeedbackBox.IsChecked == true)
+            _host.Notify("已开启按键反馈：按 Caps+S 试试，角落会显示「左移」");
     }
 
     private void OnDoubleTapChanged(object sender, RoutedEventArgs e)

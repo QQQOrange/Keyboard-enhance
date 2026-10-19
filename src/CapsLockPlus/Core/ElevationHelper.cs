@@ -35,7 +35,12 @@ public static class ElevationHelper
         if (IsElevated) return false;
         if (args.Any(a => a.Equals(ElevatedFlag, StringComparison.OrdinalIgnoreCase))) return false;
         if (args.Any(a => a.Equals("--noelevate", StringComparison.OrdinalIgnoreCase))) return false;
+        // 诊断类命令不做提权重启：它们需要立即返回结果，弹 UAC 会打断流程
         if (args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase))) return false;
+        if (args.Any(a => a.Equals("--diag", StringComparison.OrdinalIgnoreCase))) return false;
+        if (args.Any(a => a.Equals("--render", StringComparison.OrdinalIgnoreCase))) return false;
+        if (args.Any(a => a.Equals("--qbar", StringComparison.OrdinalIgnoreCase))) return false;
+        if (args.Any(a => a.Equals("--trace", StringComparison.OrdinalIgnoreCase))) return false;
 
         string? exe = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exe)) return false;

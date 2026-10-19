@@ -81,6 +81,9 @@ public static class SelfTest
         Section("输入注入");
         TestInput();
 
+        Section("单实例");
+        TestSingleInstance();
+
         Section("键盘钩子");
         TestHook();
 
@@ -105,7 +108,10 @@ public static class SelfTest
         CheckEqual("纯摘要原样返回", UpdateService.NormalizeDigest(hash), hash);
         CheckEqual("空值返回空串", UpdateService.NormalizeDigest(null), "");
         CheckEqual("空摘要返回空串", UpdateService.NormalizeDigest("   "), "");
-        Check("内置版本号是 1.0.0", UpdateService.CurrentVersion == "1.0.0", UpdateService.CurrentVersion);
+        // 只校验格式合法，不写死具体版本号，避免每次发版都要改测试
+        Check("版本号是三段式",
+            System.Text.RegularExpressions.Regex.IsMatch(UpdateService.CurrentVersion, @"^\d+\.\d+\.\d+$"),
+            UpdateService.CurrentVersion);
     }
 
     /// <summary>写出自检报告（数据目录 + 控制台可用时也打印）。</summary>
@@ -411,22 +417,54 @@ public static class SelfTest
                                  InputSender.IsPhysicallyDown(VK.Shift));
     }
 
+    /// <summary>
+    /// 单实例逻辑。
+    ///
+    /// 这里曾经出过严重问题：提权重启时旧进程与新进程抢互斥体，
+    /// 新进程误判“已有实例”而退出，导致两个进程都没了、钩子没装上，
+    /// 表现就是“按任何键都没反应”。所以必须校验：
+    ///   * 首次获取成功；
+    ///   * 重复获取被正确判为“已有实例”；
+    ///   * 释放后又能重新获取（= 重启流程不会互相卡死）。
+    /// </summary>
+    private static void TestSingleInstance()
+    {
+        // 用一个独立名称测试，避免与真实运行的实例互相干扰
+        var name = "CapsLockPlus.SelfTest." + Guid.NewGuid().ToString("N");
+        var first = new Mutex(true, name, out bool createdFirst);
+        Check("首次可获取单实例锁", createdFirst);
+
+        var second = new Mutex(true, name, out bool createdSecond);
+        Check("重复获取会被识别为已有实例", !createdSecond);
+        try { second.Dispose(); } catch { }
+
+        first.ReleaseMutex();
+        first.Dispose();
+
+        // 释放之后应当能重新获取——这正是提权重启能成功接管的前提
+        var third = new Mutex(true, name, out bool createdThird);
+        Check("释放后可重新获取（重启不卡死）", createdThird);
+        try { third.ReleaseMutex(); third.Dispose(); } catch { }
+    }
+
     private static void TestHook()
     {
         var hook = new KeyboardHook();
         int events = 0;
-        hook.KeyEvent += (_, _, injected) =>
+        hook.KeyEvent += (_, _, injectedByUs) =>
         {
-            if (!injected) Interlocked.Increment(ref events);
+            if (!injectedByUs) Interlocked.Increment(ref events);
             return false;
         };
         hook.Start();
         Check("键盘钩子安装成功", hook.HookInstalled);
         Check("鼠标钩子安装成功", hook.MouseHookInstalled);
-        InputSender.Tap(VK.Escape);
-        Thread.Sleep(120);
+        // 关键：钩子“是否可用”必须反映真实句柄，不能只看意愿标志，
+        // 否则系统摘钩后自愈监控会一直以为正常。
+        Check("钩子运行状态与句柄一致", hook.IsRunning == hook.HookInstalled);
         hook.Dispose();
         Check("钩子可正常卸载", !hook.HookInstalled);
+        Check("卸载后运行状态为假", !hook.IsRunning);
     }
 
     /// <summary>

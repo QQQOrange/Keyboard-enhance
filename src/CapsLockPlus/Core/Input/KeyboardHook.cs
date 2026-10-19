@@ -30,7 +30,12 @@ public sealed class KeyboardHook : IDisposable
     private HookProc? _mouseProc;
     private IntPtr _mouseHook = IntPtr.Zero;
 
-    public bool IsRunning => _running;
+    /// <summary>
+    /// 钩子是否真正可用。
+    /// 不能只看 _running 这个“意愿”标志 —— 钩子句柄为 0 时说明安装失败或被系统摘掉，
+    /// 此时 _running 仍是 true，自愈监控会一直以为一切正常。
+    /// </summary>
+    public bool IsRunning => _running && _hook != IntPtr.Zero;
 
     /// <summary>钩子最近一次异常/失效的时间，用于自愈监控。</summary>
     public DateTime LastErrorTime { get; private set; } = DateTime.MinValue;
@@ -38,6 +43,13 @@ public sealed class KeyboardHook : IDisposable
     /// <summary>已安装的钩子句柄（供自检使用）。</summary>
     public bool HookInstalled => _hook != IntPtr.Zero;
     public bool MouseHookInstalled => _mouseHook != IntPtr.Zero;
+
+    /// <summary>诊断开关：把收到的每个按键写进日志（排查“按键没反应”时打开）。</summary>
+    public bool TraceKeys { get; set; }
+
+    /// <summary>累计收到的按键数（诊断用）。</summary>
+    public long KeyEventCount => Interlocked.Read(ref _keyEvents);
+    private long _keyEvents;
 
     public KeyboardHook()
     {
@@ -94,12 +106,22 @@ public sealed class KeyboardHook : IDisposable
             bool isUp = msg is WM_KEYUP or WM_SYSKEYUP;
             if (isDown || isUp)
             {
-                bool injected = (data.flags & LLKHF_INJECTED) != 0 ||
-                                data.dwExtraInfo == InputSender.InjectionTag;
+                Interlocked.Increment(ref _keyEvents);
+                // 只忽略“本程序自己发的”按键：靠 dwExtraInfo 标记判断。
+                //
+                // 不要用 LLKHF_INJECTED —— 它会把所有合成按键都算进去，
+                // 包括触摸键盘、屏幕键盘、其他自动化工具和远程桌面输入。
+                // 那样一来，用这些方式输入时 Caps 组合键会全部失效。
+                bool injectedByUs = data.dwExtraInfo == InputSender.InjectionTag;
+                if (TraceKeys)
+                {
+                    CoreLog.Info($"钩子收到 vk=0x{data.vkCode:X2} down={isDown} " +
+                                 $"flags=0x{data.flags:X} extra=0x{data.dwExtraInfo.ToInt64():X} 自己发的={injectedByUs}");
+                }
                 bool swallow = false;
                 try
                 {
-                    swallow = KeyEvent?.Invoke((int)data.vkCode, isDown, injected) ?? false;
+                    swallow = KeyEvent?.Invoke((int)data.vkCode, isDown, injectedByUs) ?? false;
                 }
                 catch (Exception ex)
                 {
@@ -124,8 +146,9 @@ public sealed class KeyboardHook : IDisposable
             if ((int)wParam == WM_MOUSEWHEEL)
             {
                 var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-                bool injected = (data.flags & LLKHF_INJECTED) != 0 || data.dwExtraInfo == InputSender.InjectionTag;
-                if (!injected)
+                // 与键盘钩子保持一致：只忽略本程序自己发的滚轮事件。
+                bool injectedByUs = data.dwExtraInfo == InputSender.InjectionTag;
+                if (!injectedByUs)
                 {
                     int delta = (short)((data.mouseData >> 16) & 0xFFFF);
                     if (delta != 0)

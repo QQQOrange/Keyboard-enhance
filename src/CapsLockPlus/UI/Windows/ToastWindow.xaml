@@ -8,7 +8,8 @@
     <Border x:Name="Card" CornerRadius="12" Background="#F2161A23" Padding="16,11" Margin="14"
             BorderThickness="1" BorderBrush="#33FFFFFF">
         <StackPanel Orientation="Horizontal">
-            <Border Width="22" Height="22" CornerRadius="7" Background="#2E5B93FF" VerticalAlignment="Center">
+            <Border x:Name="IconBox" Width="22" Height="22" CornerRadius="7" Background="#2E5B93FF"
+                    VerticalAlignment="Center">
                 <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11"
                            Foreground="#8FB6FF" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
