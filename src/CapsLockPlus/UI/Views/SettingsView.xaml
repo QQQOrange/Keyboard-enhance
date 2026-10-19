@@ -1,0 +1,195 @@
+<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource Font.Ui}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,4,20,24">
+        <StackPanel MaxWidth="880" HorizontalAlignment="Left">
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="启动与运行" Style="{StaticResource Text.H2}" Margin="0,0,0,4" />
+                    <TextBlock Text="这些选项会立刻保存，不需要重启程序。" Style="{StaticResource Text.Tertiary}" />
+
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="开机自动启动" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="登录 Windows 后自动在托盘运行" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="StartupBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnStartupChanged" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="关闭窗口时最小化到托盘" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="保留热键继续工作；从托盘菜单可以完全退出" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="TrayBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnTrayChanged" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="启动时打开设置窗口" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="关闭后只在托盘运行，按 Caps+Q 依然可用" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="OpenOnStartBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnOpenOnStartChanged" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="操作后显示轻提示" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="例如切换置顶、复制到剪贴板时，在屏幕角落提示一下" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="ToastBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnToastChanged" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="按键行为" Style="{StaticResource Text.H2}" Margin="0,0,0,4" />
+
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="短按 CapsLock" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="不按其他键、直接松开 Caps 时的行为" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="TapCapsBox" Style="{StaticResource ComboBox.Base}"
+                                  SelectionChanged="OnTapCapsChanged">
+                            <ComboBoxItem Content="切换大小写（默认）" Tag="toggleCapsLock" />
+                            <ComboBoxItem Content="发送 Esc" Tag="esc" />
+                            <ComboBoxItem Content="什么都不做" Tag="doNothing" />
+                        </ComboBox>
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="双击 CapsLock 打开 Qbar" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="快速双击 Caps（600 毫秒内）直接打开搜索面板" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="DoubleTapBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnDoubleTapChanged" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="按住组合键时连续触发" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="按住 Caps+S 不松手可以一直向左移动光标" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="RepeatBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnRepeatChanged" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="鼠标移动速度" Style="{StaticResource Text.Body}" />
+                            <TextBlock x:Name="MouseSpeedText" Text="3（Caps+LAlt+滚轮 可快速调整）"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <Slider Grid.Column="1" x:Name="MouseSpeedSlider" Width="180" Minimum="1" Maximum="20"
+                                IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                ValueChanged="OnMouseSpeedChanged" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="外观" Style="{StaticResource Text.H2}" Margin="0,0,0,4" />
+
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="主题" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="跟随系统会随 Windows 的深浅色设置自动切换" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="ThemeBox" Style="{StaticResource ComboBox.Base}"
+                                  SelectionChanged="OnThemeChanged">
+                            <ComboBoxItem Content="浅色" Tag="light" />
+                            <ComboBoxItem Content="深色" Tag="dark" />
+                            <ComboBoxItem Content="跟随系统" Tag="system" />
+                        </ComboBox>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="数据与维护" Style="{StaticResource Text.H2}" Margin="0,0,0,4" />
+                    <TextBlock x:Name="DataPathText" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                               Margin="0,6,0,14" />
+                    <WrapPanel>
+                        <Button Content="从旧版 CapsLock+ 导入设置" Style="{StaticResource Button.Base}"
+                                Margin="0,0,8,8" Click="OnImportLegacy" />
+                        <Button Content="打开设置文件" Style="{StaticResource Button.Base}" Margin="0,0,8,8"
+                                Click="OnOpenSettingsFile" />
+                        <Button Content="打开日志" Style="{StaticResource Button.Base}" Margin="0,0,8,8"
+                                Click="OnOpenLog" />
+                        <Button Content="重新加载配置" Style="{StaticResource Button.Base}" Margin="0,0,8,8"
+                                Click="OnReload" />
+                        <Button Content="重置全部设置" Style="{StaticResource Button.Danger}" Margin="0,0,8,8"
+                                Click="OnResetAll" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,203 @@
+using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Text;
+using CapsLockPlus.Core.Windows;
+
+namespace CapsLockPlus.Core.Actions;
+
+/// <summary>动作的展示信息（用于按键映射界面）。</summary>
+public sealed record ActionInfo(string Id, string Category, string Title, string Description, bool NeedsArg = false, string ArgHint = "");
+
+/// <summary>
+/// 动作目录：动作 ID -> 显示名 + 执行逻辑。
+/// 界面的“按键映射”页完全由这个目录生成，所以新增动作只需要改这里一处。
+/// </summary>
+public sealed class ActionCatalog
+{
+    private readonly Dictionary<string, Func<string, bool>> _handlers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<ActionInfo> _items = new();
+
+    public IReadOnlyList<ActionInfo> Items => _items;
+
+    public ActionInfo? Get(string id) => _items.FirstOrDefault(i => i.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    public bool Invoke(string id, string arg)
+    {
+        if (_handlers.TryGetValue(id, out var handler)) return handler(arg);
+        CoreLog.Warn($"未知动作：{id}");
+        return false;
+    }
+
+    private void Add(string id, string category, string title, string desc, Func<string, bool> handler,
+                     bool needsArg = false, string argHint = "")
+    {
+        _items.Add(new ActionInfo(id, category, title, desc, needsArg, argHint));
+        _handlers[id] = handler;
+    }
+
+    public static ActionCatalog Create(ActionContext ctx)
+    {
+        var c = new ActionCatalog();
+
+        // ---------------- 基础 ----------------
+        c.Add("doNothing", "基础", "不绑定", "该组合键不执行任何动作", _ => true);
+        c.Add("toggleCapsLock", "基础", "切换大小写", "等价于按一下 CapsLock", _ => { HotkeyEngineToggle(); return true; });
+        c.Add("esc", "基础", "Esc", "发送 Esc", _ => Send(VK_Esc));
+        c.Add("enter", "基础", "回车", "发送回车", _ => Send(VK_Enter));
+        c.Add("tab", "基础", "Tab", "发送 Tab", _ => Send(VK_Tab));
+        c.Add("space", "基础", "空格", "发送空格", _ => Send(VK_Space));
+        c.Add("backspace", "基础", "退格", "发送退格", _ => Send(VK_Back));
+        c.Add("delete", "基础", "删除", "发送 Delete", _ => Send(VK_Delete));
+        c.Add("openSettings", "基础", "打开设置", "打开 CapsLock+ 设置窗口", _ => { ctx.RequestOpenSettings(); return true; });
+        c.Add("toggleEnabled", "基础", "启用/暂停", "临时暂停或恢复所有 CapsLock+ 热键", _ => { ctx.RequestToggleEnabled(); return true; });
+
+        // ---------------- 光标 ----------------
+        c.Add("moveLeft", "光标移动", "左移", "光标左移一个字符（可长按连续）", a => SendRepeat(0x25, a));
+        c.Add("moveRight", "光标移动", "右移", "光标右移一个字符", a => SendRepeat(0x27, a));
+        c.Add("moveUp", "光标移动", "上移", "光标上移一行", a => SendRepeat(0x26, a));
+        c.Add("moveDown", "光标移动", "下移", "光标下移一行", a => SendRepeat(0x28, a));
+        c.Add("moveWordLeft", "光标移动", "左移一个单词", "Ctrl+←", a => SendCtrlRepeat(0x25, a));
+        c.Add("moveWordRight", "光标移动", "右移一个单词", "Ctrl+→", a => SendCtrlRepeat(0x27, a));
+        c.Add("home", "光标移动", "行首", "Home", _ => Send(VK_Home));
+        c.Add("end", "光标移动", "行尾", "End", _ => Send(VK_End));
+        c.Add("moveToPageBeginning", "光标移动", "文档开头", "Ctrl+Home", _ => SendCtrl(0x24));
+        c.Add("moveToPageEnd", "光标移动", "文档结尾", "Ctrl+End", _ => SendCtrl(0x23));
+        c.Add("pageUp", "光标移动", "上一页", "PgUp", _ => Send(0x21));
+        c.Add("pageDown", "光标移动", "下一页", "PgDn", _ => Send(0x22));
+        c.Add("pageMoveLineUp", "光标移动", "页面上移一行", "Ctrl+↑，光标不动", a => SendCtrlRepeat(0x26, a));
+        c.Add("pageMoveLineDown", "光标移动", "页面下移一行", "Ctrl+↓，光标不动", a => SendCtrlRepeat(0x28, a));
+        c.Add("enterWherever", "光标移动", "在行尾换行", "先 End 再回车（不管光标在哪）", _ => { Send(VK_End); Send(VK_Enter); return true; });
+
+        // ---------------- 选择 ----------------
+        c.Add("selectLeft", "选择", "向左选中", "Shift+←", a => SendShiftRepeat(0x25, a));
+        c.Add("selectRight", "选择", "向右选中", "Shift+→", a => SendShiftRepeat(0x27, a));
+        c.Add("selectUp", "选择", "向上选中", "Shift+↑", a => SendShiftRepeat(0x26, a));
+        c.Add("selectDown", "选择", "向下选中", "Shift+↓", a => SendShiftRepeat(0x28, a));
+        c.Add("selectWordLeft", "选择", "向左选中单词", "Ctrl+Shift+←", a => SendCtrlShiftRepeat(0x25, a));
+        c.Add("selectWordRight", "选择", "向右选中单词", "Ctrl+Shift+→", a => SendCtrlShiftRepeat(0x27, a));
+        c.Add("selectHome", "选择", "选中到行首", "Shift+Home", _ => SendShift(0x24));
+        c.Add("selectEnd", "选择", "选中到行尾", "Shift+End", _ => SendShift(0x23));
+        c.Add("selectToPageBeginning", "选择", "选中到文档开头", "Ctrl+Shift+Home", _ => SendCtrlShift(0x24));
+        c.Add("selectToPageEnd", "选择", "选中到文档结尾", "Ctrl+Shift+End", _ => SendCtrlShift(0x23));
+        c.Add("selectCurrentWord", "选择", "选中当前单词", "Ctrl+← 再 Ctrl+Shift+→", _ => { SendCtrl(0x25); SendCtrlShift(0x27); return true; });
+        c.Add("selectCurrentLine", "选择", "选中当前行", "Home 再 Shift+End", _ => { TextActions.SelectLine(); return true; });
+        c.Add("selectAll", "选择", "全选", "Ctrl+A", _ => SendCtrl(0x41));
+
+        // ---------------- 编辑 ----------------
+        c.Add("deleteLine", "编辑", "删除整行", "End + Shift+Home + 退格", _ => { Send(VK_End); SendShift(0x24); Send(VK_Back); return true; });
+        c.Add("deleteToLineBeginning", "编辑", "删除到行首", "Shift+Home + 退格", _ => { SendShift(0x24); Send(VK_Back); return true; });
+        c.Add("deleteToLineEnd", "编辑", "删除到行尾", "Shift+End + 退格", _ => { SendShift(0x23); Send(VK_Back); return true; });
+        c.Add("deleteToPageBeginning", "编辑", "删除到文档开头", "Ctrl+Shift+Home + 退格", _ => { SendCtrlShift(0x24); Send(VK_Back); return true; });
+        c.Add("deleteToPageEnd", "编辑", "删除到文档结尾", "Ctrl+Shift+End + 退格", _ => { SendCtrlShift(0x23); Send(VK_Back); return true; });
+        c.Add("deleteWord", "编辑", "删除前一个单词", "Ctrl+Shift+← 再删除", _ => { SendCtrlShift(0x25); Send(VK_Delete); return true; });
+        c.Add("forwardDeleteWord", "编辑", "删除后一个单词", "Ctrl+Shift+→ 再删除", _ => { SendCtrlShift(0x27); Send(VK_Delete); return true; });
+        c.Add("wrapSelection", "编辑", "用符号包裹选区", "例如把选中的文字变成 (文字)，参数为起始符号", a =>
+        {
+            string open = string.IsNullOrEmpty(a) ? "(" : a;
+            string close = open switch { "(" => ")", "[" => "]", "{" => "}", "<" => ">", "\"" => "\"", "'" => "'", _ => open };
+            TextActions.WrapSelection(open, close);
+            return true;
+        }, true, "例如 ( 或 [ 或 \"");
+
+        c.Add("deleteAll", "编辑", "清空内容", "Ctrl+A 再删除", _ => { SendCtrl(0x41); Send(VK_Delete); return true; });
+        c.Add("undoRedo", "编辑", "撤销 / 重做", "交替发送 Ctrl+Z 与 Ctrl+Y", _ => ctx.UndoRedo());
+        c.Add("upperCase", "编辑", "转大写", "把选中文本转成大写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Upper); return true; });
+        c.Add("lowerCase", "编辑", "转小写", "把选中文本转成小写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Lower); return true; });
+        c.Add("titleCase", "编辑", "首字母大写", "把选中文本转成词首大写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Title); return true; });
+
+        // ---------------- 剪贴板 ----------------
+        c.Add("copy1", "剪贴板", "复制到剪贴板 1", "Caps+C：复制到独立剪贴板 1", _ => ctx.Clipboard.Copy(1));
+        c.Add("cut1", "剪贴板", "剪切到剪贴板 1", "Caps+X", _ => ctx.Clipboard.Cut(1));
+        c.Add("paste1", "剪贴板", "粘贴剪贴板 1", "Caps+V", _ => ctx.Clipboard.Paste(1));
+        c.Add("copy2", "剪贴板", "复制到剪贴板 2", "Caps+LAlt+C：复制到独立剪贴板 2", _ => ctx.Clipboard.Copy(2));
+        c.Add("cut2", "剪贴板", "剪切到剪贴板 2", "Caps+LAlt+X", _ => ctx.Clipboard.Cut(2));
+        c.Add("paste2", "剪贴板", "粘贴剪贴板 2", "Caps+LAlt+V", _ => ctx.Clipboard.Paste(2));
+        c.Add("pasteSystem", "剪贴板", "粘贴系统剪贴板", "恢复系统剪贴板后粘贴", _ => ctx.Clipboard.PasteSystem());
+        c.Add("toggleClipboard", "剪贴板", "开关独立剪贴板", "开/关 CapsLock+ 剪贴板功能", _ => ctx.Clipboard.ToggleEnabled());
+        c.Add("clipboardHistory", "剪贴板", "剪贴板历史", "查看并粘贴最近的复制内容", _ => { ctx.RequestOpenClipboardHistory(); return true; });
+
+        // ---------------- 面板 / 工具 ----------------
+        c.Add("qbar", "面板", "Qbar 快速启动", "打开 Qbar：搜索、启动程序、打开网址、计算", _ => { ctx.RequestQbar(); return true; });
+        c.Add("mathBoard", "面板", "计算器", "打开带历史记录的计算器", _ => { ctx.RequestMathBoard(); return true; });
+        c.Add("tabScript", "面板", "Tab 计算 / 热字串", "把光标前的算式直接算出结果，或展开热字串", _ => ctx.RunTabScript());
+        c.Add("translate", "面板", "翻译选中文本", "调用翻译服务并显示结果", _ => { ctx.RequestTranslate(); return true; });
+        c.Add("openDocs", "面板", "使用帮助", "打开内置帮助", _ => { ctx.RequestHelp(); return true; });
+        c.Add("reload", "面板", "重新加载配置", "重新读取设置并重装钩子", _ => { ctx.RequestReload(); return true; });
+
+        // ---------------- 窗口 ----------------
+        c.Add("winPin", "窗口", "窗口置顶 / 取消", "让当前窗口永远在最前面", _ => ctx.Windows.ToggleTopmost());
+        c.Add("winTransparent", "窗口", "窗口透明度切换", "在几档透明度之间循环", _ => ctx.Windows.CycleOpacity());
+        c.Add("winMinimize", "窗口", "最小化窗口", "最小化当前窗口", _ => ctx.Windows.Minimize());
+        c.Add("winMaximize", "窗口", "最大化 / 还原", "切换最大化状态", _ => ctx.Windows.ToggleMaximize());
+        c.Add("winClose", "窗口", "关闭窗口", "关闭当前窗口", _ => ctx.Windows.Close());
+        c.Add("winCenter", "窗口", "窗口居中", "把窗口移到屏幕中央", _ => ctx.Windows.Center());
+        c.Add("winSnapLeft", "窗口", "贴左半屏", "Win11 风格贴边", _ => ctx.Windows.Snap(SnapSide.Left));
+        c.Add("winSnapRight", "窗口", "贴右半屏", "Win11 风格贴边", _ => ctx.Windows.Snap(SnapSide.Right));
+        c.Add("winSnapTop", "窗口", "贴上半屏", "顶部半屏", _ => ctx.Windows.Snap(SnapSide.Top));
+        c.Add("winSnapBottom", "窗口", "贴下半屏", "底部半屏", _ => ctx.Windows.Snap(SnapSide.Bottom));
+        c.Add("winSnapTopLeft", "窗口", "贴左上角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.TopLeft));
+        c.Add("winSnapTopRight", "窗口", "贴右上角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.TopRight));
+        c.Add("winSnapBottomLeft", "窗口", "贴左下角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.BottomLeft));
+        c.Add("winSnapBottomRight", "窗口", "贴右下角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.BottomRight));
+        c.Add("winSendToBottom", "窗口", "窗口置底", "把窗口压到最下面", _ => ctx.Windows.SendToBottom());
+        c.Add("winNextApp", "窗口", "同程序下一个窗口", "在当前程序的窗口间循环", _ => ctx.Windows.CycleSameApp(false));
+        c.Add("winPrevApp", "窗口", "同程序上一个窗口", "反向循环", _ => ctx.Windows.CycleSameApp(true));
+        c.Add("winLeft", "窗口", "激活左边的窗口", "按屏幕位置找左边最近的窗口", _ => ctx.Windows.ActivateDirectional("l"));
+        c.Add("winRight", "窗口", "激活右边的窗口", "按屏幕位置找右边最近的窗口", _ => ctx.Windows.ActivateDirectional("r"));
+        c.Add("winUp", "窗口", "激活上边的窗口", "按屏幕位置找上边最近的窗口", _ => ctx.Windows.ActivateDirectional("u"));
+        c.Add("winDown", "窗口", "激活下边的窗口", "按屏幕位置找下边最近的窗口", _ => ctx.Windows.ActivateDirectional("d"));
+
+        // ---------------- 鼠标 ----------------
+        c.Add("mouseLeft", "鼠标", "鼠标左移", "可长按加速", _ => ctx.Mouse.Move(-1, 0));
+        c.Add("mouseRight", "鼠标", "鼠标右移", "可长按加速", _ => ctx.Mouse.Move(1, 0));
+        c.Add("mouseUp", "鼠标", "鼠标上移", "可长按加速", _ => ctx.Mouse.Move(0, -1));
+        c.Add("mouseDown", "鼠标", "鼠标下移", "可长按加速", _ => ctx.Mouse.Move(0, 1));
+        c.Add("clickLeft", "鼠标", "鼠标左键", "点击左键", _ => { InputSender.Click(false); return true; });
+        c.Add("clickRight", "鼠标", "鼠标右键", "点击右键", _ => { InputSender.Click(true); return true; });
+        c.Add("wheelUp", "鼠标", "滚轮上滚", "向上滚动", a => { InputSender.Wheel(ParseInt(a, 3)); return true; });
+        c.Add("wheelDown", "鼠标", "滚轮下滚", "向下滚动", a => { InputSender.Wheel(-ParseInt(a, 3)); return true; });
+        c.Add("mouseSpeedUp", "鼠标", "鼠标速度 +", "Caps+LAlt 时的鼠标速度加一", _ => ctx.ChangeMouseSpeed(1));
+        c.Add("mouseSpeedDown", "鼠标", "鼠标速度 -", "鼠标速度减一", _ => ctx.ChangeMouseSpeed(-1));
+
+        // ---------------- 媒体 / 系统 ----------------
+        c.Add("mediaPrev", "系统", "上一首", "媒体键", _ => Send(0xB1));
+        c.Add("mediaNext", "系统", "下一首", "媒体键", _ => Send(0xB0));
+        c.Add("mediaPlayPause", "系统", "播放 / 暂停", "媒体键", _ => Send(0xB3));
+        c.Add("volumeUp", "系统", "音量 +", "音量加", _ => Send(0xAF));
+        c.Add("volumeDown", "系统", "音量 -", "音量减", _ => Send(0xAE));
+        c.Add("volumeMute", "系统", "静音", "静音切换", _ => Send(0xAD));
+        c.Add("openUrl", "系统", "打开网址", "打开参数里的网址", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; });
+        c.Add("runProgram", "系统", "运行程序", "运行参数里的程序或命令", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.RunProgram(a); return true; });
+        c.Add("lockScreen", "系统", "锁定屏幕", "Win+L", _ => { InputSender.Chord(0x5B, 0x4C); return true; });
+        c.Add("screenshot", "系统", "截图", "调用系统截图工具", _ => ctx.Screenshot());
+
+        // ---------------- 窗口绑定 ----------------
+        for (int i = 1; i <= 10; i++)
+        {
+            int slot = i;
+            string key = i == 10 ? "0" : i.ToString();
+            c.Add($"winbindActivate{slot}", "窗口绑定", $"激活窗口槽位 {slot}", $"Caps+{key}：切到绑定的窗口", _ => ctx.WindowBindings.Activate(slot));
+            c.Add($"winbindBind{slot}", "窗口绑定", $"绑定到窗口槽位 {slot}", $"把当前窗口绑到槽位 {slot}", _ => ctx.WindowBindings.Bind(slot));
+        }
+        c.Add("winbindOpenManager", "窗口绑定", "打开窗口绑定管理", "管理 10 个窗口槽位", _ => { ctx.RequestOpenBindings(); return true; });
+
+        return c;
+    }
+
+    // ---------------- 小工具 ----------------
+    private const int VK_Back = 0x08, VK_Tab = 0x09, VK_Enter = 0x0D, VK_Esc = 0x1B, VK_Space = 0x20,
+                      VK_Home = 0x24, VK_End = 0x23, VK_Delete = 0x2E;
+
+    private static bool Send(int vk) { InputSender.Tap(vk); return true; }
+    private static bool SendCtrl(int vk) { InputSender.Ctrl(vk); return true; }
+    private static bool SendShift(int vk) { InputSender.Shift(vk); return true; }
+    private static bool SendCtrlShift(int vk) { InputSender.CtrlShift(vk); return true; }
+    private static bool SendRepeat(int vk, string arg) { InputSender.Tap(vk, ParseInt(arg, 1)); return true; }
+    private static bool SendCtrlRepeat(int vk, string arg) { for (int i = 0; i < ParseInt(arg, 1); i++) InputSender.Ctrl(vk); return true; }
+    private static bool SendShiftRepeat(int vk, string arg) { for (int i = 0; i < ParseInt(arg, 1); i++) InputSender.Shift(vk); return true; }
+    private static bool SendCtrlShiftRepeat(int vk, string arg) { for (int i = 0; i < ParseInt(arg, 1); i++) InputSender.CtrlShift(vk); return true; }
+
+    internal static int ParseInt(string? s, int fallback)
+        => int.TryParse(s, out var v) ? Math.Clamp(v, 1, 200) : fallback;
+
+    private static void HotkeyEngineToggle() => HotkeyEngine.ToggleCapsLock();
+}

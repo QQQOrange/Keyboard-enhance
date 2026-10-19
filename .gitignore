@@ -1,0 +1,67 @@
+# ---- .NET / 构建产物 ----
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+publish/
+dist/
+*.dll
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# ---- 单文件发布/更新残留 ----
+*.old-*.exe
+CapsLockPlus-*.exe
+
+# ---- 测试与覆盖率 ----
+[Tt]est[Rr]esult*/
+*.coverage
+*.coveragexml
+TestResults/
+
+# ---- NuGet ----
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+!packages/**/build/
+
+# ---- 工具与缓存 ----
+.project
+*.tmp
+*.log
+*.bak
+*.cache
+_ReSharper*/
+*.[Rr]e[Ss]harper
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+
+# ---- 运行时数据（不应进仓库）----
+settings.json
+settings.json.bak
+settings.json.broken
+selftest.log
+logs/
+icons/
+render/
+shots/
+
+# ---- 系统 ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

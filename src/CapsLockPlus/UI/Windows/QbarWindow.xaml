@@ -1,0 +1,159 @@
+<Window x:Class="CapsLockPlus.UI.Windows.QbarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Qbar" Width="760" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
+        WindowStartupLocation="Manual" ShowActivated="True"
+        FontFamily="{StaticResource Font.Ui}" UseLayoutRounding="True">
+
+    <Grid Margin="18">
+        <!-- 投影用一整块圆角实心底衬模拟（比 DropShadowEffect 便宜，也不会露出桌面） -->
+        <Border CornerRadius="20" Background="#1A000000" Margin="10,14,10,-2" Opacity="0.7" />
+
+        <!-- 面板 -->
+        <Border x:Name="Panel" CornerRadius="18" BorderThickness="1.5" Background="#F21C1F27">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="Slide" Y="10" />
+            </Border.RenderTransform>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 输入行：标签 + 输入框 -->
+                <Grid Grid.Row="0" Margin="18,16,18,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="9" VerticalAlignment="Center"
+                            Background="#22FFFFFF">
+                        <TextBlock x:Name="ModeIcon" Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   FontSize="14" Foreground="#FFFFFF" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,10,0"
+                                VerticalAlignment="Center">
+                        <!-- 关键词标签：输入 "bd " 后出现 -->
+                        <Border x:Name="ChipBox" Visibility="Collapsed" CornerRadius="9" Height="32"
+                                Padding="8,0" Margin="0,0,8,0" VerticalAlignment="Center"
+                                Background="#2E5B93FF" BorderThickness="1" BorderBrush="#665B93FF">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- 有图标：显示图标 -->
+                                <Border x:Name="ChipIconBox" Width="18" Height="18" CornerRadius="5"
+                                        Visibility="Collapsed" ClipToBounds="True">
+                                    <Image x:Name="ChipIcon" Stretch="UniformToFill" />
+                                </Border>
+                                <!-- 没有图标：显示首字色块 -->
+                                <Border x:Name="ChipInitialBox" Width="18" Height="18" CornerRadius="5"
+                                        Visibility="Collapsed">
+                                    <TextBlock x:Name="ChipInitial" FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="White" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock x:Name="ChipLabel" Text="百度" FontSize="13" Margin="7,0,0,0"
+                                           VerticalAlignment="Center" Foreground="#EAF1FF" />
+                                <Button x:Name="ChipClose" Content="&#xE711;"
+                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9"
+                                        Foreground="#9FB4D8" Background="Transparent" BorderThickness="0"
+                                        Margin="7,0,-2,0" Padding="2" Cursor="Hand"
+                                        ToolTip="移除标签（Backspace）" Click="OnChipClose"
+                                        WindowChrome.IsHitTestVisibleInChrome="True" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBox x:Name="Input" FontSize="21" Background="Transparent" BorderThickness="0"
+                                 Foreground="#FFFFFF" CaretBrush="#FFFFFF" VerticalContentAlignment="Center"
+                                 Height="38" MinWidth="120" TextChanged="OnInputChanged"
+                                 PreviewKeyDown="OnInputKeyDown" FontFamily="{StaticResource Font.Ui}" />
+                    </StackPanel>
+
+                    <Border Grid.Column="2" CornerRadius="7" Padding="8,4" VerticalAlignment="Center"
+                            Background="#1AFFFFFF">
+                        <TextBlock x:Name="HintText" Text="Enter 执行" FontSize="11" Foreground="#9FB0CC" />
+                    </Border>
+                </Grid>
+
+                <Border Grid.Row="1" Height="1" Background="#1FFFFFFF" Margin="16,0" />
+
+                <!-- 结果列表 -->
+                <ListBox Grid.Row="2" x:Name="Results" Margin="8,8,8,4" Background="Transparent"
+                         BorderThickness="0" MaxHeight="420"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         MouseDoubleClick="OnResultDoubleClick"
+                         PreviewMouseLeftButtonUp="OnResultClick"
+                         ItemContainerStyle="{StaticResource QbarRow}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Height="42">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 结果图标：有条目图标就显示图标，否则用品牌色首字 -->
+                                <Grid Grid.Column="0" Width="28" Height="28" Margin="0,0,11,0"
+                                      VerticalAlignment="Center">
+                                    <Border x:Name="IconTile" CornerRadius="8" Background="#1AFFFFFF">
+                                        <TextBlock Text="{Binding IconGlyph}"
+                                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                   FontSize="12.5" Foreground="#C9D6EC"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border x:Name="IconImageTile" CornerRadius="8" Visibility="Collapsed"
+                                            ClipToBounds="True">
+                                        <Image Source="{Binding IconSource}" Stretch="UniformToFill" />
+                                    </Border>
+                                    <Border x:Name="IconLetterTile" CornerRadius="8" Visibility="Collapsed"
+                                            Background="{Binding LetterBrush}">
+                                        <TextBlock Text="{Binding Letter}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="White" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </Grid>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title}" FontSize="14" Foreground="#F2F5FA"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="11.5" Foreground="#7F8DA8"
+                                               TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                                </StackPanel>
+
+                                <Border Grid.Column="2" CornerRadius="6" Padding="7,2" Background="#14FFFFFF"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Badge}" FontSize="10.5" Foreground="#8FA3C4" />
+                                </Border>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding HasIcon}" Value="True">
+                                    <Setter TargetName="IconTile" Property="Visibility" Value="Collapsed" />
+                                    <Setter TargetName="IconImageTile" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding HasIcon}" Value="False" />
+                                        <Condition Binding="{Binding HasLetter}" Value="True" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter TargetName="IconTile" Property="Visibility" Value="Collapsed" />
+                                    <Setter TargetName="IconLetterTile" Property="Visibility" Value="Visible" />
+                                </MultiDataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- 底部提示 -->
+                <TextBlock Grid.Row="3" Text="↑↓ 选择    Enter 执行    Tab 补全    Esc 关闭"
+                           FontSize="10.5" Foreground="#5F6C84" Margin="20,4,20,14" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

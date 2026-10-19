@@ -1,0 +1,159 @@
+using System.Diagnostics;
+using CapsLockPlus.Core.Settings;
+using CapsLockPlus.Core.Windows;
+
+namespace CapsLockPlus.Core.Actions;
+
+/// <summary>
+/// 窗口绑定（对应上游的 Caps+1~0 / Caps+LAlt+1~0 / Caps+Win+1~0）。
+/// 每个槽位可以：
+///   * 只绑一个窗口（窗口关掉后按槽位会自动重开程序）；
+///   * 绑多个窗口，反复按循环切换；
+///   * 绑定某个程序的全部窗口（新开的窗口自动加入）。
+/// </summary>
+public sealed class WindowBindingService
+{
+    private readonly AppSettings _settings;
+    private readonly object _gate = new();
+    private DateTime _lastTap = DateTime.MinValue;
+    private int _lastSlot = -1;
+    private int _tapCount;
+    private readonly Dictionary<int, int> _cycleIndex = new();
+
+    public event Action<string>? Notified;
+
+    public WindowBindingService(AppSettings settings) => _settings = settings;
+
+    public WinBinding GetOrCreate(int slot)
+    {
+        lock (_gate)
+        {
+            var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
+            if (b == null)
+            {
+                b = new WinBinding { Slot = slot };
+                _settings.Bindings.Add(b);
+            }
+            return b;
+        }
+    }
+
+    public IReadOnlyList<WinBinding> All => _settings.Bindings;
+
+    /// <summary>把当前前台窗口绑定到槽位（连续按多次 = 追加更多窗口）。</summary>
+    public bool Bind(int slot)
+    {
+        var info = WindowService.ForegroundInfo();
+        if (info == null) { Notified?.Invoke("没有可绑定的窗口"); return false; }
+        if (info.ExeName.Equals("CapsLockPlus.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            Notified?.Invoke("不能绑定 CapsLock+ 自己的窗口");
+            return false;
+        }
+
+        bool multi = _lastSlot == slot && (DateTime.Now - _lastTap).TotalMilliseconds < 1200;
+        _tapCount = multi ? _tapCount + 1 : 1;
+        _lastSlot = slot;
+        _lastTap = DateTime.Now;
+
+        var b = GetOrCreate(slot);
+        lock (_gate)
+        {
+            b.ExePath = info.ExePath;
+            b.ClassName = info.ClassName;
+            b.DisplayName = info.ExeName;
+            long id = info.Handle.ToInt64();
+            if (_tapCount >= 3)
+            {
+                // 连按三次：绑定该程序的所有窗口
+                b.Mode = WinBindMode.Application;
+                b.WindowIds.Clear();
+                foreach (var w in WindowService.EnumerateTopLevel())
+                {
+                    if (string.Equals(w.ExePath, info.ExePath, StringComparison.OrdinalIgnoreCase))
+                        b.WindowIds.Add(w.Handle.ToInt64());
+                }
+                Notified?.Invoke($"槽位 {slot}：已绑定 {info.ExeName} 的全部窗口");
+            }
+            else if (_tapCount == 1)
+            {
+                b.Mode = WinBindMode.Single;
+                b.WindowIds.Clear();
+                b.WindowIds.Add(id);
+                Notified?.Invoke($"槽位 {slot} ← {info.Display}");
+            }
+            else
+            {
+                b.Mode = WinBindMode.Multi;
+                if (!b.WindowIds.Contains(id)) b.WindowIds.Add(id);
+                Notified?.Invoke($"槽位 {slot}：已加入 {info.Display}（共 {b.WindowIds.Count} 个窗口）");
+            }
+        }
+        return true;
+    }
+
+    /// <summary>激活槽位（不存在则尝试启动对应程序）。</summary>
+    public bool Activate(int slot)
+    {
+        var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
+        if (b == null || b.IsEmpty)
+        {
+            Notified?.Invoke($"槽位 {slot} 还没绑定窗口（先按 Caps+LAlt+{slot} 绑定）");
+            return false;
+        }
+
+        lock (_gate)
+        {
+            // 清掉已经关闭的窗口
+            b.WindowIds.RemoveAll(id => !WindowService.Exists(new IntPtr(id)));
+
+            if (b.Mode == WinBindMode.Application)
+            {
+                foreach (var w in WindowService.EnumerateTopLevel())
+                {
+                    if (string.Equals(w.ExePath, b.ExePath, StringComparison.OrdinalIgnoreCase) &&
+                        !b.WindowIds.Contains(w.Handle.ToInt64()))
+                        b.WindowIds.Add(w.Handle.ToInt64());
+                }
+            }
+
+            if (b.WindowIds.Count == 0)
+            {
+                if (!string.IsNullOrEmpty(b.ExePath) && File.Exists(b.ExePath))
+                {
+                    try { Process.Start(new ProcessStartInfo(b.ExePath) { UseShellExecute = true }); }
+                    catch (Exception ex) { Notified?.Invoke("启动失败：" + ex.Message); return false; }
+                    Notified?.Invoke($"正在启动 {b.DisplayName}…");
+                    return true;
+                }
+                Notified?.Invoke($"槽位 {slot} 的窗口已经关闭");
+                return false;
+            }
+
+            var fg = WindowService.Foreground;
+            if (b.WindowIds.Count == 1)
+            {
+                var h = new IntPtr(b.WindowIds[0]);
+                if (h == fg) { WindowService.Minimize(h); return true; }
+                return WindowService.Activate(h);
+            }
+
+            // 多窗口：循环切换到下一个
+            int idx = _cycleIndex.TryGetValue(slot, out var ci) ? ci : -1;
+            int fgIdx = b.WindowIds.FindIndex(id => new IntPtr(id) == fg);
+            if (fgIdx >= 0) idx = fgIdx;
+            idx = (idx + 1) % b.WindowIds.Count;
+            _cycleIndex[slot] = idx;
+            return WindowService.Activate(new IntPtr(b.WindowIds[idx]));
+        }
+    }
+
+    public void Unbind(int slot)
+    {
+        lock (_gate)
+        {
+            var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
+            if (b != null) _settings.Bindings.Remove(b);
+        }
+    }
+}

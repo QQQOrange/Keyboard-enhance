@@ -1,0 +1,179 @@
+<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource Font.Ui}">
+    <Grid Margin="24,4,20,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 工具栏 -->
+        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16,13" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="布局方案" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center"
+                               Margin="0,0,9,0" />
+                    <ComboBox x:Name="SchemeBox" Style="{StaticResource ComboBox.Base}" Width="212"
+                              SelectionChanged="OnSchemeChanged">
+                        <ComboBoxItem Content="Capslox（3.0 之后，推荐）" Tag="capslox" />
+                        <ComboBoxItem Content="经典 CapsLock+ 3.0 之前" Tag="capslock_plus" />
+                    </ComboBox>
+                </StackPanel>
+
+                <TextBox Grid.Column="1" x:Name="SearchBox" Style="{StaticResource TextBox.Base}"
+                         Margin="16,0,16,0" Height="34" VerticalContentAlignment="Center"
+                         TextChanged="OnSearchChanged" ToolTip="搜索按键或功能，例如 q、F2、剪贴板" />
+
+                <Button Grid.Column="2" Content="恢复默认" Style="{StaticResource Button.Base}"
+                        Click="OnResetClick" />
+            </Grid>
+        </Border>
+
+        <!-- 主体：左键盘 + 右编辑 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="330" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 键盘 -->
+            <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0" Padding="20,16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Style="{StaticResource Badge}" Background="{DynamicResource Brush.SurfaceAlt}"
+                                    BorderBrush="{DynamicResource Brush.Border}">
+                                <TextBlock Text="按住 CapsLock" Style="{StaticResource Badge.Text}"
+                                           Foreground="{DynamicResource Brush.TextSecondary}" />
+                            </Border>
+                            <TextBlock Text="+ 下面的键" Style="{StaticResource Text.Secondary}"
+                                       VerticalAlignment="Center" Margin="7,0,0,0" />
+                            <TextBlock x:Name="LayerHint" Text="当前：基础层" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="16,0,0,0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource Brush.AccentSoft}"
+                                     Stroke="{DynamicResource Brush.AccentSoftBorder}" StrokeThickness="1"
+                                     VerticalAlignment="Center" />
+                            <TextBlock Text="已绑定" Style="{StaticResource Text.Tertiary}" Margin="6,0,14,0" />
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource Brush.Keycap}"
+                                     Stroke="{DynamicResource Brush.KeycapBorder}" StrokeThickness="1"
+                                     VerticalAlignment="Center" />
+                            <TextBlock Text="未绑定" Style="{StaticResource Text.Tertiary}" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" x:Name="KeyboardPanel" VerticalAlignment="Top" Margin="0,4,0,0" />
+
+                    <StackPanel Grid.Row="2" VerticalAlignment="Bottom">
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="基础层" x:Name="LayerBase" Style="{StaticResource Button.Base}"
+                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerBase" />
+                            <Button Content="Caps + LAlt 层" x:Name="LayerAlt" Style="{StaticResource Button.Base}"
+                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerAlt" />
+                            <Button Content="Caps + Win 层" x:Name="LayerWin" Style="{StaticResource Button.Base}"
+                                    Padding="12,5" Click="OnLayerWin" />
+                        </StackPanel>
+                        <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}"
+                                   Margin="0,10,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 编辑面板 -->
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="18,16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="编辑绑定" Style="{StaticResource Text.H2}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Border Style="{StaticResource Keycap}" Padding="12,7">
+                                <TextBlock Text="Caps" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextSecondary}" />
+                            </Border>
+                            <TextBlock Text="+" VerticalAlignment="Center" Margin="4,0,4,0"
+                                       Foreground="{DynamicResource Brush.TextTertiary}" />
+                            <Border x:Name="EditKeycap" Style="{StaticResource Keycap}" Padding="12,7">
+                                <TextBlock x:Name="EditKeyLabel" Text="Q" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Accent}" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Margin="0,18,0,0">
+                        <TextBlock Text="功能" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                        <ComboBox x:Name="ActionBox" Style="{StaticResource ComboBox.Base}"
+                                  SelectionChanged="OnActionChanged" MaxDropDownHeight="320" />
+                        <TextBlock x:Name="ActionDesc" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                   Margin="0,8,0,0" />
+
+                        <StackPanel x:Name="ArgPanel" Margin="0,14,0,0" Visibility="Collapsed">
+                            <TextBlock x:Name="ArgLabel" Text="参数" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,0,0,7" />
+                            <TextBox x:Name="ArgBox" Style="{StaticResource TextBox.Base}" Height="34"
+                                     VerticalContentAlignment="Center" TextChanged="OnArgChanged" />
+                            <TextBlock x:Name="ArgHint" Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2" Margin="0,16,0,0">
+                        <Border Style="{StaticResource Divider}" />
+                        <TextBlock Text="本层已绑定" Style="{StaticResource Text.Secondary}" Margin="0,4,0,8" />
+                    </StackPanel>
+
+                    <ListBox Grid.Row="3" x:Name="BoundList" Background="Transparent" BorderThickness="0"
+                             ItemContainerStyle="{StaticResource RowItem}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="OnBoundSelected">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="58" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Style="{StaticResource Keycap}" Padding="7,3"
+                                            HorizontalAlignment="Left">
+                                        <TextBlock Text="{Binding Key}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Brush.Accent}" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="{Binding Action}" Margin="8,0,0,0"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12.5" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="清除绑定" Style="{StaticResource Button.Danger}" Padding="12,6"
+                                Click="OnClearClick" />
+                        <Button Content="测试一下" Style="{StaticResource Button.Ghost}" Margin="6,0,0,0"
+                                Padding="12,6" Click="OnTestClick" ToolTip="执行一次这个功能（可能影响当前窗口）" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

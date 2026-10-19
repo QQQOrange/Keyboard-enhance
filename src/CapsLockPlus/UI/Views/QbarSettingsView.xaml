@@ -1,0 +1,206 @@
+<UserControl x:Class="CapsLockPlus.UI.Views.QbarSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource Font.Ui}">
+    <Grid Margin="24,4,20,20">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="360" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部说明 -->
+        <Border Grid.Row="0" Grid.ColumnSpan="2" Style="{StaticResource Card}" Padding="16,13" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <Border Width="34" Height="34" CornerRadius="10" Background="{DynamicResource Brush.AccentSoft}">
+                        <TextBlock Text="&#xE773;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                                   Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Qbar：一个输入框搞定搜索、启动、计算" Style="{StaticResource Text.H3}" />
+                        <TextBlock Text="按 Caps+Q 打开。输入 bd 关键词 搜索、输入程序名回车启动、输入 =1+2*3 直接算。"
+                                   Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+                    </StackPanel>
+                </StackPanel>
+                <Button Grid.Column="1" Content="现在试一下" Style="{StaticResource Button.Primary}"
+                        Click="OnTryClick" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- 左：条目管理 -->
+        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0" Padding="18,16">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TabControl Grid.Row="0" x:Name="Tabs" Background="Transparent" BorderThickness="0"
+                            SelectionChanged="OnTabChanged">
+                    <TabControl.Resources>
+                        <Style TargetType="TabItem">
+                            <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+                            <Setter Property="FontSize" Value="13" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="TabItem">
+                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8"
+                                                Padding="12,6" Margin="0,0,4,0">
+                                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background"
+                                                        Value="{DynamicResource Brush.Hover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background"
+                                                        Value="{DynamicResource Brush.AccentSoft}" />
+                                                <Setter Property="TextElement.Foreground" Value="{DynamicResource Brush.Accent}" />
+                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </TabControl.Resources>
+                    <TabItem Header="搜索指令" Tag="search" />
+                    <TabItem Header="启动程序" Tag="run" />
+                    <TabItem Header="常用网址" Tag="web" />
+                    <TabItem Header="文字替换" Tag="hotstring" />
+                </TabControl>
+
+                <ListBox Grid.Row="1" x:Name="EntryList" Background="Transparent" BorderThickness="0"
+                         ItemContainerStyle="{StaticResource RowItem}" Margin="0,10,0,0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionChanged="OnEntrySelected">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Key}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource Brush.Accent}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Value}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Margin="8,0,8,0"
+                                           Foreground="{DynamicResource Brush.TextSecondary}" />
+                                <TextBlock Grid.Column="2" Text="{Binding Comment}" VerticalAlignment="Center"
+                                           Style="{StaticResource Text.Tertiary}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="新增" Style="{StaticResource Button.Primary}" Click="OnAddClick" />
+                    <Button Content="删除" Style="{StaticResource Button.Danger}" Margin="8,0,0,0"
+                            Click="OnDeleteClick" />
+                    <TextBlock x:Name="EntryHint" Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
+                               Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="380" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 右：编辑 + 外观 -->
+        <ScrollViewer Grid.Row="1" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="编辑条目" Style="{StaticResource Text.H3}" />
+                        <TextBlock x:Name="EditTitle" Text="（选择左边的条目，或点新增）" Style="{StaticResource Text.Tertiary}"
+                                   Margin="0,5,0,12" TextWrapping="Wrap" />
+
+                        <TextBlock Text="关键字" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
+                        <TextBox x:Name="KeyBox" Style="{StaticResource TextBox.Base}" Height="34"
+                                 VerticalContentAlignment="Center" TextChanged="OnFieldChanged" />
+
+                        <TextBlock x:Name="ValueLabel" Text="内容" Style="{StaticResource Text.Secondary}"
+                                   Margin="0,12,0,6" />
+                        <TextBox x:Name="ValueBox" Style="{StaticResource TextBox.Base}" Height="70"
+                                 TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                 TextChanged="OnFieldChanged" />
+
+                        <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
+                        <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" Height="34"
+                                 VerticalContentAlignment="Center" TextChanged="OnFieldChanged" />
+
+                        <TextBlock Text="图标（可选）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" x:Name="IconBox" Style="{StaticResource TextBox.Base}" Height="34"
+                                     VerticalContentAlignment="Center" TextChanged="OnFieldChanged"
+                                     ToolTip="图片（png/ico）或 exe 路径；留空则自动使用程序图标" />
+                            <Border Grid.Column="1" Width="34" Height="34" CornerRadius="8" Margin="8,0,0,0"
+                                    Background="{DynamicResource Brush.SurfaceAlt}"
+                                    BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                <Grid>
+                                    <Image x:Name="IconPreview" Stretch="Uniform" Margin="5" />
+                                    <TextBlock x:Name="IconFallback" Text="?" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Brush.TextTertiary}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Button Grid.Column="2" Content="选择…" Style="{StaticResource Button.Base}"
+                                    Padding="10,5" Margin="8,0,0,0" Click="OnPickIcon" />
+                        </Grid>
+
+                        <TextBlock x:Name="ValueHelp" Style="{StaticResource Text.Tertiary}" Margin="0,10,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="18,16">
+                    <StackPanel>
+                        <TextBlock Text="外观" Style="{StaticResource Text.H3}" Margin="0,0,0,12" />
+
+                        <TextBlock Text="主色调" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
+                        <StackPanel Orientation="Horizontal">
+                            <ItemsControl x:Name="ColorSwatches">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <TextBlock Text="列表显示行数" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
+                        <Slider x:Name="ListCountSlider" Minimum="3" Maximum="12" TickFrequency="1"
+                                IsSnapToTickEnabled="True" ValueChanged="OnAppearanceChanged" />
+
+                        <TextBlock Text="输入框字号" Style="{StaticResource Text.Secondary}" Margin="0,10,0,6" />
+                        <Slider x:Name="FontSizeSlider" Minimum="14" Maximum="30" TickFrequency="1"
+                                IsSnapToTickEnabled="True" ValueChanged="OnAppearanceChanged" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <CheckBox x:Name="ShowIconsBox" Content="显示图标" Style="{StaticResource CheckBox.Text}"
+                                      VerticalAlignment="Center" Click="OnAppearanceChanged" />
+                        </StackPanel>
+                        <Button Content="恢复默认外观" Style="{StaticResource Button.Ghost}" HorizontalAlignment="Left"
+                                Margin="-10,10,0,0" Click="OnResetAppearance" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
