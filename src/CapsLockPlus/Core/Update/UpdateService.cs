@@ -71,7 +71,15 @@ public sealed class UpdateService
         {
             using var resp = await Http.GetAsync(LatestReleaseApi, ct).ConfigureAwait(false);
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
-                return UpdateCheckResult.Fail("仓库还没有发布任何版本（Releases 为空）");
+                return UpdateCheckResult.Fail("仓库还没有发布任何版本");
+            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden &&
+                resp.Headers.TryGetValues("X-RateLimit-Remaining", out var remain) &&
+                remain.FirstOrDefault() == "0")
+            {
+                // 匿名访问 GitHub API 有频率限制（每 IP 每小时 60 次），
+                // 同网络下多台机器同时检查就可能撞上。给出可操作的提示。
+                return UpdateCheckResult.Fail("GitHub 接口访问频率已达上限，请稍后再试");
+            }
             if (!resp.IsSuccessStatusCode)
                 return UpdateCheckResult.Fail($"无法访问 GitHub（HTTP {(int)resp.StatusCode}）");
 
