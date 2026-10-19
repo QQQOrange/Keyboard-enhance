@@ -114,28 +114,137 @@ public static class SettingsStore
             }
         }
 
+        // 先清理"同一个站点、关键字却不同"的旧条目。
+        //
+        // 背景：早先版本亲手造过一批引擎（tr 翻译 / ai ChatGPT / yh Yahoo Japan …），
+        // 后来改用 QuickSearch 的表，同一站点关键字变了（ai → gpt），
+        // 链接写法也常有出入（尾部多一个参数就判不出相同）。
+        // 若不清理，用户列表里会出现两个 ChatGPT，看着很乱。
+        //
+        // 判据用"站点域名"而不是完整链接 —— 域名相同即视为同一站点。
+        // 两条限制保证不误删：只删图标还是本程序生成的旧条目；用户改过图标的不动。
+        var builtinDomains = new HashSet<string>(
+            DefaultSettings.Create().Search
+                .Where(e => !e.Key.Equals("default", StringComparison.OrdinalIgnoreCase))
+                .Select(e => DomainOf(e.Value))
+                .Where(d => d.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
+        var builtinKeys = new HashSet<string>(
+            DefaultSettings.Create().Search.Select(e => e.Key),
+            StringComparer.OrdinalIgnoreCase);
+
+        int removedLegacy = s.Search.RemoveAll(e =>
+            !e.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+            !builtinKeys.Contains(e.Key) &&
+            IsOurGeneratedIcon(e.IconPath) &&
+            builtinDomains.Contains(DomainOf(e.Value)));
+
         var builtin = DefaultSettings.Create().Search
             .Where(e => !e.Key.Equals("default", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        int added = 0;
+        int added = 0, upgraded = 0;
         foreach (var engine in builtin)
         {
-            bool exists = s.Search.Any(e => e.Key.Equals(engine.Key, StringComparison.OrdinalIgnoreCase));
-            if (exists) continue;
-            s.Search.Add(new QEntry
+            var existing = s.Search.FirstOrDefault(
+                e => e.Key.Equals(engine.Key, StringComparison.OrdinalIgnoreCase));
+            if (existing == null)
             {
-                Key = engine.Key,
-                Value = engine.Value,
-                Comment = engine.Comment,
-                IconPath = engine.IconPath,
-            });
-            added++;
+                s.Search.Add(new QEntry
+                {
+                    Key = engine.Key,
+                    Value = engine.Value,
+                    Comment = engine.Comment,
+                    IconPath = engine.IconPath,
+                    EngineIcon = engine.EngineIcon,
+                });
+                added++;
+                continue;
+            }
+
+            // 已有条目：把旧的图标路径换成内置图标。
+            //
+            // 为什么要换：早先版本把图标渲染成磁盘上的 .svg（%LocalAppData% 下），
+            // 那些是程序自己画的简化图标；现在统一改用 QuickSearch 的 PNG 内置图标。
+            // 只动图标，不碰用户改过的链接和备注。
+            if (string.IsNullOrEmpty(existing.EngineIcon) && !string.IsNullOrEmpty(engine.EngineIcon))
+            {
+                existing.EngineIcon = engine.EngineIcon;
+                // 旧的 IconPath 指向程序自己生成的 svg，清掉它才会优先用内置图标
+                if (IsOurGeneratedIcon(existing.IconPath)) existing.IconPath = "";
+                upgraded++;
+            }
         }
 
         s.BuiltinEnginesVersion = DefaultSettings.BuiltinEnginesVersion;
-        if (added > 0) CoreLog.Info($"已补充 {added} 个内置搜索引擎（引擎表版本 → {s.BuiltinEnginesVersion}）");
+        if (added > 0 || upgraded > 0 || removedLegacy > 0)
+            CoreLog.Info($"搜索引擎表更新：新增 {added} 个，图标升级 {upgraded} 个，" +
+                         $"清理旧条目 {removedLegacy} 个（引擎表版本 → {s.BuiltinEnginesVersion}）");
         return true;
+    }
+
+    /// <summary>
+    /// 取链接的站点域名（小写，去掉 www. 前缀），用于判断两个引擎是否同一站点。
+    /// 解析不出来时返回空串，调用方据此跳过判定（宁可不删，也不误删）。
+    /// </summary>
+    private static string DomainOf(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        try
+        {
+            var s = url.Trim();
+            int scheme = s.IndexOf("://", StringComparison.Ordinal);
+            if (scheme >= 0) s = s[(scheme + 3)..];
+            int slash = s.IndexOfAny(new[] { '/', '?', '#' });
+            if (slash >= 0) s = s[..slash];
+            int colon = s.IndexOf(':');
+            if (colon >= 0) s = s[..colon];
+            s = s.ToLowerInvariant();
+            if (s.StartsWith("www.", StringComparison.Ordinal)) s = s[4..];
+            return s;
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// 判断某个图标路径是否是"本程序早先生成到数据目录里的图标"。
+    /// 这类路径可以直接替换成内置图标；用户自己指定的路径则不动。
+    ///
+    /// 判定放宽到"路径位于名为 icons 的目录下、且是 .svg"：
+    /// 早先版本把图标渲染成 &lt;数据目录&gt;/icons/*.svg，是本程序自己生成的产物，
+    /// 不存在用户手写这种路径的情况。放宽后即使用户改过数据目录位置也能识别。
+    /// </summary>
+    private static bool IsOurGeneratedIcon(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            if (!path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return false;
+
+            var full = Path.GetFullPath(path);
+            var dir = Path.GetDirectoryName(full);
+            if (string.IsNullOrEmpty(dir)) return false;
+
+            var ours = Path.Combine(Path.GetFullPath(AppPaths.DataDir), "icons");
+            if (string.Equals(dir.TrimEnd('\\'), ours.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // 兼容数据目录被改过的情况：父目录名是 icons，且再上一层含 CapsLockPlus
+            if (string.Equals(Path.GetFileName(dir), "icons", StringComparison.OrdinalIgnoreCase))
+            {
+                var parent = Path.GetFileName(Path.GetDirectoryName(dir) ?? "");
+                return parent.Contains("CapsLockPlus", StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>补齐缺失字段、修正非法值。</summary>
@@ -174,8 +283,11 @@ public static class DefaultSettings
     ///   3 = 再补 18 个（Yahoo / DuckDuckGo / WolframAlpha / Google 图片·地图 /
     ///       Netflix / Gmail / Drive / YT Music / Gist / 搜狗 / Ecosia / Brave /
     ///       Spotify / 词典 / ChatGPT），共 47 个
+    ///   4 = 改用 QuickSearch（ui/data/engines.json）的完整引擎表，共 304 个，
+    ///       图标全部换为其内置 PNG
+    ///   5 = 旧条目改用内置图标（替换掉磁盘上的 svg 图标路径）
     /// </summary>
-    public const int BuiltinEnginesVersion = 3;
+    public const int BuiltinEnginesVersion = 5;
 
     public static AppSettings Create()
     {
@@ -185,17 +297,18 @@ public static class DefaultSettings
         {
             new() { Key = "default", Value = "https://www.bing.com/search?q={q}", Comment = "默认搜索" },
 
-            // ---- 以下引擎表由 QuickSearch 的 ui/data/engines.json 转换而来 ----
-            // 转换脚本见 tools/qs_gen.py；图标已内置为 PNG（Assets/engine-icons）。
+            // ---- 引擎表由 QuickSearch 的 ui/data/engines.json 转换而来 ----
+            // 生成脚本：tools/qs_final.py ；图标已内置为 Assets/engine-icons/*.png。
             // 关键字规则：国内引擎取拼音首字母，国外引擎取英文名前两个字母。
             new() { Key = "bd", Value = "https://www.baidu.com/s?wd={q}&ie=utf-8", Comment = "百度", EngineIcon = "bai_du" },
-            new() { Key = "by", Value = "https://cn.bing.com/search?q={q}", Comment = "必应", EngineIcon = "bi_ying" },
             new() { Key = "zh", Value = "https://www.zhihu.com/search?q={q}", Comment = "知乎", EngineIcon = "zhi_hu" },
             new() { Key = "bili", Value = "https://search.bilibili.com/all?keyword={q}", Comment = "哔哩哔哩", EngineIcon = "bi_li_bi_li" },
             new() { Key = "tb", Value = "https://s.taobao.com/search?q={q}", Comment = "淘宝", EngineIcon = "tao_bao" },
             new() { Key = "wiki", Value = "https://zh.wikipedia.org/wiki/{q}", Comment = "维基百科", EngineIcon = "wei_ji_bai_ke" },
+            new() { Key = "deepseek", Value = "https://chat.deepseek.com/?q={q}", Comment = "DeepSeek", EngineIcon = "deepseek" },
+            new() { Key = "gpt", Value = "https://chatgpt.com/?q={q}", Comment = "ChatGPT", EngineIcon = "chatgpt" },
             new() { Key = "wngp", Value = "https://115.com/?mode=search&search_value={q}", Comment = "115 网盘", EngineIcon = "115_wang_pan" },
-            new() { Key = "e160", Value = "https://s.1688.com/selloffer/offer_search.htm?keywords={q}", Comment = "1688", EngineIcon = "1688" },
+            new() { Key = "e166", Value = "https://s.1688.com/selloffer/offer_search.htm?keywords={q}", Comment = "1688", EngineIcon = "1688" },
             new() { Key = "diny", Value = "https://www.1905.com/search/?q={q}", Comment = "1905 电影网", EngineIcon = "1905_dian_ying_wang" },
             new() { Key = "so", Value = "https://www.so.com/s?ie=utf-8&q={q}", Comment = "360", EngineIcon = "360" },
             new() { Key = "dm", Value = "https://so.3dmgame.com/?keyword={q}", Comment = "3DM", EngineIcon = "3dm" },
@@ -218,7 +331,6 @@ public static class DefaultSettings
             new() { Key = "br", Value = "https://search.brave.com/search?q={q}", Comment = "Brave 搜索", EngineIcon = "brave_sou_suo" },
             new() { Key = "cn", Value = "https://edition.cnn.com/search?q={q}", Comment = "CNN", EngineIcon = "cnn" },
             new() { Key = "csdn", Value = "https://so.csdn.net/so/search?q={q}", Comment = "CSDN", EngineIcon = "csdn" },
-            new() { Key = "gpt", Value = "https://chatgpt.com/?q={q}", Comment = "ChatGPT", EngineIcon = "chatgpt" },
             new() { Key = "ch", Value = "https://chrome.google.com/webstore/search/{q}", Comment = "Chrome商店", EngineIcon = "chrome_shang_dian" },
             new() { Key = "claude", Value = "https://claude.ai/new?q={q}", Comment = "Claude", EngineIcon = "claude" },
             new() { Key = "codeberg", Value = "https://codeberg.org/explore/repos?q={q}", Comment = "Codeberg", EngineIcon = "codeberg" },
@@ -231,18 +343,17 @@ public static class DefaultSettings
             new() { Key = "dev", Value = "https://dev.to/search?q={q}", Comment = "DEV", EngineIcon = "dev" },
             new() { Key = "da", Value = "https://www.dailymotion.com/search/{q}", Comment = "Dailymotion", EngineIcon = "dailymotion" },
             new() { Key = "de", Value = "https://www.deepl.com/translator#zh/en/{q}", Comment = "DeepL", EngineIcon = "deepl" },
-            new() { Key = "deepseek", Value = "https://chat.deepseek.com/?q={q}", Comment = "DeepSeek", EngineIcon = "deepseek" },
             new() { Key = "de2", Value = "https://www.deviantart.com/search?q={q}", Comment = "DeviantArt", EngineIcon = "deviantart" },
             new() { Key = "docker", Value = "https://hub.docker.com/search?q={q}", Comment = "Docker Hub", EngineIcon = "docker_hub" },
             new() { Key = "dr", Value = "https://dribbble.com/search/{q}", Comment = "Dribbble", EngineIcon = "dribbble" },
             new() { Key = "dr2", Value = "https://www.dropbox.com/search/personal?query={q}", Comment = "Dropbox", EngineIcon = "dropbox" },
             new() { Key = "dd", Value = "https://duckduckgo.com/?q={q}", Comment = "DuckDuckGo", EngineIcon = "duckduckgo" },
-            new() { Key = "du", Value = "https://duckduckgo.com/?q={q}&iax=images&ia=images", Comment = "DuckDuckGo 图片", EngineIcon = "duckduckgo" },
             new() { Key = "eb2", Value = "https://www.ebsco.com/search?q={q}", Comment = "EBSCO", EngineIcon = "ebsco" },
             new() { Key = "ec", Value = "https://www.ecosia.org/search?q={q}", Comment = "Ecosia", EngineIcon = "ecosia" },
             new() { Key = "ed", Value = "https://microsoftedge.microsoft.com/addons/search/{q}", Comment = "Edge商店", EngineIcon = "edge_shang_dian" },
             new() { Key = "ep", Value = "https://store.epicgames.com/zh-CN/search?q={q}", Comment = "Epic 商店", EngineIcon = "epic_shang_dian" },
             new() { Key = "et", Value = "https://www.etsy.com/search?q={q}", Comment = "Etsy", EngineIcon = "etsy" },
+            new() { Key = "fd", Value = "https://search.f-droid.org/?q={q}", Comment = "F-Droid", EngineIcon = "f_droid" },
             new() { Key = "fa", Value = "https://www.facebook.com/search/results.php?q={q}", Comment = "Facebook", EngineIcon = "facebook" },
             new() { Key = "fr2", Value = "https://www.thefreedictionary.com/{q}", Comment = "Free Dictionary", EngineIcon = "free_dictionary" },
             new() { Key = "fr", Value = "https://www.freepik.com/search?query={q}", Comment = "Freepik", EngineIcon = "freepik" },
@@ -267,12 +378,14 @@ public static class DefaultSettings
             new() { Key = "ig2", Value = "https://www.igdb.com/search?type=1&q={q}", Comment = "IGDB", EngineIcon = "igdb" },
             new() { Key = "ig", Value = "https://www.ign.com/search?q={q}", Comment = "IGN", EngineIcon = "ign" },
             new() { Key = "ip", Value = "https://www.ip138.com/iplookup.asp?ip={q}", Comment = "IP138", EngineIcon = "ip138" },
-            new() { Key = "it", Value = "https://www.ithome.com/search/{q}.html", Comment = "IT之家", EngineIcon = "it_zhi_jia" },
+            new() { Key = "it2", Value = "https://www.ithome.com/search/{q}.html", Comment = "IT之家", EngineIcon = "it_zhi_jia" },
             new() { Key = "ic2", Value = "https://icon-sets.iconify.design/?query={q}", Comment = "Iconify", EngineIcon = "iconify" },
             new() { Key = "infoq", Value = "https://www.infoq.cn/search?q={q}", Comment = "InfoQ", EngineIcon = "infoq" },
             new() { Key = "in", Value = "https://archive.org/search?query={q}", Comment = "Internet Archive", EngineIcon = "internet_archive" },
             new() { Key = "js", Value = "http://www.jstor.org/action/doAdvancedSearch?q0={q}", Comment = "JSTOR", EngineIcon = "jstor" },
             new() { Key = "kh", Value = "https://www.khanacademy.org/search?page_search_query={q}", Comment = "Khan Academy", EngineIcon = "khan_academy" },
+            new() { Key = "kimi", Value = "https://www.kimi.com/?q={q}", Comment = "Kimi", EngineIcon = "kimi" },
+            new() { Key = "la", Value = "https://www.last.fm/search?q={q}", Comment = "Last.fm", EngineIcon = "last_fm" },
             new() { Key = "leetcode", Value = "https://leetcode.cn/search/?q={q}", Comment = "LeetCode", EngineIcon = "leetcode" },
             new() { Key = "li", Value = "https://www.linguee.com/english-chinese/search?query={q}", Comment = "Linguee", EngineIcon = "linguee" },
             new() { Key = "li2", Value = "https://www.linkedin.com/search/results/all/?keywords={q}", Comment = "LinkedIn", EngineIcon = "linkedin" },
@@ -303,7 +416,6 @@ public static class DefaultSettings
             new() { Key = "pr", Value = "https://www.gutenberg.org/ebooks/search/?query={q}", Comment = "Project Gutenberg", EngineIcon = "project_gutenberg" },
             new() { Key = "pu", Value = "https://pubmed.ncbi.nlm.nih.gov/?term={q}", Comment = "PubMed", EngineIcon = "pubmed" },
             new() { Key = "pypi", Value = "https://pypi.org/search/?q={q}", Comment = "PyPI", EngineIcon = "pypi" },
-            new() { Key = "py", Value = "https://pypi.org/search/?q={q}", Comment = "PyPI 搜索", EngineIcon = "pypi_sou_suo" },
             new() { Key = "qq", Value = "https://y.qq.com/portal/search.html#page=1&searchid=1&remoteplace=txt.yqq.top&t=song&w={q}", Comment = "QQ音乐", EngineIcon = "qq_yin_yue" },
             new() { Key = "quora", Value = "https://www.quora.com/search?q={q}", Comment = "Quora", EngineIcon = "quora" },
             new() { Key = "qw", Value = "https://www.qwant.com/?q={q}", Comment = "Qwant", EngineIcon = "qwant" },
@@ -315,11 +427,12 @@ public static class DefaultSettings
             new() { Key = "se2", Value = "https://www.semanticscholar.org/search?q={q}", Comment = "Semantic Scholar", EngineIcon = "semantic_scholar" },
             new() { Key = "sh", Value = "https://shopee.sg/search?keyword={q}", Comment = "Shopee", EngineIcon = "shopee" },
             new() { Key = "si2", Value = "https://www.similarweb.com/website/{q}/", Comment = "SimilarWeb", EngineIcon = "similarweb" },
-            new() { Key = "so3", Value = "https://www.softpedia.com/search.php?q={q}", Comment = "Softpedia", EngineIcon = "softpedia" },
-            new() { Key = "so2", Value = "https://soundcloud.com/search?q={q}", Comment = "SoundCloud", EngineIcon = "soundcloud" },
+            new() { Key = "so4", Value = "https://www.softpedia.com/search.php?q={q}", Comment = "Softpedia", EngineIcon = "softpedia" },
+            new() { Key = "so3", Value = "https://soundcloud.com/search?q={q}", Comment = "SoundCloud", EngineIcon = "soundcloud" },
             new() { Key = "sourcegraph", Value = "https://sourcegraph.com/search?q={q}", Comment = "Sourcegraph", EngineIcon = "sourcegraph" },
             new() { Key = "sp", Value = "https://open.spotify.com/search/{q}", Comment = "Spotify", EngineIcon = "spotify" },
             new() { Key = "se", Value = "https://stackexchange.com/search?q={q}", Comment = "Stack Exchange", EngineIcon = "stack_exchange" },
+            new() { Key = "so2", Value = "https://stackoverflow.com/search?q={q}", Comment = "StackOverflow", EngineIcon = "stackoverflow_gu_ge" },
             new() { Key = "st", Value = "https://www.startpage.com/sp/search?query={q}", Comment = "Startpage", EngineIcon = "startpage" },
             new() { Key = "st2", Value = "https://store.steampowered.com/search/?term={q}", Comment = "Steam", EngineIcon = "steam" },
             new() { Key = "ta", Value = "https://www.taptap.cn/search/{q}", Comment = "TapTap", EngineIcon = "taptap" },
@@ -346,11 +459,13 @@ public static class DefaultSettings
             new() { Key = "yo", Value = "https://www.youtube.com/results?search_query={q}", Comment = "YouTube", EngineIcon = "youtube" },
             new() { Key = "yom", Value = "https://music.youtube.com/search?q={q}", Comment = "YouTube Music", EngineIcon = "youtube_music" },
             new() { Key = "ar2", Value = "https://arxiv.org/search/?query={q}", Comment = "arXiv", EngineIcon = "arxiv" },
+            new() { Key = "crates", Value = "https://crates.io/search?q={q}", Comment = "crates.io", EngineIcon = "crates_io" },
             new() { Key = "eb", Value = "https://www.ebay.com/sch/i.html?_nkw={q}", Comment = "eBay", EngineIcon = "ebay" },
             new() { Key = "ed2", Value = "https://www.edx.org/search?q={q}", Comment = "edX", EngineIcon = "edx" },
             new() { Key = "fl", Value = "https://www.flickr.com/search/?q={q}", Comment = "flickr", EngineIcon = "flickr" },
             new() { Key = "fr3", Value = "https://www.freecodecamp.org/news/search?query={q}", Comment = "freeCodeCamp", EngineIcon = "freecodecamp" },
             new() { Key = "ic", Value = "https://www.iconfont.cn/search/index?searchType=icon&q={q}", Comment = "iconfont", EngineIcon = "iconfont" },
+            new() { Key = "it", Value = "https://itch.io/search?q={q}", Comment = "itch.io", EngineIcon = "itch_io" },
             new() { Key = "ni", Value = "https://www.nicovideo.jp/search/{q}", Comment = "niconico", EngineIcon = "niconico" },
             new() { Key = "np", Value = "https://www.npmjs.com/search?q={q}", Comment = "npm", EngineIcon = "npm" },
             new() { Key = "pi", Value = "https://www.pixiv.net/tags/{q}", Comment = "pixiv", EngineIcon = "pixiv" },
@@ -412,7 +527,6 @@ public static class DefaultSettings
             new() { Key = "sugu", Value = "https://fanyi.sogou.com/text?keyword={q}", Comment = "搜狗翻译", EngineIcon = "sou_gou_fan_yi" },
             new() { Key = "wy", Value = "https://yiyan.baidu.com/?q={q}", Comment = "文心一言", EngineIcon = "wen_xin_yi_yan" },
             new() { Key = "xnln", Value = "https://search.sina.com.cn/?q={q}", Comment = "新浪新闻", EngineIcon = "xin_lang_xin_wen" },
-            new() { Key = "xnln2", Value = "https://search.sina.com.cn/?q={q}&c=finance", Comment = "新浪财经", EngineIcon = "xin_lang_cai_jing" },
             new() { Key = "ych", Value = "https://so.yiche.com/?q={q}", Comment = "易车", EngineIcon = "yi_che" },
             new() { Key = "jnji", Value = "https://search.jjwxc.net/search.php?kw={q}", Comment = "晋江文学城", EngineIcon = "jin_jiang_wen_xue_cheng" },
             new() { Key = "zp", Value = "https://chatglm.cn/?q={q}", Comment = "智谱清言", EngineIcon = "zhi_pu_qing_yan" },
@@ -433,7 +547,6 @@ public static class DefaultSettings
             new() { Key = "bidd", Value = "https://map.baidu.com/search?querytype=s&wd={q}", Comment = "百度地图", EngineIcon = "bai_du_di_tu" },
             new() { Key = "bidx", Value = "http://xueshu.baidu.com/s?wd={q}", Comment = "百度学术", EngineIcon = "bai_du_xue_shu" },
             new() { Key = "bwk", Value = "https://wenku.baidu.com/search?word={q}", Comment = "百度文库", EngineIcon = "bai_du_wen_ku" },
-            new() { Key = "bidx2", Value = "https://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&rsv_dl=ns_pc&word={q}", Comment = "百度新闻", EngineIcon = "bai_du_zhi_dao" },
             new() { Key = "bidh", Value = "https://hanyu.baidu.com/s?wd={q}", Comment = "百度汉语", EngineIcon = "bai_du_han_yu" },
             new() { Key = "bb", Value = "https://baike.baidu.com/search/word?pic=1&sug=1&word={q}", Comment = "百度百科", EngineIcon = "bai_du_bai_ke" },
             new() { Key = "bzd", Value = "https://zhidao.baidu.com/search?word={q}", Comment = "百度知道", EngineIcon = "bai_du_zhi_dao" },
@@ -467,7 +580,6 @@ public static class DefaultSettings
             new() { Key = "hxi", Value = "https://www.huxiu.com/search.html?s={q}", Comment = "虎嗅", EngineIcon = "hu_xiu" },
             new() { Key = "hp", Value = "https://bbs.hupu.com/search?q={q}", Comment = "虎扑", EngineIcon = "hu_pu" },
             new() { Key = "xgus", Value = "https://www.ixigua.com/search/{q}", Comment = "西瓜视频", EngineIcon = "xi_gua_shi_pin" },
-            new() { Key = "ggtp", Value = "https://www.google.com/search?q={q}&tbm=isch", Comment = "谷歌图片", EngineIcon = "google" },
             new() { Key = "ggdt", Value = "https://www.google.com/maps/search/{q}", Comment = "谷歌地图", EngineIcon = "gu_ge_di_tu" },
             new() { Key = "ggdq", Value = "https://earth.google.com/web/search/{q}", Comment = "谷歌地球", EngineIcon = "gu_ge_di_qiu" },
             new() { Key = "ggxu", Value = "https://scholar.google.com/scholar?hl=zh-CN&q={q}", Comment = "谷歌学术", EngineIcon = "gu_ge_xue_shu" },

@@ -270,6 +270,24 @@ public static class SelfTest
         // 引擎表版本号必须是有效数字（用于老用户自动补齐缺失引擎）
         Check("引擎表版本号 >= 1", DefaultSettings.BuiltinEnginesVersion >= 1,
             DefaultSettings.BuiltinEnginesVersion.ToString());
+
+        // 内置图标必须优先于旧的磁盘图标路径。
+        //
+        // 这是"换了图标却没生效"的回归点：老用户的条目上还挂着早先版本生成的
+        // .svg 路径，若优先级搞反，界面就会继续显示旧图标。
+        var probeEntry = new QEntry
+        {
+            Key = "bd",
+            Comment = "百度",
+            Value = "https://www.baidu.com/s?wd={q}",
+            IconPath = @"C:\__not_exist__\old.svg",   // 旧的、已失效的路径
+            EngineIcon = "bai_du",
+        };
+        var picked = Core.Icons.IconCache.ForEntry(probeEntry);
+        Check("内置图标优先于旧图标路径", picked != null);
+        Check("取到的是内置图标（尺寸 64）",
+            picked is System.Windows.Media.Imaging.BitmapSource { PixelWidth: 64 },
+            (picked as System.Windows.Media.Imaging.BitmapSource)?.PixelWidth.ToString() ?? "null");
     }
 
     /// <summary>
