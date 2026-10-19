@@ -272,8 +272,8 @@ public partial class QbarSettingsView : UserControl
         if (FontPreview == null) return;
         double size = FontSizeSlider.Value;
         FontPreview.FontSize = size;
-        // 高度跟着字号走，保证预览本身不会被裁——这也正是 Qbar 输入框的实际行为
-        FontPreview.MinHeight = Math.Max(24, Math.Round(size * 1.6));
+        // 高度按真实字形高度算，和 Qbar 输入框保持一致的行为
+        FontPreview.MinHeight = Core.Text.TextMetrics.MeasureHeight(size, "预览 Preview 文字测试 qgp");
     }
 
     private void OnResetAppearance(object sender, RoutedEventArgs e)

@@ -49,6 +49,15 @@ public static class WindowService
 
     public static WindowInfo? ForegroundInfo() => Describe(Foreground);
 
+    /// <summary>取窗口类名（用于识别桌面、任务栏等系统壳窗口）。</summary>
+    public static string? ClassNameOf(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return null;
+        var cls = new StringBuilder(256);
+        GetClassName(hwnd, cls, cls.Capacity);
+        return cls.Length > 0 ? cls.ToString() : null;
+    }
+
     public static string GetProcessPath(uint pid)
     {
         IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);

@@ -290,4 +290,149 @@ public static class IconUrls
           <rect x="21" y="17" width="12" height="12" rx="2.5" fill="#fff"/>
         </svg>
         """);
+
+    // ---------------- 第二批补充引擎 ----------------
+    //
+    // 说明：这些是"品牌色圆底 + 几何标识"的简化图标，随程序内置、离线可用。
+    // 之所以不直接抓官网 logo，是因为它们是各公司商标，重绘成简化几何既避免了
+    // 直接复制商标素材，也能在同一套视觉规则下保持整齐。
+
+    public static readonly string Yahoo = Materialize("yahoo", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#6001D2"/>
+          <path d="M13 15h5l5 8 5-8h5l-7.5 12v7h-5v-7L13 15z" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string DuckDuckGo = Materialize("duckduckgo", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#DE5833"/>
+          <circle cx="24" cy="24" r="12" fill="#fff"/>
+          <circle cx="24" cy="24" r="8" fill="none" stroke="#DE5833" stroke-width="2"/>
+          <path d="M24 16v3M24 29v3M16 24h3M29 24h3" stroke="#DE5833" stroke-width="2"
+                stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string WolframAlpha = Materialize("wolframalpha", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#DD1100"/>
+          <path d="M24 13l14 22H10l14-22z" fill="none" stroke="#fff" stroke-width="2.6"
+                stroke-linejoin="round"/>
+          <path d="M24 21v8" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string GoogleImages = Materialize("googleimages", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#4285F4"/>
+          <rect x="13" y="15" width="22" height="18" rx="3" fill="#fff"/>
+          <circle cx="19" cy="21" r="2.4" fill="#4285F4"/>
+          <path d="M15 31l6-7 4 4.5 3-3 5 5.5H15z" fill="#4285F4"/>
+        </svg>
+        """);
+
+    public static readonly string GoogleMaps = Materialize("googlemaps", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#34A853"/>
+          <path d="M24 12c-4.4 0-8 3.5-8 7.9 0 5.9 8 16.1 8 16.1s8-10.2 8-16.1C32 15.5 28.4 12 24 12z"
+                fill="#fff"/>
+          <circle cx="24" cy="20" r="3.4" fill="#34A853"/>
+        </svg>
+        """);
+
+    public static readonly string Netflix = Materialize("netflix", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#E50914"/>
+          <path d="M18 14h5l7 13V14h4v20h-5l-7-13v13h-4V14z" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string Gmail = Materialize("gmail", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#EA4335"/>
+          <rect x="12" y="17" width="24" height="15" rx="2" fill="#fff"/>
+          <path d="M12 19l12 8 12-8" stroke="#EA4335" stroke-width="2.4" fill="none"
+                stroke-linejoin="round"/>
+        </svg>
+        """);
+
+    public static readonly string GoogleDrive = Materialize("googledrive", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#0F9D58"/>
+          <path d="M19 14h10l9 16H20l-1-16z" fill="#fff" opacity=".95"/>
+          <path d="M14 30l5-16 9 16H14z" fill="#FFC107" opacity=".9"/>
+        </svg>
+        """);
+
+    public static readonly string YoutubeMusic = Materialize("youtubemusic", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FF0000"/>
+          <circle cx="24" cy="24" r="11" fill="#fff"/>
+          <path d="M21.5 19.5l8 4.5-8 4.5v-9z" fill="#FF0000"/>
+        </svg>
+        """);
+
+    public static readonly string Gist = Materialize("gist", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#24292F"/>
+          <rect x="14" y="15" width="20" height="18" rx="2" fill="none" stroke="#fff"
+                stroke-width="2.2"/>
+          <path d="M18 21h8M18 25h12M18 29h6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string Sogou = Materialize("sogou", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FF6900"/>
+          <text x="24" y="30" font-family="Segoe UI, Arial" font-size="15" font-weight="700"
+                fill="#fff" text-anchor="middle">S</text>
+        </svg>
+        """);
+
+    public static readonly string Ecosia = Materialize("ecosia", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#0F7B4F"/>
+          <path d="M24 12c6 4 9 9 9 14a9 9 0 1 1-18 0c0-5 3-10 9-14z" fill="#fff"/>
+          <path d="M24 20v14" stroke="#0F7B4F" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string Brave = Materialize("brave", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FB542B"/>
+          <path d="M24 13l9 5v9l-9 8-9-8v-9l9-5z" fill="none" stroke="#fff" stroke-width="2.6"
+                stroke-linejoin="round"/>
+        </svg>
+        """);
+
+    public static readonly string Spotify = Materialize("spotify", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#1DB954"/>
+          <path d="M16 20c6-2 13-1 17 2" stroke="#fff" stroke-width="2.6" fill="none"
+                stroke-linecap="round"/>
+          <path d="M17 25c5-1.6 11-.8 14 1.6" stroke="#fff" stroke-width="2.3" fill="none"
+                stroke-linecap="round"/>
+          <path d="M18 30c4-1.2 8-.6 11 1.2" stroke="#fff" stroke-width="2" fill="none"
+                stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string Dictionary = Materialize("dictionary", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#8B5E3C"/>
+          <path d="M15 14h13a4 4 0 0 1 4 4v16H19a4 4 0 0 1-4-4V14z" fill="#fff"/>
+          <path d="M19 20h9M19 24h7M19 28h5" stroke="#8B5E3C" stroke-width="2"
+                stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string ChatGpt = Materialize("chatgpt", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#10A37F"/>
+          <circle cx="24" cy="24" r="9" fill="none" stroke="#fff" stroke-width="2.4"/>
+          <path d="M24 15v6M24 27v6M15 24h6M27 24h6" stroke="#fff" stroke-width="2.4"
+                stroke-linecap="round"/>
+        </svg>
+        """);
 }

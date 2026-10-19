@@ -168,20 +168,22 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
         <Setter Property="BorderThickness" Value="1" />
-        <!-- 注意：竖直内边距要留够，这是文字被裁切的根源。
-             当控件设了固定高度时，内容区 = 高度 - 上下内边距 - 上下边框。
-             200% DPI 下中文字形约 17px。若上下各留 7px、边框 1px，
-             34px 高的框只剩 18px 给文字，下降部（g/q/y/p）就会被切掉。
-             这里统一留 5px（高度统一用 36px），余量约 7px，各种 DPI 下都安全。 -->
-        <Setter Property="Padding" Value="10,5" />
+        <!-- 关键：单行输入框一律用 MinHeight，不要写死 Height。
+             写死高度时，"内容区 = 高度 - 上下内边距 - 上下边框"，
+             一旦字号变大或系统字体度量不同，文字就会比内容区高，
+             表现为只看到字符的上半部分（下半部分被边框裁掉）。
+             用 MinHeight 则框会随内容自然长高，任何字号都不会裁。 -->
+        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="Padding" Value="10,6" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />
+        <!-- 用 Ideal 排版模式：Display 模式会把字形对齐到像素网格，
+             在某些 DPI 下反而更容易切掉下降部。 -->
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
-                    <!-- 内边距交给 Border 的 Padding，
-                         这样 ScrollViewer 会拿到“扣掉内边距后”的完整高度，
-                         不会再出现边距叠加导致内容被挤出可视区的问题。 -->
                     <Border x:Name="Bd" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="9" SnapsToDevicePixels="True"

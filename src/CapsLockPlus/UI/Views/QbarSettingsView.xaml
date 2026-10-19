@@ -127,17 +127,17 @@
                                    Margin="0,5,0,12" TextWrapping="Wrap" />
 
                         <TextBlock Text="关键字" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
-                        <TextBox x:Name="KeyBox" Style="{StaticResource TextBox.Base}" Height="36"
+                        <TextBox x:Name="KeyBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                                  VerticalContentAlignment="Center" TextChanged="OnFieldChanged" />
 
                         <TextBlock x:Name="ValueLabel" Text="内容" Style="{StaticResource Text.Secondary}"
                                    Margin="0,12,0,6" />
-                        <TextBox x:Name="ValueBox" Style="{StaticResource TextBox.Base}" Height="70"
+                        <TextBox x:Name="ValueBox" Style="{StaticResource TextBox.Base}" MinHeight="70"
                                  TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
                                  TextChanged="OnFieldChanged" />
 
                         <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
-                        <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" Height="36"
+                        <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                                  VerticalContentAlignment="Center" TextChanged="OnFieldChanged" />
 
                         <TextBlock Text="图标（可选）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
@@ -147,7 +147,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" x:Name="IconBox" Style="{StaticResource TextBox.Base}" Height="36"
+                            <TextBox Grid.Column="0" x:Name="IconBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                                      VerticalContentAlignment="Center" TextChanged="OnFieldChanged"
                                      ToolTip="图片（png/ico）或 exe 路径；留空则自动使用程序图标" />
                             <Border Grid.Column="1" Width="34" Height="36" CornerRadius="8" Margin="8,0,0,0"

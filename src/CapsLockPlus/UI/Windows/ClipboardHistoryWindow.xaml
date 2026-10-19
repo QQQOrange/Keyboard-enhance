@@ -26,7 +26,7 @@
         </Grid>
 
         <StackPanel Grid.Row="1" Margin="20,0,20,10">
-            <TextBox x:Name="FilterBox" Style="{StaticResource TextBox.Base}" Height="38"
+            <TextBox x:Name="FilterBox" Style="{StaticResource TextBox.Base}" MinHeight="38"
                      VerticalContentAlignment="Center" TextChanged="OnFilterChanged" />
             <TextBlock Text="双击任意一条即可粘贴到刚才的窗口。" Style="{StaticResource Text.Tertiary}"
                        Margin="0,7,0,0" />

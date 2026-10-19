@@ -62,15 +62,16 @@ public partial class App : Application
         Console.SetOut(TextWriter.Null);
         Console.SetError(TextWriter.Null);
 
-        // ---- 单实例必须在提权之前判定 ----
+        // ---- 单实例：提权实例同样必须持有锁 ----
         //
-        // 顺序很重要：先判断“是否已有实例”，再决定要不要提权重启。
-        // 反过来做会出现这样的竞态：
-        //   旧进程发起 runas → 立即退出 → 新进程同时启动
-        //   → 旧进程还没释放互斥体 → 新进程误判“已有实例”而退出
-        //   → 两个进程都没了，钩子没装上，表现就是“按任何键都没反应”。
-        bool elevatedFlag = e.Args.Any(a => a.Equals("--elevated", StringComparison.OrdinalIgnoreCase));
-        if (!elevatedFlag && !SingleInstance.TryAcquire(out bool running))
+        // 顺序：先判定"是否已有实例"，再决定要不要提权重启。
+        // 反过来会出现竞态：旧进程发起 runas 后立即退出，新进程同时启动，
+        // 旧进程还没释放互斥体 → 新进程误判"已有实例"而退出 → 两个进程都没了。
+        //
+        // 注意：提权实例_也_必须获取互斥体。
+        // 否则它不持锁，之后再启动一个普通实例就能成功拿到锁并又拉起一个提权实例，
+        // 结果是同一时间跑着好几个实例。
+        if (!SingleInstance.TryAcquire(out bool running))
         {
             CoreLog.Info("已有实例在运行，唤醒它并退出");
             SingleInstance.ActivateExisting();

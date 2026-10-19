@@ -171,8 +171,11 @@ public static class DefaultSettings
     /// 内置搜索引擎表的版本号。新增内置引擎时 +1，老用户启动时会自动补齐缺失项。
     ///   1 = 最初的 10 个引擎
     ///   2 = 扩充到 29 个（国内用拼音首字母、国外用英文前两字母，全部带图标）
+    ///   3 = 再补 18 个（Yahoo / DuckDuckGo / WolframAlpha / Google 图片·地图 /
+    ///       Netflix / Gmail / Drive / YT Music / Gist / 搜狗 / Ecosia / Brave /
+    ///       Spotify / 词典 / ChatGPT），共 47 个
     /// </summary>
-    public const int BuiltinEnginesVersion = 2;
+    public const int BuiltinEnginesVersion = 3;
 
     public static AppSettings Create()
     {
@@ -215,6 +218,26 @@ public static class DefaultSettings
             new() { Key = "np", Value = "https://www.npmjs.com/search?q={q}", Comment = "npm", IconPath = IconUrls.Npm },
             new() { Key = "nu", Value = "https://www.nuget.org/packages?q={q}", Comment = "NuGet", IconPath = IconUrls.Nuget },
             new() { Key = "tr", Value = "https://translate.google.com/?text={q}", Comment = "翻译", IconPath = IconUrls.Translate },
+
+            // ---- 第一批补充（关键字沿用英文前两字母；与 Flow Launcher 的引擎表对齐）----
+            new() { Key = "ya", Value = "https://search.yahoo.com/search?p={q}", Comment = "Yahoo", IconPath = IconUrls.Yahoo },
+            new() { Key = "dd", Value = "https://duckduckgo.com/?q={q}", Comment = "DuckDuckGo", IconPath = IconUrls.DuckDuckGo },
+            new() { Key = "wa", Value = "https://www.wolframalpha.com/input?i={q}", Comment = "WolframAlpha", IconPath = IconUrls.WolframAlpha },
+            new() { Key = "im", Value = "https://www.google.com/search?q={q}&tbm=isch", Comment = "Google 图片", IconPath = IconUrls.GoogleImages },
+            new() { Key = "ma", Value = "https://www.google.com/maps/search/{q}", Comment = "Google 地图", IconPath = IconUrls.GoogleMaps },
+            new() { Key = "ne", Value = "https://www.netflix.com/search?q={q}", Comment = "Netflix", IconPath = IconUrls.Netflix },
+            new() { Key = "gm", Value = "https://mail.google.com/mail/u/0/#search/{q}", Comment = "Gmail", IconPath = IconUrls.Gmail },
+            new() { Key = "dr", Value = "https://drive.google.com/drive/search?q={q}", Comment = "Google 云端硬盘", IconPath = IconUrls.GoogleDrive },
+            new() { Key = "mu", Value = "https://music.youtube.com/search?q={q}", Comment = "YouTube Music", IconPath = IconUrls.YoutubeMusic },
+            new() { Key = "gi", Value = "https://gist.github.com/search?q={q}", Comment = "GitHub Gist", IconPath = IconUrls.Gist },
+            new() { Key = "ba", Value = "https://www.baidu.com/s?wd={q}", Comment = "百度（备用）", IconPath = IconUrls.Baidu },
+            new() { Key = "so", Value = "https://www.sogou.com/web?query={q}", Comment = "搜狗", IconPath = IconUrls.Sogou },
+            new() { Key = "yh", Value = "https://www.yahoo.co.jp/search?p={q}", Comment = "Yahoo Japan", IconPath = IconUrls.Yahoo },
+            new() { Key = "ec", Value = "https://www.ecosia.org/search?q={q}", Comment = "Ecosia", IconPath = IconUrls.Ecosia },
+            new() { Key = "br", Value = "https://search.brave.com/search?q={q}", Comment = "Brave Search", IconPath = IconUrls.Brave },
+            new() { Key = "sp", Value = "https://open.spotify.com/search/{q}", Comment = "Spotify", IconPath = IconUrls.Spotify },
+            new() { Key = "me", Value = "https://www.merriam-webster.com/dictionary/{q}", Comment = "Merriam-Webster", IconPath = IconUrls.Dictionary },
+            new() { Key = "ai", Value = "https://chatgpt.com/?q={q}", Comment = "ChatGPT", IconPath = IconUrls.ChatGpt },
         };
         s.Run = new List<QEntry>
         {

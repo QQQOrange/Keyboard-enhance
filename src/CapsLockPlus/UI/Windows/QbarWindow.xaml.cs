@@ -58,8 +58,8 @@ public partial class QbarWindow : Window
 
             Input.FontSize = q.TextFontSize;
             // 字号变大时必须同步抬高输入框，否则上下缘会被裁掉。
-            // 经验公式：行高 ≈ 字号 × 1.25，再留一点余量。
-            Input.MinHeight = Math.Max(42, Math.Round(q.TextFontSize * 1.6));
+            // 用真实字形高度来算（不是估系数），再留出安全余量。
+            Input.MinHeight = Core.Text.TextMetrics.MinBoxHeight(q.TextFontSize, "汉字Agqy");
             Results.MaxHeight = q.LineHeight * q.ListCount + 12;
             SizeToContent = SizeToContent.Height;
         }

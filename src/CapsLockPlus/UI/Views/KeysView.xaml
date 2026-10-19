@@ -28,7 +28,7 @@
                 </StackPanel>
 
                 <TextBox Grid.Column="1" x:Name="SearchBox" Style="{StaticResource TextBox.Base}"
-                         Margin="16,0,16,0" Height="36" VerticalContentAlignment="Center"
+                         Margin="16,0,16,0" MinHeight="36" VerticalContentAlignment="Center"
                          TextChanged="OnSearchChanged" ToolTip="搜索按键或功能，例如 q、F2、剪贴板" />
 
                 <Button Grid.Column="2" Content="恢复默认" Style="{StaticResource Button.Base}"
@@ -130,7 +130,7 @@
                         <StackPanel x:Name="ArgPanel" Margin="0,14,0,0" Visibility="Collapsed">
                             <TextBlock x:Name="ArgLabel" Text="参数" Style="{StaticResource Text.Secondary}"
                                        Margin="0,0,0,7" />
-                            <TextBox x:Name="ArgBox" Style="{StaticResource TextBox.Base}" Height="36"
+                            <TextBox x:Name="ArgBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                                      VerticalContentAlignment="Center" TextChanged="OnArgChanged" />
                             <TextBlock x:Name="ArgHint" Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0"
                                        TextWrapping="Wrap" />

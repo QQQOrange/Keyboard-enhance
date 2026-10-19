@@ -82,6 +82,12 @@ public static class SelfTest
         Section("窗口绑定");
         TestWindowBindings();
 
+        Section("窗口点选");
+        TestWindowPreview();
+
+        Section("文字度量");
+        TestTextMetrics();
+
         Section("窗口与进程");
         TestWindows();
 
@@ -581,6 +587,103 @@ public static class SelfTest
         WindowService.AnimationEnabled = false;
         Check("动画开关可关闭", !WindowService.AnimationEnabled);
         WindowService.AnimationEnabled = saved;
+    }
+
+    /// <summary>
+    /// 窗口点选的"取窗口"逻辑。
+    ///
+    /// 之前的 bug 是：遮罩自己铺满全屏，WindowFromPoint 返回的永远是遮罩，
+    /// 于是点了没反应。这里验证改造后的判定规则：
+    ///   * 自己的窗口必须被排除；
+    ///   * 桌面/任务栏等系统壳窗口必须被排除；
+    ///   * 普通窗口必须能被正确识别。
+    /// </summary>
+    private static void TestWindowPreview()
+    {
+        var picker = new UI.Windows.WindowPickerWindow();
+        var probe = picker.Probe;
+
+        // 自己的窗口必须排除（否则会绑到自己）
+        var self = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
+        if (self != IntPtr.Zero)
+            Check("点选时排除自身窗口", !probe.AcceptsForTest(self));
+        else
+            Check("本进程无主窗口句柄，跳过自身排除检查", true);
+
+        // 桌面与任务栏必须被识别为"壳窗口"（识别出来才会排除）
+        Check("识别出桌面窗口", probe.IsShellClassForTest("Progman"));
+        Check("识别出 WorkerW", probe.IsShellClassForTest("WorkerW"));
+        Check("识别出任务栏", probe.IsShellClassForTest("Shell_TrayWnd"));
+        Check("普通窗口类名不被当成壳窗口", !probe.IsShellClassForTest("Notepad"));
+
+        // 真实窗口：从当前已枚举到的顶层窗口里挑一个非自身的来验证
+        var candidates = WindowService.EnumerateTopLevel()
+            .Where(w => !w.ExeName.Equals(AppInfo.ExeName, StringComparison.OrdinalIgnoreCase))
+            .Where(w => w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd"))
+            .Take(3)
+            .ToList();
+        if (candidates.Count > 0)
+        {
+            int accepted = candidates.Count(c => probe.AcceptsForTest(c.Handle));
+            Check("普通窗口可被点选", accepted > 0, $"候选 {candidates.Count} 个，接受 {accepted} 个");
+        }
+        else
+        {
+            Check("没有可作为目标的窗口，跳过", true);
+        }
+
+        picker.Close();
+    }
+
+    /// <summary>
+    /// 文字度量：确保任何字号下，输入框高度都够放下文字。
+    ///
+    /// 这是"文字只显示上半部分"那个 bug 的回归测试：
+    /// 只要 MinBoxHeight 算出来的高度小于"文字高 + 上下内边距 + 边框"，
+    /// 文字就会被裁，所以这里逐字号验证。
+    /// </summary>
+    private static void TestTextMetrics()
+    {
+        // 字号 14~30（Qbar 字号滑块的取值范围）都要留出余量
+        var bad = new List<string>();
+        foreach (double fs in new[] { 14.0, 16, 18, 20, 21, 24, 27, 30 })
+        {
+            double text = Core.Text.TextMetrics.MeasureHeight(fs);
+            double box = Core.Text.TextMetrics.MinBoxHeight(fs);
+            double content = box - 2 * (Core.Text.TextMetrics.Padding + Core.Text.TextMetrics.Border);
+            double slack = content - text;
+            if (slack < 2)
+                bad.Add($"字号{fs}: 内容区{content:0.0} 文字{text:0.0} 余量{slack:0.0}");
+        }
+        Check("14~30 各字号都有 >= 2px 余量", bad.Count == 0, string.Join("; ", bad));
+
+        // 字号越大，需要的高度必须单调变大（否则某个字号会漏掉）
+        double prev = 0;
+        bool monotonic = true;
+        foreach (double fs in new[] { 14.0, 18, 21, 24, 30 })
+        {
+            double h = Core.Text.TextMetrics.MinBoxHeight(fs);
+            if (h <= prev) monotonic = false;
+            prev = h;
+        }
+        Check("所需高度随字号单调递增", monotonic);
+
+        // 度量结果必须是有限正数，不能因为量不出而返回 0/NaN
+        Check("度量结果是正常数值",
+            double.IsFinite(Core.Text.TextMetrics.MeasureHeight(21)) && Core.Text.TextMetrics.MeasureHeight(21) > 0,
+            Core.Text.TextMetrics.MeasureHeight(21).ToString("0.0"));
+
+        // 单行输入框的模板默认高度要足够容纳默认字号（模板 MinHeight = 38）
+        double defaultFontSize = 13.5;
+        try
+        {
+            if (System.Windows.Application.Current?.TryFindResource("Size.Text") is double d && d > 0)
+                defaultFontSize = d;
+        }
+        catch { }
+        double def = Core.Text.TextMetrics.MinBoxHeight(defaultFontSize);
+        Check("默认字号所需高度不超过模板 MinHeight 38", def <= 38,
+            $"字号 {defaultFontSize} 需要 {def:0.0}");
     }
 
     private static void TestWindows()

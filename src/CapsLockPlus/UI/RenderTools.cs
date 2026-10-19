@@ -138,36 +138,47 @@ public static class RenderTools
         return 0;
     }
 
-    /// <summary>诊断：dump 所有 TextBox 的真实布局尺寸，用于排查文字被裁切。</summary>
+    /// <summary>
+    /// 诊断：dump 每个 TextBox 的真实布局，包括文字实际画在哪里。
+    ///
+    /// 只比较"控件高度"和"字号"不够——真正决定会不会被裁的，
+    /// 是文字块相对内容区的位置。这里直接算出来，才能判断是顶到上边还是超出下边。
+    /// </summary>
     public static void DumpTextBoxMetrics(System.Windows.Media.Visual root, string outPath, string page = "")
     {
         var lines = new List<string>();
         lines.Add($"TextBox 布局诊断（页面：{page}）");
         lines.Add($"DPI scale = {VisualTreeHelper.GetDpi(root).DpiScaleX}");
         lines.Add("");
-        lines.Add($"{"名称",-14} {"控件高",7} {"内容区高",8} {"内边距",12} {"字号",6} {"文字高",7} {"是否裁切",9}");
+        lines.Add("名称            控件高  内容顶  内容底  文字底  文字高   上余   下余  判定");
 
         Walk(root, tb =>
         {
-            var host = FindChild<System.Windows.Controls.ScrollViewer>(tb);
-            double controlH = tb.ActualHeight;
-            double hostH = host?.ActualHeight ?? 0;
-            var padding = tb.Padding;
-            double fontSize = tb.FontSize;
+            if (tb.ActualHeight <= 0) return;
 
-            // 用当前文本量一下字形高度
+            double contentTop = tb.BorderThickness.Top + tb.Padding.Top;
+            double contentBottom = tb.ActualHeight - tb.BorderThickness.Bottom - tb.Padding.Bottom;
+
             var typeface = new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
             var ft = new FormattedText(
-                string.IsNullOrEmpty(tb.Text) ? "Ag中" : tb.Text,
+                string.IsNullOrEmpty(tb.Text) ? "Ag中qg" : tb.Text,
                 System.Globalization.CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight, typeface, fontSize, Brushes.Black,
+                FlowDirection.LeftToRight, typeface, tb.FontSize, Brushes.Black,
                 VisualTreeHelper.GetDpi(tb).PixelsPerDip);
             double textH = ft.Height;
 
-            bool clipped = hostH > 0 && textH > hostH + 0.5;
-            string pad = $"{padding.Left:0},{padding.Top:0}";
-            lines.Add($"{tb.Name,-14} {controlH,7:0.0} {hostH,8:0.0} {pad,12} " +
-                      $"{fontSize,6:0.0} {textH,7:0.0} {(clipped ? "是 <--" : "否"),9}");
+            // 内容区垂直居中时文字块的位置
+            double avail = contentBottom - contentTop;
+            double textTop = contentTop + Math.Max(0, (avail - textH) / 2);
+            double textBottom = textTop + textH;
+            double topGap = textTop - contentTop;
+            double bottomGap = contentBottom - textBottom;
+
+            bool clipped = textBottom > contentBottom + 0.5 || textH > avail + 0.5;
+            string verdict = clipped ? "裁切 <--" : (bottomGap < 1.5 ? "贴边" : "正常");
+
+            lines.Add($"{tb.Name,-14} {tb.ActualHeight,6:0.0} {contentTop,7:0.0} {contentBottom,7:0.0} " +
+                      $"{textBottom,7:0.0} {textH,7:0.0} {topGap,6:0.0} {bottomGap,6:0.0}  {verdict}");
         });
 
         File.WriteAllLines(outPath, lines);

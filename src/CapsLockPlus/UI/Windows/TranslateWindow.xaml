@@ -26,7 +26,7 @@
 
         <StackPanel Grid.Row="1" Margin="20,0,20,12">
             <TextBlock x:Name="SourceLabel" Style="{StaticResource Text.Tertiary}" Text="原文" />
-            <TextBox x:Name="SourceText" Style="{StaticResource TextBox.Base}" Height="110" Margin="0,6,0,0"
+            <TextBox x:Name="SourceText" Style="{StaticResource TextBox.Base}" MinHeight="110" Margin="0,6,0,0"
                      TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                 <ComboBox x:Name="TargetBox" Style="{StaticResource ComboBox.Base}" Width="150"

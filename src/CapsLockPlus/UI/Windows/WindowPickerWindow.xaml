@@ -5,10 +5,24 @@
         WindowState="Maximized" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
         Cursor="Cross" FontFamily="{StaticResource Font.Ui}">
 
-    <!-- 一整块半透明遮罩 + 中央提示；
-         鼠标显示为十字准星（Cursor="Cross"），点击即取该点下的窗口。 -->
-    <Grid x:Name="Root" Background="#33000000" MouseMove="OnMouseMove"
-          MouseLeftButtonDown="OnMouseDown" Cursor="Cross">
+    <!-- 遮罩：整块半透明，鼠标完全穿透（代码里设 WS_EX_TRANSPARENT），
+         所以点击会直达下面的真实窗口。事件靠全局鼠标钩子来抓，
+         不在这里挂 MouseMove/MouseDown —— 遮罩根本收不到这些事件。 -->
+    <Grid x:Name="Root" Background="#33000000" Cursor="Cross" IsHitTestVisible="False"
+          Focusable="False">
+
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,60,0,0"
+                    IsHitTestVisible="False">
+            <Border CornerRadius="12" Background="#F2161A23" Padding="18,12"
+                    BorderBrush="#335B93FF" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="点击要绑定的窗口" FontSize="15" FontWeight="SemiBold"
+                               Foreground="#F2F5FA" HorizontalAlignment="Center" />
+                    <TextBlock Text="左键选中　·　右键或 Esc 取消" FontSize="12" Foreground="#9FB0CC"
+                               HorizontalAlignment="Center" Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
 
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,60,0,0"
                     IsHitTestVisible="False">

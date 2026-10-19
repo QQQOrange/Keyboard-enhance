@@ -22,7 +22,7 @@
 
                 <StackPanel x:Name="YoudaoPanel" Margin="0,14,0,0" Visibility="Collapsed">
                     <TextBlock Text="应用 ID（AppKey）" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
-                    <TextBox x:Name="AppIdBox" Style="{StaticResource TextBox.Base}" Height="36"
+                    <TextBox x:Name="AppIdBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                              VerticalContentAlignment="Center" TextChanged="OnCredentialChanged" />
                     <TextBlock Text="应用密钥（AppSecret）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
                     <PasswordBox x:Name="AppSecretBox" Height="36" Padding="10,7" FontSize="13.5"
@@ -52,7 +52,7 @@
                            Text="1. 在任意程序里选中一段文字&#x0a;2. 按 Caps+F3&#x0a;3. 弹窗里点「替换原文」或「复制译文」" />
                 <Border Style="{StaticResource Divider}" Margin="0,16,0,12" />
                 <TextBlock Text="也可以在这里手动输入" Style="{StaticResource Text.Secondary}" Margin="0,0,0,8" />
-                <TextBox x:Name="InputBox" Style="{StaticResource TextBox.Base}" Height="90" TextWrapping="Wrap"
+                <TextBox x:Name="InputBox" Style="{StaticResource TextBox.Base}" MinHeight="90" TextWrapping="Wrap"
                          AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
                 <Button Content="翻译" Style="{StaticResource Button.Base}" Margin="0,10,0,0"
                         Click="OnTranslateHere" HorizontalAlignment="Left" />
