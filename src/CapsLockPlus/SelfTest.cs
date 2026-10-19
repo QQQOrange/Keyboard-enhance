@@ -9,6 +9,7 @@ using CapsLockPlus.Core.Interop;
 using CapsLockPlus.Core.Qbar;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Text;
+using CapsLockPlus.Core.Update;
 using CapsLockPlus.Core.Windows;
 
 namespace CapsLockPlus;
@@ -85,6 +86,26 @@ public static class SelfTest
 
         Section("组合键引擎");
         TestEngine();
+
+        Section("更新");
+        TestUpdateDigest();
+    }
+
+    /// <summary>
+    /// GitHub 的资产摘要是 "sha256:xxx" 形式，若不去掉前缀，
+    /// 每次下载都会误判“校验失败”，导致自动更新永远无法完成。
+    /// </summary>
+    private static void TestUpdateDigest()
+    {
+        const string hash = "b4b7ae5a70fe98b4b89ea279ca4e4be99e94633b53c7d7dacab2d2847877938e";
+        CheckEqual("去掉 sha256: 前缀", UpdateService.NormalizeDigest("sha256:" + hash), hash);
+        CheckEqual("兼容大写前缀", UpdateService.NormalizeDigest("SHA256:" + hash.ToUpperInvariant()), hash.ToUpperInvariant());
+        CheckEqual("兼容空格分隔", UpdateService.NormalizeDigest("sha256 " + hash), hash);
+        CheckEqual("兼容等号分隔", UpdateService.NormalizeDigest("sha256=" + hash), hash);
+        CheckEqual("纯摘要原样返回", UpdateService.NormalizeDigest(hash), hash);
+        CheckEqual("空值返回空串", UpdateService.NormalizeDigest(null), "");
+        CheckEqual("空摘要返回空串", UpdateService.NormalizeDigest("   "), "");
+        Check("内置版本号是 1.0.0", UpdateService.CurrentVersion == "1.0.0", UpdateService.CurrentVersion);
     }
 
     /// <summary>写出自检报告（数据目录 + 控制台可用时也打印）。</summary>

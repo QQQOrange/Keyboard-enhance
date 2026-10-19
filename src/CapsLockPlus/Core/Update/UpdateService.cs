@@ -97,7 +97,7 @@ public sealed class UpdateService
                 release.Body ?? "",
                 release.HtmlUrl ?? ReleasesUrl,
                 asset.Size,
-                asset.Digest ?? "");
+                NormalizeDigest(asset.Digest));
 
             return new UpdateCheckResult(true, info,
                 newer ? $"发现新版本 {tag}" : "已是最新版本", newer);
@@ -177,13 +177,18 @@ public sealed class UpdateService
                 return (false, "", $"下载不完整（{read}/{info.Size} 字节）");
             }
 
-            if (!string.IsNullOrWhiteSpace(info.Sha256))
+            // GitHub 的资产摘要是 "sha256:xxxx" 这种带算法前缀的格式，
+            // 必须先把前缀剥掉再比较，否则每次下载都会误判为“校验失败”。
+            string expected = NormalizeDigest(info.Sha256);
+            if (expected.Length > 0)
             {
                 string actual = await Sha256Async(temp, ct).ConfigureAwait(false);
-                if (!actual.Equals(info.Sha256, StringComparison.OrdinalIgnoreCase))
+                if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
                 {
                     TryDelete(temp);
-                    return (false, "", "校验失败，文件可能已损坏");
+                    return (false, "",
+                        $"校验失败，文件可能已损坏（期望 {expected[..Math.Min(12, expected.Length)]}…，" +
+                        $"实际 {actual[..12]}…）");
                 }
             }
             return (true, temp, "");
@@ -193,6 +198,58 @@ public sealed class UpdateService
             TryDelete(temp);
             return (false, "", "下载失败：" + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// 把发布方给的摘要规范成纯十六进制串。
+    /// 兼容 "sha256:abc..."、"SHA256 abc..."、"sha256=abc..." 与纯摘要几种写法。
+    ///
+    /// 注意：不能只靠“过滤非十六进制字符”来做——`sha256` 这几个字符本身
+    /// 全是合法的十六进制字符（a、2、5、6），过滤后会把前缀留下。
+    /// 所以必须先按分隔符切分，再判断是不是算法名。
+    /// </summary>
+    public static string NormalizeDigest(string? digest)
+    {
+        if (string.IsNullOrWhiteSpace(digest)) return "";
+        string d = digest.Trim();
+
+        // 1) 用 : 或 = 分隔（"sha256:xxx" / "sha256=xxx"）
+        int sep = d.IndexOfAny(new[] { ':', '=' });
+        if (sep >= 0)
+        {
+            string head = d[..sep].Trim();
+            string tailPart = d[(sep + 1)..].Trim();
+            // 前半段是短标识符（算法名）、后半段是足够长的摘要时，丢弃前半段。
+            // "sha256" 本身全是十六进制字符，所以不能靠 IsHexDigit 判断。
+            bool headLooksLikeAlgorithm = head.Length is > 0 and <= 16 && head.All(char.IsLetterOrDigit);
+            if (headLooksLikeAlgorithm && tailPart.Length >= 32)
+                d = tailPart;
+            else if (head.Length == 0)
+                d = tailPart;
+        }
+        else
+        {
+            // 2) 空格分隔（"sha256 xxx"）：首段短且是字母数字组合、后半段是长摘要时才丢弃首段。
+            //    注意 "sha256" 里含数字，不能用 char.IsLetter 判定。
+            int sp = d.IndexOf(' ');
+            if (sp > 0)
+            {
+                string head = d[..sp].Trim();
+                string tailPart = d[(sp + 1)..].Trim();
+                bool headLooksLikeAlgorithm = head.Length is > 0 and <= 16 && head.All(char.IsLetterOrDigit);
+                if (tailPart.Length >= 32 && headLooksLikeAlgorithm)
+                    d = tailPart;
+            }
+        }
+
+        // 3) 去掉剩余的空格与等号，只保留十六进制字符
+        var sb = new System.Text.StringBuilder(d.Length);
+        foreach (char c in d)
+        {
+            if (c is ' ' or '=' or '\t') continue;
+            if (Uri.IsHexDigit(c)) sb.Append(c);
+        }
+        return sb.ToString();
     }
 
     /// <summary>
