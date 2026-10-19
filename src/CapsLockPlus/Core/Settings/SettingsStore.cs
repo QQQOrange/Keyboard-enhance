@@ -108,14 +108,39 @@ public static class DefaultSettings
         s.Search = new List<QEntry>
         {
             new() { Key = "default", Value = "https://www.bing.com/search?q={q}" },
+
+            // ---- 国内引擎：关键字取名称的拼音首字母 ----
             new() { Key = "bd", Value = "https://www.baidu.com/s?wd={q}", Comment = "百度", IconPath = IconUrls.Baidu },
-            new() { Key = "g", Value = "https://www.google.com/search?q={q}", Comment = "Google", IconPath = IconUrls.Google },
-            new() { Key = "b", Value = "https://www.bing.com/search?q={q}", Comment = "Bing", IconPath = IconUrls.Bing },
             new() { Key = "tb", Value = "https://s.taobao.com/search?q={q}", Comment = "淘宝", IconPath = IconUrls.Taobao },
-            new() { Key = "wk", Value = "https://zh.wikipedia.org/w/index.php?search={q}", Comment = "维基百科", IconPath = IconUrls.Wikipedia },
-            new() { Key = "gh", Value = "https://github.com/search?q={q}", Comment = "GitHub", IconPath = IconUrls.GitHub },
-            new() { Key = "m", Value = "https://developer.mozilla.org/zh-CN/search?q={q}", Comment = "MDN", IconPath = IconUrls.Mdn },
             new() { Key = "zh", Value = "https://www.zhihu.com/search?type=content&q={q}", Comment = "知乎", IconPath = IconUrls.Zhihu },
+            new() { Key = "bili", Value = "https://search.bilibili.com/all?keyword={q}", Comment = "哔哩哔哩", IconPath = IconUrls.Bilibili },
+            new() { Key = "wx", Value = "https://weixin.sogou.com/weixin?type=2&query={q}", Comment = "微信", IconPath = IconUrls.Weixin },
+            new() { Key = "wb", Value = "https://s.weibo.com/weibo?q={q}", Comment = "微博", IconPath = IconUrls.Weibo },
+            new() { Key = "jd", Value = "https://search.jd.com/Search?keyword={q}", Comment = "京东", IconPath = IconUrls.Jd },
+            new() { Key = "xhs", Value = "https://www.xiaohongshu.com/search_result?keyword={q}", Comment = "小红书", IconPath = IconUrls.Xiaohongshu },
+            new() { Key = "dy", Value = "https://www.douyin.com/search/{q}", Comment = "抖音", IconPath = IconUrls.Douyin },
+            new() { Key = "db", Value = "https://www.douban.com/search?q={q}", Comment = "豆瓣", IconPath = IconUrls.Douban },
+            new() { Key = "csdn", Value = "https://so.csdn.net/so/search?q={q}", Comment = "CSDN", IconPath = IconUrls.Csdn },
+            new() { Key = "juejin", Value = "https://juejin.cn/search?query={q}", Comment = "掘金", IconPath = IconUrls.Juejin },
+            new() { Key = "gitee", Value = "https://search.gitee.com/?q={q}", Comment = "Gitee", IconPath = IconUrls.Gitee },
+            new() { Key = "pdd", Value = "https://mobile.yangkeduo.com/search_result.html?search_key={q}", Comment = "拼多多", IconPath = IconUrls.Pinduoduo },
+            new() { Key = "tx", Value = "https://v.qq.com/x/search/?q={q}", Comment = "腾讯视频", IconPath = IconUrls.TencentVideo },
+            new() { Key = "iqy", Value = "https://so.iqiyi.com/so/q_{q}", Comment = "爱奇艺", IconPath = IconUrls.Iqiyi },
+
+            // ---- 国外引擎：关键字取英文名前两个字母 ----
+            new() { Key = "go", Value = "https://www.google.com/search?q={q}", Comment = "Google", IconPath = IconUrls.Google },
+            new() { Key = "bi", Value = "https://www.bing.com/search?q={q}", Comment = "Bing", IconPath = IconUrls.Bing },
+            new() { Key = "gh", Value = "https://github.com/search?q={q}", Comment = "GitHub", IconPath = IconUrls.GitHub },
+            new() { Key = "wi", Value = "https://zh.wikipedia.org/w/index.php?search={q}", Comment = "Wikipedia", IconPath = IconUrls.Wikipedia },
+            new() { Key = "yo", Value = "https://www.youtube.com/results?search_query={q}", Comment = "YouTube", IconPath = IconUrls.Youtube },
+            new() { Key = "re", Value = "https://www.reddit.com/search/?q={q}", Comment = "Reddit", IconPath = IconUrls.Reddit },
+            new() { Key = "st", Value = "https://stackoverflow.com/search?q={q}", Comment = "Stack Overflow", IconPath = IconUrls.StackOverflow },
+            new() { Key = "md", Value = "https://developer.mozilla.org/zh-CN/search?q={q}", Comment = "MDN", IconPath = IconUrls.Mdn },
+            new() { Key = "am", Value = "https://www.amazon.com/s?k={q}", Comment = "Amazon", IconPath = IconUrls.Amazon },
+            new() { Key = "tw", Value = "https://twitter.com/search?q={q}", Comment = "X (Twitter)", IconPath = IconUrls.Twitter },
+            new() { Key = "fa", Value = "https://www.facebook.com/search/top?q={q}", Comment = "Facebook", IconPath = IconUrls.Facebook },
+            new() { Key = "np", Value = "https://www.npmjs.com/search?q={q}", Comment = "npm", IconPath = IconUrls.Npm },
+            new() { Key = "nu", Value = "https://www.nuget.org/packages?q={q}", Comment = "NuGet", IconPath = IconUrls.Nuget },
             new() { Key = "tr", Value = "https://translate.google.com/?text={q}", Comment = "翻译", IconPath = IconUrls.Translate },
         };
         s.Run = new List<QEntry>

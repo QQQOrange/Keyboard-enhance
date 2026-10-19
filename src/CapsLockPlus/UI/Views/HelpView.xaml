@@ -23,7 +23,7 @@
                 <TextBlock Grid.Column="1" Text="再看下面的按键 —— 灰色表示没有绑定，可以到「按键映射」里自己加。"
                            Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center" Margin="14,0,0,0" />
                 <TextBox Grid.Column="2" x:Name="FilterBox" Style="{StaticResource TextBox.Base}" Width="220"
-                         Height="34" VerticalContentAlignment="Center" TextChanged="OnFilterChanged"
+                         Height="36" VerticalContentAlignment="Center" TextChanged="OnFilterChanged"
                          ToolTip="筛选按键或功能" />
             </Grid>
         </Border>

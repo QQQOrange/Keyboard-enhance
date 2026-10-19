@@ -135,7 +135,9 @@ public sealed class WindowBindingService
             {
                 var h = new IntPtr(b.WindowIds[0]);
                 if (h == fg) { WindowService.Minimize(h); return true; }
-                return WindowService.Activate(h);
+                // 切过去时播放“从小到大”的动画，让用户看清是哪个窗口
+                WindowService.ActivateWithZoom(h);
+                return true;
             }
 
             // 多窗口：循环切换到下一个
@@ -144,8 +146,101 @@ public sealed class WindowBindingService
             if (fgIdx >= 0) idx = fgIdx;
             idx = (idx + 1) % b.WindowIds.Count;
             _cycleIndex[slot] = idx;
-            return WindowService.Activate(new IntPtr(b.WindowIds[idx]));
+            WindowService.ActivateWithZoom(new IntPtr(b.WindowIds[idx]));
+            return true;
         }
+    }
+
+    /// <summary>
+    /// 按可执行文件绑定槽位。
+    ///
+    /// 与“绑定当前窗口”不同，这里记录的是**程序**而不是某个窗口实例：
+    /// 只要该程序有窗口存在，按槽位就能切过去；一个都没有时会帮你启动它。
+    /// 适合“这个键永远对应 Photoshop”这类用法。
+    /// </summary>
+    public bool BindByExe(int slot, string exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+        {
+            Notified?.Invoke("找不到这个程序文件");
+            return false;
+        }
+
+        string? runningPath = null;
+        try { runningPath = WindowService.GetProcessPath((uint)Environment.ProcessId); }
+        catch { }
+        if (runningPath != null &&
+            Path.GetFullPath(exePath).Equals(Path.GetFullPath(runningPath), StringComparison.OrdinalIgnoreCase))
+        {
+            Notified?.Invoke("不能绑定 CapsLock+ 自己");
+            return false;
+        }
+
+        var b = GetOrCreate(slot);
+        lock (_gate)
+        {
+            b.ExePath = exePath;
+            b.DisplayName = Path.GetFileNameWithoutExtension(exePath);
+            b.ClassName = "";
+            b.Mode = WinBindMode.Application;   // 绑定该程序的所有窗口
+            b.WindowIds.Clear();
+            foreach (var w in WindowService.EnumerateTopLevel())
+            {
+                if (string.Equals(w.ExePath, exePath, StringComparison.OrdinalIgnoreCase))
+                    b.WindowIds.Add(w.Handle.ToInt64());
+            }
+        }
+
+        Notified?.Invoke(b.WindowIds.Count > 0
+            ? $"槽位 {slot} ← {b.DisplayName}（当前已开 {b.WindowIds.Count} 个窗口）"
+            : $"槽位 {slot} ← {b.DisplayName}（还没运行，按 {slot} 时会帮你打开）");
+        return true;
+    }
+
+    /// <summary>
+    /// 用“十字准星点选”的方式绑定：由界面取到目标窗口句柄后调用。
+    /// 与 Bind() 的区别是目标明确，不受“当前前台窗口”影响。
+    /// </summary>
+    public bool BindWindow(int slot, IntPtr hwnd)
+    {
+        var info = WindowService.Describe(hwnd);
+        if (info == null)
+        {
+            Notified?.Invoke("选中的不是有效窗口");
+            return false;
+        }
+        if (info.ExeName.Equals("CapsLockPlus.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            Notified?.Invoke("不能绑定 CapsLock+ 自己的窗口");
+            return false;
+        }
+
+        var b = GetOrCreate(slot);
+        lock (_gate)
+        {
+            b.ExePath = info.ExePath;
+            b.ClassName = info.ClassName;
+            b.DisplayName = info.ExeName;
+            b.Mode = WinBindMode.Single;
+            b.WindowIds.Clear();
+            b.WindowIds.Add(info.Handle.ToInt64());
+        }
+        Notified?.Invoke($"槽位 {slot} ← {info.ExeName}");
+        return true;
+    }
+
+    /// <summary>槽位当前状态的简短描述（供界面显示）。</summary>
+    public string DescribeSlot(int slot)
+    {
+        var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
+        if (b == null || b.IsEmpty) return "未绑定";
+        string name = string.IsNullOrEmpty(b.DisplayName) ? "已绑定" : b.DisplayName;
+        return b.WindowIds.Count switch
+        {
+            0 => $"{name}（未运行）",
+            1 => $"{name}（1 个窗口）",
+            _ => $"{name}（{b.WindowIds.Count} 个窗口循环）",
+        };
     }
 
     public void Unbind(int slot)

@@ -107,4 +107,187 @@ public static class IconUrls
           <path d="M26 16h10v2h-10z" fill="#fff" opacity=".9"/>
         </svg>
         """);
+
+    // ---------------- 国内引擎 ----------------
+
+    public static readonly string Bilibili = Materialize("bilibili", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <rect width="48" height="48" rx="24" fill="#FB7299"/>
+          <path d="M17 13l4 4h6l4-4 2 2-2 2h1a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V21a4 4 0 0 1 4-4h1l-2-2 2-2z"
+                fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/>
+          <path d="M19 24v5M29 24v5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string Weixin = Materialize("weixin", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#07C160"/>
+          <ellipse cx="19" cy="21" rx="9" ry="7.5" fill="#fff"/>
+          <ellipse cx="30" cy="27" rx="7.5" ry="6" fill="#fff"/>
+          <circle cx="16" cy="20" r="1.4" fill="#07C160"/>
+          <circle cx="22" cy="20" r="1.4" fill="#07C160"/>
+          <circle cx="27.5" cy="26" r="1.2" fill="#07C160"/>
+          <circle cx="32.5" cy="26" r="1.2" fill="#07C160"/>
+        </svg>
+        """);
+
+    public static readonly string Weibo = Materialize("weibo", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#E6162D"/>
+          <ellipse cx="22" cy="27" rx="11" ry="8" fill="#fff"/>
+          <ellipse cx="22" cy="27" rx="6" ry="4.5" fill="#E6162D"/>
+          <path d="M30 14c4 0 7 3 7 7" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+          <path d="M30 19c1.8 0 3 1.3 3 3" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string Jd = Materialize("jd", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#E1251B"/>
+          <text x="24" y="30" font-family="Segoe UI, Arial" font-size="15" font-weight="700"
+                fill="#fff" text-anchor="middle">JD</text>
+        </svg>
+        """);
+
+    public static readonly string Xiaohongshu = Materialize("xiaohongshu", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FF2442"/>
+          <text x="24" y="30" font-family="Segoe UI, Arial" font-size="14" font-weight="700"
+                fill="#fff" text-anchor="middle">小红书</text>
+        </svg>
+        """);
+
+    public static readonly string Douyin = Materialize("douyin", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <rect width="48" height="48" rx="24" fill="#000"/>
+          <path d="M28 12h4c.4 3.4 2.6 5.6 6 6v4c-2.4-.2-4.5-1-6-2.4V28a8 8 0 1 1-8-8c.7 0 1.4.1 2 .3v4.2A4 4 0 1 0 28 28V12z" fill="#fff"/>
+          <path d="M28 12h4c.4 3.4 2.6 5.6 6 6v4c-2.4-.2-4.5-1-6-2.4V28a8 8 0 1 1-8-8c.7 0 1.4.1 2 .3v4.2A4 4 0 1 0 28 28V12z"
+                fill="#25F4EE" opacity=".55" transform="translate(-1.6,-1.2)"/>
+        </svg>
+        """);
+
+    public static readonly string Douban = Materialize("douban", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#2E963A"/>
+          <text x="24" y="30" font-family="Segoe UI, Arial" font-size="14" font-weight="700"
+                fill="#fff" text-anchor="middle">豆瓣</text>
+        </svg>
+        """);
+
+    public static readonly string Csdn = Materialize("csdn", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FC5531"/>
+          <text x="24" y="29" font-family="Segoe UI, Arial" font-size="12" font-weight="700"
+                fill="#fff" text-anchor="middle">CSDN</text>
+        </svg>
+        """);
+
+    public static readonly string Juejin = Materialize("juejin", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#1E80FF"/>
+          <path d="M24 14l12 8-12 8-12-8 12-8z" fill="#fff"/>
+          <path d="M17 26l7 5 7-5 5 3.5-12 8-12-8L17 26z" fill="#fff" opacity=".75"/>
+        </svg>
+        """);
+
+    public static readonly string Gitee = Materialize("gitee", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#C71D23"/>
+          <path d="M32 18H19a4 4 0 0 0-4 4v1h13v4H15v-5a7 7 0 0 1 7-7h10v3z" fill="#fff"/>
+          <path d="M24 25h9v4a7 7 0 0 1-7 7h-4v-3h4a4 4 0 0 0 4-4h-6v-4z" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string Pinduoduo = Materialize("pinduoduo", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#E22E1F"/>
+          <text x="24" y="29" font-family="Segoe UI, Arial" font-size="12" font-weight="700"
+                fill="#fff" text-anchor="middle">拼多多</text>
+        </svg>
+        """);
+
+    public static readonly string TencentVideo = Materialize("tencentvideo", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#0068FF"/>
+          <path d="M20 17l14 7-14 7V17z" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string Iqiyi = Materialize("iqiyi", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#00BE06"/>
+          <text x="24" y="29" font-family="Segoe UI, Arial" font-size="12" font-weight="700"
+                fill="#fff" text-anchor="middle">爱奇艺</text>
+        </svg>
+        """);
+
+    // ---------------- 国外引擎 ----------------
+
+    public static readonly string Youtube = Materialize("youtube", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FF0000"/>
+          <rect x="12" y="17" width="24" height="15" rx="4" fill="#fff"/>
+          <path d="M21.5 21.5l7 3-7 3v-6z" fill="#FF0000"/>
+        </svg>
+        """);
+
+    public static readonly string Reddit = Materialize("reddit", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FF4500"/>
+          <circle cx="24" cy="26" r="9" fill="#fff"/>
+          <circle cx="20.5" cy="25" r="1.5" fill="#FF4500"/>
+          <circle cx="27.5" cy="25" r="1.5" fill="#FF4500"/>
+          <path d="M19.5 30c2.6 1.8 6.4 1.8 9 0" stroke="#FF4500" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          <circle cx="31" cy="15" r="2.4" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string StackOverflow = Materialize("stackoverflow", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#F48024"/>
+          <path d="M18 31h12v3H18v-3z" fill="#fff"/>
+          <path d="M19 26.5l10.5 2.2.6-3L19.6 23.5l-.6 3z" fill="#fff"/>
+          <path d="M21 21l9.5 4.5 1.4-2.8L22.4 18 21 21z" fill="#fff"/>
+          <path d="M25 16.5l7 7 2.2-2.2-7-7-2.2 2.2z" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string Amazon = Materialize("amazon", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#FF9900"/>
+          <text x="24" y="27" font-family="Segoe UI, Arial" font-size="11" font-weight="700"
+                fill="#111" text-anchor="middle">amazon</text>
+          <path d="M15 31c5 2.6 13 2.6 18 0" stroke="#111" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+        """);
+
+    public static readonly string Twitter = Materialize("twitter", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#000"/>
+          <path d="M16 15h5.5l5 6.6L32 15h3l-7 9 7.5 10h-5.5l-5.4-7.2L18 34h-3l7.4-9.5L16 15z" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string Facebook = Materialize("facebook", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#1877F2"/>
+          <path d="M27 26h4l.7-4.5H27V19c0-1.3.4-2.2 2.3-2.2H32v-4c-.4-.1-1.9-.2-3.5-.2-3.4 0-5.8 2-5.8 5.8v3.4H19V26h3.7v10h4.3V26z" fill="#fff"/>
+        </svg>
+        """);
+
+    public static readonly string Npm = Materialize("npm", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <rect width="48" height="48" rx="24" fill="#CB3837"/>
+          <path d="M13 16h22v16H24v-4h-6v4h-5V16zm4 4v8h2v-8h-2zm6 0v8h3v-8h-3z" fill="#fff"
+                transform="translate(0,0)"/>
+        </svg>
+        """);
+
+    public static readonly string Nuget = Materialize("nuget", """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="24" fill="#004880"/>
+          <circle cx="17" cy="20" r="3" fill="#fff"/>
+          <rect x="21" y="17" width="12" height="12" rx="2.5" fill="#fff"/>
+        </svg>
+        """);
 }

@@ -139,6 +139,77 @@ public static class WindowService
     public static void Minimize(IntPtr hwnd) => ShowWindowAsync(hwnd, SW_MINIMIZE);
     public static void Restore(IntPtr hwnd) => ShowWindowAsync(hwnd, SW_RESTORE);
 
+    /// <summary>是否启用窗口激活动画（由设置控制）。</summary>
+    public static bool AnimationEnabled { get; set; } = true;
+
+    /// <summary>
+    /// 激活窗口并播放一段“从小到大”的动画。
+    ///
+    /// 做法：记住窗口原本的位置和大小，先把它收缩成一个较小的矩形，
+    /// 再分帧放大回原尺寸。这样切换窗口时有明确的视觉反馈，
+    /// 一眼就能看出刚才把哪个窗口调了出来。
+    ///
+    /// 细节：
+    ///   * 最小化的窗口先还原，避免和系统的还原动画打架；
+    ///   * 最大化窗口不做缩放动画（否则会先退出最大化，闪烁明显）；
+    ///   * 结束时精确对齐到原矩形，避免累积误差。
+    /// </summary>
+    public static void ActivateWithZoom(IntPtr hwnd, int durationMs = 180, double startScale = 0.84)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return;
+
+        bool wasMinimized = IsIconic(hwnd);
+        bool wasMaximized = IsZoomed(hwnd);
+        if (wasMinimized) ShowWindowAsync(hwnd, SW_RESTORE);
+
+        RECT target = GetRect(hwnd);
+        bool canAnimate = AnimationEnabled
+                          && !wasMaximized
+                          && target.Width > 240 && target.Height > 180
+                          && !wasMinimized;   // 刚还原的窗口交给系统动画，不叠加
+        if (!canAnimate)
+        {
+            Activate(hwnd);
+            return;
+        }
+
+        int startW = Math.Max(120, (int)(target.Width * startScale));
+        int startH = Math.Max(90, (int)(target.Height * startScale));
+        int cx = target.Left + target.Width / 2;
+        int cy = target.Top + target.Height / 2;
+
+        SetWindowPos(hwnd, IntPtr.Zero, cx - startW / 2, cy - startH / 2, startW, startH,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        Activate(hwnd);
+
+        int frames = Math.Max(5, durationMs / 16);
+        var timer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+        int frame = 0;
+        timer.Tick += (_, _) =>
+        {
+            frame++;
+            double t = Math.Clamp((double)frame / frames, 0, 1);
+            double eased = 1 - Math.Pow(1 - t, 3);      // 缓出：开始快、收尾稳
+            double scale = startScale + (1 - startScale) * eased;
+
+            int w = (int)(target.Width * scale);
+            int h = (int)(target.Height * scale);
+            SetWindowPos(hwnd, IntPtr.Zero, cx - w / 2, cy - h / 2, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+
+            if (frame >= frames)
+            {
+                timer.Stop();
+                SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top, target.Width, target.Height,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        };
+        timer.Start();
+    }
+
     public static void ToggleMaximize(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero) return;

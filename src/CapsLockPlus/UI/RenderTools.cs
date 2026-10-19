@@ -89,6 +89,14 @@ public static class RenderTools
         count++;
         math.Close();
 
+        // 十字准星点选器：展示“点选窗口”时的遮罩界面
+        var picker = new WindowPickerWindow { ShowInTaskbar = false };
+        picker.Show();
+        Pump(260);
+        Save(picker, Path.Combine(outDir, "window-picker.png"));
+        count++;
+        picker.Close();
+
         CoreLog.Info($"离屏渲染完成：{count} 张 → {outDir}");
         return 0;
     }

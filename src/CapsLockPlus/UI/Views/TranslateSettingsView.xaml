@@ -22,10 +22,10 @@
 
                 <StackPanel x:Name="YoudaoPanel" Margin="0,14,0,0" Visibility="Collapsed">
                     <TextBlock Text="应用 ID（AppKey）" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
-                    <TextBox x:Name="AppIdBox" Style="{StaticResource TextBox.Base}" Height="34"
+                    <TextBox x:Name="AppIdBox" Style="{StaticResource TextBox.Base}" Height="36"
                              VerticalContentAlignment="Center" TextChanged="OnCredentialChanged" />
                     <TextBlock Text="应用密钥（AppSecret）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
-                    <PasswordBox x:Name="AppSecretBox" Height="34" Padding="10,7" FontSize="13.5"
+                    <PasswordBox x:Name="AppSecretBox" Height="36" Padding="10,7" FontSize="13.5"
                                  BorderBrush="{DynamicResource Brush.BorderStrong}" BorderThickness="1"
                                  PasswordChanged="OnSecretChanged" />
                     <TextBlock Text="在 https://ai.youdao.com/console 创建「文本翻译」应用后可以获得。"

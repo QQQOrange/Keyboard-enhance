@@ -65,7 +65,7 @@ public sealed class TrayIcon : IDisposable
         _icon = new NotifyIcon
         {
             Icon = _customIcon ?? SystemIcons.Application,
-            Text = "CapsLock+ 图形版",
+            Text = "CapsLock+（QQQOrange）",
             Visible = true,
             ContextMenuStrip = context,
         };
@@ -92,7 +92,7 @@ public sealed class TrayIcon : IDisposable
         try
         {
             _enabledItem.Text = enabled ? "暂停 CapsLock+" : "恢复 CapsLock+";
-            _icon.Text = enabled ? "CapsLock+ 图形版" : "CapsLock+ 已暂停";
+            _icon.Text = enabled ? "CapsLock+（QQQOrange）" : "CapsLock+ 已暂停";
         }
         catch { }
     }

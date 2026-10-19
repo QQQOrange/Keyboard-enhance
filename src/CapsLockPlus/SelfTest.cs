@@ -57,6 +57,9 @@ public static class SelfTest
         Section("按键模型");
         TestKeyNames();
 
+        Section("搜索引擎");
+        TestSearchEngines();
+
         Section("表达式求值");
         TestEvaluator();
 
@@ -74,6 +77,9 @@ public static class SelfTest
 
         Section("动作目录");
         TestActionCatalog();
+
+        Section("窗口绑定");
+        TestWindowBindings();
 
         Section("窗口与进程");
         TestWindows();
@@ -184,6 +190,71 @@ public static class SelfTest
         int bindable = new[] { "a", "1", "f1", "space", "enter", "backquote", "slash" }
             .Count(k => KeyName.VkOf(k) != null);
         CheckEqual("常用键全部可绑定", bindable, 7);
+    }
+
+    /// <summary>
+    /// 默认引擎表：国内用拼音首字母、国外用英文前两个字母，且都带图标。
+    /// 这些约定一旦被改乱，用户会记不住关键字，所以专门校验。
+    /// </summary>
+    private static void TestSearchEngines()
+    {
+        var settings = DefaultSettings.Create();
+        var engines = settings.Search
+            .Where(x => !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Check("引擎数量 >= 25", engines.Count >= 25, engines.Count.ToString());
+
+        // 国内引擎：关键字应为拼音首字母（小写字母）
+        var domestic = new (string Key, string Name)[]
+        {
+            ("bd", "百度"), ("tb", "淘宝"), ("zh", "知乎"), ("bili", "哔哩哔哩"),
+            ("wx", "微信"), ("wb", "微博"), ("jd", "京东"), ("xhs", "小红书"),
+            ("dy", "抖音"), ("db", "豆瓣"), ("csdn", "CSDN"), ("juejin", "掘金"),
+            ("gitee", "Gitee"), ("pdd", "拼多多"), ("tx", "腾讯视频"), ("iqy", "爱奇艺"),
+        };
+        int domesticOk = 0;
+        foreach (var (key, name) in domestic)
+        {
+            var hit = engines.FirstOrDefault(e => e.Key == key);
+            if (hit == null) continue;
+            domesticOk++;
+            if (!string.Equals(hit.Comment, name, StringComparison.Ordinal))
+                CoreLog.Warn($"引擎 {key} 的备注应为 {name}，实际 {hit.Comment}");
+        }
+        CheckEqual("国内引擎全部存在", domesticOk, domestic.Length);
+
+        // 国外引擎：关键字应为英文前两个字母
+        var foreign = new (string Key, string Name)[]
+        {
+            ("go", "Google"), ("bi", "Bing"), ("gh", "GitHub"), ("wi", "Wikipedia"),
+            ("yo", "YouTube"), ("re", "Reddit"), ("st", "Stack Overflow"),
+            ("md", "MDN"), ("am", "Amazon"), ("tw", "X (Twitter)"),
+            ("fa", "Facebook"), ("np", "npm"), ("nu", "NuGet"),
+        };
+        int foreignOk = 0;
+        foreach (var (key, name) in foreign)
+        {
+            var hit = engines.FirstOrDefault(e => e.Key == key);
+            if (hit == null) continue;
+            foreignOk++;
+            if (!string.Equals(hit.Comment, name, StringComparison.Ordinal))
+                CoreLog.Warn($"引擎 {key} 的备注应为 {name}，实际 {hit.Comment}");
+        }
+        CheckEqual("国外引擎全部存在", foreignOk, foreign.Length);
+
+        // 每个引擎都要有图标文件
+        int withIcon = engines.Count(e => !string.IsNullOrEmpty(e.IconPath) && File.Exists(e.IconPath));
+        CheckEqual("每个引擎都配了图标文件", withIcon, engines.Count);
+
+        // 关键字不能重复（否则 Qbar 无法区分该用哪个引擎）
+        int dup = engines.GroupBy(e => e.Key, StringComparer.OrdinalIgnoreCase)
+            .Count(g => g.Count() > 1);
+        CheckEqual("引擎关键字无重复", dup, 0);
+
+        // 每个引擎链接都要带 {q} 占位符
+        int withQ = engines.Count(e => e.Value.Contains("{q}"));
+        CheckEqual("所有引擎链接都含 {q}", withQ, engines.Count);
     }
 
     private static void TestEvaluator()
@@ -389,6 +460,95 @@ public static class SelfTest
         // 每个预设动作都被默认绑定或可选
         Check("不绑定动作存在", catalog.Get("doNothing") != null);
         queue.Dispose();
+    }
+
+    /// <summary>
+    /// 窗口绑定：10 个槽位（1~9 + 0）、两种绑定方式、以及激活动画开关。
+    /// </summary>
+    private static void TestWindowBindings()
+    {
+        var settings = DefaultSettings.Create();
+        var svc = new WindowBindingService(settings);
+        var notes = new List<string>();
+        svc.Notified += m => notes.Add(m);
+
+        // 默认应当有 10 个槽位，且按键映射到 1~9 与 0
+        CheckEqual("默认提供 10 个槽位", settings.Bindings.Count, 10);
+        var slots = settings.Bindings.Select(b => b.Slot).OrderBy(x => x).ToList();
+        Check("槽位编号为 1..10", slots.SequenceEqual(Enumerable.Range(1, 10)), string.Join(",", slots));
+
+        // 每个槽位都要有对应的按键动作
+        var catalog = ActionCatalog.Create(new ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new ClipboardService(),
+            Windows = new WindowActions(),
+            WindowBindings = svc,
+            Mouse = new MouseService(),
+            Notify = _ => { },
+        });
+        int activateOk = Enumerable.Range(1, 10)
+            .Count(i => catalog.Get($"winbindActivate{i}") != null);
+        CheckEqual("10 个激活动作齐备", activateOk, 10);
+
+        // 按键绑定：Caps+1..Caps+0 都要指向激活动作
+        int boundOk = 0;
+        for (int i = 1; i <= 10; i++)
+        {
+            string key = i == 10 ? "0" : i.ToString();
+            var b = settings.FindBinding($"caps_{key}");
+            if (b != null && b.Action == $"winbindActivate{i}") boundOk++;
+        }
+        CheckEqual("Caps+1..Caps+0 均已绑定", boundOk, 10);
+
+        // 方式一：按 exe 绑定（用一个一定存在的程序文件）
+        string exe = Environment.ProcessPath ?? "";
+        if (exe.Length > 0)
+        {
+            // 绑定自己应当被拒绝
+            Check("拒绝绑定自身", !svc.BindByExe(1, exe));
+            // 始终不存在的路径也应当拒绝
+            Check("拒绝不存在的路径", !svc.BindByExe(1, @"C:\__no_such_program__.exe"));
+        }
+        else
+        {
+            Check("取不到自身路径，跳过自身绑定检查", true);
+        }
+
+        // 方式二：按窗口句柄绑定（用当前前台窗口）
+        var fg = WindowService.Foreground;
+        if (fg != IntPtr.Zero && WindowService.Exists(fg))
+        {
+            bool ok = svc.BindWindow(2, fg);
+            Check("可按窗口句柄绑定", ok);
+            if (ok)
+            {
+                var b = settings.Bindings.First(x => x.Slot == 2);
+                Check("绑定后记录模式为单窗口", b.Mode == WinBindMode.Single);
+                Check("绑定后记录了窗口句柄", b.WindowIds.Count == 1);
+                Check("描述信息包含窗口数", svc.DescribeSlot(2).Contains("1 个窗口"),
+                    svc.DescribeSlot(2));
+            }
+        }
+        else
+        {
+            Check("取不到前台窗口，跳过句柄绑定检查", true);
+        }
+
+        // 空槽位的描述
+        CheckEqual("空槽位描述为未绑定", svc.DescribeSlot(9), "未绑定");
+
+        // 清除
+        svc.Unbind(2);
+        Check("清除后槽位为空", svc.DescribeSlot(2) == "未绑定");
+
+        // 激活动画开关可切换
+        bool saved = WindowService.AnimationEnabled;
+        WindowService.AnimationEnabled = true;
+        Check("动画开关可开启", WindowService.AnimationEnabled);
+        WindowService.AnimationEnabled = false;
+        Check("动画开关可关闭", !WindowService.AnimationEnabled);
+        WindowService.AnimationEnabled = saved;
     }
 
     private static void TestWindows()

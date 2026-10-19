@@ -96,6 +96,9 @@ public sealed class GlobalOptions
     /// </summary>
     public bool ShowActionFeedback { get; set; }
 
+    /// <summary>切换窗口时播放“从小到大”的动画。</summary>
+    public bool WindowActivationAnimation { get; set; } = true;
+
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
 

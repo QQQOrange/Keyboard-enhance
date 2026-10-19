@@ -13,8 +13,8 @@ import urllib.request
 import uuid
 
 API = "https://api.github.com/repos/QQQOrange/capslock-plus-QQQOrange-"
-TAG = "v1.0.0"
-NAME = "CapsLock+ 图形版 v1.0.0"
+TAG = os.environ.get("CLP_TAG", "v1.0.1")
+NAME = os.environ.get("CLP_NAME", "CapsLock+ 图形版 " + TAG)
 
 
 class CREDENTIAL(ctypes.Structure):

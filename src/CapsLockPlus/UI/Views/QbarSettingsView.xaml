@@ -20,7 +20,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Border Width="34" Height="34" CornerRadius="10" Background="{DynamicResource Brush.AccentSoft}">
+                    <Border Width="34" Height="36" CornerRadius="10" Background="{DynamicResource Brush.AccentSoft}">
                         <TextBlock Text="&#xE773;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
                                    Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
@@ -127,7 +127,7 @@
                                    Margin="0,5,0,12" TextWrapping="Wrap" />
 
                         <TextBlock Text="关键字" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
-                        <TextBox x:Name="KeyBox" Style="{StaticResource TextBox.Base}" Height="34"
+                        <TextBox x:Name="KeyBox" Style="{StaticResource TextBox.Base}" Height="36"
                                  VerticalContentAlignment="Center" TextChanged="OnFieldChanged" />
 
                         <TextBlock x:Name="ValueLabel" Text="内容" Style="{StaticResource Text.Secondary}"
@@ -137,7 +137,7 @@
                                  TextChanged="OnFieldChanged" />
 
                         <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
-                        <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" Height="34"
+                        <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" Height="36"
                                  VerticalContentAlignment="Center" TextChanged="OnFieldChanged" />
 
                         <TextBlock Text="图标（可选）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
@@ -147,10 +147,10 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" x:Name="IconBox" Style="{StaticResource TextBox.Base}" Height="34"
+                            <TextBox Grid.Column="0" x:Name="IconBox" Style="{StaticResource TextBox.Base}" Height="36"
                                      VerticalContentAlignment="Center" TextChanged="OnFieldChanged"
                                      ToolTip="图片（png/ico）或 exe 路径；留空则自动使用程序图标" />
-                            <Border Grid.Column="1" Width="34" Height="34" CornerRadius="8" Margin="8,0,0,0"
+                            <Border Grid.Column="1" Width="34" Height="36" CornerRadius="8" Margin="8,0,0,0"
                                     Background="{DynamicResource Brush.SurfaceAlt}"
                                     BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
                                 <Grid>

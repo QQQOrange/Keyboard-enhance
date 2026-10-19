@@ -168,17 +168,25 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="10,7" />
+        <!-- 注意：竖直内边距要留够。配合固定高度（如 34）时，
+             如果上下各占 7px，内容区只剩约 18px，中文字符会被切掉上下缘，
+             表现就是“框里有字但看不清”。这里改成上下 5px，并让内容区垂直居中。 -->
+        <Setter Property="Padding" Value="10,5" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
+                    <!-- 内边距交给 Border 的 Padding，
+                         这样 ScrollViewer 会拿到“扣掉内边距后”的完整高度，
+                         不会再出现边距叠加导致内容被挤出可视区的问题。 -->
                     <Border x:Name="Bd" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="9" SnapsToDevicePixels="True">
-                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            CornerRadius="9" SnapsToDevicePixels="True"
+                            Padding="{TemplateBinding Padding}">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      Focusable="False" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -204,8 +212,8 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="10,6" />
-        <Setter Property="Height" Value="34" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Height" Value="36" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
@@ -226,7 +234,8 @@
                         <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                          Margin="12,0,32,0" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                                          Margin="12,0,32,0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          TextElement.Foreground="{DynamicResource Brush.TextPrimary}" />
                         <Path x:Name="Arrow" Data="M 0 0 L 4 4 L 8 0" Stroke="{DynamicResource Brush.TextSecondary}"
                               StrokeThickness="1.6" HorizontalAlignment="Right" VerticalAlignment="Center"
                               Margin="0,0,12,0" />
