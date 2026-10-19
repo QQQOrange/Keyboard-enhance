@@ -174,6 +174,16 @@ public sealed class TranslateOptions
 public sealed class AppSettings
 {
     public int SchemaVersion { get; set; } = 1;
+
+    /// <summary>
+    /// 内置搜索引擎表的版本号。
+    ///
+    /// 每次发布新增内置引擎时把这个数字加一，启动时会自动把**缺失的**内置引擎
+    /// 补进用户的设置里（已存在或用户自己改过的条目不覆盖）。
+    /// 否则老用户永远看不到新引擎 —— 因为设置文件已经存在，不会再走默认值分支。
+    /// </summary>
+    public int BuiltinEnginesVersion { get; set; }
+
     public GlobalOptions Global { get; set; } = new();
     public QbarOptions Qbar { get; set; } = new();
     public TranslateOptions Translate { get; set; } = new();

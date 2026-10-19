@@ -59,6 +59,7 @@ public static class SelfTest
 
         Section("搜索引擎");
         TestSearchEngines();
+        TestEngineMigration();
 
         Section("表达式求值");
         TestEvaluator();
@@ -255,6 +256,37 @@ public static class SelfTest
         // 每个引擎链接都要带 {q} 占位符
         int withQ = engines.Count(e => e.Value.Contains("{q}"));
         CheckEqual("所有引擎链接都含 {q}", withQ, engines.Count);
+
+        // 引擎表版本号必须是有效数字（用于老用户自动补齐缺失引擎）
+        Check("引擎表版本号 >= 1", DefaultSettings.BuiltinEnginesVersion >= 1,
+            DefaultSettings.BuiltinEnginesVersion.ToString());
+    }
+
+    /// <summary>
+    /// 老用户的设置文件里只有旧引擎，升级后必须自动补齐新引擎，
+    /// 否则"扩充了引擎"对老用户等于没发生。
+    /// </summary>
+    private static void TestEngineMigration()
+    {
+        var old = DefaultSettings.Create();
+        old.BuiltinEnginesVersion = 0;          // 模拟旧版设置文件
+        old.Search.RemoveAll(e => !e.Key.Equals("default", StringComparison.OrdinalIgnoreCase)
+                                   && e.Key is not ("bd" or "tb" or "zh" or "gh" or "tr"));
+        int before = old.Search.Count;
+
+        SettingsStore.MigrateBuiltinEnginesForTest(old);
+
+        Check("迁移后条目变多", old.Search.Count > before, $"{before} → {old.Search.Count}");
+        Check("迁移后版本号已更新",
+            old.BuiltinEnginesVersion == DefaultSettings.BuiltinEnginesVersion);
+        Check("补齐了 go 引擎", old.Search.Any(e => e.Key == "go"));
+        Check("补齐了 bili 引擎", old.Search.Any(e => e.Key == "bili"));
+        Check("用户原有的 bd 未被覆盖", old.Search.Any(e => e.Key == "bd"));
+
+        // 一次又一次迁移应当是幂等的
+        int after = old.Search.Count;
+        SettingsStore.MigrateBuiltinEnginesForTest(old);
+        CheckEqual("迁移是幂等的", old.Search.Count, after);
     }
 
     private static void TestEvaluator()

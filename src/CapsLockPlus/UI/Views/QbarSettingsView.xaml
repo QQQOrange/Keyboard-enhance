@@ -192,6 +192,15 @@
                         <Slider x:Name="FontSizeSlider" Minimum="14" Maximum="30" TickFrequency="1"
                                 IsSnapToTickEnabled="True" ValueChanged="OnAppearanceChanged" />
 
+                        <!-- 实时预览：所见即所得，字号调大时能立刻看出会不会被裁 -->
+                        <Border Background="{DynamicResource Brush.SurfaceAlt}"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
+                                CornerRadius="9" Padding="10,0" Margin="0,8,0,0">
+                            <TextBlock x:Name="FontPreview" Text="预览 Preview 文字测试 qgp"
+                                       Foreground="{DynamicResource Brush.TextPrimary}"
+                                       VerticalAlignment="Center" Padding="0,5" />
+                        </Border>
+
                         <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                             <CheckBox x:Name="ShowIconsBox" Content="显示图标" Style="{StaticResource CheckBox.Text}"
                                       VerticalAlignment="Center" Click="OnAppearanceChanged" />

@@ -75,6 +75,7 @@ public partial class QbarSettingsView : UserControl
         _suppress = true;
         ListCountSlider.Value = _host.Settings.Qbar.ListCount;
         FontSizeSlider.Value = _host.Settings.Qbar.TextFontSize;
+        UpdateFontPreview();
         ShowIconsBox.IsChecked = _host.Settings.Qbar.ShowIcons;
         _suppress = false;
         MarkSelectedSwatch();
@@ -261,7 +262,18 @@ public partial class QbarSettingsView : UserControl
         _host.Settings.Qbar.ListCount = (int)ListCountSlider.Value;
         _host.Settings.Qbar.TextFontSize = FontSizeSlider.Value;
         _host.Settings.Qbar.ShowIcons = ShowIconsBox.IsChecked == true;
+        UpdateFontPreview();
         _host.SaveSettings();
+    }
+
+    /// <summary>字号预览：让用户直接看到调大字号后的实际效果。</summary>
+    private void UpdateFontPreview()
+    {
+        if (FontPreview == null) return;
+        double size = FontSizeSlider.Value;
+        FontPreview.FontSize = size;
+        // 高度跟着字号走，保证预览本身不会被裁——这也正是 Qbar 输入框的实际行为
+        FontPreview.MinHeight = Math.Max(24, Math.Round(size * 1.6));
     }
 
     private void OnResetAppearance(object sender, RoutedEventArgs e)

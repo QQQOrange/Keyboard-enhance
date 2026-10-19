@@ -34,6 +34,8 @@ public static class SettingsStore
                 var json = File.ReadAllText(AppPaths.SettingsFile);
                 var s = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? DefaultSettings.Create();
                 Normalize(s);
+                bool migrated = MigrateBuiltinEngines(s);
+                if (migrated) Save(s);
                 return s;
             }
             catch (Exception ex)
@@ -72,6 +74,70 @@ public static class SettingsStore
         }
     }
 
+    /// <summary>供自检调用的迁移入口（与启动时走同一条逻辑）。</summary>
+    internal static bool MigrateBuiltinEnginesForTest(AppSettings s) => MigrateBuiltinEngines(s);
+
+    /// <summary>
+    /// 把新增的内置搜索引擎补进用户已有设置。
+    ///
+    /// 为什么需要它：设置文件一旦存在，启动时走的就是"读取"分支，
+    /// 不会再套用默认值。于是每次扩充引擎表，老用户都看不到新引擎。
+    ///
+    /// 策略（保守，不破坏用户自定义）：
+    ///   * 用户已有的关键字：原样保留（哪怕改过链接或备注）；
+    ///   * 用户没有的关键字：把内置引擎补上；
+    ///   * 只补不删，用户自己新增的引擎不受影响。
+    /// </summary>
+    private static bool MigrateBuiltinEngines(AppSettings s)
+    {
+        if (s.BuiltinEnginesVersion >= DefaultSettings.BuiltinEnginesVersion) return false;
+
+        // 旧版用过、现在已改名的关键字：直接删掉，免得用户看到 g 和 go 两个 Google。
+        // 只删"还保持原始内容"的条目；如果用户改过链接，说明他自己在用，保留。
+        var renamedAway = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["g"] = "go",    // Google
+            ["b"] = "bi",    // Bing
+            ["wk"] = "wi",   // Wikipedia
+            ["m"] = "md",    // MDN
+        };
+        foreach (var (oldKey, newKey) in renamedAway)
+        {
+            var old = s.Search.FirstOrDefault(e => e.Key.Equals(oldKey, StringComparison.OrdinalIgnoreCase));
+            if (old == null) continue;
+            var target = DefaultSettings.Create().Search
+                .FirstOrDefault(e => e.Key.Equals(newKey, StringComparison.OrdinalIgnoreCase));
+            if (target != null && old.Value == target.Value)
+            {
+                s.Search.Remove(old);
+                CoreLog.Info($"搜索引擎 {oldKey} 已重命名为 {newKey}，移除旧条目");
+            }
+        }
+
+        var builtin = DefaultSettings.Create().Search
+            .Where(e => !e.Key.Equals("default", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        int added = 0;
+        foreach (var engine in builtin)
+        {
+            bool exists = s.Search.Any(e => e.Key.Equals(engine.Key, StringComparison.OrdinalIgnoreCase));
+            if (exists) continue;
+            s.Search.Add(new QEntry
+            {
+                Key = engine.Key,
+                Value = engine.Value,
+                Comment = engine.Comment,
+                IconPath = engine.IconPath,
+            });
+            added++;
+        }
+
+        s.BuiltinEnginesVersion = DefaultSettings.BuiltinEnginesVersion;
+        if (added > 0) CoreLog.Info($"已补充 {added} 个内置搜索引擎（引擎表版本 → {s.BuiltinEnginesVersion}）");
+        return true;
+    }
+
     /// <summary>补齐缺失字段、修正非法值。</summary>
     public static void Normalize(AppSettings s)
     {
@@ -101,9 +167,16 @@ public static class SettingsStore
 /// <summary>默认设置：完整复刻上游 CapsLock+ 的 capslox 布局。</summary>
 public static class DefaultSettings
 {
+    /// <summary>
+    /// 内置搜索引擎表的版本号。新增内置引擎时 +1，老用户启动时会自动补齐缺失项。
+    ///   1 = 最初的 10 个引擎
+    ///   2 = 扩充到 29 个（国内用拼音首字母、国外用英文前两字母，全部带图标）
+    /// </summary>
+    public const int BuiltinEnginesVersion = 2;
+
     public static AppSettings Create()
     {
-        var s = new AppSettings();
+        var s = new AppSettings { BuiltinEnginesVersion = BuiltinEnginesVersion };
         s.Keys = CapsloxScheme();
         s.Search = new List<QEntry>
         {

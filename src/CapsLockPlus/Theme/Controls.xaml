@@ -168,9 +168,11 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
         <Setter Property="BorderThickness" Value="1" />
-        <!-- 注意：竖直内边距要留够。配合固定高度（如 34）时，
-             如果上下各占 7px，内容区只剩约 18px，中文字符会被切掉上下缘，
-             表现就是“框里有字但看不清”。这里改成上下 5px，并让内容区垂直居中。 -->
+        <!-- 注意：竖直内边距要留够，这是文字被裁切的根源。
+             当控件设了固定高度时，内容区 = 高度 - 上下内边距 - 上下边框。
+             200% DPI 下中文字形约 17px。若上下各留 7px、边框 1px，
+             34px 高的框只剩 18px 给文字，下降部（g/q/y/p）就会被切掉。
+             这里统一留 5px（高度统一用 36px），余量约 7px，各种 DPI 下都安全。 -->
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />

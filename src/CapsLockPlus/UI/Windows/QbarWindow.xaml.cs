@@ -57,6 +57,9 @@ public partial class QbarWindow : Window
             Panel.Background = _panelBrush;
 
             Input.FontSize = q.TextFontSize;
+            // 字号变大时必须同步抬高输入框，否则上下缘会被裁掉。
+            // 经验公式：行高 ≈ 字号 × 1.25，再留一点余量。
+            Input.MinHeight = Math.Max(42, Math.Round(q.TextFontSize * 1.6));
             Results.MaxHeight = q.LineHeight * q.ListCount + 12;
             SizeToContent = SizeToContent.Height;
         }

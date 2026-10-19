@@ -106,6 +106,9 @@ public partial class App : Application
         int renderIndex = Array.FindIndex(e.Args, a => a.Equals("--render", StringComparison.OrdinalIgnoreCase));
         if (renderIndex >= 0)
         {
+            // --render-diag 额外输出输入框布局诊断，用于排查文字被裁切
+            RenderTools.DiagnosticsRequested =
+                e.Args.Any(a => a.Equals("--render-diag", StringComparison.OrdinalIgnoreCase));
             string outDir = renderIndex + 1 < e.Args.Length
                 ? e.Args[renderIndex + 1]
                 : Path.Combine(AppPaths.DataDir, "render");

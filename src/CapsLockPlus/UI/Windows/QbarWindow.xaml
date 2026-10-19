@@ -69,9 +69,11 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Qbar 输入框：字号可在设置里调到 30，
+                             所以高度给足（字号 + 上下各 8px），否则大字号下文字会被裁掉上下缘。 -->
                         <TextBox x:Name="Input" FontSize="21" Background="Transparent" BorderThickness="0"
                                  Foreground="#FFFFFF" CaretBrush="#FFFFFF" VerticalContentAlignment="Center"
-                                 Height="38" MinWidth="120" TextChanged="OnInputChanged"
+                                 Padding="0,4" MinHeight="42" MinWidth="120" TextChanged="OnInputChanged"
                                  PreviewKeyDown="OnInputKeyDown" FontFamily="{StaticResource Font.Ui}" />
                     </StackPanel>
 

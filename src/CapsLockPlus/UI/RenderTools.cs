@@ -18,6 +18,9 @@ namespace CapsLockPlus.UI;
 /// </summary>
 public static class RenderTools
 {
+    /// <summary>是否输出布局诊断文件（由 --render-diag 打开，避免污染正常截图目录）。</summary>
+    public static bool DiagnosticsRequested { get; set; }
+
     private static readonly string[] Pages =
     {
         "guide", "keys", "qbar", "bindings", "clipboard", "translate", "settings", "help", "about",
@@ -41,8 +44,22 @@ public static class RenderTools
             main.Navigate(page);
             Pump(220);
             Save(main, Path.Combine(outDir, $"{page}.png"));
+            // 诊断文件只在显式要求时输出（--render-diag <目录>），
+            // 免得把一堆中间产物混进 docs/screenshots。
+            if (DiagnosticsRequested)
+            {
+                try
+                {
+                    DumpTextBoxMetrics(main, Path.Combine(outDir, $"metrics-{page}.txt"), page);
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn($"输出 {page} 输入框诊断失败：" + ex.Message);
+                }
+            }
             count++;
         }
+
         main.Close();
 
         // Qbar 面板（深色浮层，单独渲染）
@@ -53,6 +70,7 @@ public static class RenderTools
         qbar.UpdateLayout();
         Pump(120);
         Save(qbar, Path.Combine(outDir, "qbar-panel.png"));
+        if (DiagnosticsRequested) DumpTextBoxMetrics(qbar, Path.Combine(outDir, "metrics-win-qbar-panel.txt"), "Qbar 面板");
         count++;
 
         // 标签形态：输入 "bd " 之后 bd 变成标签，输入框只剩搜索词
@@ -86,8 +104,27 @@ public static class RenderTools
         math.Show();
         Pump(200);
         Save(math, Path.Combine(outDir, "mathboard.png"));
+        if (DiagnosticsRequested) DumpTextBoxMetrics(math, Path.Combine(outDir, "metrics-win-mathboard.txt"), "计算板");
         count++;
         math.Close();
+
+        // 翻译窗口
+        var tr = new TranslateWindow(host) { ShowInTaskbar = false, Left = -32000, Top = -32000 };
+        tr.Show();
+        Pump(240);
+        Save(tr, Path.Combine(outDir, "translate.png"));
+        if (DiagnosticsRequested) DumpTextBoxMetrics(tr, Path.Combine(outDir, "metrics-win-translate.txt"), "翻译窗口");
+        count++;
+        tr.Close();
+
+        // 剪贴板历史
+        var clip = new ClipboardHistoryWindow(host) { ShowInTaskbar = false, Left = -32000, Top = -32000 };
+        clip.Show();
+        Pump(240);
+        Save(clip, Path.Combine(outDir, "clipboard.png"));
+        if (DiagnosticsRequested) DumpTextBoxMetrics(clip, Path.Combine(outDir, "metrics-win-clipboard.txt"), "剪贴板历史");
+        count++;
+        clip.Close();
 
         // 十字准星点选器：展示“点选窗口”时的遮罩界面
         var picker = new WindowPickerWindow { ShowInTaskbar = false };
@@ -99,6 +136,61 @@ public static class RenderTools
 
         CoreLog.Info($"离屏渲染完成：{count} 张 → {outDir}");
         return 0;
+    }
+
+    /// <summary>诊断：dump 所有 TextBox 的真实布局尺寸，用于排查文字被裁切。</summary>
+    public static void DumpTextBoxMetrics(System.Windows.Media.Visual root, string outPath, string page = "")
+    {
+        var lines = new List<string>();
+        lines.Add($"TextBox 布局诊断（页面：{page}）");
+        lines.Add($"DPI scale = {VisualTreeHelper.GetDpi(root).DpiScaleX}");
+        lines.Add("");
+        lines.Add($"{"名称",-14} {"控件高",7} {"内容区高",8} {"内边距",12} {"字号",6} {"文字高",7} {"是否裁切",9}");
+
+        Walk(root, tb =>
+        {
+            var host = FindChild<System.Windows.Controls.ScrollViewer>(tb);
+            double controlH = tb.ActualHeight;
+            double hostH = host?.ActualHeight ?? 0;
+            var padding = tb.Padding;
+            double fontSize = tb.FontSize;
+
+            // 用当前文本量一下字形高度
+            var typeface = new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
+            var ft = new FormattedText(
+                string.IsNullOrEmpty(tb.Text) ? "Ag中" : tb.Text,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight, typeface, fontSize, Brushes.Black,
+                VisualTreeHelper.GetDpi(tb).PixelsPerDip);
+            double textH = ft.Height;
+
+            bool clipped = hostH > 0 && textH > hostH + 0.5;
+            string pad = $"{padding.Left:0},{padding.Top:0}";
+            lines.Add($"{tb.Name,-14} {controlH,7:0.0} {hostH,8:0.0} {pad,12} " +
+                      $"{fontSize,6:0.0} {textH,7:0.0} {(clipped ? "是 <--" : "否"),9}");
+        });
+
+        File.WriteAllLines(outPath, lines);
+    }
+
+    private static void Walk(DependencyObject node, Action<System.Windows.Controls.TextBox> visit)
+    {
+        if (node is System.Windows.Controls.TextBox tb) visit(tb);
+        int n = VisualTreeHelper.GetChildrenCount(node);
+        for (int i = 0; i < n; i++) Walk(VisualTreeHelper.GetChild(node, i), visit);
+    }
+
+    private static T? FindChild<T>(DependencyObject node) where T : DependencyObject
+    {
+        int n = VisualTreeHelper.GetChildrenCount(node);
+        for (int i = 0; i < n; i++)
+        {
+            var child = VisualTreeHelper.GetChild(node, i);
+            if (child is T t) return t;
+            var deeper = FindChild<T>(child);
+            if (deeper != null) return deeper;
+        }
+        return null;
     }
 
     private static void Pump(int ms = 120)
