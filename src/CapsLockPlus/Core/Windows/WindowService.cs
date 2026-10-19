@@ -49,6 +49,10 @@ public static class WindowService
 
     public static WindowInfo? ForegroundInfo() => Describe(Foreground);
 
+    /// <summary>取窗口所属进程 ID（供自检使用）。</summary>
+    public static void GetWindowThreadProcessIdForTest(IntPtr hwnd, out uint pid) =>
+        GetWindowThreadProcessId(hwnd, out pid);
+
     /// <summary>取窗口类名（用于识别桌面、任务栏等系统壳窗口）。</summary>
     public static string? ClassNameOf(IntPtr hwnd)
     {

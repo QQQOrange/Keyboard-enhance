@@ -84,6 +84,7 @@ public static class SelfTest
 
         Section("窗口点选");
         TestWindowPreview();
+        TestPickerWithOverlayVisible();
 
         Section("文字度量");
         TestTextMetrics();
@@ -234,9 +235,9 @@ public static class SelfTest
         // 国外引擎：关键字应为英文前两个字母
         var foreign = new (string Key, string Name)[]
         {
-            ("go", "Google"), ("bi", "Bing"), ("gh", "GitHub"), ("wi", "Wikipedia"),
-            ("yo", "YouTube"), ("re", "Reddit"), ("st", "Stack Overflow"),
-            ("md", "MDN"), ("am", "Amazon"), ("tw", "X (Twitter)"),
+            ("go", "Google"), ("bi", "Bing"), ("gh", "GitHub"),
+            ("wi", "维基百科"), ("yo", "YouTube"), ("re", "Reddit"),
+            ("st", "Startpage"), ("md", "MDN"), ("am", "Amazon"),
             ("fa", "Facebook"), ("np", "npm"), ("nu", "NuGet"),
         };
         int foreignOk = 0;
@@ -250,9 +251,12 @@ public static class SelfTest
         }
         CheckEqual("国外引擎全部存在", foreignOk, foreign.Length);
 
-        // 每个引擎都要有图标文件
-        int withIcon = engines.Count(e => !string.IsNullOrEmpty(e.IconPath) && File.Exists(e.IconPath));
-        CheckEqual("每个引擎都配了图标文件", withIcon, engines.Count);
+        // 每个引擎都要有图标：内置图标是打包资源（EngineIcon），
+        // 不再是磁盘文件，所以这里检查 EngineIcon 非空且能真正加载出来。
+        int withIcon = engines.Count(e =>
+            !string.IsNullOrEmpty(e.EngineIcon) &&
+            Core.Icons.IconCache.FromResource(e.EngineIcon) != null);
+        CheckEqual("每个引擎都配了可用图标", withIcon, engines.Count);
 
         // 关键字不能重复（否则 Qbar 无法区分该用哪个引擎）
         int dup = engines.GroupBy(e => e.Key, StringComparer.OrdinalIgnoreCase)
@@ -632,7 +636,105 @@ public static class SelfTest
             Check("没有可作为目标的窗口，跳过", true);
         }
 
+        // 核心回归：按坐标从 Z 序里取窗口。
+        // 之前的实现用 WindowFromPoint，遮罩会挡住自己导致取不到；
+        // 现在的实现从桌面 Z 序顶端扫描，必须能取到一个真实窗口。
+        var anyWindow = WindowService.EnumerateTopLevel()
+            .FirstOrDefault(w => !w.ExeName.Equals(AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)
+                                 && w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd"));
+        if (anyWindow.Handle != IntPtr.Zero)
+        {
+            var r = WindowService.GetRect(anyWindow.Handle);
+            int cx = r.Left + r.Width / 2;
+            int cy = r.Top + r.Height / 2;
+            var found = probe.ResolveAtForTest(cx, cy);
+            Check("按坐标能从 Z 序取到窗口", found != IntPtr.Zero,
+                $"({cx},{cy}) -> 0x{found.ToInt64():X}");
+            Check("取到的不是本进程窗口", found == IntPtr.Zero ||
+                !IsOwnProcess(found), "0x" + found.ToInt64().ToString("X"));
+        }
+        else
+        {
+            Check("没有可用于坐标测试的窗口，跳过", true);
+        }
+
         picker.Close();
+    }
+
+    /// <summary>
+    /// 实测点选器遮罩"在屏幕上真实可见"时，取窗口还能不能成功。
+    ///
+    /// 这是"点选点了没反应"的直接回归测试。之前只测了不显示遮罩的情况，
+    /// 而真正的失败场景恰恰是遮罩铺满全屏、置顶的时候：
+    /// 旧实现用 WindowFromPoint，取到的永远是遮罩自己。
+    ///
+    /// 这里真的把遮罩显示出来、应用同款样式，再验证：
+    ///   1) 遮罩确实获得了 WS_EX_TRANSPARENT（点击穿透）——否则点击会被它吃掉；
+    ///   2) 遮罩在最顶层时，坐标取窗口仍能命中一个不属于本进程的真实窗口。
+    /// </summary>
+    private static void TestPickerWithOverlayVisible()
+    {
+        var picker = new UI.Windows.WindowPickerWindow
+        {
+            ShowInTaskbar = false,
+            Left = -32000,
+            Top = -32000,
+        };
+        picker.Show();
+        DoEvents(260);
+
+        try
+        {
+            var hwnd = picker.HandleForTest;
+            Check("遮罩已创建", hwnd != IntPtr.Zero, "0x" + hwnd.ToInt64().ToString("X"));
+            Check("遮罩带点击穿透样式（WS_EX_TRANSPARENT）", picker.HasClickThroughForTest);
+            Check("遮罩在顶层（TOPMOST）", picker.IsTopmostForTest);
+
+            // 取屏幕正中，这里一定是某个真实窗口（或桌面）
+            var probe = picker.Probe;
+            int cx = (int)(System.Windows.SystemParameters.PrimaryScreenWidth / 2);
+            int cy = (int)(System.Windows.SystemParameters.PrimaryScreenHeight / 2);
+            var found = probe.ResolveAtForTest(cx, cy);
+            bool isReal = found != IntPtr.Zero
+                          && found != hwnd
+                          && !IsOwnProcess(found);
+            Check("遮罩可见时仍能取到真实窗口", isReal,
+                $"({cx},{cy}) -> 0x{found.ToInt64():X}");
+        }
+        finally
+        {
+            picker.Close();
+            DoEvents(120);
+        }
+    }
+
+    /// <summary>
+    /// 抽空 WPF 消息队列若干毫秒。
+    /// 自检跑在界面线程上，Show() 之后必须让消息循环转一会儿，
+    /// Loaded 才会触发、窗口样式才真正应用。
+    /// </summary>
+    private static void DoEvents(int ms)
+    {
+        var end = DateTime.Now.AddMilliseconds(ms);
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        var timer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(Math.Max(20, ms)),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            frame.Continue = false;
+        };
+        timer.Start();
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+    }
+
+    private static bool IsOwnProcess(IntPtr hwnd)
+    {
+        WindowService.GetWindowThreadProcessIdForTest(hwnd, out uint pid);
+        return pid == (uint)Environment.ProcessId;
     }
 
     /// <summary>

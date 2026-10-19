@@ -170,6 +170,18 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool IsIconic(IntPtr hWnd);
 
+    // ---- 顶层窗口 Z 序枚举（点选窗口时用来绕过自己的全屏遮罩）----
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDesktopWindow();
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetTopWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+    public const uint GW_HWNDNEXT = 2;
+
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 

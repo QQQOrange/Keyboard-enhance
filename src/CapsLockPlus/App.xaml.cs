@@ -57,6 +57,24 @@ public partial class App : Application
             return;
         }
 
+        // 批量把 SVG 图标渲染成 PNG（构建期工具：把外部图标库转成本程序可用的位图）
+        int svgIndex = Array.FindIndex(e.Args, a => a.Equals("--svg2png", StringComparison.OrdinalIgnoreCase));
+        if (svgIndex >= 0 && svgIndex + 2 < e.Args.Length)
+        {
+            int code;
+            try
+            {
+                code = Core.Icons.SvgBatch.Convert(e.Args[svgIndex + 1], e.Args[svgIndex + 2], 64);
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error("SVG 批量转换异常", ex);
+                code = 2;
+            }
+            Environment.Exit(code);
+            return;
+        }
+
         // 无控制台时 Console.WriteLine 会抛 IOException（"can't open file for write"），
         // 这里统一兜住，避免诊断命令打出无意义的噪声。
         Console.SetOut(TextWriter.Null);

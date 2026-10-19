@@ -25,6 +25,15 @@ public sealed class QEntry
     /// </summary>
     public string IconPath { get; set; } = "";
 
+    /// <summary>
+    /// 内置图标的资源名（对应 Assets/engine-icons 里的一张 PNG）。
+    ///
+    /// 与 <see cref="IconPath"/> 的区别：IconPath 指向磁盘上的用户自定义文件，
+    /// 而 EngineIcon 指向**随程序打包**的内置图标 —— 内置引擎表用的都是后者，
+    /// 这样即使用户清掉数据目录，图标也不会丢，也不依赖任何网络下载。
+    /// </summary>
+    public string EngineIcon { get; set; } = "";
+
     /// <summary>Run 条目：是否以管理员身份启动。</summary>
     public bool RunAsAdmin { get; set; }
 
@@ -38,6 +47,7 @@ public sealed class QEntry
     public QEntry Clone() => new()
     {
         Key = Key, Value = Value, Comment = Comment, IconPath = IconPath,
+        EngineIcon = EngineIcon,
         RunAsAdmin = RunAsAdmin, Arguments = Arguments,
     };
 }

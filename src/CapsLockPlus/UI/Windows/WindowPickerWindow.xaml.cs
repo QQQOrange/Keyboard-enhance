@@ -7,25 +7,28 @@ using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Windows;
 using static CapsLockPlus.Core.Interop.NativeMethods;
+using NativeMethods = CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.UI.Windows;
 
 /// <summary>
 /// 十字准星窗口点选器。
 ///
-/// 之前的实现在 MouseLeftButtonDown 里用 WindowFromPoint 取窗口 —— 这条路是错的：
-/// 遮罩窗口自己就铺满全屏并且在最上层，WindowFromPoint 返回的永远是遮罩本身，
-/// 于是"点了没反应"。
+/// 取窗口的逻辑参考了 QuickSearch（D:\Local AI\git\Quick search 源代码）里的
+/// <c>foreign_window_at</c>。它踩过的坑，这里也踩过：
 ///
-/// 现在的做法（与 QuickSearch 那类启动器一致）：
-///   * 遮罩设为"点击穿透"（WS_EX_TRANSPARENT + WS_EX_LAYERED），
-///     鼠标事件根本不会落到遮罩上，点击直达下面的真实窗口；
-///   * 用全局鼠标钩子来监听移动与松开，从钩子里拿到真实坐标，
-///     再临时把遮罩隐藏一会儿取出该坐标下的窗口，随即恢复；
-///   * 高亮框画在另一个"不接收鼠标"的小窗口里，
-///     避免遮罩穿透之后连高亮也点不中。
+///   1) 遮罩铺满全屏且 always-on-top，直接用 <c>WindowFromPoint</c> 取到的**永远是遮罩自己**；
+///   2) 沿着 <c>GW_HWNDNEXT</c> 从遮罩往下跳也不行 —— 置顶窗口自成一段 Z 序，
+///      跳两三跳就断了，根本够不到下面的真实程序，于是"点哪都认不出来"。
 ///
-/// 这样既能点中目标，也能实时预览，且不会误选自己。
+/// QuickSearch 的可靠做法（本类照此实现）：
+///   从桌面 Z 序最顶端（<c>GetTopWindow(desktop)</c>）开始，沿 <c>GW_HWNDNEXT</c>
+///   一层层往下扫；对每个可见、非最小化的顶层窗口，用**窗口矩形**判断是否包含该点；
+///   跳过点击穿透的蒙层（WS_EX_TRANSPARENT），命中第一个非本进程的窗口就返回。
+///   全过程纯同步，不依赖焦点、也不依赖"自己的窗口关没关"。
+///
+/// 另外遮罩本身设了 WS_EX_TRANSPARENT，让点击穿透到真实窗口；
+/// 鼠标事件则由全局鼠标钩子捕获，不靠遮罩自己收事件。
 /// </summary>
 public partial class WindowPickerWindow : Window
 {
@@ -34,9 +37,9 @@ public partial class WindowPickerWindow : Window
 
     private IntPtr _selfHandle;
     private IntPtr _mouseHook = IntPtr.Zero;
-    private HookProc? _mouseProc;                 // 必须保存，防止被 GC 回收
-    private IntPtr _lastTarget = IntPtr.Zero;
+    private HookProc? _mouseProc;                 // 必须保存引用，防止被 GC
     private readonly DispatcherTimer _poll;
+    private bool _closing;
 
     private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -52,7 +55,6 @@ public partial class WindowPickerWindow : Window
 
     private const int WH_MOUSE_LL = 14;
     private const int WM_MOUSEMOVE = 0x0200;
-    private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_LBUTTONUP = 0x0202;
     private const int WM_RBUTTONUP = 0x0205;
 
@@ -76,38 +78,30 @@ public partial class WindowPickerWindow : Window
         Closed += OnClosed;
         PreviewKeyDown += OnKeyDown;
 
-        // 兜底轮询：万一钩子被安全软件拦掉，至少高亮还能跟随鼠标
-        _poll = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(90) };
+        // 兜底轮询：万一全局鼠标钩子被安全软件拦掉，高亮仍能跟随鼠标
+        _poll = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(80) };
         _poll.Tick += (_, _) => UpdateHover(CurrentCursor());
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _selfHandle = new WindowInteropHelper(this).Handle;
-        MakeClickThrough();
 
-        // 置顶但不激活，避免抢走目标窗口的焦点
+        // 关键：点击穿透。这样点击直接落到下面的真实窗口上，
+        // 我们的遮罩不会"吃掉"点击。
+        int ex = GetWindowLong(_selfHandle, GWL_EXSTYLE);
+        ex |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+        SetWindowLong(_selfHandle, GWL_EXSTYLE, ex);
         SetWindowPos(_selfHandle, HWND_TOPMOST, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
         _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, GetModuleHandle(null), 0);
         if (_mouseHook == IntPtr.Zero)
-            CoreLog.Warn($"点选器鼠标钩子安装失败（错误码 {Marshal.GetLastWin32Error()}），改用轮询模式");
+            CoreLog.Warn($"点选器鼠标钩子安装失败（错误码 {Marshal.GetLastWin32Error()}），改用轮询");
         _poll.Start();
 
         Activate();
         Focus();
-    }
-
-    /// <summary>让遮罩完全穿透鼠标，点击直接落到下面的真实窗口。</summary>
-    private void MakeClickThrough()
-    {
-        int ex = GetWindowLong(_selfHandle, GWL_EXSTYLE);
-        ex |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-        SetWindowLong(_selfHandle, GWL_EXSTYLE, ex);
-        // 变更扩展样式后需要重新应用一次，样式才会生效
-        SetWindowPos(_selfHandle, HWND_TOPMOST, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -137,7 +131,7 @@ public partial class WindowPickerWindow : Window
 
     private IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
+        if (nCode >= 0 && !_closing)
         {
             int msg = (int)wParam;
             var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
@@ -148,22 +142,36 @@ public partial class WindowPickerWindow : Window
             }
             else if (msg == WM_LBUTTONUP)
             {
-                // 在钩子里直接定案：这时遮罩已经穿透，WindowFromPoint 能拿到真实窗口。
-                // 先记住句柄，再回到界面线程收尾（钩子回调里不能做重活）。
-                var target = ResolveTargetUnder(data.pt);
+                // 在钩子里就定案，避免遮罩先关掉导致坐标失效
+                var target = ResolveTargetUnder(data.pt.X, data.pt.Y);
                 Dispatcher.BeginInvoke(() =>
                 {
                     if (target != IntPtr.Zero)
                     {
                         PickedWindow = target;
                         CoreLog.Info($"点选到窗口 0x{target.ToInt64():X}");
+                        _closing = true;
                         Close();
+                    }
+                    else
+                    {
+                        // 取不到时不要静默失败——告诉用户换个位置再点
+                        HoverTitle.Text = "这里没认出窗口，换个位置再点一次";
+                        HoverProcess.Text = "也可以按 Esc / 右键取消";
+                        HoverInfo.Visibility = Visibility.Visible;
+                        HoverInfo.Margin = new Thickness(
+                            Math.Max(0, ActualWidth / 2 - 200), 60, 0, 0);
                     }
                 });
             }
             else if (msg == WM_RBUTTONUP)
             {
-                Dispatcher.BeginInvoke(() => { PickedWindow = IntPtr.Zero; Close(); });
+                Dispatcher.BeginInvoke(() =>
+                {
+                    PickedWindow = IntPtr.Zero;
+                    _closing = true;
+                    Close();
+                });
             }
         }
         return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
@@ -171,8 +179,8 @@ public partial class WindowPickerWindow : Window
 
     private void UpdateHover(POINT pt)
     {
-        var target = ResolveTargetUnder(pt);
-        _lastTarget = target;
+        if (_closing) return;
+        var target = ResolveTargetUnder(pt.X, pt.Y);
 
         if (target == IntPtr.Zero)
         {
@@ -209,82 +217,100 @@ public partial class WindowPickerWindow : Window
     }
 
     /// <summary>
-    /// 取指定坐标下"真实存在"的顶层窗口。
+    /// 取指定坐标下"不属于本进程"的最上面那个可见顶层窗口。
     ///
-    /// 关键点：遮罩自己是点击穿透的，但 WindowFromPoint 仍可能把遮罩算进去
-    /// （取决于是否已经应用了 WS_EX_TRANSPARENT+LAYERED）。
-    /// 所以这里做双重保险：命中自己时，把遮罩临时移出屏幕再取一次。
+    /// 这是整个点选功能的核心，做法照 QuickSearch 的 foreign_window_at：
+    /// 从桌面 Z 序顶端开始沿 GW_HWNDNEXT 往下扫，用窗口矩形判断是否命中。
+    ///
+    /// 为什么不用 WindowFromPoint：遮罩铺满全屏且置顶，它永远返回遮罩自己；
+    /// 为什么不用 GW_HWNDNEXT 从遮罩往下跳：置顶窗口自成一段 Z 序，跳几跳就断。
     /// </summary>
-    private IntPtr ResolveTargetUnder(POINT pt)
+    private static IntPtr ResolveTargetUnder(int x, int y)
     {
-        var hwnd = WindowFromPoint(pt);
-        var root = RootOf(hwnd);
+        uint me = (uint)Environment.ProcessId;
+        var desktop = GetDesktopWindow();
+        var h = GetTopWindow(desktop);
+        int guard = 0;
 
-        if (IsUs(root))
+        while (h != IntPtr.Zero && guard < 4096)
         {
-            // 自己挡路了：把遮罩挪走一瞬间，取到下面的真实窗口后立刻挪回来
-            var saved = Highlight.Visibility;
-            Hide();
-            try
+            guard++;
+            if (IsWindowVisible(h) && !IsIconic(h))
             {
-                hwnd = WindowFromPoint(pt);
-                root = RootOf(hwnd);
+                // 跳过点击穿透的蒙层：它们不是"鼠标底下的窗口"。
+                // （WindowFromPoint 本来就跳过这类窗口，这里把两条路对齐。）
+                int ex = GetWindowLong(h, GWL_EXSTYLE);
+                if ((ex & WS_EX_TRANSPARENT) == 0)
+                {
+                    var r = WindowService.GetRect(h);
+                    if (r.Width > 0 && r.Height > 0 &&
+                        x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom)
+                    {
+                        GetWindowThreadProcessId(h, out uint pid);
+                        if (pid != 0 && pid != me)
+                            return h;
+                    }
+                }
             }
-            finally
-            {
-                Show();
-                MakeClickThrough();
-                Highlight.Visibility = saved;
-            }
-            if (IsUs(root)) return IntPtr.Zero;
+            // 注意：必须写全限定名。本类继承自 WPF 的 Window，
+            // 类内部直接写 GetWindow 会被解析成 Window.GetWindow(DependencyObject)。
+            h = NativeMethods.GetWindow(h, GW_HWNDNEXT);
         }
 
-        if (root == IntPtr.Zero) return IntPtr.Zero;
-        if (!IsWindowVisible(root)) return IntPtr.Zero;
-
-        // 排除桌面、任务栏等系统壳窗口
-        string? cls = WindowService.ClassNameOf(root);
-        if (cls != null && IsShellClass(cls)) return IntPtr.Zero;
-
-        var info = WindowService.Describe(root);
-        if (info == null) return IntPtr.Zero;
-        if (info.ExeName.Equals(AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)) return IntPtr.Zero;
-
-        return root;
-    }
-
-    private IntPtr RootOf(IntPtr hwnd)
-    {
-        if (hwnd == IntPtr.Zero) return IntPtr.Zero;
-        var root = GetAncestor(hwnd, GA_ROOT);
-        return root == IntPtr.Zero ? hwnd : root;
-    }
-
-    private bool IsUs(IntPtr hwnd)
-    {
-        if (hwnd == IntPtr.Zero) return false;
-        if (hwnd == _selfHandle) return true;
-        GetWindowThreadProcessId(hwnd, out uint pid);
-        return pid == (uint)Environment.ProcessId;
+        // 极端情况：一次都没扫到（比如某个驱动把 Z 序打乱）。
+        // 退回 WindowFromPoint，并显式跳过自己，聊胜于无。
+        var fallback = WindowFromPoint(new POINT { X = x, Y = y });
+        if (fallback != IntPtr.Zero)
+        {
+            var root = GetAncestor(fallback, GA_ROOT);
+            if (root == IntPtr.Zero) root = fallback;
+            GetWindowThreadProcessId(root, out uint pid);
+            if (pid != 0 && pid != me) return root;
+        }
+        return IntPtr.Zero;
     }
 
     /// <summary>
     /// 供自检使用的探针：把点选判定逻辑暴露出来，
-    /// 让自检能在不弹窗、不接管鼠标的情况下验证规则是否正确。
+    /// 让自检能在不弹窗、不接管鼠标的情况下验证规则。
     /// </summary>
-    public PickerProbe Probe => new(this);
+    public PickerProbe Probe => new();
+
+    /// <summary>遮罩窗口句柄（自检用）。</summary>
+    public IntPtr HandleForTest => new WindowInteropHelper(this).Handle;
+
+    /// <summary>遮罩是否已设"点击穿透"（自检用）。</summary>
+    public bool HasClickThroughForTest
+    {
+        get
+        {
+            var h = HandleForTest;
+            if (h == IntPtr.Zero) return false;
+            return (GetWindowLong(h, GWL_EXSTYLE) & WS_EX_TRANSPARENT) != 0;
+        }
+    }
+
+    /// <summary>遮罩是否置顶（自检用）。</summary>
+    public bool IsTopmostForTest
+    {
+        get
+        {
+            var h = HandleForTest;
+            if (h == IntPtr.Zero) return false;
+            return (GetWindowLong(h, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+        }
+    }
 
     public readonly struct PickerProbe
     {
-        private readonly WindowPickerWindow _owner;
-        internal PickerProbe(WindowPickerWindow owner) => _owner = owner;
-
         /// <summary>该句柄是否可以被点选（排除自身、壳窗口、无效窗口）。</summary>
         public bool AcceptsForTest(IntPtr hwnd)
         {
             if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return false;
-            if (_owner.IsUs(hwnd)) return false;
             if (!IsWindowVisible(hwnd)) return false;
+
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == (uint)Environment.ProcessId) return false;
 
             string? cls = WindowService.ClassNameOf(hwnd);
             if (cls != null && IsShellClass(cls)) return false;
@@ -297,6 +323,9 @@ public partial class WindowPickerWindow : Window
 
         /// <summary>该类名是否是应当排除的系统壳窗口。</summary>
         public bool IsShellClassForTest(string cls) => IsShellClass(cls);
+
+        /// <summary>按坐标取窗口（与真实点选走同一条逻辑）。</summary>
+        public IntPtr ResolveAtForTest(int x, int y) => ResolveTargetUnder(x, y);
     }
 
     /// <summary>桌面、任务栏等系统壳窗口：点选时要排除，否则会绑到桌面上。</summary>
