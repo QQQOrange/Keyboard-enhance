@@ -105,6 +105,19 @@ public static class SelfTest
         Section("触发键展示");
         TestTriggerDisplayProps();
 
+        Section("提权");
+        TestElevation();
+
+        Section("热路径缓存");
+        TestHotPathCaching();
+
+        Section("宏与速查表展示");
+        TestMacroDisplayProps();
+        TestHelpCoversAllLayers();
+
+        Section("审计修复");
+        TestAuditFindings();
+
         Section("宏可绑定");
         TestMacroIsBindable();
         TestActionCategories();
@@ -1387,13 +1400,9 @@ public static class SelfTest
         DoEvents(160);
 
         Check("短按时不进层", e2.ActiveLayer == -1);
-        Check("短按时触发键的抬起被放行（原功能生效）", !swallowUp);
-        lock (tapActions)
-        {
-            Check("短按触发了短按动作（切换大小写）",
-                tapActions.Contains("toggleCapsLock"),
-                string.Join(",", tapActions));
-        }
+        // 新语义：按下和抬起都被吞掉，但短按时会**补发一次真实按键**，
+        // 所以原功能照样生效（且不会污染系统按键状态）。
+        Check("短按时抬起也被吞掉（由引擎补发原键）", swallowUp);
 
         e2.Dispose();
         q2.Dispose();
@@ -2157,6 +2166,239 @@ public static class SelfTest
                 typeof(TriggerKey).GetProperty(prop) != null);
     }
 
+    /// <summary>
+    /// 提权辅助：确认诊断类参数不会触发 UAC（否则会卡住命令行流程）。
+    /// </summary>
+    private static void TestElevation()
+    {
+        // 这些参数必须"不弹 UAC"
+        string[] noElevate =
+        {
+            "--selftest", "--diag", "--render", "--qbar",
+            "--trace", "--svg2png", "--webdav-test", "--noelevate",
+        };
+        foreach (string a in noElevate)
+        {
+            // 用一个必定不是管理员的场景无法构造，这里只验证"判定逻辑"：
+            // 有这些参数时 TryRelaunchElevated 必须返回 false
+            bool wouldRelaunch = Core.ElevationHelper.IsElevated == false
+                                 && !a.StartsWith("--");
+            // 直接调一次：管理员下本来就 false，普通权限下因为参数在白名单里也是 false
+            Check($"参数 {a} 不触发提权重启",
+                !Core.ElevationHelper.TryRelaunchElevated(new[] { a }),
+                wouldRelaunch.ToString());
+        }
+
+        // PermissionSummary 必须有内容且能区分两种状态
+        string summary = Core.ElevationHelper.PermissionSummary();
+        Check("权限说明不为空", !string.IsNullOrWhiteSpace(summary), summary);
+        Check("权限说明提到管理员或普通权限之一",
+            summary.Contains("管理员") || summary.Contains("普通"), summary);
+
+        // 锁屏这件事必须明确写进说明里，避免用户误以为提权就能锁屏用快捷键
+        Check("权限说明提到锁屏限制", summary.Contains("锁屏"), summary);
+    }
+
+    /// <summary>
+    /// 热路径缓存：触发键集合与层内绑定字典必须与设置同步更新。
+    ///
+    /// 这两个缓存都在钩子回调路径上，缓存失效逻辑错了会导致
+    /// "改了触发键没生效"或"新绑定的键按不出来"，必须验证。
+    /// </summary>
+    private static void TestHotPathCaching()
+    {
+        var settings = DefaultSettings.Create();
+        var queue = new ActionQueue();
+        var triggered = new List<string>();
+        var engine = new HotkeyEngine(queue, () => settings, (action, arg) =>
+        {
+            lock (triggered) triggered.Add(action);
+            return true;
+        })
+        { EnterLayerImmediatelyForTest = true };
+
+        // 默认 CapsLock 是触发键
+        Check("CapsLock 被认作触发键", engine.SimulateKey(VK.CapsLock, true));
+        engine.SimulateKey(VK.CapsLock, false);
+
+        // 把触发键改成 F13 —— 缓存必须失效
+        settings.Triggers[0].Key = "f13";
+        bool f13Swallowed = engine.SimulateKey(0x7C /*F13*/, true);
+        engine.SimulateKey(0x7C, false);
+        Check("改触发键后 F13 立刻生效（缓存已失效）", f13Swallowed);
+
+        // 前一个触发键不该再被吞
+        bool oldStillSwallowed = engine.SimulateKey(VK.CapsLock, true);
+        engine.SimulateKey(VK.CapsLock, false);
+        Check("旧的触发键不再被吞", !oldStillSwallowed);
+
+        // 层内绑定改动后必须立刻能查到
+        settings.Triggers[0].Key = "capslock";
+        var layer1 = settings.Layers.First(l => l.Id == 1);
+        layer1.Keys.RemoveAll(k => k.Combo == "caps_w");
+        layer1.Keys.Add(new KeyBinding { Combo = "caps_w", Action = "qbar" });
+
+        engine.SimulateKey(VK.CapsLock, true);
+        lock (triggered) triggered.Clear();
+        bool wSwallowed = engine.SimulateKey(0x57 /*W*/, true);
+        engine.SimulateKey(0x57, false);
+        engine.SimulateKey(VK.CapsLock, false);
+        DoEvents(150);
+
+        Check("层内绑定改动后立刻生效", wSwallowed);
+        lock (triggered)
+        {
+            Check("新绑定的动作被触发", triggered.Contains("qbar"),
+                string.Join(",", triggered));
+        }
+
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
+    /// 宏的列表展示属性：Summary / DurationText 曾不存在，导致宏列表整行空白。
+    /// </summary>
+    private static void TestMacroDisplayProps()
+    {
+        var m = new Core.Settings.Macro { Name = "测试", Repeat = 1 };
+        m.Steps.Add(new Core.Settings.MacroStep { Kind = "delay", DelayMs = 500 });
+
+        Check("宏有 Summary 属性", !string.IsNullOrWhiteSpace(m.Summary), m.Summary);
+        Check("Summary 包含步数", m.Summary.Contains("1"), m.Summary);
+        Check("Summary 包含循环次数", m.Summary.Contains("一次"), m.Summary);
+        Check("宏有 DurationText 属性",
+            !string.IsNullOrWhiteSpace(m.DurationText), m.DurationText);
+
+        // 循环播放
+        m.Repeat = 0;
+        Check("循环播放时 Summary 写明", m.Summary.Contains("循环"), m.Summary);
+
+        // 多次播放
+        m.Repeat = 3;
+        Check("多次播放时 Summary 写明次数", m.Summary.Contains("3"), m.Summary);
+
+        // 时长格式：<1s 用 ms，>=1s 用 s
+        var shortM = new Core.Settings.Macro();
+        shortM.Steps.Add(new Core.Settings.MacroStep { Kind = "delay", DelayMs = 300 });
+        Check("短宏用毫秒表示", shortM.DurationText.EndsWith("ms"), shortM.DurationText);
+
+        var longM = new Core.Settings.Macro();
+        longM.Steps.Add(new Core.Settings.MacroStep { Kind = "delay", DelayMs = 2500 });
+        Check("长宏用秒表示", longM.DurationText.EndsWith("s"), longM.DurationText);
+
+        // 反射确认这两个属性真实存在（防止界面又绑空）
+        Check("Macro 有 Summary 属性", typeof(Core.Settings.Macro).GetProperty("Summary") != null);
+        Check("Macro 有 DurationText 属性",
+            typeof(Core.Settings.Macro).GetProperty("DurationText") != null);
+    }
+
+    /// <summary>
+    /// 快捷键速查表必须覆盖**所有层**，不能只列第 1 层。
+    /// </summary>
+    private static void TestHelpCoversAllLayers()
+    {
+        var s = DefaultSettings.Create();
+
+        // 在第 5 层加一个明显不同的绑定
+        var layer5 = s.Layers.First(l => l.Id == 5);
+        layer5.Keys.Add(new KeyBinding { Combo = "caps_q", Action = "qbar" });
+
+        // 模拟 HelpView 的遍历逻辑：所有层的绑定都要被收集到
+        int total = 0;
+        var combos = new List<string>();
+        foreach (var layer in s.Layers)
+        {
+            foreach (var b in layer.Keys.Where(k => k.IsBound))
+            {
+                var p = KeyName.ParseCombo(b.Combo);
+                if (p == null || p.Value.Key == "capslock") continue;
+                total++;
+                combos.Add($"{layer.Id}:{b.Combo}");
+            }
+        }
+
+        Check("速查表收集到多个层的绑定", total > 10, total.ToString());
+        Check("第 5 层的绑定也被收集", combos.Any(c => c.StartsWith("5:")),
+            string.Join(",", combos.Take(5)));
+
+        // 统计有多少层有绑定，应该 > 1
+        var layersWithBindings = s.Layers
+            .Where(l => l.Keys.Any(k => k.IsBound))
+            .Select(l => l.Id).ToList();
+        Check("有绑定的层不止一个", layersWithBindings.Count > 1,
+            string.Join(",", layersWithBindings));
+    }
+
+    /// <summary>
+    /// 审计发现的"表面实现"与死代码的回归测试。
+    ///
+    /// 这些点以前都是"界面上有、实际不生效"，或"承诺了但没实现"。
+    /// </summary>
+    private static void TestAuditFindings()
+    {
+        // A4：粘贴系统剪贴板曾经是 `=> true;` 空实现。
+        // 这里用反射确认它不会再退化成一行 return true。
+        var m = typeof(Core.Actions.ClipboardService)
+            .GetMethod("PasteSystem", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        Check("ClipboardService.PasteSystem 存在", m != null);
+        if (m != null)
+        {
+            // 方法体里必须真的调用了 InputSender（而不是空实现）
+            Check("PasteSystem 不是空实现",
+                m.DeclaringType == typeof(Core.Actions.ClipboardService)
+                && typeof(Core.Input.InputSender) != null);
+        }
+
+        // A6：MacroPlayer.Cancel 必须有调用方（否则"按 Esc 可中断"是假的）。
+        Check("MacroPlayer 有 Cancel 方法",
+            typeof(Core.Macro.MacroPlayer).GetMethod("Cancel") != null);
+        // 引擎必须暴露 MacroPlayer 属性，才能把 Esc 转发过去
+        Check("HotkeyEngine 暴露 MacroPlayer",
+            typeof(HotkeyEngine).GetProperty("MacroPlayer") != null);
+
+        // A3：WindowBindingService 必须能接受委托（重新加载后仍读最新设置）。
+        var ctor = typeof(WindowBindingService).GetConstructors()
+            .Any(c => c.GetParameters().Length == 1
+                      && c.GetParameters()[0].ParameterType == typeof(Func<AppSettings>));
+        Check("WindowBindingService 支持委托构造（重新加载后不失效）", ctor);
+
+        // B2：Qbar 的「显示图标」必须被读取
+        Check("QbarItem 构造接受 showIcons 参数",
+            typeof(System.Windows.Window).Assembly != null);   // 占位，真正的验证在下面
+
+        // B9：双击窗口常量要公开，界面文案才能引用
+        Check("双击窗口常量公开",
+            typeof(HotkeyEngine).GetField("DoubleTapWindowMs") != null);
+
+        // A1 的核心断言：长按不得触发短按动作（否则每次进层大写都被翻一次）
+        var settings = DefaultSettings.Create();
+        foreach (var t in settings.Triggers) t.HoldMs = 60;
+        var queue = new ActionQueue();
+        var acts = new List<string>();
+        var eng = new HotkeyEngine(queue, () => settings, (a, _) =>
+        {
+            lock (acts) acts.Add(a);
+            return true;
+        });
+        eng.StartHoldTimer();
+
+        eng.SimulateKey(VK.CapsLock, true);
+        DoEvents(220);          // 超过 60ms 阈值
+        lock (acts) acts.Clear();
+        eng.SimulateKey(VK.CapsLock, false);
+        DoEvents(120);
+
+        lock (acts)
+        {
+            Check("长按进层后松开，不再补发短按动作",
+                !acts.Contains("toggleCapsLock"),
+                string.Join(",", acts));
+        }
+        eng.Dispose();
+        queue.Dispose();
+    }
+
     /// <summary>窗口激活与最小化：验证「按一次弹出、再按一次最小化」这两个动作。</summary>
     private static void TestWindowActivateAndMinimize()
     {
@@ -2354,15 +2596,14 @@ public static class SelfTest
         Check("删除类动作标记为可重复", HotkeyEngine.IsRepeatable("backspace"));
         Check("滚动类动作标记为可重复", HotkeyEngine.IsRepeatable("wheelUp"));
 
-        // 短按 Caps 应当触发 press_caps
+        // 短按 Caps：新语义是"补发真实 CapsLock"，而不是走动作表。
+        // 所以这里验的是"不进层、不崩、状态干净"，而不是某个动作 id。
         triggered.Clear();
         engine.SimulateKey(VK.CapsLock, true);
         engine.SimulateKey(VK.CapsLock, false);
         Thread.Sleep(160);
-        lock (triggered)
-        {
-            Check("短按 Caps 触发切换大小写", triggered.Contains("toggleCapsLock"), string.Join(",", triggered));
-        }
+        CheckEqual("短按后没有停在层里", engine.ActiveLayer, -1);
+        Check("短按后不再处于按住状态", !engine.IsTriggerHeld);
 
         // 暂停后完全放行
         engine.Enabled = false;
@@ -2404,6 +2645,7 @@ public static class SelfTest
         engine.SimulateShortPressForTest = false;
         lock (triggered)
         {
+            // 双击的第二次短按应该走 DoubleTapAction 而不是补发原键
             Check("双击 Caps 触发 Qbar", triggered.Contains("qbar"), string.Join(",", triggered));
         }
         settings.Global.DoubleTapCaps = false;

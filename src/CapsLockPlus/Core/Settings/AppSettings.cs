@@ -388,6 +388,31 @@ public sealed class Macro
             return total;
         }
     }
+
+    /// <summary>
+    /// 列表副标题：步数与循环次数。
+    ///
+    /// 界面里宏列表绑定了 Summary / DurationText，但这两个属性曾是**不存在的** ——
+    /// 结果整个宏列表只有名字和图标，副标题与时长永远空白。
+    /// </summary>
+    public string Summary
+    {
+        get
+        {
+            string repeat = Repeat <= 0 ? "循环播放" : Repeat == 1 ? "播放一次" : $"播放 {Repeat} 次";
+            return $"{Steps.Count} 步　·　{repeat}";
+        }
+    }
+
+    /// <summary>列表右侧的时长文字（估算）。</summary>
+    public string DurationText
+    {
+        get
+        {
+            int ms = EstimatedMs;
+            return ms < 1000 ? $"{ms}ms" : $"{ms / 1000.0:0.#}s";
+        }
+    }
 }
 
 public sealed class QbarOptions

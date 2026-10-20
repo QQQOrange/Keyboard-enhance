@@ -58,7 +58,13 @@ public sealed class HotkeyEngine : IDisposable
     private DateTime _lastRepeatTime = DateTime.MinValue;
 
     /// <summary>长按判定的最短间隔：短于此视为抖动，不进入层模式。</summary>
-    private const int DoubleTapWindowMs = 420;
+    /// <summary>
+    /// 双击触发键的判定窗口（毫秒）。
+    ///
+    /// 公开出来给界面文案引用 —— 之前界面上两处都写"600 毫秒内"，
+    /// 而实现是 420ms，用户按 500ms 的间隔双击会失败，还以为双击坏了。
+    /// </summary>
+    public const int DoubleTapWindowMs = 420;
 
     public bool Enabled { get; set; } = true;
 
@@ -163,6 +169,12 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     public MacroRecorder? MacroRecorder { get; set; }
 
+    /// <summary>
+    /// 宏播放器。引擎用它做两件事：播放中按 Esc 取消、以及判断"当前是否在播放宏"。
+    /// 由 AppHost 在启动时接上。
+    /// </summary>
+    public MacroPlayer? MacroPlayer { get; set; }
+
     /// <summary>直接喂一个按键给状态机（不经过真实钩子），用于自检。</summary>
     public bool SimulateKey(int vk, bool down) => OnKeyEvent(vk, down, injected: false);
 
@@ -197,14 +209,17 @@ public sealed class HotkeyEngine : IDisposable
     /// 钩子回调。返回值 = 是否吞掉该按键。
     /// 这里只做状态判断与入队，绝不做耗时操作（否则系统会摘钩）。
     ///
-    /// 触发键的吞键策略（参考 kanata 的 tap-hold）：
-    ///   * 按下瞬间**先放行**，让原功能（切换大小写、Shift 上档等）正常发出；
-    ///   * 一旦长按超过阈值，立即用 SendInput **补发一次该键的 up**，
-    ///     把刚触发的原功能"关回去"，然后才转入层模式；
-    ///   * 这样短按完全无损，长按也不会残留副作用。
+    /// 触发键的吞键策略（标准 tap-hold，与 QMK / kanata 一致）：
+    ///   * 按下瞬间**吞掉**，不让原功能立刻发出（此时还不知是短按还是长按）；
+    ///   * 若在阈值内松开 = **短按** → 用 SendInput 补发一次真实的按下+抬起，
+    ///     原功能（切换大小写等）正常生效；
+    ///   * 若超过阈值 = **长按** → 进入层模式，原功能永不发出。
     ///
-    /// 旧实现是"按下就吞"，短按时再自己合成一次 down/up ——
-    /// 对 CapsLock 这种切换态按键会闪一下大写，手感明显差一截。
+    /// ⚠ 早先的实现是"按下放行、超阈值再补发 up"，看似更简单，但有致命问题：
+    ///    按下时 CapsLock 已经被系统处理（大写已切换），而补发 up 又无法撤销
+    ///    那次切换 —— 结果是"长按进层时大小写被莫名切了一下"，
+    ///    而且系统认为 CapsLock 一直按着（因为真实 up 被吞了）。
+    ///    现在的做法从根上避免了这两个问题。
     /// </summary>
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
@@ -217,18 +232,24 @@ public sealed class HotkeyEngine : IDisposable
 
         var settings = _settings();
 
+        /* ---- 0. 宏播放中按 Esc = 取消 ----
+         *
+         * 界面一直写着"按 Esc 可中断"，但 MacroPlayer.Cancel() 之前**没有任何调用者**，
+         * 等于承诺了做不到的事。这里在钩子里检测 Esc 并转发取消信号。
+         * 不吞掉 Esc，让它照常传给前台程序（用户可能确实想按 Esc）。 */
+        if (down && vk == VK.Escape && MacroPlayer?.IsPlaying == true)
+        {
+            MacroPlayer.Cancel();
+        }
+
         // ---- 1. 这个键是不是触发键？ ----
         if (IsTrigger(settings, vk))
         {
-            if (down)
-            {
-                OnTriggerDown(settings, vk);
-                // 未进入层模式前一律放行（原功能照常生效）
-                return _layerActive;
-            }
-            OnTriggerUp(settings, vk);
-            // 进入过层模式才吞这次抬起；纯短按要放行，让原键正常抬起
-            return _swallowLastUp;
+            // 按下和抬起都吞掉：短按的原功能由 OnTriggerUp 里补发，
+            // 长按则彻底不发出。这样不会污染系统的按键状态。
+            if (down) OnTriggerDown(settings, vk);
+            else OnTriggerUp(settings, vk);
+            return true;
         }
 
         // ---- 2. 触发键按住中，但还没到长按阈值 ----
@@ -260,15 +281,53 @@ public sealed class HotkeyEngine : IDisposable
         return down ? OnKeyDownInLayer(vk) : OnKeyUpInLayer(vk);
     }
 
-    private static bool IsTrigger(AppSettings s, int vk)
+    /// <summary>
+    /// 触发键的虚拟键码集合（缓存）。
+    ///
+    /// <see cref="IsTrigger"/> 在**每一个按键**的钩子回调里都要跑一次。
+    /// 原实现每次都遍历 Triggers 并对每个 Key 做一次
+    /// `KeyName.VkOf()`（字符串 → 字典查找），也就是每次按键都做
+    /// 1~N 次字符串比较 + 字典查找 —— 纯浪费，而钩子回调对延迟极其敏感
+    /// （超过 LowLevelHooksTimeout 会被系统静默摘钩）。
+    ///
+    /// 失效判据用**内容指纹**而不是"列表实例 + 条数"：
+    /// 用户在界面上改触发键的 Key 时列表实例和条数都不变，
+    /// 只看那两项会导致"改了触发键不生效"。指纹里带上每个键名和启用状态。
+    /// </summary>
+    private HashSet<int>? _triggerVkCache;
+    private string _triggerVkCacheStamp = "";
+
+    private static string TriggerStamp(List<TriggerKey> list)
     {
-        foreach (var t in s.Triggers)
+        // 参数很少（通常 1~3 个），拼串开销远小于每次按键都查字典
+        var sb = new System.Text.StringBuilder(32);
+        foreach (var t in list)
+        {
+            sb.Append(t.Enabled ? '1' : '0').Append(t.Key).Append('|');
+        }
+        return sb.ToString();
+    }
+
+    private HashSet<int> TriggerVkSet(AppSettings s)
+    {
+        var list = s.Triggers;
+        string stamp = TriggerStamp(list);
+        if (_triggerVkCache != null && _triggerVkCacheStamp == stamp)
+            return _triggerVkCache;
+
+        var set = new HashSet<int>();
+        foreach (var t in list)
         {
             if (!t.Enabled) continue;
-            if (KeyName.VkOf(t.Key) is int v && v == vk) return true;
+            if (KeyName.VkOf(t.Key) is int vk) set.Add(vk);
         }
-        return false;
+
+        _triggerVkCache = set;
+        _triggerVkCacheStamp = stamp;
+        return set;
     }
+
+    private bool IsTrigger(AppSettings s, int vk) => TriggerVkSet(s).Contains(vk);
 
     private void OnTriggerDown(AppSettings s, int vk)
     {
@@ -301,36 +360,70 @@ public sealed class HotkeyEngine : IDisposable
         if (!_triggerHeld || vk != _activeTriggerVk) return;
         _triggerHeld = false;
 
-        // 层内触发过绑定 → 这一按不算短按
+        // 层内触发过绑定 / 进过层 → 这一按不算短按
         bool cleanTap = !_usedCombo && !_usedOtherKey && !_layerActive;
 
-        // 未超时的抬起 = 短按
-        if (cleanTap && !_tapHandled)
+        var trigger = _activeTrigger;
+
+        // 未超时的干净抬起 = 短按
+        if (cleanTap && !_tapHandled && trigger != null)
         {
-            FireTap(singleTap: true);
+            /* 短按：**补发一次真实的按下+抬起**，让原功能生效。
+             *
+             * 因为整个按住过程都被我们吞掉了（见 OnKeyEvent 的注释），
+             * 系统完全没收到这个键，所以这里必须自己补一次。
+             *
+             * 特殊处理「短按动作」：若用户把短按行为改成了别的动作
+             * （比如改成 Esc、打开 Qbar），那就执行那个动作，不补发原键；
+             * 若短按行为是"切换大小写"（默认），补发真实 CapsLock 即可 ——
+             * 效果完全一致，但系统的大写状态是真实翻转的，
+             * 不像自己合成按键那样可能与实际状态脱节。
+             */
+            string tapAction = trigger.TapAction ?? "";
+
+            /* 双击判定必须在"补发原键"之前。
+             *
+             * 早先的写法把双击判定放在补发分支里面，导致默认配置
+             * （TapAction = toggleCapsLock，会走补发原键那条路）时
+             * **永远进不到双击分支** —— 双击打开 Qbar 因此失效。 */
+            bool doubleTap = !string.IsNullOrEmpty(trigger.DoubleTapAction)
+                             && _hasLastTap
+                             && (DateTime.Now - _lastTapTime).TotalMilliseconds < DoubleTapWindowMs
+                             && (DateTime.Now - _triggerDownTime).TotalMilliseconds < DoubleTapWindowMs;
+
+            if (doubleTap)
+            {
+                _hasLastTap = false;            // 双击只算一次，避免三连击继续触发
+                string dt = trigger.DoubleTapAction;
+                _queue.Post(() => RunTapAction(dt));
+            }
+            else
+            {
+                _lastTapTime = DateTime.Now;
+                _hasLastTap = true;
+
+                if (tapAction is "toggleCapsLock" or "" or "doNothing")
+                {
+                    // 补发原键：对 CapsLock 就是翻转大写，对别的键就是它的正常功能
+                    int vkToSend = vk;
+                    _queue.Post(() => InputSender.Tap(vkToSend));
+                }
+                else
+                {
+                    string ta = tapAction;
+                    _queue.Post(() => RunTapAction(ta));
+                }
+            }
         }
 
         _layerActive = false;
         _activeTriggerVk = -1;
         _activeTrigger = null;
         _activeLayer = -1;
-
-        // 注意：进入过层模式就必须吞掉这次抬起。
-        // 因为按下时我们故意放行了原键（短按需要），系统认为它还按着；
-        // 进入层模式时补发的那次 up 是合成键、会被自己过滤掉，
-        // 所以这里必须把"真实的这次抬起"吃掉，否则原键会再触发一次
-        // （表现为 CapsLock 大小写被切两次、Shift 粘一下）。
-        bool wasInLayer = !cleanTap;
         _swallowedUp.Clear();
         _swallowedDown.Clear();
         TriggerHeldChanged?.Invoke(false);
-
-        // 返回值由调用方使用，这里通过字段传递
-        _swallowLastUp = wasInLayer;
     }
-
-    /// <summary>供调用方取"这一次触发键抬起是否要吞掉"。</summary>
-    private bool _swallowLastUp;
 
     /// <summary>
     /// 长按判定：由 UI 线程的计时器调用（钩子回调里不能做定时）。
@@ -341,14 +434,13 @@ public sealed class HotkeyEngine : IDisposable
     {
         if (!_triggerHeld || _layerActive) return;
         _layerActive = true;
-        _tapHandled = true;                    // 短按已在进入层模式时触发
+        _tapHandled = true;      // 已经算长按，抬起时不再补发原功能
 
-        var s = _settings();
-        var trigger = _activeTrigger;
-        if (trigger != null && !string.IsNullOrEmpty(trigger.TapAction))
-        {
-            _queue.Post(() => RunTapAction(trigger.TapAction));
-        }
+        /* ⚠ 这里**不能**执行短按动作。
+         *
+         * 早先的实现除了切层，还顺手跑了一次 TapAction（切换大小写）——
+         * 结果就是"每次长按进层，大写状态都被莫名翻一次"。
+         * 长按的语义就是"这个键变成功能键前缀"，它本身什么都不该做。 */
     }
 
     private void FireTap(bool singleTap)
@@ -478,15 +570,51 @@ public sealed class HotkeyEngine : IDisposable
         return swallow;
     }
 
-    private static KeyBinding? FindInLayer(AppSettings s, int layerId, string comboId)
+    /// <summary>
+    /// 层内绑定的查找缓存：层 ID → (组合键 ID → 绑定)。
+    ///
+    /// <see cref="FindInLayer"/> 在层模式下**每一次按键**都要跑。
+    /// 原实现是 `Layers.FirstOrDefault(...)` 再 `Keys.FirstOrDefault(...)`，
+    /// 即两次线性扫描（第 1 层通常有上百条绑定），而且用
+    /// `StringComparison.OrdinalIgnoreCase` 做逐字符比较 ——
+    /// 单次开销不大，但它在钩子回调路径上，累积起来会顶到
+    /// LowLevelHooksTimeout（默认 300ms）的风险。
+    ///
+    /// 这里预先把每层的绑定建成**大小写不敏感的字典**，查找降为 O(1)。
+    /// 用"层对象 + Keys 列表实例 + 条数"作为失效判据：
+    /// 重新加载配置会换新实例，用户增删绑定会改变条数，两种情况都能自动重建。
+    /// </summary>
+    private readonly Dictionary<int, (Dictionary<string, KeyBinding> Map, List<KeyBinding> Src)>
+        _layerMapCache = new();
+
+    private KeyBinding? FindInLayer(AppSettings s, int layerId, string comboId)
     {
-        List<KeyBinding>? keys = s.Layers.FirstOrDefault(l => l.Id == layerId)?.Keys;
+        var map = LayerBindingMap(s, layerId);
+        return map != null && map.TryGetValue(comboId, out var hit) ? hit : null;
+    }
+
+    private Dictionary<string, KeyBinding>? LayerBindingMap(AppSettings s, int layerId)
+    {
+        var layer = s.Layers.FirstOrDefault(l => l.Id == layerId);
+        List<KeyBinding>? keys = layer?.Keys;
         if (keys == null || keys.Count == 0)
+            keys = layerId == 1 ? s.Keys : null;      // 老设置没有层结构时，Keys 即第 1 层
+        if (keys == null) return null;
+
+        if (_layerMapCache.TryGetValue(layerId, out var cached)
+            && ReferenceEquals(cached.Src, keys)
+            && cached.Map.Count == keys.Count)
+            return cached.Map;
+
+        var map = new Dictionary<string, KeyBinding>(keys.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var k in keys)
         {
-            // 老设置没有层结构时，Keys 即第 1 层
-            keys = layerId == 1 ? s.Keys : null;
+            if (string.IsNullOrEmpty(k.Combo)) continue;
+            map[k.Combo] = k;      // 重复时保留最后一条，与 SettingsStore.Normalize 的行为一致
         }
-        return keys?.FirstOrDefault(k => string.Equals(k.Combo, comboId, StringComparison.OrdinalIgnoreCase));
+
+        _layerMapCache[layerId] = (map, keys);
+        return map;
     }
 
     private void OnWheel(int direction, bool shift, bool ctrl)

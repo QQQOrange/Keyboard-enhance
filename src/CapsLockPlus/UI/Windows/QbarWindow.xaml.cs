@@ -296,7 +296,7 @@ public partial class QbarWindow : Window
     private void RunQuery()
     {
         var results = _host.Qbar.Query(Input.Text, _chip, Math.Max(6, _host.Settings.Qbar.ListCount + 2));
-        _items = results.Select(r => new QbarItem(r)).ToList();
+        _items = results.Select(r => new QbarItem(r, _host.Settings.Qbar.ShowIcons)).ToList();
         Results.ItemsSource = _items;
         if (_items.Count > 0) Results.SelectedIndex = 0;
         UpdateMode();
@@ -442,13 +442,19 @@ public partial class QbarWindow : Window
 
     private sealed class QbarItem
     {
-        public QbarItem(QbarResult result)
+        public QbarItem(QbarResult result, bool showIcons = true)
         {
             Result = result;
             var chip = result.Chip;
 
-            // 有图标优先显示图标；没有图标就用品牌色首字
-            if (chip is { HasIcon: true })
+            /* 「显示图标」这个设置项之前**没人读** ——
+             * 界面上能勾掉，但列表照样显示图标，属于典型表面实现。
+             * 现在关掉时只显示文字，不再画图标。 */
+            if (!showIcons)
+            {
+                // 什么都不画，靠文本区分
+            }
+            else if (chip is { HasIcon: true })
             {
                 IconSource = chip.Icon;
                 HasIcon = true;

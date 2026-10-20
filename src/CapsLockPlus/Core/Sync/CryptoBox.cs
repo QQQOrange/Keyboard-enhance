@@ -182,8 +182,9 @@ public static class CryptoBox
 
     private static byte[] Derive(string password, byte[] salt, int iterations)
     {
-        using var kdf = new Rfc2898DeriveBytes(
-            password, salt, iterations, HashAlgorithmName.SHA256);
-        return kdf.GetBytes(KeyLen);
+        // 用静态 Pbkdf2：Rfc2898DeriveBytes 的构造函数已标记过时（SYSLIB0060）。
+        // 静态版本没有可释放的堆状态，也更省内存。
+        return Rfc2898DeriveBytes.Pbkdf2(
+            password, salt, iterations, HashAlgorithmName.SHA256, KeyLen);
     }
 }

@@ -65,7 +65,9 @@ public sealed class AppHost : IDisposable
         };
         Clipboard.Notified += Notify;
 
-        Bindings = new WindowBindingService(settings);
+        // 用委托而不是直接传 settings：重新加载配置会整体替换 Settings 对象，
+// 抓着旧引用会导致"界面显示新绑定、实际按旧配置切窗口"。
+        Bindings = new WindowBindingService(() => Settings);
         Bindings.Notified += Notify;
 
         var mouse = new MouseService
@@ -88,6 +90,8 @@ public sealed class AppHost : IDisposable
         Qbar = new QbarService(() => Settings, () => Clipboard.History);
 
         Engine = new HotkeyEngine(_queue, () => Settings, InvokeAction);
+        // 让引擎知道宏播放器：播放中按 Esc 需要能取消
+        Engine.MacroPlayer = Context.MacroPlayer;
         Engine.CapsHeldChanged += held => _dispatcher.BeginInvoke(() => CapsHeldChanged?.Invoke(held));
         // 反馈模式：每次组合键触发都在屏幕上闪一下动作名，
         // 便于确认“按键到底有没有被识别”。
@@ -150,14 +154,21 @@ public sealed class AppHost : IDisposable
             kv.SelectLayerById(layerId);
     }
 
-    private int _pendingKeysLayer = 1;
+    /// <summary>
+    /// 待应用的按键映射层。0 = 没有待处理项。
+    ///
+    /// 用 0 当"无"的哨兵而不是 1：层 ID 从 1 开始，
+    /// 早先用 1 当默认值导致"跳转到第 1 层"这个请求被当成空操作吞掉，
+    /// 用户从层管理页点第 1 层的"编辑按键"时不会切层。
+    /// </summary>
+    private int _pendingKeysLayer;
 
     /// <summary>把 AppHost 记住的目标层应用到 KeysView（页面刚创建时调用）。</summary>
     public void ApplyPendingKeysLayer(Views.KeysView view)
     {
-        if (_pendingKeysLayer <= 1) return;
+        if (_pendingKeysLayer <= 0) return;
         view.SelectLayerById(_pendingKeysLayer);
-        _pendingKeysLayer = 1;
+        _pendingKeysLayer = 0;
     }
 
     public void Start()

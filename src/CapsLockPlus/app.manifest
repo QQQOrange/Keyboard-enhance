@@ -1,6 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="CapsLockPlus.app" type="win32" processorArchitecture="*" />
+
+  <!--
+    ── 关于 uiAccess 与「锁屏时也能用快捷键」──
+
+    uiAccess="true" 能做：
+      · 覆盖 UAC 提权后的窗口 —— 普通进程的键盘钩子收不到管理员窗口的输入，
+        开启后可收到；
+      · 自己的窗口能置顶到所有窗口之上。
+
+    uiAccess="true" 也**做不到**（这点必须说清楚，不然是骗人）：
+      · **锁屏（Win+L）时的快捷键**。锁屏会切到独立的 Winlogon 安全桌面，
+        微软从设计上禁止普通进程（哪怕管理员权限 + uiAccess）
+        在那个桌面上装键盘钩子或注入输入。这是安全边界，不是权限问题。
+      · Ctrl+Alt+Del 同样属于 SAS 序列，任何用户态程序都拦不住。
+
+    另外两个硬要求，缺一个系统就拒绝加载：
+      1) 可执行文件必须在**受信任位置**（通常是 C:\Program Files 下）；
+      2) 必须有有效的 Authenticode 签名。
+
+    所以这里默认保持 uiAccess="false"（开发期能直接跑）。
+    需要 uiAccess 时：签好名 → 放到 Program Files → 把下面改成 true 重新编译，
+    具体步骤写在 BUILD.md 里。
+  -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
@@ -8,11 +31,16 @@
       </requestedPrivileges>
     </security>
   </trustInfo>
+
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
+      <!-- Windows 10 / 11 -->
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
     </application>
   </compatibility>
+
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>

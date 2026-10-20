@@ -93,7 +93,30 @@ public sealed class ClipboardService
         return true;
     }
 
-    public bool PasteSystem() => true;
+    /// <summary>
+    /// 把**系统剪贴板**的内容粘贴到当前光标处。
+    ///
+    /// 之前这里是 `=> true;` 的空实现 —— 动作表里却把它注册成正式动作
+    /// （「粘贴系统剪贴板」），点了完全没反应也不报错。
+    ///
+    /// 实现用 Shift+Insert：它和 Ctrl+V 效果相同，但**不依赖剪贴板格式协商**，
+    /// 在终端、部分自研控件里比 Ctrl+V 更可靠，也不会像自己写剪贴板那样
+    /// 覆盖用户原有内容。
+    /// </summary>
+    public bool PasteSystem()
+    {
+        try
+        {
+            InputSender.Chord(0x10 /*VK_SHIFT*/, 0x2D /*VK_INSERT*/);   // Shift+Insert
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("粘贴系统剪贴板失败：" + ex.Message);
+            Notified?.Invoke("粘贴失败：" + ex.Message);
+            return false;
+        }
+    }
 
     public bool PasteText(string text)
     {

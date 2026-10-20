@@ -26,6 +26,7 @@ public partial class SettingsView : UserControl
         if (_host == null) return;
         _suppress = true;
         var g = _host.Settings.Global;
+        RefreshPermission();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -95,6 +96,39 @@ public partial class SettingsView : UserControl
         Save();
     }
 
+    /// <summary>刷新权限显示。</summary>
+    private void RefreshPermission()
+    {
+        bool admin = Core.ElevationHelper.IsElevated;
+        AdminBadge.Visibility = admin ? Visibility.Visible : Visibility.Collapsed;
+        ElevateButton.Visibility = admin ? Visibility.Collapsed : Visibility.Visible;
+        PermissionText.Text = Core.ElevationHelper.PermissionSummary();
+    }
+
+    private void OnElevateClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var ok = MessageBox.Show(Window.GetWindow(this),
+            "将以管理员身份重新启动 CapsLock+。\n\n" +
+            "这样做的好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n" +
+            "（注意：锁屏状态下无法使用快捷键 —— 这是 Windows 的安全限制，\n" +
+            " 任何用户态程序都做不到，管理员权限也不行。）\n\n继续吗？",
+            "以管理员身份重启", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (ok != MessageBoxResult.OK) return;
+
+        if (Core.ElevationHelper.RelaunchElevated(Environment.GetCommandLineArgs()[1..], out var err))
+        {
+            _host.ExitApp();
+        }
+        else
+        {
+            MessageBox.Show(Window.GetWindow(this),
+                "提权失败：" + (err ?? "未知原因"), "无法提权",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void OnFeedbackChanged(object sender, RoutedEventArgs e)
     {
         if (_host == null || _suppress) return;
@@ -107,7 +141,26 @@ public partial class SettingsView : UserControl
     private void OnDoubleTapChanged(object sender, RoutedEventArgs e)
     {
         if (_host == null || _suppress) return;
-        _host.Settings.Global.DoubleTapCaps = DoubleTapBox.IsChecked == true;
+        bool on = DoubleTapBox.IsChecked == true;
+        _host.Settings.Global.DoubleTapCaps = on;
+
+        /* ⚠ 必须同步到每个触发键上。
+         *
+         * Global.DoubleTapCaps / TapCapsAction 只在"首次生成触发键"时被读一次
+         * （见 SettingsStore.NormalizeLayers）。老配置里 Triggers 早就存在，
+         * 所以光改全局字段的话，这个开关**永远不生效** ——
+         * 属于典型的"界面上能改，实际没用"。
+         *
+         * 真正的开关在「触发键与层」页，这里做同步，保证两处一致。 */
+        foreach (var t in _host.Settings.Triggers)
+        {
+            t.DoubleTapAction = on
+                ? (_host.Settings.Global.DoubleTapCapsAction.Length > 0
+                    ? _host.Settings.Global.DoubleTapCapsAction
+                    : "qbar")
+                : "";
+        }
+
         Save();
     }
 
@@ -134,6 +187,11 @@ public partial class SettingsView : UserControl
         if (TapCapsBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
         {
             _host.Settings.Global.TapCapsAction = tag;
+
+            // 同步到所有触发键 —— 否则老配置里改这里完全不生效
+            // （全局字段只在首次生成触发键时被读取一次）。
+            foreach (var t in _host.Settings.Triggers) t.TapAction = tag;
+
             Save();
         }
     }

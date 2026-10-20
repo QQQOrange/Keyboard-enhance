@@ -24,8 +24,11 @@ public sealed class MacroPlayer : IDisposable
     private Thread? _thread;
     private volatile bool _cancelRequested;
 
-    /// <summary>播放结束（无论正常结束还是被取消）。</summary>
+    /// <summary>播放结束（无论正常结束还是被取消）。在**调用方线程**上触发。</summary>
     public event Action? Completed;
+
+    /// <summary>播放结束后要在哪个线程上通知（UI 线程传进来）。</summary>
+    private Action? _callback;
 
     /// <summary>当前是否正在播放。</summary>
     public bool IsPlaying => _thread is { IsAlive: true };
@@ -36,15 +39,26 @@ public sealed class MacroPlayer : IDisposable
     /// <summary>请求取消当前播放。</summary>
     public void Cancel()
     {
+        if (!IsPlaying) return;
         _cancelRequested = true;
+        CoreLog.Info("宏播放已请求取消");
     }
+
+    /// <summary>
+    /// 播放期间是否应该用 Esc 取消。
+    ///
+    /// 界面一直提示"按 Esc 可中断"，但之前 <see cref="Cancel"/> 没有任何调用者，
+    /// 等于承诺了做不到的事。现在由引擎在钩子里检测 Esc 并调用 Cancel。
+    /// </summary>
+    public bool CancelOnEscape { get; set; } = true;
 
     /// <summary>
     /// 播放一个宏。
     /// </summary>
     /// <param name="macro">要播放的宏。</param>
     /// <param name="repeatOverride">覆盖宏自身的重复次数（null = 用宏设置）。</param>
-    public void Play(Core.Settings.Macro macro, int? repeatOverride = null)
+    public void Play(Core.Settings.Macro macro, int? repeatOverride = null,
+        Action? onCompleted = null)
     {
         if (macro == null || macro.Steps.Count == 0) return;
         if (IsPlaying) return;              // 同一时刻只播一个
@@ -54,6 +68,7 @@ public sealed class MacroPlayer : IDisposable
         int repeat = repeatOverride ?? (snapshot.Repeat <= 0 ? int.MaxValue : snapshot.Repeat);
 
         _cancelRequested = false;
+        _callback = onCompleted;
         CurrentStep = -1;
 
         _thread = new Thread(() =>
@@ -130,7 +145,14 @@ public sealed class MacroPlayer : IDisposable
             finally
             {
                 CurrentStep = -1;
-                Dispatcher.CurrentDispatcher.BeginInvoke(() => Completed?.Invoke());
+                /* 用**调用方**的同步上下文回调，而不是
+                 * `Dispatcher.CurrentDispatcher.BeginInvoke`。
+                 *
+                 * 后者会在这个后台线程上**新建一个 Dispatcher**，
+                 * 而该线程从不泵消息循环 —— 于是那个 BeginInvoke 永远不会执行，
+                 * Completed 事件永远不触发，还白白留一个 Dispatcher 对象。
+                 * 这是一处真实的泄漏 + 功能失效。 */
+                try { _callback?.Invoke(); } catch { }
             }
         })
         {

@@ -30,32 +30,60 @@ public partial class HelpView : UserControl
         var groups = new List<HelpGroup>();
         var byCategory = new Dictionary<string, List<HelpItem>>();
 
-        foreach (var binding in _host.Settings.Keys.Where(k => k.IsBound))
+        // 遍历**所有层**的绑定，而不只是第 1 层。
+        // 之前只读 Settings.Keys（即第 1 层），第 2~10 层绑的键在速查表里
+        // 完全看不到 —— 用户以为"绑了没用"，其实是速查表漏了。
+        foreach (var layer in _host.Settings.Layers.OrderBy(l => l.Id))
         {
-            var parsed = KeyName.ParseCombo(binding.Combo);
-            if (parsed == null) continue;
-            var (mods, key) = parsed.Value;
-            if (key == "capslock") continue;
-            string combo = mods switch
+            var keys = layer.Keys.Count > 0
+                ? layer.Keys
+                : (layer.Id == 1 ? _host.Settings.Keys : layer.Keys);
+
+            // 这一层由哪个触发键进入（用于显示前缀）
+            var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == layer.Id);
+            string layerPrefix = layer.Id == 1
+                ? "Caps"
+                : trigger != null
+                    ? $"[第{layer.Id}层] {KeyName.Display(trigger.Key)}"
+                    : $"[第{layer.Id}层]";
+
+            foreach (var binding in keys.Where(k => k.IsBound))
             {
-                KeyModifiers.Alt => $"Caps+LAlt+{KeyName.Display(key)}",
-                KeyModifiers.Win => $"Caps+Win+{KeyName.Display(key)}",
-                _ => $"Caps+{KeyName.Display(key)}",
-            };
-            var info = _host.Actions.Get(binding.Action);
-            if (info == null) continue;
-            string desc = binding.Arg.Length > 0 ? $"{info.Description}（参数 {binding.Arg}）" : info.Description;
-            if (filter.Length > 0 &&
-                !combo.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
-                !info.Title.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
-                !desc.Contains(filter, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (!byCategory.TryGetValue(info.Category, out var list))
-            {
-                list = new List<HelpItem>();
-                byCategory[info.Category] = list;
+                var parsed = KeyName.ParseCombo(binding.Combo);
+                if (parsed == null) continue;
+                var (mods, key) = parsed.Value;
+                if (key == "capslock") continue;
+
+                string modPart = mods switch
+                {
+                    KeyModifiers.None => "",
+                    _ => "+" + string.Join("+", new[]
+                    {
+                        mods.HasFlag(KeyModifiers.Ctrl) ? "Ctrl" : null,
+                        mods.HasFlag(KeyModifiers.Shift) ? "Shift" : null,
+                        mods.HasFlag(KeyModifiers.Alt) ? "LAlt" : null,
+                        mods.HasFlag(KeyModifiers.Win) ? "Win" : null,
+                    }.Where(s => s != null)),
+                };
+                string combo = $"{layerPrefix}{modPart}+{KeyName.Display(key)}";
+
+                var info = _host.Actions.Get(binding.Action);
+                if (info == null) continue;
+                string desc = binding.Arg.Length > 0
+                    ? $"{info.Description}（参数 {binding.Arg}）"
+                    : info.Description;
+                if (filter.Length > 0 &&
+                    !combo.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
+                    !info.Title.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
+                    !desc.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!byCategory.TryGetValue(info.Category, out var list))
+                {
+                    list = new List<HelpItem>();
+                    byCategory[info.Category] = list;
+                }
+                list.Add(new HelpItem(combo, info.Title, desc));
             }
-            list.Add(new HelpItem(combo, info.Title, desc));
         }
 
         // 内置的固定说明
@@ -64,7 +92,7 @@ public partial class HelpView : UserControl
         if (filter.Length == 0)
         {
             panel.Add(new HelpItem("短按 Caps", "切换大小写", "不按其他键时松开 Caps 的默认行为"));
-            panel.Add(new HelpItem("双击 Caps", "打开 Qbar", "600 毫秒内连按两下"));
+            panel.Add(new HelpItem("双击 Caps", "打开 Qbar", $"{Core.Input.HotkeyEngine.DoubleTapWindowMs} 毫秒内连按两下"));
             panel.Add(new HelpItem("Qbar 内", "↑ ↓ 选择", "Enter 执行，Esc 关闭，Tab 补全"));
             panel.Add(new HelpItem("Qbar 内", "=1+2*3", "直接计算并把结果复制到剪贴板"));
         }

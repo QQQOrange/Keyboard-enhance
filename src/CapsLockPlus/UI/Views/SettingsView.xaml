@@ -74,6 +74,34 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="运行权限" Style="{StaticResource Text.Body}" />
+                                <Border x:Name="AdminBadge" Margin="8,0,0,0" Padding="7,1"
+                                        CornerRadius="5" Background="#22E5A23A"
+                                        BorderBrush="#55E5A23A" BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <TextBlock x:Name="AdminBadgeText" Text="管理员" FontSize="10.5"
+                                               FontWeight="SemiBold" Foreground="#E5A23A" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock x:Name="PermissionText" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,4,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" x:Name="ElevateButton" Content="以管理员身份重启"
+                                Style="{StaticResource Button.Base}" Padding="12,6"
+                                VerticalAlignment="Center" Click="OnElevateClick"
+                                ToolTip="重启后键盘钩子才能收到管理员程序窗口的输入" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -137,7 +165,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="双击 CapsLock 打开 Qbar" Style="{StaticResource Text.Body}" />
-                            <TextBlock Text="快速双击 Caps（600 毫秒内）直接打开搜索面板" Style="{StaticResource Text.Tertiary}"
+                            <TextBlock Text="快速双击 Caps（420 毫秒内）直接打开搜索面板" Style="{StaticResource Text.Tertiary}"
                                        Margin="0,3,0,0" />
                         </StackPanel>
                         <CheckBox Grid.Column="1" x:Name="DoubleTapBox" Style="{StaticResource ToggleSwitch}"

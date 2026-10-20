@@ -44,9 +44,25 @@ public sealed class TranslateService
         text = text.Length > 4000 ? text[..4000] : text;
 
         bool hasKey = !string.IsNullOrWhiteSpace(appId) && !string.IsNullOrWhiteSpace(appSecret);
+
+        /* 用户明确选了付费引擎但没填密钥 → **直接报错**，不要静默回退。
+         *
+         * 之前的写法是 `case "youdao" when hasKey:`，条件不成立就直接落到
+         * 最后面的免费引擎，而且返回的是成功 —— 用户以为有道/DeepL 在work，
+         * 实际一直在用 Google，排查起来极其费劲。
+         *
+         * 只有"填了密钥但调用失败"才回退（那是网络/配额问题，
+         * 回退到免费引擎能让用户至少还能译出东西）。 */
+        string p = provider?.ToLowerInvariant() ?? "";
+        if (p is "youdao" or "baidu" or "deepl" or "tencent" && !hasKey)
+        {
+            return TranslateResult.Fail(ProviderName(p) +
+                " 需要在「翻译」页填写密钥后才能使用（当前留空，已跳过）");
+        }
+
         try
         {
-            switch (provider?.ToLowerInvariant())
+            switch (p)
             {
                 case "bing":
                     return await BingAsync(text, target, ct).ConfigureAwait(false);
@@ -70,6 +86,15 @@ public sealed class TranslateService
         }
         return await FreeAsync(text, target, ct).ConfigureAwait(false);
     }
+
+    private static string ProviderName(string id) => id switch
+    {
+        "youdao" => "有道智云",
+        "baidu" => "百度翻译",
+        "deepl" => "DeepL",
+        "tencent" => "腾讯云翻译",
+        _ => id,
+    };
 
     private static async Task<TranslateResult> FreeAsync(string text, string target, CancellationToken ct)
     {

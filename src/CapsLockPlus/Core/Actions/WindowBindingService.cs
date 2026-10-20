@@ -13,7 +13,22 @@ namespace CapsLockPlus.Core.Actions;
 /// </summary>
 public sealed class WindowBindingService
 {
-    private readonly AppSettings _settings;
+    /// <summary>
+    /// 设置读取委托。
+    ///
+    /// ⚠ 必须用委托而不是直接存 AppSettings 引用。
+    /// "重新加载配置 / 重置全部设置 / 导入旧版 ini / 从备份恢复"
+    /// 都会整体替换 AppHost.Settings 对象；如果这里抓着旧引用，
+    /// 就会出现「界面显示的是新绑定，按快捷键却按旧配置切窗口」，
+    /// 而且新建的绑定会写进那个已经被丢弃的对象里，看起来像"绑定丢了"。
+    ///
+    /// 其它服务（HotkeyEngine / QbarService / SyncService）本来就是委托，
+    /// 只有这里漏了。
+    /// </summary>
+    private readonly Func<AppSettings> _getSettings;
+
+    private AppSettings _settings => _getSettings();
+
     private readonly object _gate = new();
     private DateTime _lastTap = DateTime.MinValue;
     private int _lastSlot = -1;
@@ -22,7 +37,11 @@ public sealed class WindowBindingService
 
     public event Action<string>? Notified;
 
-    public WindowBindingService(AppSettings settings) => _settings = settings;
+    /// <summary>推荐用法：传一个读取最新设置的委托。</summary>
+    public WindowBindingService(Func<AppSettings> getSettings) => _getSettings = getSettings;
+
+    /// <summary>兼容用法：直接传设置对象（内部包成固定委托）。</summary>
+    public WindowBindingService(AppSettings settings) : this(() => settings) { }
 
     public WinBinding GetOrCreate(int slot)
     {

@@ -247,7 +247,16 @@ public partial class WindowPickerWindow : Window
                         x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom)
                     {
                         GetWindowThreadProcessId(h, out uint pid);
-                        if (pid != 0 && pid != me)
+                        /* 跳过桌面 / 任务栏 / 开始菜单这些"壳"窗口。
+                         *
+                         * 它们铺满整个屏幕，Z 序又常常在最上面，
+                         * 不过滤的话用户点哪儿都只能选中桌面或任务栏，
+                         * 绑到槽位后"切过去"就是回桌面 —— 看起来完全没生效。
+                         *
+                         * IsShellClass 之前只被自检探针调用，生产路径漏了这一步，
+                         * 属于"自检通过但实际不好用"的典型。 */
+                        if (pid != 0 && pid != me &&
+                            !IsShellClass(WindowService.ClassNameOf(h) ?? ""))
                             return h;
                     }
                 }
