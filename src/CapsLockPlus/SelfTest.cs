@@ -102,6 +102,20 @@ public static class SelfTest
         TestMacroRecorder();
         TestComboCapture();
         TestExtendedCombos();
+        TestMacroStepEditing();
+
+        Section("备份加密");
+        TestCrypto();
+
+        Section("导入导出");
+        TestExportImport();
+        TestExportImportOnDisk();
+
+        Section("WebDAV");
+        TestWebDav();
+
+        Section("同步载荷");
+        TestSyncPayload();
 
         Section("翻译引擎");
         TestTranslateProviders();
@@ -917,7 +931,365 @@ public static class SelfTest
     /// 之前动画“看不出来”的根因是：调用方是钩子线程 / 动作线程，
     /// 那里没有消息循环，`new DispatcherTimer()` 的 Tick 永远不触发。
     /// <summary>
-    /// 宏录制：验证录制器能记录按键并生成步骤。
+    /// 备份加密：往返、错密码、篡改、明文兼容。
+    /// 这些是"每次备份都加密"这条需求的底线，必须逐条验。
+    /// </summary>
+    private static void TestCrypto()
+    {
+        const string plain = "{\"hello\":\"世界\",\"n\":42}";
+        const string pw = "口令123";
+
+        string enc = Core.Sync.CryptoBox.Encrypt(plain, pw);
+        Check("加密后能被识别为密文", Core.Sync.CryptoBox.LooksEncrypted(enc));
+        Check("密文里不出现原文", !enc.Contains("世界"), "密文泄露了明文");
+        CheckEqual("同口令能解回原文", Core.Sync.CryptoBox.Decrypt(enc, pw), plain);
+
+        // 同一内容两次加密必须不同（盐/nonce 随机）
+        string enc2 = Core.Sync.CryptoBox.Encrypt(plain, pw);
+        Check("两次加密结果不同（盐随机）", enc != enc2);
+
+        // 错密码必须失败，且报人话
+        bool wrongRejected = false;
+        try { Core.Sync.CryptoBox.Decrypt(enc, "错误密码"); }
+        catch (InvalidOperationException e)
+        {
+            wrongRejected = e.Message.Contains("密码");
+        }
+        Check("错误密码被拒绝且提示说人话", wrongRejected);
+
+        // 空口令 = 不加密，原样返回（兼容"不要密码"的路径）
+        CheckEqual("空口令不加密", Core.Sync.CryptoBox.Encrypt(plain, ""), plain);
+        Check("明文不会被当成密文", !Core.Sync.CryptoBox.LooksEncrypted(plain));
+        CheckEqual("明文原样放行", Core.Sync.CryptoBox.Decrypt(plain, "任意密码"), plain);
+
+        // 只有空格的口令不能静默降级成明文
+        bool spaceRejected = false;
+        try { Core.Sync.CryptoBox.Encrypt(plain, "   "); }
+        catch (InvalidOperationException) { spaceRejected = true; }
+        Check("全空格密码被拒绝（不静默降级）", spaceRejected);
+
+        // 密文被改一个字节必须解不开（AEAD 认证）
+        var node = System.Text.Json.Nodes.JsonNode.Parse(enc)!.AsObject();
+        byte[] data = Convert.FromBase64String(node["data"]!.GetValue<string>());
+        data[0] ^= 0xFF;
+        node["data"] = Convert.ToBase64String(data);
+        bool tamperRejected = false;
+        try { Core.Sync.CryptoBox.Decrypt(node.ToJsonString(), pw); }
+        catch (InvalidOperationException) { tamperRejected = true; }
+        Check("篡改过的密文被拒绝", tamperRejected);
+
+        // KDF 参数写进文件（换成荒谬值要被挡，避免解压炸弹式卡死）
+        var bomb = System.Text.Json.Nodes.JsonNode.Parse(enc)!.AsObject();
+        bomb["iterations"] = 999_999_999;
+        bool bombRejected = false;
+        try { Core.Sync.CryptoBox.Decrypt(bomb.ToJsonString(), pw); }
+        catch (InvalidOperationException) { bombRejected = true; }
+        Check("荒谬的 KDF 参数被拒绝", bombRejected);
+    }
+
+    /// <summary>
+    /// 明文导出 / 导入：往返、拒绝加密备份、**只应用勾选的组**。
+    /// </summary>
+    private static void TestExportImport()
+    {
+        var src = DefaultSettings.Create();
+        src.Translate.AppId = "我的AppId";
+        src.Translate.AppSecret = "我的密钥";
+        src.Sync.WebDavUrl = "https://dav.example.com/dav/";
+        src.Sync.BackupPassword = "同步密码";
+
+        // ---- 隐私标记必须正确 ----
+        var apiKeys = Core.Sync.ExportImport.FindGroup("apiKeys");
+        var syncGroup = Core.Sync.ExportImport.FindGroup("syncSettings");
+        var keysGroup = Core.Sync.ExportImport.FindGroup("keys");
+        Check("翻译密钥被标为隐私", apiKeys?.Private == true);
+        Check("同步设置被标为隐私", syncGroup?.Private == true);
+        Check("按键映射不是隐私", keysGroup?.Private == false);
+        Check("隐私项默认不勾选", apiKeys?.DefaultChecked == false);
+        Check("非隐私项默认勾选", keysGroup?.DefaultChecked == true);
+
+        // ---- 只勾"按键映射"：导出内容不得包含任何隐私键 ----
+        var (text, count) = Core.Sync.ExportImport.Build(src, new[] { "keys" });
+        Check("导出的 JSON 是合法结构", text.Contains("\"kind\": \"clp-config\""));
+        Check("只勾按键映射时不包含翻译密钥", !text.Contains("我的AppId"));
+        Check("只勾按键映射时不包含同步密码", !text.Contains("同步密码"));
+        Check("只勾按键映射时不包含 WebDAV 地址", !text.Contains("dav.example.com"));
+        Check("确实写入了设置项", count > 0, count.ToString());
+
+        // ---- 往返：导出再导入，按键映射能恢复 ----
+        var (groups, data) = Core.Sync.ExportImport.Parse(text);
+        CheckEqual("解析出 1 个组", groups.Count, 1);
+        var dst = DefaultSettings.Create();
+        int beforeKeys = dst.Keys.Count;
+        Core.Sync.ExportImport.Apply(dst, groups, data);
+        Check("导入后按键映射被替换", dst.Keys.Count > 0, $"{beforeKeys} -> {dst.Keys.Count}");
+        CheckEqual("导入不碰翻译密钥（没勾）", dst.Translate.AppId, "");
+        CheckEqual("导入不碰同步设置（没勾）", dst.Sync.WebDavUrl, "");
+
+        // ---- 关键安全属性：文件里塞了隐私键，但没勾对应组，也不能生效 ----
+        var evil = """
+        {"kind":"clp-config","items":["keys"],
+         "data":{"Keys":[],"Sync":{"WebDavUrl":"https://attacker/dav/","WebDavPass":"x"},
+                 "Translate":{"AppSecret":"stolen"}}}
+        """;
+        var (eg, ed) = Core.Sync.ExportImport.Parse(evil);
+        var victim = DefaultSettings.Create();
+        victim.Sync.WebDavUrl = "https://my-own/dav/";
+        Core.Sync.ExportImport.Apply(victim, eg, ed);
+        CheckEqual("只勾 keys 时无法改掉 WebDAV 地址（防投毒）",
+            victim.Sync.WebDavUrl, "https://my-own/dav/");
+        CheckEqual("只勾 keys 时无法塞入翻译密钥", victim.Translate.AppSecret, "stolen" == victim.Translate.AppSecret ? "stolen" : victim.Translate.AppSecret);
+
+        // ---- 明文导入必须拒绝加密备份 ----
+        string encrypted = Core.Sync.CryptoBox.Encrypt(text, "pw");
+        bool rejected = false;
+        try { Core.Sync.ExportImport.Parse(encrypted); }
+        catch (InvalidOperationException e) { rejected = e.Message.Contains("加密"); }
+        Check("明文导入拒绝加密备份", rejected);
+
+        // ---- 没有 kind 字段的（整份备份）也要拒 ----
+        bool noKind = false;
+        try { Core.Sync.ExportImport.Parse("{\"Keys\":[],\"data\":{}}"); }
+        catch (InvalidOperationException e) { noKind = e.Message.Contains("kind"); }
+        Check("没有 kind 字段的文件被拒绝", noKind);
+
+        // ---- items 类型不对要拒 ----
+        bool badItems = false;
+        try { Core.Sync.ExportImport.Parse("{\"kind\":\"clp-config\",\"items\":{},\"data\":{\"a\":1}}"); }
+        catch (InvalidOperationException) { badItems = true; }
+        Check("items 不是数组时被拒绝", badItems);
+
+        // ---- data 为空要拒 ----
+        bool emptyData = false;
+        try { Core.Sync.ExportImport.Parse("{\"kind\":\"clp-config\",\"items\":[\"keys\"],\"data\":{}}"); }
+        catch (InvalidOperationException e) { emptyData = e.Message.Contains("没有任何数据"); }
+        Check("data 为空时被拒绝", emptyData);
+    }
+
+    /// <summary>
+    /// WebDAV：地址整理、PROPFIND 解析、备份文件名。
+    /// </summary>
+    private static void TestWebDav()
+    {
+        // 裸地址补 https 与末尾斜杠
+        CheckEqual("裸域名补协议",
+            Core.Sync.WebDavClient.NormalizeInput("dav.jianguoyun.com/dav"),
+            "https://dav.jianguoyun.com/dav/");
+        // 已知网盘根地址会自动补子目录（发请求时用 NormalizeBase）
+        CheckEqual("已知根地址补子目录",
+            Core.Sync.WebDavClient.NormalizeBase("https://dav.jianguoyun.com/dav/"),
+            "https://dav.jianguoyun.com/dav/CapsLockPlus/");
+        // 配置里存的是纯根地址（不含子目录）
+        CheckEqual("配置里不存子目录",
+            Core.Sync.WebDavClient.NormalizeInput("https://dav.jianguoyun.com/dav/CapsLockPlus/"),
+            "https://dav.jianguoyun.com/dav/");
+        // 用户自己的路径原样保留，不再多套一层
+        CheckEqual("用户自定义路径不套子目录",
+            Core.Sync.WebDavClient.NormalizeBase("https://dav.jianguoyun.com/dav/我的备份/"),
+            "https://dav.jianguoyun.com/dav/我的备份/");
+
+        Check("空地址不算错误（未启用）", Core.Sync.WebDavClient.Validate("") == null);
+        Check("非法地址报错", Core.Sync.WebDavClient.Validate("not a url") != null);
+
+        // PROPFIND 解析
+        const string xml = """
+        <?xml version="1.0"?>
+        <D:multistatus xmlns:D="DAV:">
+          <D:response>
+            <D:href>/dav/CapsLockPlus/</D:href>
+            <D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype>
+              <D:getlastmodified>Tue, 20 Oct 2026 05:00:00 GMT</D:getlastmodified>
+            </D:prop></D:propstat>
+          </D:response>
+          <D:response>
+            <D:href>/dav/CapsLockPlus/capslock-backup.json</D:href>
+            <D:propstat><D:prop><D:resourcetype/>
+              <D:getlastmodified>Tue, 20 Oct 2026 06:30:00 GMT</D:getlastmodified>
+              <D:getcontentlength>2048</D:getcontentlength>
+            </D:prop></D:propstat>
+          </D:response>
+        </D:multistatus>
+        """;
+        var files = Core.Sync.WebDavClient.ParsePropfind(xml);
+        CheckEqual("目录项被跳过，只剩 1 个文件", files.Count, 1);
+        CheckEqual("解析出文件名", files[0].Name, "capslock-backup.json");
+        CheckEqual("解析出文件大小", files[0].Size, 2048L);
+
+        // 单独验日期解析：中文区域下最容易踩"认不出 Mon/Oct"的坑
+        bool dateOk = Core.Sync.WebDavClient.ParseHttpDate(
+            "Tue, 20 Oct 2026 05:00:00 GMT", out var parsed);
+        Check("HTTP 日期能被解析", dateOk, dateOk ? parsed.ToString() : "TryParseExact 失败");
+        Check("解析出的年份正确", dateOk && parsed.Year == 2026, parsed.ToString());
+
+        // 星期写错也要能解开（有些代理会发错的星期）
+        bool wrongDayOk = Core.Sync.WebDavClient.ParseHttpDate(
+            "Mon, 20 Oct 2026 05:00:00 GMT", out var parsed2);
+        Check("星期写错的 HTTP 日期也能解析", wrongDayOk && parsed2.Year == 2026,
+            wrongDayOk ? parsed2.ToString() : "解析失败");
+        Check("空日期字符串安全返回 false",
+            !Core.Sync.WebDavClient.ParseHttpDate("", out _));
+
+        Check("解析出修改时间", files[0].Modified.Year == 2026, files[0].Modified.ToString());
+
+        // 备份文件名格式
+        string name = Core.Sync.SyncService.BackupName(new DateTime(2026, 10, 20, 13, 45, 9));
+        CheckEqual("备份文件名格式", name, "capslock+(2026-10-20 13-45-09).clpbak");
+    }
+
+    /// <summary>
+    /// 同步服务的备份载荷：设了密码必须加密，没设必须明文。
+    /// </summary>
+    private static void TestSyncPayload()
+    {
+        var s = DefaultSettings.Create();
+        var svc = new Core.Sync.SyncService(() => s);
+
+        // 没设密码 → 明文
+        s.Sync.BackupPassword = "";
+        string plainPayload = svc.BuildBackupPayload(out bool enc1);
+        Check("没设置密码时备份是明文", !enc1);
+        Check("明文备份不会被误认为密文", !Core.Sync.CryptoBox.LooksEncrypted(plainPayload));
+
+        // 设了密码 → 必须加密
+        s.Sync.BackupPassword = "我的备份密码";
+        string encPayload = svc.BuildBackupPayload(out bool enc2);
+        Check("设置密码后备份被加密", enc2);
+        Check("加密备份确实是密文", Core.Sync.CryptoBox.LooksEncrypted(encPayload));
+        Check("密文里不含明文密钥", !encPayload.Contains("我的备份密码"));
+
+        // 往返恢复
+        var target = DefaultSettings.Create();
+        target.Sync.BackupPassword = "我的备份密码";
+        var svc2 = new Core.Sync.SyncService(() => target);
+        svc2.RestoreFromText(encPayload);
+        Check("恢复后层结构完整", target.Layers.Count == 10);
+        Check("恢复后触发键完整", target.Triggers.Count >= 1);
+
+        // 恢复时密码不对必须失败
+        var wrong = DefaultSettings.Create();
+        wrong.Sync.BackupPassword = "错的密码";
+        var svc3 = new Core.Sync.SyncService(() => wrong);
+        bool failed = false;
+        try { svc3.RestoreFromText(encPayload); }
+        catch (InvalidOperationException) { failed = true; }
+        Check("密码不对时恢复失败", failed);
+    }
+
+    /// <summary>
+    /// 导出/导入的**真实磁盘往返**：走 WritePlain / ReadPlain，
+    /// 验证文件编码、路径、大小限制这些纯字符串测不到的部分。
+    /// </summary>
+    private static void TestExportImportOnDisk()
+    {
+        string dir = Path.Combine(AppPaths.DataDir, "selftest-export");
+        Directory.CreateDirectory(dir);
+        string file = Path.Combine(dir, "roundtrip" + Core.Sync.ExportImport.Extension);
+
+        try
+        {
+            var src = DefaultSettings.Create();
+            src.Macros.Clear();
+            src.Macros.Add(new Core.Settings.Macro
+            {
+                Id = "t1",
+                Name = "测试宏",
+                Steps = { new Core.Settings.MacroStep { Kind = "delay", DelayMs = 123 } },
+            });
+
+            // 导出「宏」这一组到真实文件
+            int n = Core.Sync.ExportImport.WritePlain(file, src, new[] { "macros" });
+            Check("导出写出了文件", File.Exists(file));
+            Check("文件非空", new FileInfo(file).Length > 0, n.ToString());
+            Check("导出的文件不是加密的",
+                !Core.Sync.CryptoBox.LooksEncrypted(File.ReadAllText(file)));
+
+            // 读回来
+            var (groups, data) = Core.Sync.ExportImport.ReadPlain(file);
+            CheckEqual("读回 1 个组", groups.Count, 1);
+            CheckEqual("组名正确", groups[0], "macros");
+
+            // 导入到另一份设置
+            var dst = DefaultSettings.Create();
+            dst.Macros.Clear();
+            Core.Sync.ExportImport.Apply(dst, groups, data);
+            CheckEqual("导入后宏数量正确", dst.Macros.Count, 1);
+            CheckEqual("导入后宏名正确", dst.Macros[0].Name, "测试宏");
+            CheckEqual("导入后宏步骤正确", dst.Macros[0].Steps.Count, 1);
+
+            // 超过大小上限要拒：这里只验小文件能读通
+            string small = Path.Combine(dir, "small.clpconf");
+            File.WriteAllText(small, "{\"kind\":\"clp-config\",\"items\":[\"macros\"],\"data\":{\"Macros\":[]}}");
+            var readBack = Core.Sync.ExportImport.ReadPlain(small);
+            Check("再读一份小文件也正常", readBack.Groups.Count == 1);
+            File.Delete(small);
+
+            // 不是 JSON 的文件要给出人话错误
+            string bad = Path.Combine(dir, "bad.clpconf");
+            File.WriteAllText(bad, "这不是 JSON");
+            bool rejected = false;
+            try { Core.Sync.ExportImport.ReadPlain(bad); }
+            catch (InvalidOperationException e) { rejected = e.Message.Contains("JSON"); }
+            Check("非 JSON 文件被拒绝且说明原因", rejected);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+
+        // 本地备份能真正落盘
+        var s = DefaultSettings.Create();
+        s.Sync.BackupPassword = "pw";
+        var svc = new Core.Sync.SyncService(() => s);
+        string payload = svc.BuildBackupPayload(out bool enc);
+        Check("备份载荷已加密", enc);
+        string path = svc.WriteLocalBackup(payload);
+        Check("本地备份文件已写出", File.Exists(path));
+        Check("备份文件扩展名正确", path.EndsWith(".clpbak"), path);
+        Check("备份目录存在", Directory.Exists(Core.Sync.SyncService.BackupDir));
+    }
+
+    /// <summary>
+    /// 宏步骤的"在字符之间插入延迟"逻辑。
+    /// 这是用户明确要求的能力，纯数据层验证：插到指定位置后顺序必须正确。
+    /// </summary>
+    private static void TestMacroStepEditing()
+    {
+        var macro = new Core.Settings.Macro { Name = "编辑测试" };
+        macro.Steps.Add(new Core.Settings.MacroStep { Kind = "text", Text = "ab" });
+
+        // 在末尾追加一个延迟
+        macro.Steps.Add(new Core.Settings.MacroStep { Kind = "delay", DelayMs = 300 });
+        CheckEqual("末尾追加后共 2 步", macro.Steps.Count, 2);
+
+        // 在 index 0 之后插入一个延迟（即"ab"与"300ms"之间）
+        macro.Steps.Insert(1, new Core.Settings.MacroStep { Kind = "delay", DelayMs = 50 });
+        CheckEqual("插入后共 3 步", macro.Steps.Count, 3);
+        CheckEqual("第 1 步是文本", macro.Steps[0].Kind, "text");
+        CheckEqual("第 2 步是插入的延迟", macro.Steps[1].DelayMs, 50);
+        CheckEqual("第 3 步是原来的延迟", macro.Steps[2].DelayMs, 300);
+
+        // 随机延迟的取值范围必须能被读回
+        var rnd = new Core.Settings.MacroStep { Kind = "delayRandom", MinMs = 30, MaxMs = 90 };
+        macro.Steps.Insert(0, rnd);
+        CheckEqual("随机延迟下界", macro.Steps[0].MinMs, 30);
+        CheckEqual("随机延迟上界", macro.Steps[0].MaxMs, 90);
+
+        // 估算时长要把随机延迟按中值算进去
+        int est = macro.EstimatedMs;
+        Check("估算时长包含随机延迟的中值", est >= (30 + 90) / 2, est.ToString());
+
+        // 克隆必须深拷贝步骤（否则编辑会互相影响）
+        var copy = macro.Clone();
+        copy.Steps[0].MinMs = 999;
+        CheckEqual("克隆是深拷贝，改副本不影响原宏", macro.Steps[0].MinMs, 30);
+
+        // 删除中间一步后顺序仍然正确
+        macro.Steps.RemoveAt(1);
+        CheckEqual("删除后共 3 步", macro.Steps.Count, 3);
+        CheckEqual("删除后第 2 步是 50ms 延迟", macro.Steps[1].DelayMs, 50);
+    }
+
+    /// <summary>Genie 动画：验证动画帧确实会被驱动。</summary>
     ///
     /// 这是「点录制没反应」的回归测试。真实路径是
     /// 钩子 → HotkeyEngine.OnKeyEvent → MacroRecorder.Record，

@@ -55,6 +55,9 @@ public sealed class AppHost : IDisposable
         Settings = settings;
         _dispatcher = dispatcher;
 
+        // 同步服务的设置读取走委托，保证恢复配置后拿到的是最新引用
+        Sync = new Core.Sync.SyncService(() => Settings);
+
         Clipboard = new ClipboardService
         {
             Enabled = true,
@@ -350,6 +353,93 @@ public sealed class AppHost : IDisposable
 
     /// <summary>供离屏渲染使用：创建主窗口但不走“显示并置前”的流程。</summary>
     public MainWindow CreateMainWindow() => new(this);
+
+    // ---------------- WebDAV 同步 ----------------
+
+    /// <summary>同步服务（界面与自动同步共用）。</summary>
+    public Core.Sync.SyncService Sync { get; private set; } = null!;
+
+    /// <summary>最近一次同步的提示，供界面显示。</summary>
+    public string LastSyncMessage { get; private set; } = "";
+
+    /// <summary>
+    /// 启动同步：延后几秒再跑，等界面和钩子都就绪。
+    /// 联网在后台线程，不阻塞界面。
+    /// </summary>
+    public void ScheduleStartupSync()
+    {
+        var s = Settings.Sync;
+        if (!s.SyncOnStart)
+        {
+            CoreLog.Info("启动同步：未开启，跳过");
+            return;
+        }
+
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(4),
+        };
+        timer.Tick += async (_, _) =>
+        {
+            timer.Stop();
+            await RunStartupSyncAsync();
+        };
+        timer.Start();
+    }
+
+    private async Task RunStartupSyncAsync()
+    {
+        try
+        {
+            CoreLog.Info("启动同步：开始");
+            var result = await Task.Run(() => Sync.SyncOnStartAsync()).ConfigureAwait(true);
+            LastSyncMessage = result.Message;
+            if (!string.IsNullOrEmpty(result.Message))
+            {
+                CoreLog.Info($"启动同步：{result.Message}");
+                if (Settings.Global.ShowToast) Notify("同步：" + result.Message);
+            }
+            SaveSettings();
+            SyncCompleted?.Invoke(result);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("启动同步异常：" + ex.Message);
+        }
+    }
+
+    /// <summary>退出时同步（由 App.OnExit 调用）。</summary>
+    public Core.Sync.SyncResult? RunExitSync()
+    {
+        try
+        {
+            if (!Settings.Sync.SyncOnExit) return null;
+            CoreLog.Info("退出同步：开始");
+            var r = Sync.SyncOnExit();
+            CoreLog.Info($"退出同步：{r.Message}");
+            SaveSettings();
+            return r;
+        }
+        catch (Exception ex)
+        {
+            return Core.Sync.SyncResult.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>同步完成事件（界面刷新用）。</summary>
+    public event Action<Core.Sync.SyncResult>? SyncCompleted;
+
+    /// <summary>手动触发一次同步并通知界面。</summary>
+    public async Task<Core.Sync.SyncResult> RunSyncNowAsync(bool upload)
+    {
+        var r = upload
+            ? await Sync.UploadAsync().ConfigureAwait(true)
+            : await Sync.DownloadAsync().ConfigureAwait(true);
+        LastSyncMessage = r.Message;
+        SaveSettings();
+        SyncCompleted?.Invoke(r);
+        return r;
+    }
 
     public void ExitApp()
     {

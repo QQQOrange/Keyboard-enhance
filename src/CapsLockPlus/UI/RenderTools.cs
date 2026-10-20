@@ -23,7 +23,8 @@ public static class RenderTools
 
     private static readonly string[] Pages =
     {
-        "guide", "keys", "qbar", "bindings", "clipboard", "translate", "settings", "help", "about",
+        "guide", "keys", "layers", "macros", "qbar", "bindings",
+        "clipboard", "translate", "backup", "settings", "help", "about",
     };
 
     public static int Run(AppHost host, string outDir)

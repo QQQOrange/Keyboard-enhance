@@ -70,9 +70,10 @@ public partial class MainWindow : Window
             "translate" => 5,
             "macros" => 6,
             "layers" => 7,
-            "settings" => 8,
-            "help" => 9,
-            "about" => 10,
+            "backup" => 8,
+            "settings" => 9,
+            "help" => 10,
+            "about" => 11,
             _ => 0,
         };
         if (NavList.SelectedIndex != index) NavList.SelectedIndex = index;
@@ -93,6 +94,7 @@ public partial class MainWindow : Window
             "translate" => new TranslateSettingsView(),
             "macros" => new MacrosView(),
             "layers" => new LayersView(),
+            "backup" => new BackupView(),
             "settings" => new SettingsView(),
             "help" => new HelpView(),
             "about" => new AboutView(),
@@ -109,6 +111,7 @@ public partial class MainWindow : Window
             case TranslateSettingsView t: t.Initialize(_host); break;
             case MacrosView m: m.Initialize(_host); break;
             case LayersView lv: lv.Initialize(_host); break;
+            case BackupView bv: bv.Initialize(_host); break;
             case SettingsView s: s.Initialize(_host); break;
             case HelpView h: h.Initialize(_host); break;
             case AboutView a: a.Initialize(_host); break;
@@ -136,6 +139,7 @@ public partial class MainWindow : Window
             "translate" => ("翻译", "选中即译"),
             "macros" => ("宏", "录制并绑定"),
             "layers" => ("触发键与层", "多触发键 · 10 层"),
+            "backup" => ("同步与备份", "WebDAV · 导入导出"),
             "settings" => ("设置", "全局选项"),
             "help" => ("快捷键速查", "随时查看"),
             "about" => ("关于", "版本与更新"),
@@ -153,6 +157,7 @@ public partial class MainWindow : Window
             case TranslateSettingsView t: t.Refresh(); break;
             case MacrosView mv: mv.Reload(); break;
             case LayersView lvw: lvw.Reload(); break;
+            case BackupView bvw: bvw.Refresh(); break;
             case HelpView h: h.Refresh(); break;
             case AboutView a: a.Refresh(); break;
         }

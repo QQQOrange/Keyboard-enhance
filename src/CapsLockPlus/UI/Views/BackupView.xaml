@@ -1,0 +1,185 @@
+<UserControl x:Class="CapsLockPlus.UI.Views.BackupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource Font.Ui}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="24,4,20,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左：WebDAV 同步 -->
+            <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,7,0" Padding="18,16"
+                    VerticalAlignment="Top">
+                <StackPanel>
+                    <TextBlock Text="WebDAV 同步" Style="{StaticResource Text.H2}" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Text="把配置备份到网盘（坚果云等）。开启后启动和关闭软件时各自动同步一次。&#x0a;每次备份都会用下面的密码加密。" />
+
+                    <TextBlock Text="服务器地址" Style="{StaticResource Text.Secondary}" Margin="0,16,0,6" />
+                    <TextBox x:Name="UrlBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                             VerticalContentAlignment="Center" TextChanged="OnUrlChanged" />
+                    <TextBlock Text="例：https://dav.jianguoyun.com/dav/　（只填到 dav/ 即可，子目录会自动创建）"
+                               Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0" />
+
+                    <TextBlock Text="用户名" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
+                    <TextBox x:Name="UserBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                             VerticalContentAlignment="Center" TextChanged="OnUserChanged" />
+
+                    <TextBlock Text="密码" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
+                    <PasswordBox x:Name="PassBox" Style="{StaticResource PasswordBox.Base}"
+                                 PasswordChanged="OnPassChanged" />
+                    <TextBlock Text="坚果云要用「应用密码」，不是登录密码"
+                               Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0" />
+
+                    <TextBlock Text="备份密码（加密用）" Style="{StaticResource Text.Secondary}"
+                               Margin="0,14,0,6" />
+                    <PasswordBox x:Name="BackupPassBox" Style="{StaticResource PasswordBox.Base}"
+                                 PasswordChanged="OnBackupPassChanged" />
+                    <Border x:Name="NoPasswordWarning" Margin="0,8,0,0" Padding="10,7" CornerRadius="8"
+                            Background="#22E5484D" BorderBrush="#55E5484D" BorderThickness="1"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="NoPasswordText" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="#E5484D"
+                                   Text="没设备份密码 —— 备份将以明文上传到网盘，任何能访问该目录的人都能读到你的翻译密钥和同步密码。" />
+                    </Border>
+
+                    <Border Style="{StaticResource Divider}" Margin="0,16,0,12" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="启动时自动同步" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="比云端与本机哪份新，谁新用谁"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="OnStartBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnOnStartChanged" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="关闭时自动同步" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="退出前把当前配置推上去（最多等 8 秒）"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" x:Name="OnExitBox" Style="{StaticResource ToggleSwitch}"
+                                  VerticalAlignment="Center" Click="OnOnExitChanged" />
+                    </Grid>
+
+                    <WrapPanel Margin="0,16,0,0">
+                        <Button Content="测连接" Style="{StaticResource Button.Base}" Padding="14,7"
+                                Margin="0,0,8,8" Click="OnTestClick" />
+                        <Button Content="立即上传" Style="{StaticResource Button.Primary}" Padding="14,7"
+                                Margin="0,0,8,8" Click="OnUploadClick" />
+                        <Button Content="从云端恢复" Style="{StaticResource Button.Base}" Padding="14,7"
+                                Margin="0,0,8,8" Click="OnDownloadClick" />
+                    </WrapPanel>
+
+                    <TextBlock x:Name="SyncStatus" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                               Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- 右：导入导出 -->
+            <StackPanel Grid.Column="1" Margin="7,0,0,0">
+                <Border Style="{StaticResource Card}" Padding="18,16" VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="导出配置" Style="{StaticResource Text.H2}" />
+                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="导出的是**明文**文件，可以直接发给别人导入。&#x0a;默认只勾非隐私内容；带红色标记的项涉及凭据，请谨慎勾选。" />
+
+                        <ItemsControl x:Name="GroupList" Margin="0,14,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,6" Padding="12,10" CornerRadius="10"
+                                            Background="{DynamicResource Brush.SurfaceAlt}"
+                                            BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Checked}"
+                                                      VerticalAlignment="Center" Tag="{Binding Id}"
+                                                      Click="OnGroupToggled" />
+                                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource Brush.TextPrimary}" />
+                                                    <!-- 隐私标记：红色 -->
+                                                    <Border x:Name="PrivateBadge" Margin="8,0,0,0" Padding="6,1"
+                                                            CornerRadius="5" Background="#22E5484D"
+                                                            BorderBrush="#55E5484D" BorderThickness="1"
+                                                            Visibility="{Binding PrivateVisibility}">
+                                                        <TextBlock Text="隐私" FontSize="10.5" FontWeight="SemiBold"
+                                                                   Foreground="#E5484D" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Desc}"
+                                                           Style="{StaticResource Text.Tertiary}"
+                                                           TextWrapping="Wrap" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="全不选" Style="{StaticResource Button.Ghost}" Padding="12,6"
+                                    Click="OnSelectNone" />
+                            <Button Content="只选非隐私" Style="{StaticResource Button.Ghost}" Padding="12,6"
+                                    Margin="8,0,0,0" Click="OnSelectSafe" />
+                            <Button Content="全选" Style="{StaticResource Button.Ghost}" Padding="12,6"
+                                    Margin="8,0,0,0" Click="OnSelectAll" />
+                        </StackPanel>
+
+                        <Button Content="导出到文件…" Style="{StaticResource Button.Primary}" Padding="16,8"
+                                Margin="0,12,0,0" HorizontalAlignment="Left" Click="OnExportClick" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,14,0,0"
+                        VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="导入配置" Style="{StaticResource Text.H2}" />
+                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="只能导入**明文**导出文件；加密备份请用上面的「从云端恢复」。&#x0a;导入是合并式的：只覆盖导出文件里包含的那些项。" />
+
+                        <Button Content="选择文件导入…" Style="{StaticResource Button.Base}" Padding="16,8"
+                                Margin="0,14,0,0" HorizontalAlignment="Left" Click="OnImportClick" />
+
+                        <Border x:Name="ImportResult" Margin="0,12,0,0" Padding="12,10" CornerRadius="10"
+                                Background="{DynamicResource Brush.SurfaceAlt}"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="ImportResultText" TextWrapping="Wrap" FontSize="12.5"
+                                       Foreground="{DynamicResource Brush.TextSecondary}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,14,0,0">
+                    <StackPanel>
+                        <TextBlock Text="本地备份" Style="{StaticResource Text.H3}" />
+                        <TextBlock x:Name="BackupDirText" Style="{StaticResource Text.Tertiary}"
+                                   TextWrapping="Wrap" Margin="0,6,0,0" />
+                        <Button Content="现在备份一次" Style="{StaticResource Button.Base}" Padding="14,7"
+                                Margin="0,10,0,0" HorizontalAlignment="Left" Click="OnLocalBackupClick" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

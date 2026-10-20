@@ -18,6 +18,55 @@ public static class SettingsStore
 
     private static readonly object Gate = new();
 
+    /// <summary>
+    /// 设置文件最后写入时间（本地时间）。
+    /// 启动时同步要拿它跟云端备份的修改时间比"谁新用谁"。
+    /// 文件不存在时返回最小时间，这样云端那份会被判定为更新。
+    /// </summary>
+    public static DateTime LastWriteTimeUtc
+    {
+        get
+        {
+            try
+            {
+                var fi = new FileInfo(AppPaths.SettingsFile);
+                return fi.Exists ? fi.LastWriteTimeUtc : DateTime.MinValue;
+            }
+            catch
+            {
+                return DateTime.MinValue;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 把另一份设置的内容整体拷进目标对象（保持引用不变）。
+    ///
+    /// 用于"从备份恢复"：界面各处都持有同一个 AppSettings 引用，
+    /// 直接替换引用会让它们指向旧对象，所以必须原地修改。
+    /// </summary>
+    public static void CopyInto(AppSettings target, AppSettings source)
+    {
+        var src = JsonSerializer.Serialize(source, JsonOptions);
+        var copy = JsonSerializer.Deserialize<AppSettings>(src, JsonOptions);
+        if (copy == null) return;
+
+        target.Global = copy.Global;
+        target.Qbar = copy.Qbar;
+        target.Translate = copy.Translate;
+        target.Sync = copy.Sync;
+        target.Keys = copy.Keys;
+        target.Layers = copy.Layers;
+        target.Triggers = copy.Triggers;
+        target.Macros = copy.Macros;
+        target.Search = copy.Search;
+        target.Run = copy.Run;
+        target.Web = copy.Web;
+        target.HotStrings = copy.HotStrings;
+        target.Bindings = copy.Bindings;
+        target.BuiltinEnginesVersion = copy.BuiltinEnginesVersion;
+    }
+
     public static AppSettings Load()
     {
         lock (Gate)
@@ -253,6 +302,7 @@ public static class SettingsStore
         s.Global ??= new GlobalOptions();
         s.Qbar ??= new QbarOptions();
         s.Translate ??= new TranslateOptions();
+        s.Sync ??= new SyncOptions();
         s.Keys ??= new List<KeyBinding>();
         s.Search ??= new List<QEntry>();
         s.Run ??= new List<QEntry>();

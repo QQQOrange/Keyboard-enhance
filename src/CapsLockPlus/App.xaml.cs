@@ -57,6 +57,29 @@ public partial class App : Application
             return;
         }
 
+        // WebDAV 真实往返测试：--webdav-test <地址> [用户名] [密码]
+        // 用来在本地起一个 stub 服务器后，端到端验证上传/下载/比时间这条链路。
+        int wdIndex = Array.FindIndex(e.Args,
+            a => a.Equals("--webdav-test", StringComparison.OrdinalIgnoreCase));
+        if (wdIndex >= 0)
+        {
+            int code;
+            try
+            {
+                code = Core.Sync.WebDavSelfTest.Run(
+                    e.Args.ElementAtOrDefault(wdIndex + 1) ?? "",
+                    e.Args.ElementAtOrDefault(wdIndex + 2) ?? "",
+                    e.Args.ElementAtOrDefault(wdIndex + 3) ?? "");
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error("WebDAV 测试异常", ex);
+                code = 2;
+            }
+            Environment.Exit(code);
+            return;
+        }
+
         // 批量把 SVG 图标渲染成 PNG（构建期工具：把外部图标库转成本程序可用的位图）
         int svgIndex = Array.FindIndex(e.Args, a => a.Equals("--svg2png", StringComparison.OrdinalIgnoreCase));
         if (svgIndex >= 0 && svgIndex + 2 < e.Args.Length)
@@ -187,6 +210,10 @@ public partial class App : Application
         }
         // 自动更新：延迟几秒再检查，避免和首屏抢资源
         Host.ScheduleUpdateCheck();
+
+        // 启动同步：延后 4 秒，等界面和钩子都就绪再联网。
+        // 同步本身在后台线程跑，不阻塞界面。
+        Host.ScheduleStartupSync();
     }
 
     /// <summary>支持 --page=keys 这样的参数，直接打开某个页面（也方便做截图验收）。</summary>
@@ -209,6 +236,16 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // 退出同步必须放在 Dispose 之前：那之后钩子和设置都拆了。
+        // SyncOnExit 内部有 8 秒硬上限，网盘不通也不会卡住关软件。
+        try
+        {
+            var r = Host?.RunExitSync();
+            if (r is { Ok: false })
+                CoreLog.Warn("退出同步未完成：" + r.Message);
+        }
+        catch (Exception ex) { CoreLog.Warn("退出同步异常：" + ex.Message); }
+
         try { Host?.Dispose(); } catch { }
         SingleInstance.Release();
         base.OnExit(e);

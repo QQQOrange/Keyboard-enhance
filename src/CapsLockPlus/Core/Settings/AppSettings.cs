@@ -158,6 +158,38 @@ public sealed class GlobalOptions
 }
 
 /// <summary>
+/// WebDAV 同步与备份设置。
+///
+/// 地址、用户名、密码都只存在本机设置文件里，不会被导出到明文配置
+/// （除非用户在导出时显式勾选"同步与备份设置"这个隐私组）。
+/// </summary>
+public sealed class SyncOptions
+{
+    /// <summary>WebDAV 服务器地址（目录形式）。</summary>
+    public string WebDavUrl { get; set; } = "";
+    public string WebDavUser { get; set; } = "";
+    public string WebDavPass { get; set; } = "";
+
+    /// <summary>启动软件时自动同步一次。</summary>
+    public bool SyncOnStart { get; set; }
+
+    /// <summary>关闭软件时自动同步一次。</summary>
+    public bool SyncOnExit { get; set; }
+
+    /// <summary>
+    /// 备份密码。非空时每次上传的备份都会加密；
+    /// 留空则备份是明文（界面上会明确提示）。
+    /// </summary>
+    public string BackupPassword { get; set; } = "";
+
+    /// <summary>上次同步时间。</summary>
+    public DateTime LastSyncAt { get; set; } = DateTime.MinValue;
+
+    /// <summary>上次同步结果的一句话说明。</summary>
+    public string LastSyncInfo { get; set; } = "";
+}
+
+/// <summary>
 /// 触发键（Trigger）配置。
 ///
 /// 参照键盘驱动的做法：用户按下一个"触发键"，
@@ -342,6 +374,7 @@ public sealed class AppSettings
     public GlobalOptions Global { get; set; } = new();
     public QbarOptions Qbar { get; set; } = new();
     public TranslateOptions Translate { get; set; } = new();
+    public SyncOptions Sync { get; set; } = new();
     public List<KeyBinding> Keys { get; set; } = new();
     public List<QEntry> Search { get; set; } = new();
     public List<QEntry> Run { get; set; } = new();

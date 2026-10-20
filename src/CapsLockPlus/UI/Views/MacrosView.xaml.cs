@@ -14,6 +14,9 @@ public partial class MacrosView : UserControl
     private AppHost? _host;
     private Macro? _editing;
 
+    /// <summary>程序化填充控件时置 true，避免把回填当成用户输入再存一遍。</summary>
+    private bool _suppress;
+
     // 录制器放在 AppHost 上而不是这里：页面会被缓存复用，
     // 但万一被重建，本地字段就丢了，录制会"点了没反应"。
 
@@ -60,23 +63,36 @@ public partial class MacrosView : UserControl
         StatusText.Text = m == null ? "选一个宏，或新建" : $"共 {m.Steps.Count} 步";
     }
 
-    private void RefreshSteps()
+    private void RefreshSteps(bool keepSelection = false)
     {
         var m = _editing;
         if (m == null)
         {
             StepList.ItemsSource = null;
+            StepEditor.Visibility = Visibility.Collapsed;
             return;
         }
 
+        int want = _selectedStep;
         var rows = new List<StepVm>();
         for (int i = 0; i < m.Steps.Count; i++)
         {
             var s = m.Steps[i];
             rows.Add(new StepVm(i + 1, i, Describe(s)));
         }
+
         StepList.ItemsSource = rows;
         StatusText.Text = m.Steps.Count == 0 ? "还没有步骤，先录制或插入" : $"共 {m.Steps.Count} 步";
+
+        if (keepSelection && want >= 0 && want < rows.Count)
+        {
+            StepList.SelectedIndex = want;
+        }
+        else if (keepSelection)
+        {
+            _selectedStep = -1;
+            StepEditor.Visibility = Visibility.Collapsed;
+        }
     }
 
     private static string Describe(MacroStep s) => s.Kind switch
@@ -186,22 +202,144 @@ public partial class MacrosView : UserControl
         RefreshSteps();
     }
 
+    // ---------------- 选中步骤的编辑 ----------------
+
+    /// <summary>当前选中步骤的下标（-1 = 没选）。</summary>
+    private int _selectedStep = -1;
+
+    private void OnStepSelected(object sender, SelectionChangedEventArgs e)
+    {
+        _selectedStep = StepList.SelectedItem is StepVm vm ? vm.Index : -1;
+        InsertHint.Text = _selectedStep >= 0
+            ? $"插入（插到第 {_selectedStep + 1} 步之后）"
+            : "插入（追加到末尾）";
+        BindStepEditor();
+    }
+
+    /// <summary>把选中步骤的内容填进编辑区。</summary>
+    private void BindStepEditor()
+    {
+        if (_editing == null || _selectedStep < 0 || _selectedStep >= _editing.Steps.Count)
+        {
+            StepEditor.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var step = _editing.Steps[_selectedStep];
+        StepEditor.Visibility = Visibility.Visible;
+        StepEditorTitle.Text = $"第 {_selectedStep + 1} 步";
+        _suppress = true;
+
+        DelayEditPanel.Visibility = step.Kind == "delay" ? Visibility.Visible : Visibility.Collapsed;
+        RandomEditPanel.Visibility = step.Kind == "delayRandom" ? Visibility.Visible : Visibility.Collapsed;
+        TextEditPanel.Visibility = step.Kind == "text" ? Visibility.Visible : Visibility.Collapsed;
+        KeyEditPanel.Visibility = step.Kind is "keyDown" or "keyUp" ? Visibility.Visible : Visibility.Collapsed;
+
+        switch (step.Kind)
+        {
+            case "delay":
+                DelayEditBox.Text = step.DelayMs.ToString();
+                break;
+            case "delayRandom":
+                MinEditBox.Text = step.MinMs.ToString();
+                MaxEditBox.Text = step.MaxMs.ToString();
+                break;
+            case "text":
+                TextEditBox.Text = step.Text;
+                break;
+            case "keyDown":
+            case "keyUp":
+                KeyEditLabel.Text = Core.Input.KeyName.Display(step.Key);
+                break;
+        }
+
+        _suppress = false;
+    }
+
+    private void OnDelayEditChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppress || _editing == null) return;
+        if (_selectedStep < 0 || _selectedStep >= _editing.Steps.Count) return;
+        var step = _editing.Steps[_selectedStep];
+        if (step.Kind != "delay") return;
+        if (!int.TryParse(DelayEditBox.Text, out int ms)) return;
+        step.DelayMs = Math.Clamp(ms, 0, 600_000);
+        _host.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnRandomEditChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppress || _editing == null) return;
+        if (_selectedStep < 0 || _selectedStep >= _editing.Steps.Count) return;
+        var step = _editing.Steps[_selectedStep];
+        if (step.Kind != "delayRandom") return;
+        if (int.TryParse(MinEditBox.Text, out int lo)) step.MinMs = Math.Clamp(lo, 0, 600_000);
+        if (int.TryParse(MaxEditBox.Text, out int hi)) step.MaxMs = Math.Clamp(hi, 0, 600_000);
+        _host.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnTextEditChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppress || _editing == null) return;
+        if (_selectedStep < 0 || _selectedStep >= _editing.Steps.Count) return;
+        var step = _editing.Steps[_selectedStep];
+        if (step.Kind != "text") return;
+        step.Text = TextEditBox.Text;
+        _host.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnChangeStepKey(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _editing == null) return;
+        if (_selectedStep < 0 || _selectedStep >= _editing.Steps.Count) return;
+
+        var dlg = new KeyCaptureWindow { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
+
+        _editing.Steps[_selectedStep].Key = dlg.CapturedCombo;
+        _host.SaveSettings();
+        BindStepEditor();
+        RefreshSteps(keepSelection: true);
+    }
+
     // ---------------- 插入步骤 ----------------
+
+    /// <summary>
+    /// 新步骤要插到哪。选中了某一步就插到它**后面**，
+    /// 否则追加到末尾 —— 这样用户能在任意两个字之间插入延迟。
+    /// </summary>
+    private int InsertIndex()
+    {
+        if (_editing == null) return 0;
+        if (_selectedStep < 0 || _selectedStep >= _editing.Steps.Count)
+            return _editing.Steps.Count;      // 末尾
+        return _selectedStep + 1;
+    }
+
+    private void AddStep(MacroStep step)
+    {
+        if (_editing == null) return;
+        int at = InsertIndex();
+        _editing.Steps.Insert(at, step);
+        _selectedStep = at;                    // 选中新插入的那一步，方便接着改
+        _host?.SaveSettings();
+        RefreshSteps(keepSelection: true);
+        BindStepEditor();
+    }
 
     private void OnInsertDelay(object sender, RoutedEventArgs e)
     {
         if (_editing == null) return;
-        _editing.Steps.Add(new MacroStep { Kind = "delay", DelayMs = 200 });
-        _host?.SaveSettings();
-        RefreshSteps();
+        AddStep(new MacroStep { Kind = "delay", DelayMs = 200 });
     }
 
     private void OnInsertRandom(object sender, RoutedEventArgs e)
     {
         if (_editing == null) return;
-        _editing.Steps.Add(new MacroStep { Kind = "delayRandom", MinMs = 80, MaxMs = 220 });
-        _host?.SaveSettings();
-        RefreshSteps();
+        AddStep(new MacroStep { Kind = "delayRandom", MinMs = 80, MaxMs = 220 });
     }
 
     private void OnInsertText(object sender, RoutedEventArgs e)
@@ -209,9 +347,7 @@ public partial class MacrosView : UserControl
         if (_editing == null) return;
         var text = PromptText("要输入什么文本？", "插入文本步骤");
         if (string.IsNullOrEmpty(text)) return;
-        _editing.Steps.Add(new MacroStep { Kind = "text", Text = text });
-        _host?.SaveSettings();
-        RefreshSteps();
+        AddStep(new MacroStep { Kind = "text", Text = text });
     }
 
     private void OnInsertKeyDown(object sender, RoutedEventArgs e) => InsertKey("keyDown");
@@ -222,14 +358,11 @@ public partial class MacrosView : UserControl
     {
         if (_editing == null) return;
 
-        // 用捕获窗口拿一个键，Esc 取消
+        // 用捕获窗口拿一个键（支持组合键），Esc 取消
         var dlg = new KeyCaptureWindow { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
 
-        string name = dlg.CapturedCombo;
-        _editing.Steps.Add(new MacroStep { Kind = kind, Key = name });
-        _host?.SaveSettings();
-        RefreshSteps();
+        AddStep(new MacroStep { Kind = kind, Key = dlg.CapturedCombo });
     }
 
     // ---------------- 简单输入框 ----------------

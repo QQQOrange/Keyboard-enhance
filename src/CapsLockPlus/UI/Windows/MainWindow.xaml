@@ -121,6 +121,15 @@
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
+                    <ListBoxItem Tag="backup">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE753;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="15" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Brush.TextSecondary}" />
+                            <TextBlock Text="同步与备份" Margin="11,0,0,0" VerticalAlignment="Center"
+                                       Style="{StaticResource Text.Body}" />
+                        </StackPanel>
+                    </ListBoxItem>
                     <ListBoxItem Tag="settings">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
