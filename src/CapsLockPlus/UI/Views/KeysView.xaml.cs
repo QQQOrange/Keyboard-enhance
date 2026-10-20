@@ -53,11 +53,35 @@ public partial class KeysView : UserControl
 
     public KeysView() => InitializeComponent();
 
+    /// <summary>
+    /// 切到指定层并刷新界面。
+    /// 层 ID 1 = 基础层；2 及以上用 Layer{id} 命名保存
+    /// （这里沿用现有的"修饰键层"概念：2 = LAlt 层，3 = Win 层）。
+    /// </summary>
+    public void SelectLayerById(int layerId)
+    {
+        if (_host == null) return;
+        var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == layerId);
+        if (layer == null) return;
+
+        // 前 3 层沿用既有 UI（基础 / LAlt / Win）；更高层暂用基础层 UI 打开
+        _layer = layerId switch
+        {
+            2 => KeyModifiers.Alt,
+            3 => KeyModifiers.Win,
+            _ => KeyModifiers.None,
+        };
+        UpdateLayerButtons();
+        SelectKey(_selectedKey);
+    }
+
     public void Initialize(AppHost host)
     {
         _host = host;
         BuildKeyboard();
         Refresh();
+        // 从层管理页跳过来时，AppHost 会记住目标层，这里应用它
+        host.ApplyPendingKeysLayer(this);
     }
 
     public void Refresh()
@@ -338,7 +362,7 @@ public partial class KeysView : UserControl
     {
         if (_host == null || _suppressEvents) return;
         if (ActionBox.SelectedItem is not ComboBoxItem item || item.Tag is not string actionId) return;
-        string combo = KeyName.BuildCombo(_layer, _selectedKey);
+        string combo = CurrentCombo();
         var binding = _host.Settings.FindBinding(combo);
         if (binding == null)
         {
@@ -356,8 +380,7 @@ public partial class KeysView : UserControl
     private void OnArgChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppressEvents) return;
-        string combo = KeyName.BuildCombo(_layer, _selectedKey);
-        var binding = _host.Settings.FindBinding(combo);
+        var binding = _host.Settings.FindBinding(CurrentCombo());
         if (binding == null) return;
         binding.Arg = ArgBox.Text.Trim();
         _host.SaveSettings();
@@ -366,8 +389,7 @@ public partial class KeysView : UserControl
     private void OnClearClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        string combo = KeyName.BuildCombo(_layer, _selectedKey);
-        var binding = _host.Settings.FindBinding(combo);
+        var binding = _host.Settings.FindBinding(CurrentCombo());
         if (binding != null)
         {
             binding.Action = "doNothing";
@@ -393,6 +415,15 @@ public partial class KeysView : UserControl
     /// 键盘上画出来的键之外，也支持小键盘、媒体键、浏览器键等
     /// （这些键的 VK 在 WPF 键盘事件里拿不到，必须走低级键盘钩子）。
     /// </summary>
+    /// <summary>
+    /// 当前编辑目标对应的 combo ID。
+    /// 捕获过自定义组合键时用捕获到的修饰键，否则用当前层的修饰键。
+    /// </summary>
+    private string CurrentCombo() =>
+        _capturedMods == KeyModifiers.None
+            ? KeyName.BuildCombo(_layer, _selectedKey)
+            : BuildComboFromCapture(_capturedMods, _selectedKey);
+
     private void OnCustomKeyClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
@@ -401,16 +432,41 @@ public partial class KeysView : UserControl
         {
             Owner = Window.GetWindow(this),
         };
-        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedKey)) return;
+        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
 
-        string keyId = dlg.CapturedKey;
+        // 组合键要转成引擎认识的 combo ID：
+        //   Ctrl+Shift+K + 当前层  ->  caps_ctrl_shift_k
+        //   K                      ->  caps_k
+        string key = dlg.CapturedKey ?? dlg.CapturedCombo;
+        _capturedMods = dlg.CapturedMods;
 
-        // 复用 SelectKey，让界面立刻反映新键
-        SelectKey(keyId);
+        SelectKey(key);
+        string combo = BuildComboFromCapture(_capturedMods, key);
+        ActionDesc.Text = $"已选中自定义组合键「{combo}」，在下面选一个功能即可绑定。";
+    }
 
-        // 同步给用户一个明确反馈：这个键已进入编辑状态
-        ActionDesc.Text = $"已选中自定义按键「{KeyName.Display(keyId)}」，" +
-                          $"在下面选一个功能即可绑定。";
+    /// <summary>当前捕获到的修饰键（配合 SelectKey 使用）。</summary>
+    private KeyModifiers _capturedMods;
+
+    /// <summary>
+    /// 把捕获窗口给出的 (修饰键, 主键) 转成引擎的组合键 ID。
+    ///
+    /// 引擎里修饰键原本只有 LAlt / Win 两种（caps_lalt_x / caps_win_x），
+    /// 而用户可能捕获到 Ctrl/Shift。这里按顺序拼进 combo ID：
+    ///   Caps + Ctrl+Shift+K  ->  caps_ctrl_shift_k
+    /// 引擎侧原样查表，所以只要能存进去、查得到就行。
+    /// </summary>
+    private string BuildComboFromCapture(KeyModifiers mods, string key)
+    {
+        var parts = new List<string>();
+        if (_layer == KeyModifiers.Alt) parts.Add("lalt");
+        else if (_layer == KeyModifiers.Win) parts.Add("win");
+        if (mods.HasFlag(KeyModifiers.Ctrl)) parts.Add("ctrl");
+        if (mods.HasFlag(KeyModifiers.Shift)) parts.Add("shift");
+        if (mods.HasFlag(KeyModifiers.Alt)) parts.Add("lalt");
+        if (mods.HasFlag(KeyModifiers.Win)) parts.Add("win");
+        parts.Add(key);
+        return "caps_" + string.Join("_", parts);
     }
 
     private void OnResetClick(object sender, RoutedEventArgs e)

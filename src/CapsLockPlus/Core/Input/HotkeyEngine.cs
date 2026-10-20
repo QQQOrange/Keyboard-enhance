@@ -384,7 +384,7 @@ public sealed class HotkeyEngine : IDisposable
         if (_shiftDown) mods |= KeyModifiers.Shift;
 
         var settings = _settings();
-        string comboId = KeyName.BuildCombo(mods, keyName);
+        string comboId = KeyName.BuildComboEx(mods, keyName);
 
         var binding = FindInLayer(settings, _activeLayer, comboId);
         if (binding == null || !binding.IsBound)

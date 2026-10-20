@@ -58,11 +58,15 @@ public sealed class MacroRecorder
     /// <summary>喂一个真实按键给录制器（由钩子回调调用，必须极快）。</summary>
     public void Record(int vk, bool down)
     {
+        bool shouldLog = false;
         lock (_gate)
         {
             if (!_recording) return;
             _events.Add(new RawEvent(vk, down, _clock.ElapsedMilliseconds));
+            shouldLog = _events.Count <= 3;      // 前几个事件打日志，确认真的在录
         }
+        if (shouldLog)
+            CoreLog.Info($"宏录制：vk=0x{vk:X2} down={down}");
     }
 
     /// <summary>

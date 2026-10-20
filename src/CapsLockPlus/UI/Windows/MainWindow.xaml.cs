@@ -13,9 +13,13 @@ public partial class MainWindow : Window
     private string _current = "";
     private string? _pendingPage;
 
+    /// <summary>当前主窗口实例（AppHost 需要用它导航到某个页面）。</summary>
+    public static MainWindow? Instance { get; private set; }
+
     public MainWindow(AppHost host)
     {
         _host = host;
+        Instance = this;
         InitializeComponent();
 
         NavList.SelectedIndex = 0;
@@ -64,9 +68,11 @@ public partial class MainWindow : Window
             "bindings" => 3,
             "clipboard" => 4,
             "translate" => 5,
-            "settings" => 6,
-            "help" => 7,
-            "about" => 8,
+            "macros" => 6,
+            "layers" => 7,
+            "settings" => 8,
+            "help" => 9,
+            "about" => 10,
             _ => 0,
         };
         if (NavList.SelectedIndex != index) NavList.SelectedIndex = index;
@@ -74,7 +80,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>按需创建页面：只有真正打开过的页面才会构建可视化树，启动更快、内存更省。</summary>
-    private UserControl GetPage(string page)
+    public UserControl GetPage(string page)
     {
         if (_pages.TryGetValue(page, out var cached)) return cached;
 
@@ -86,6 +92,7 @@ public partial class MainWindow : Window
             "clipboard" => new ClipboardView(),
             "translate" => new TranslateSettingsView(),
             "macros" => new MacrosView(),
+            "layers" => new LayersView(),
             "settings" => new SettingsView(),
             "help" => new HelpView(),
             "about" => new AboutView(),
@@ -101,6 +108,7 @@ public partial class MainWindow : Window
             case ClipboardView c: c.Initialize(_host); break;
             case TranslateSettingsView t: t.Initialize(_host); break;
             case MacrosView m: m.Initialize(_host); break;
+            case LayersView lv: lv.Initialize(_host); break;
             case SettingsView s: s.Initialize(_host); break;
             case HelpView h: h.Initialize(_host); break;
             case AboutView a: a.Initialize(_host); break;
@@ -127,6 +135,7 @@ public partial class MainWindow : Window
             "clipboard" => ("剪贴板", "独立剪贴板"),
             "translate" => ("翻译", "选中即译"),
             "macros" => ("宏", "录制并绑定"),
+            "layers" => ("触发键与层", "多触发键 · 10 层"),
             "settings" => ("设置", "全局选项"),
             "help" => ("快捷键速查", "随时查看"),
             "about" => ("关于", "版本与更新"),
@@ -142,6 +151,8 @@ public partial class MainWindow : Window
             case SettingsView s: s.Refresh(); break;
             case QbarSettingsView q: q.Refresh(); break;
             case TranslateSettingsView t: t.Refresh(); break;
+            case MacrosView mv: mv.Reload(); break;
+            case LayersView lvw: lvw.Reload(); break;
             case HelpView h: h.Refresh(); break;
             case AboutView a: a.Refresh(); break;
         }

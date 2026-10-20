@@ -122,17 +122,39 @@ public sealed class AppHost : IDisposable
         Context.MacrosRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("macros"));
     }
 
-    /// <summary>宏录制器（由宏页面驱动；null 表示当前没有在录制）。</summary>
-    private Core.Macro.MacroRecorder? _recorder;
+    /// <summary>宏录制器（长驻 AppHost，页面重建也不会丢）。</summary>
+    public Core.Macro.MacroRecorder MacroRecorder { get; } = new();
 
     /// <summary>
     /// 开启 / 关闭宏录制。
     /// 开启后引擎会把所有真实按键透传给录制器（不影响正常输入）。
     /// </summary>
+    [Obsolete("请直接使用 MacroRecorder 属性")]
     public void EnableMacroRecording(Core.Macro.MacroRecorder recorder)
     {
-        _recorder = recorder;
         Engine.MacroRecorder = recorder;
+    }
+
+    /// <summary>
+    /// 让「按键映射」页切到指定层（从层管理页跳转时用）。
+    /// 页面尚未创建时会记住目标层，等页面初始化时再应用。
+    /// </summary>
+    public void SelectKeysLayer(int layerId)
+    {
+        _pendingKeysLayer = layerId;
+        // 按键映射页已经创建过就直接切；否则等它 Initialize 时再应用
+        if (Windows.MainWindow.Instance?.GetPage("keys") is Views.KeysView kv)
+            kv.SelectLayerById(layerId);
+    }
+
+    private int _pendingKeysLayer = 1;
+
+    /// <summary>把 AppHost 记住的目标层应用到 KeysView（页面刚创建时调用）。</summary>
+    public void ApplyPendingKeysLayer(Views.KeysView view)
+    {
+        if (_pendingKeysLayer <= 1) return;
+        view.SelectLayerById(_pendingKeysLayer);
+        _pendingKeysLayer = 1;
     }
 
     public void Start()

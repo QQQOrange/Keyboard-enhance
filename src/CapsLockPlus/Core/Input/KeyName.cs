@@ -81,7 +81,27 @@ public static class KeyName
         // VkOf 返回 null，触发键永远匹配不上（表现为整个层功能失效）。
         [VK.CapsLock] = "capslock",
         [VK.Space] = "space",
+
+        // ---- 修饰键必须全部登记 ----
+        //
+        // 少了任何一个，"自定义按键"就录不到 Ctrl/Shift/Alt/Win：
+        // 捕获窗口里 NameOf 返回 null，直接被当成"未识别按键"拒绝，
+        // 用户看到的现象就是"只能录下小字母，录不了 control/shift/alt"。
+        //
+        // 左右分开登记（lctrl/rctrl…），这样既能区分左右，
+        // 也让组合串可读；读取时 ReadModifiers 会把左右归并成同一个修饰键。
+        [VK.LControl] = "lctrl",
+        [VK.RControl] = "rctrl",
+        [VK.LShift] = "lshift",
+        [VK.RShift] = "rshift",
+        [VK.LMenu] = "lalt",
         [VK.RMenu] = "ralt",
+        [VK.LWin] = "lwin",
+        [VK.RWin] = "rwin",
+        // 通用名（有些键盘/驱动只发这三个 VK）
+        [VK.Shift] = "shift",
+        [VK.Control] = "ctrl",
+        [VK.Menu] = "alt",
         [VK.Oem3] = "backquote",
         [VK.OemMinus] = "minus",
         [VK.OemPlus] = "equal",
@@ -144,7 +164,18 @@ public static class KeyName
         "enter" => "Enter",
         "esc" => "Esc",
         "space" => "Space",
+        "capslock" => "CapsLock",
+        "lctrl" => "左 Ctrl",
+        "rctrl" => "右 Ctrl",
+        "lshift" => "左 Shift",
+        "rshift" => "右 Shift",
+        "lalt" => "左 Alt",
         "ralt" => "RAlt",
+        "lwin" => "左 Win",
+        "rwin" => "右 Win",
+        "ctrl" => "Ctrl",
+        "shift" => "Shift",
+        "alt" => "Alt",
         "pageUp" => "PgUp",
         "pageDown" => "PgDn",
         "mediaPrev" => "上一首",
@@ -169,6 +200,25 @@ public static class KeyName
         if (comboId.Equals("press_caps", StringComparison.OrdinalIgnoreCase))
             return (KeyModifiers.None, "capslock");
         return null;
+    }
+
+    /// <summary>
+    /// 构造组合键 ID。
+    ///
+    /// 除引擎原有的 LAlt / Win 之外，也支持 Ctrl / Shift
+    /// （自定义按键捕获到的组合键用），按 ctrl → shift → lalt → win 的顺序拼：
+    ///   Caps + Ctrl+K       ->  caps_ctrl_k
+    ///   Caps + Ctrl+Shift+K ->  caps_ctrl_shift_k
+    /// </summary>
+    public static string BuildComboEx(KeyModifiers mods, string key)
+    {
+        var parts = new List<string>();
+        if (mods.HasFlag(KeyModifiers.Ctrl)) parts.Add("ctrl");
+        if (mods.HasFlag(KeyModifiers.Shift)) parts.Add("shift");
+        if (mods.HasFlag(KeyModifiers.Alt)) parts.Add("lalt");
+        if (mods.HasFlag(KeyModifiers.Win)) parts.Add("win");
+        parts.Add(key);
+        return "caps_" + string.Join("_", parts);
     }
 
     public static string BuildCombo(KeyModifiers mods, string key) => mods switch

@@ -98,6 +98,11 @@ public static class SelfTest
         Section("键盘层");
         TestLayers();
 
+        Section("宏");
+        TestMacroRecorder();
+        TestComboCapture();
+        TestExtendedCombos();
+
         Section("翻译引擎");
         TestTranslateProviders();
 
@@ -911,6 +916,101 @@ public static class SelfTest
     ///
     /// 之前动画“看不出来”的根因是：调用方是钩子线程 / 动作线程，
     /// 那里没有消息循环，`new DispatcherTimer()` 的 Tick 永远不触发。
+    /// <summary>
+    /// 宏录制：验证录制器能记录按键并生成步骤。
+    ///
+    /// 这是「点录制没反应」的回归测试。真实路径是
+    /// 钩子 → HotkeyEngine.OnKeyEvent → MacroRecorder.Record，
+    /// 这里直接驱动录制器，确认它本身能工作（排除钩子因素）。
+    /// </summary>
+    private static void TestMacroRecorder()
+    {
+        var rec = new Core.Macro.MacroRecorder();
+        Check("初始未在录制", !rec.IsRecording);
+
+        rec.Start();
+        Check("Start 后进入录制", rec.IsRecording);
+
+        // 模拟输入 "hi"：H、I 各一次 down/up，中间有间隔
+        rec.Record(0x48, true);    // H down
+        Thread.Sleep(40);
+        rec.Record(0x48, false);   // H up
+        Thread.Sleep(30);
+        rec.Record(0x49, true);    // I down
+        Thread.Sleep(20);
+        rec.Record(0x49, false);   // I up
+
+        Check("记录了 4 个事件", rec.EventCount == 4, rec.EventCount.ToString());
+
+        var macro = rec.Stop("测试宏");
+        Check("停止后退出录制", !rec.IsRecording);
+        Check("生成 >= 4 步", macro.Steps.Count >= 4, macro.Steps.Count.ToString());
+
+        bool hasDown = macro.Steps.Any(s => s.Kind == "keyDown" && s.Key == "h");
+        bool hasUp = macro.Steps.Any(s => s.Kind == "keyUp" && s.Key == "i");
+        Check("录制到 H 按下", hasDown);
+        Check("录制到 I 抬起", hasUp);
+        Check("至少有一个延迟步骤", macro.Steps.Any(s => s.Kind == "delay"));
+
+        bool hasDelay = macro.Steps.Any(s => s.Kind == "delay" && s.DelayMs >= 25);
+        Check("按键间隔被记录为延迟", hasDelay,
+            string.Join(",", macro.Steps.Where(s => s.Kind == "delay").Select(s => s.DelayMs)));
+
+        // 播放器不应抛异常（播完即结束；线程退出需要一点时间）
+        var player = new Core.Macro.MacroPlayer();
+        player.Play(macro);
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        while (player.IsPlaying && DateTime.UtcNow < deadline) Thread.Sleep(50);
+        Check("播放后结束", !player.IsPlaying);
+        player.Dispose();
+    }
+
+    /// <summary>
+    /// 组合键捕获的解析逻辑：修饰键必须能被识别。
+    /// 真实捕获依赖钩子与真实按键，这里验证纯逻辑部分。
+    /// </summary>
+    private static void TestComboCapture()
+    {
+        // Ctrl/Shift/Alt/Win 的虚拟键码必须都有名字
+        int[] mods = { 0xA2, 0xA3, 0x11, 0xA0, 0xA1, 0x10, 0xA4, 0xA5, 0x12, 0x5B, 0x5C };
+        var unnamed = mods.Where(vk => KeyName.NameOf(vk) == null).ToList();
+        Check("所有修饰键都有键名", unnamed.Count == 0,
+            string.Join(",", unnamed.Select(v => v.ToString("X2"))));
+
+        // 普通键不能被当成修饰键
+        Check("字母键不是修饰键", !IsModifierVk(0x41));
+        Check("数字键不是修饰键", !IsModifierVk(0x31));
+    }
+
+    /// <summary>
+    /// 扩展组合键 ID：Ctrl / Shift 也要能拼进 caps_ 前缀。
+    /// 这是「自定义按键录不了 Ctrl/Shift」的回归测试。
+    /// </summary>
+    private static void TestExtendedCombos()
+    {
+        CheckEqual("单键", KeyName.BuildComboEx(KeyModifiers.None, "k"), "caps_k");
+        CheckEqual("Ctrl+K", KeyName.BuildComboEx(KeyModifiers.Ctrl, "k"), "caps_ctrl_k");
+        CheckEqual("Ctrl+Shift+K",
+            KeyName.BuildComboEx(KeyModifiers.Ctrl | KeyModifiers.Shift, "k"), "caps_ctrl_shift_k");
+        CheckEqual("Shift+K", KeyName.BuildComboEx(KeyModifiers.Shift, "k"), "caps_shift_k");
+        CheckEqual("Alt+K", KeyName.BuildComboEx(KeyModifiers.Alt, "k"), "caps_lalt_k");
+        CheckEqual("Win+K", KeyName.BuildComboEx(KeyModifiers.Win, "k"), "caps_win_k");
+        CheckEqual("Ctrl+Alt+K",
+            KeyName.BuildComboEx(KeyModifiers.Ctrl | KeyModifiers.Alt, "k"), "caps_ctrl_lalt_k");
+
+        // 修饰键名必须能反查（捕获窗口要把 VK 变成名字）
+        CheckEqual("左 Ctrl 的键名", KeyName.NameOf(0xA2), "lctrl");
+        CheckEqual("右 Ctrl 的键名", KeyName.NameOf(0xA3), "rctrl");
+        CheckEqual("左 Shift 的键名", KeyName.NameOf(0xA0), "lshift");
+        CheckEqual("左 Alt 的键名", KeyName.NameOf(0xA4), "lalt");
+        CheckEqual("左 Win 的键名", KeyName.NameOf(0x5B), "lwin");
+        CheckEqual("lctrl 反查 VK", KeyName.VkOf("lctrl"), 0xA2);
+        CheckEqual("lalt 反查 VK", KeyName.VkOf("lalt"), 0xA4);
+    }
+
+    private static bool IsModifierVk(int vk) => vk is
+        0xA2 or 0xA3 or 0x11 or 0xA0 or 0xA1 or 0x10 or 0xA4 or 0xA5 or 0x12 or 0x5B or 0x5C;
+
     /// 这里在一个 STA 线程里调用动画，并检查窗口尺寸是否被改动过 ——
     /// 若一帧都没跑，尺寸不会变。
     /// </summary>

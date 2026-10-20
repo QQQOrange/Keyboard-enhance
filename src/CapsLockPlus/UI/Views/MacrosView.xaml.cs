@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using CapsLockPlus.Core;
 using CapsLockPlus.Core.Macro;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.UI.Windows;
@@ -12,7 +13,9 @@ public partial class MacrosView : UserControl
 {
     private AppHost? _host;
     private Macro? _editing;
-    private readonly MacroRecorder _recorder = new();
+
+    // 录制器放在 AppHost 上而不是这里：页面会被缓存复用，
+    // 但万一被重建，本地字段就丢了，录制会"点了没反应"。
 
     public MacrosView() => InitializeComponent();
 
@@ -20,13 +23,21 @@ public partial class MacrosView : UserControl
     {
         _host = host;
         Reload();
+        // 恢复录制按钮状态（页面被重建时）
+        if (Recorder.IsRecording)
+        {
+            RecordButton.Content = "停止录制";
+            RecordStatus.Text = "录制中…照常操作键盘";
+        }
     }
 
     private Macro? Selected => MacroList.SelectedItem as Macro;
 
-    // ---------------- 列表 ----------------
+    /// <summary>录制器（由 AppHost 持有，页面重建也不会丢）。</summary>
+    private MacroRecorder Recorder => _host?.MacroRecorder ?? throw new InvalidOperationException("未初始化");
 
-    private void Reload()
+    /// <summary>重新载入列表（页面再次显示时也会调用）。</summary>
+    public void Reload()
     {
         if (_host == null) return;
         MacroList.ItemsSource = null;
@@ -86,26 +97,29 @@ public partial class MacrosView : UserControl
     private void OnRecordClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
+        var rec = Recorder;
 
-        if (_recorder.IsRecording)
+        if (rec.IsRecording)
         {
             // 停止录制 -> 生成宏
-            var macro = _recorder.Stop("新宏 " + DateTime.Now.ToString("HH:mm:ss"));
+            var macro = rec.Stop("新宏 " + DateTime.Now.ToString("HH:mm:ss"));
+            _host.Engine.MacroRecorder = null;          // 告诉引擎：录制结束
             _host.Settings.Macros.Add(macro);
             _editing = macro;
             _host.SaveSettings();
             Reload();
             RecordButton.Content = "开始录制";
-            RecordStatus.Text = "已生成";
+            RecordStatus.Text = $"已生成 {macro.Steps.Count} 步";
             _host.Notify($"宏已录制：{macro.Steps.Count} 步");
             return;
         }
 
-        // 开始录制：钩子开始记录（引擎层透传，不影响正常输入）
-        _recorder.Start();
-        _host.EnableMacroRecording(_recorder);
+        // 开始录制：钩子继续透传，只记录事件
+        rec.Start();
+        _host.Engine.MacroRecorder = rec;
         RecordButton.Content = "停止录制";
         RecordStatus.Text = "录制中…照常操作键盘";
+        CoreLog.Info("宏录制开始");
     }
 
     // ---------------- 增删 ----------------

@@ -134,10 +134,31 @@ public partial class KeyCaptureWindow : Window
 
         if (IsModifier(vk))
         {
-            // 修饰键：按下实时刷新高亮，松开刷新一次
-            if (down || up)
+            // 修饰键：按下时实时刷新高亮；**抬起**时如果当前还没定案，
+            // 就把这个修饰键本身作为目标（方便单独绑定 Ctrl/Shift/Alt/Win）。
+            if (down)
             {
                 Dispatcher.BeginInvoke(UpdateModifierBadges);
+            }
+            else
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    UpdateModifierBadges();
+                    if (string.IsNullOrEmpty(CapturedCombo))
+                    {
+                        // 只按了一个修饰键就松手：允许把它当目标键
+                        string? modName = KeyName.NameOf(vk);
+                        if (modName != null)
+                        {
+                            CapturedMods = ReadModifiers();
+                            CapturedCombo = modName;
+                            PromptText.Text = KeyName.Display(modName);
+                            DetailText.Text = "单独绑定这个修饰键　·　按「确定绑定」生效";
+                            ConfirmButton.IsEnabled = true;
+                        }
+                    }
+                });
             }
             return (IntPtr)1;
         }
