@@ -270,15 +270,40 @@ public sealed class QbarService
             }
         }
 
-        // 7) 文件 / 文件夹路径
-        try
+        // 7) 网址 / 文件路径
+        //
+        // 需求：Qbar 里直接贴一个网址要能回车直达；
+        // 贴一个文件路径要用对应的程序打开，贴文件夹要用资源管理器打开。
+        // 这里把优先级提到很高，避免被"默认搜索"盖住。
+        if (LooksLikeUrl(text))
         {
-            if (File.Exists(text) || Directory.Exists(text))
-            {
-                results.Add(new QbarResult(QbarKind.File, text, "打开这个路径", "路径", text) { Score = -5 });
-            }
+            string url = NormalizeUrl(text);
+            results.Insert(0, new QbarResult(QbarKind.Web, url, "打开这个网址", "网址", url) { Score = -3 });
         }
-        catch { }
+        else
+        {
+            try
+            {
+                if (File.Exists(text))
+                {
+                    results.Insert(0, new QbarResult(QbarKind.File, text, "打开这个文件", "文件", text)
+                    { Score = -4 });
+                }
+                else if (Directory.Exists(text))
+                {
+                    // 文件夹交给资源管理器打开（explorer 能选中、能浏览，双击方式更符合习惯）
+                    results.Insert(0, new QbarResult(QbarKind.File, text, "在资源管理器中打开", "文件夹", text)
+                    { Score = -4 });
+                }
+                else if (LooksLikePath(text))
+                {
+                    // 路径格式正确但不存在：仍然给一条，让用户知道自己打错了
+                    results.Insert(0, new QbarResult(QbarKind.File, text, "这个路径不存在", "路径", text)
+                    { Score = 200 });
+                }
+            }
+            catch { }
+        }
 
         // 8) 默认搜索（永远兜底，回车即可搜）
         string defaultEngine = settings.Search.FirstOrDefault(x =>
@@ -302,6 +327,77 @@ public sealed class QbarService
             yield return new QbarResult(QbarKind.Command, cmd.Title, cmd.Description, cmd.Key, cmd.Action) { Score = 2 };
         foreach (var run in settings.Run.Take(4))
             yield return new QbarResult(QbarKind.Run, run.Key, run.Value, "程序", run.Value) { Score = 3 };
+    }
+
+    /// <summary>
+    /// 判断是不是网址。
+    ///
+    /// 认识三种写法：
+    ///   https://example.com          —— 带协议
+    ///   example.com / example.cn     —— 裸域名（.com/.cn/.org/.net/.io…）
+    ///   localhost:8080 / 192.168.1.1 —— 本机或局域网地址
+    ///
+    /// 刻意排除：
+    ///   单个字母加冒号（C:）     —— 那是盘符，属于路径
+    ///   含空格的                  —— 正常网址不带空格
+    /// </summary>
+    public static bool LooksLikeUrl(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        text = text.Trim();
+        if (text.Contains(' ')) return false;
+        if (text.StartsWith("\\\\")) return false;    // UNC 网络路径
+
+        // 带协议
+        if (text.Contains("://", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // 盘符（C:\ / D:/）不是网址
+        if (text.Length >= 2 && char.IsLetter(text[0]) && text[1] == ':') return false;
+
+        // 裸域名 / localhost 分支要在"含点"检查**之前**，
+        // 否则 localhost 这种不含点的会被上面的 lastDot 判断挡掉。
+        if (text.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+            text.StartsWith("localhost:", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // 裸域名：必须含点，且最后一段是常见后缀
+        int lastDot = text.LastIndexOf('.');
+        if (lastDot > 0 && lastDot < text.Length - 1)
+        {
+            string tld = text[(lastDot + 1)..].ToLowerInvariant();
+            string[] known =
+            {
+                "com", "cn", "org", "net", "io", "co", "dev", "app", "ai", "me",
+                "edu", "gov", "info", "biz", "tv", "cc", "xyz", "top", "vip",
+                "jp", "kr", "uk", "de", "fr", "ru", "hk", "tw", "sg",
+            };
+            if (known.Contains(tld)) return true;
+        }
+
+        // 纯 IP
+        if (System.Net.IPAddress.TryParse(text, out _)) return true;
+
+        return false;
+    }
+
+    /// <summary>裸域名补上 https://，避免系统把它当搜索词。</summary>
+    private static string NormalizeUrl(string text) =>
+        text.Contains("://", StringComparison.OrdinalIgnoreCase) ? text : "https://" + text;
+
+    /// <summary>
+    /// 看起来像文件 / 文件夹路径（即使它不存在）。
+    /// 用于给出"这个路径不存在"的友好提示，而不是默默去搜索。
+    /// </summary>
+    public static bool LooksLikePath(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        text = text.Trim();
+        // 盘符路径 C:\xxx / D:/xxx
+        if (text.Length >= 3 && char.IsLetter(text[0]) && text[1] == ':'
+            && text[2] is '\\' or '/') return true;
+        // UNC 网络路径 \\server\share
+        if (text.StartsWith("\\\\")) return true;
+        return false;
     }
 
     private static IEnumerable<QbarResult> MatchEntries(AppSettings settings, string text)
@@ -369,6 +465,46 @@ public sealed class QbarService
 
     private static string Shorten(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
+    /// <summary>
+    /// 打开文件 / 文件夹。
+    ///
+    /// 文件夹显式交给资源管理器（explorer.exe），
+    /// 这样行为可预期：既能浏览、也能拖拽，还能看到地址栏。
+    /// 用 ShellExecute 也可以，但明确走 explorer 更稳
+    /// （某些文件夹 ShellExecute 会因为"找不到应用"而反问用户）。
+    /// </summary>
+    private static void OpenFileTarget(QbarResult result)
+    {
+        string path = result.Payload ?? "";
+        if (path.Length == 0) return;
+
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", path)
+                {
+                    UseShellExecute = false,
+                });
+                return;
+            }
+        }
+        catch { }
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("打开文件失败：" + ex.Message);
+        }
+    }
+
     /// <summary>执行一条结果。</summary>
     public void Execute(QbarResult result, QbarCallbacks cb)
     {
@@ -386,8 +522,11 @@ public sealed class QbarService
                 break;
             case QbarKind.Search:
             case QbarKind.Web:
-            case QbarKind.File:
                 cb.OpenTarget(result.Payload);
+                break;
+
+            case QbarKind.File:
+                OpenFileTarget(result);
                 break;
             case QbarKind.Run:
                 cb.RunTarget(result.Payload, result.RunAsAdmin, result.Arguments);

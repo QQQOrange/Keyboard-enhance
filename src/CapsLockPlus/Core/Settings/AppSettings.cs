@@ -157,6 +157,145 @@ public sealed class GlobalOptions
     public string SkippedVersion { get; set; } = "";
 }
 
+/// <summary>
+/// 触发键（Trigger）配置。
+///
+/// 参照键盘驱动的做法：用户按下一个"触发键"，
+/// 短按（未超阈值）保留原键盘功能，长按超过阈值后
+/// 临时切换到该触发键绑定的层，层内按键执行自定义动作。
+///
+/// 默认只有一个触发键 = CapsLock，绑第 1 层，
+/// 这样老用户的行为完全不变。
+/// </summary>
+public sealed class TriggerKey
+{
+    /// <summary>触发的物理键名（KeyName.NameOf 形式），例如 "capslock"。</summary>
+    public string Key { get; set; } = "";
+
+    /// <summary>该触发键绑定到哪一层（1-based；对应 <see cref="LayerOptions.Id"/>）。</summary>
+    public int LayerId { get; set; } = 1;
+
+    /// <summary>
+    /// 长按阈值（毫秒）。按住超过这个时间才进入层模式；
+    /// 在此之前松开则视为"短按"，走 <see cref="TapAction"/>。
+    /// </summary>
+    public int HoldMs { get; set; } = 200;
+
+    /// <summary>短按时要执行的动作（默认切换大小写；可设为 Esc / 无操作等）。</summary>
+    public string TapAction { get; set; } = "toggleCapsLock";
+
+    /// <summary>双击触发键时执行的动作（空 = 关闭双击功能）。</summary>
+    public string DoubleTapAction { get; set; } = "";
+
+    /// <summary>是否启用这个触发键。</summary>
+    public bool Enabled { get; set; } = true;
+
+    public string Display => string.IsNullOrEmpty(Key) ? "(未设置)" : Key;
+}
+
+/// <summary>
+/// 键盘层（Layer）。
+///
+/// 一个层就是一套独立的"触发键 + 按键 → 动作/宏"映射表。
+/// 层与层之间互不干扰；同一层内再支持 Alt / Win 修饰键，
+/// 组合键 ID 形如 <c>caps_q</c> / <c>caps_lalt_q</c>。
+/// </summary>
+public sealed class LayerOptions
+{
+    /// <summary>层 ID，从 1 开始，对应触发键的 <see cref="TriggerKey.LayerId"/>。</summary>
+    public int Id { get; set; } = 1;
+
+    /// <summary>层名称，界面上显示用，例如「基础层」「Layer 2」。</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>是否启用。</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>该层的按键绑定列表。</summary>
+    public List<KeyBinding> Keys { get; set; } = new();
+}
+
+/// <summary>
+/// 宏动作（Macro）序列中的一步。
+///
+/// 参照键盘驱动的宏方案，一个宏就是一串"带时间的输入事件"：
+/// 按下键 / 抬起键 / 等待固定毫秒 / 等待随机毫秒区间。
+/// 文本输入则拆成逐字符的"按下+抬起"序列，
+/// 这样才能在游戏和不响应粘贴的程序里生效。
+/// </summary>
+public sealed class MacroStep
+{
+    /// <summary>步骤类型：keyDown / keyUp / delay / delayRandom / text。</summary>
+    public string Kind { get; set; } = "delay";
+
+    /// <summary>Kind 为 keyDown/keyUp 时的键名（KeyName 形式，如 "a"、"ctrl"）。</summary>
+    public string Key { get; set; } = "";
+
+    /// <summary>
+    /// Kind 为 text 时要输入的文本（整体一步，播放时逐字符发送并自动加微小延迟）。
+    /// </summary>
+    public string Text { get; set; } = "";
+
+    /// <summary>Kind 为 delay 时的固定等待毫秒。</summary>
+    public int DelayMs { get; set; }
+
+    /// <summary>Kind 为 delayRandom 时的随机区间下界。</summary>
+    public int MinMs { get; set; }
+
+    /// <summary>Kind 为 delayRandom 时的随机区间上界。</summary>
+    public int MaxMs { get; set; }
+
+    public MacroStep Clone() => new()
+    {
+        Kind = Kind, Key = Key, Text = Text,
+        DelayMs = DelayMs, MinMs = MinMs, MaxMs = MaxMs,
+    };
+}
+
+/// <summary>
+/// 一个可绑定的宏。
+///
+/// 存在设置文件里，可以在界面上录制、编辑、绑定到任意层的任意按键。
+/// </summary>
+public sealed class Macro
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+    public string Name { get; set; } = "新宏";
+    public List<MacroStep> Steps { get; set; } = new();
+
+    /// <summary>循环播放次数（1 = 播放一次；0 = 一直循环直到用户中断）。</summary>
+    public int Repeat { get; set; } = 1;
+
+    /// <summary>备注。</summary>
+    public string Comment { get; set; } = "";
+
+    public Macro Clone() => new()
+    {
+        Id = Id, Name = Name, Comment = Comment, Repeat = Repeat,
+        Steps = Steps.Select(s => s.Clone()).ToList(),
+    };
+
+    /// <summary>估算总时长（用于界面显示）。</summary>
+    public int EstimatedMs
+    {
+        get
+        {
+            int total = 0;
+            foreach (var s in Steps)
+            {
+                switch (s.Kind)
+                {
+                    case "delay": total += s.DelayMs; break;
+                    case "delayRandom": total += (s.MinMs + s.MaxMs) / 2; break;
+                    case "text": total += s.Text.Length * 12; break;
+                    default: total += 8; break;   // 一次按键的按下+抬起
+                }
+            }
+            return total;
+        }
+    }
+}
+
 public sealed class QbarOptions
 {
     public string BorderColor { get; set; } = "#2B6CF6";
@@ -210,8 +349,31 @@ public sealed class AppSettings
     public List<QEntry> HotStrings { get; set; } = new();
     public List<WinBinding> Bindings { get; set; } = new();
 
+    /// <summary>触发键列表（可多个；每个绑定一层）。</summary>
+    public List<TriggerKey> Triggers { get; set; } = new();
+
+    /// <summary>层列表（默认 10 层）。</summary>
+    public List<LayerOptions> Layers { get; set; } = new();
+
+    /// <summary>宏列表。</summary>
+    public List<Macro> Macros { get; set; } = new();
+
     public KeyBinding? FindBinding(string combo) =>
         Keys.FirstOrDefault(k => string.Equals(k.Combo, combo, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 拿某一层的按键绑定（找不到层时返回 null）。
+    /// 老设置文件没有层概念，此时 <see cref="Keys"/> 就是事实上的第 1 层。
+    /// </summary>
+    public List<KeyBinding> LayerKeys(int layerId)
+    {
+        var layer = Layers.FirstOrDefault(l => l.Id == layerId);
+        if (layer == null)
+        {
+            return layerId == 1 ? Keys : new List<KeyBinding>();
+        }
+        return layer.Keys;
+    }
 
     public AppSettings Clone()
     {

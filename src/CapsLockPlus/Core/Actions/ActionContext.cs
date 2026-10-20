@@ -33,17 +33,36 @@ public sealed class ActionContext
     public event Action? ReloadRequested;
     public event Action? ToggleEnabledRequested;
     public event Action? ScreenshotRequested;
+    public event Action? MacrosRequested;
 
     public void RequestQbar() => QbarRequested?.Invoke();
     public void RequestMathBoard() => MathBoardRequested?.Invoke();
     public void RequestOpenSettings() => SettingsRequested?.Invoke();
     public void RequestHelp() => HelpRequested?.Invoke();
     public void RequestOpenBindings() => BindingsRequested?.Invoke();
+    public void RequestOpenMacros() => MacrosRequested?.Invoke();
     public void RequestOpenClipboardHistory() => ClipboardHistoryRequested?.Invoke();
     public void RequestTranslate() => TranslateRequested?.Invoke();
     public void RequestReload() => ReloadRequested?.Invoke();
     public void RequestToggleEnabled() => ToggleEnabledRequested?.Invoke();
     public void RequestScreenshot() => ScreenshotRequested?.Invoke();
+
+    /// <summary>播放指定 ID 的宏。arg 可覆盖重复次数（空 = 用宏自身设置）。</summary>
+    public void PlayMacro(string macroId, string? arg)
+    {
+        var macro = Settings().Macros.FirstOrDefault(m => m.Id == macroId);
+        if (macro == null)
+        {
+            Notify("宏不存在，可能已被删除");
+            return;
+        }
+        int? repeat = int.TryParse(arg, out int n) && n > 0 ? n : null;
+        MacroPlayer.Play(macro, repeat);
+        Notify($"播放宏：{macro.Name}");
+    }
+
+    /// <summary>全局宏播放器（一个进程一个就够了）。</summary>
+    public Macro.MacroPlayer MacroPlayer { get; set; } = new();
 
     private bool _undoNext;
 

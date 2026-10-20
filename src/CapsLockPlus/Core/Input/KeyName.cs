@@ -77,6 +77,9 @@ public static class KeyName
         [VK.Tab] = "tab",
         [VK.Return] = "enter",
         [VK.Escape] = "esc",
+        // CapsLock 必须在这里登记，否则触发键配置里写 "capslock" 时
+        // VkOf 返回 null，触发键永远匹配不上（表现为整个层功能失效）。
+        [VK.CapsLock] = "capslock",
         [VK.Space] = "space",
         [VK.RMenu] = "ralt",
         [VK.Oem3] = "backquote",
@@ -176,10 +179,18 @@ public static class KeyName
     };
 }
 
+/// <summary>
+/// 组合键的修饰键。
+///
+/// 位值沿用 Windows 的习惯：Ctrl / Shift / Alt / Win = 1 / 2 / 4 / 8，
+/// 这样可以按位组合，也便于将来直接和 Win32 MOD_* 对齐。
+/// </summary>
 [Flags]
 public enum KeyModifiers
 {
     None = 0,
-    Alt = 1,
-    Win = 2,
+    Ctrl = 1,
+    Shift = 2,
+    Alt = 4,
+    Win = 8,
 }

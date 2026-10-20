@@ -146,20 +146,6 @@
 
                     <Border Style="{StaticResource Divider}" />
 
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="切换窗口时播放动画" Style="{StaticResource Text.Body}" />
-                            <TextBlock Text="按 Caps+数字 切窗口时，窗口由小到大展开，一眼看清是哪个窗口"
-                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
-                        </StackPanel>
-                        <CheckBox Grid.Column="1" x:Name="WinAnimBox" Style="{StaticResource ToggleSwitch}"
-                                  VerticalAlignment="Center" Click="OnWinAnimChanged" />
-                    </Grid>
-
                     <Border Style="{StaticResource Divider}" />
 
                     <Grid>

@@ -1,7 +1,7 @@
 <Window x:Class="CapsLockPlus.UI.Windows.KeyCaptureWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="自定义按键" Width="440" SizeToContent="Height"
+        Title="自定义按键" Width="470" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True"
         ResizeMode="NoResize" FontFamily="{StaticResource Font.Ui}">
@@ -11,9 +11,9 @@
         <Border CornerRadius="16" BorderThickness="1.5" Background="{DynamicResource Brush.Surface}"
                 BorderBrush="{DynamicResource Brush.Border}">
             <StackPanel Margin="20,18">
-                <TextBlock Text="按下任意按键" FontSize="16" FontWeight="SemiBold"
+                <TextBlock Text="按下目标组合键" FontSize="16" FontWeight="SemiBold"
                            Foreground="{DynamicResource Brush.TextPrimary}" />
-                <TextBlock Text="直接按键盘上的目标键即可，Esc 取消。&#x0a;支持小键盘、功能键、媒体键、浏览器键等键盘上不显示的按键。"
+                <TextBlock Text="例如 Ctrl+Shift+K、Alt+D。支持小键盘、功能键、媒体键等键盘上不显示的按键。&#x0a;Esc 取消。"
                            Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,8,0,0" />
 
                 <!-- 捕获显示区 -->
@@ -21,6 +21,34 @@
                         Background="{DynamicResource Brush.SurfaceAlt}"
                         BorderBrush="{DynamicResource Brush.AccentSoftBorder}" BorderThickness="1">
                     <StackPanel>
+                        <!-- 修饰键状态指示 -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
+                            <Border x:Name="CtrlBadge" CornerRadius="6" Padding="8,3" Margin="0,0,6,0"
+                                    Background="{DynamicResource Brush.Surface}"
+                                    BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                <TextBlock Text="Ctrl" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextTertiary}" />
+                            </Border>
+                            <Border x:Name="ShiftBadge" CornerRadius="6" Padding="8,3" Margin="0,0,6,0"
+                                    Background="{DynamicResource Brush.Surface}"
+                                    BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                <TextBlock Text="Shift" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextTertiary}" />
+                            </Border>
+                            <Border x:Name="AltBadge" CornerRadius="6" Padding="8,3" Margin="0,0,6,0"
+                                    Background="{DynamicResource Brush.Surface}"
+                                    BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                <TextBlock Text="Alt" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextTertiary}" />
+                            </Border>
+                            <Border x:Name="WinBadge" CornerRadius="6" Padding="8,3"
+                                    Background="{DynamicResource Brush.Surface}"
+                                    BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                <TextBlock Text="Win" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextTertiary}" />
+                            </Border>
+                        </StackPanel>
+
                         <TextBlock x:Name="PromptText" Text="等待按键…" FontSize="14" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" />
                         <TextBlock x:Name="DetailText" Text="" Style="{StaticResource Text.Tertiary}"

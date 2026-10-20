@@ -92,6 +92,12 @@ public static class SelfTest
         Section("文字度量");
         TestTextMetrics();
 
+        Section("Qbar 网址与路径");
+        TestQbarUrlAndPath();
+
+        Section("键盘层");
+        TestLayers();
+
         Section("翻译引擎");
         TestTranslateProviders();
 
@@ -771,6 +777,71 @@ public static class SelfTest
     /// <summary>
     /// 翻译引擎：数量要够，且每个引擎的 ID / 名称 / 是否需要密钥都合法。
     /// </summary>
+    /// <summary>
+    /// Qbar 的网址识别与文件路径识别。
+    ///
+    /// 关键回归点：裸域名（www.baidu.com）要能补协议直达；
+    /// 盘符路径（C:\Users）不能被误判成网址，否则会去浏览器搜索一个路径。
+    /// </summary>
+    private static void TestQbarUrlAndPath()
+    {
+        Check("识别 https 网址", Core.Qbar.QbarService.LooksLikeUrl("https://example.com"));
+        Check("识别 http 网址", Core.Qbar.QbarService.LooksLikeUrl("http://localhost:8080"));
+        Check("识别裸域名", Core.Qbar.QbarService.LooksLikeUrl("www.baidu.com"));
+        Check("识别 .com 域名", Core.Qbar.QbarService.LooksLikeUrl("google.com"));
+        Check("识别 .cn 域名", Core.Qbar.QbarService.LooksLikeUrl("qq.com"));
+        Check("识别 localhost", Core.Qbar.QbarService.LooksLikeUrl("localhost"));
+        Check("识别 IP", Core.Qbar.QbarService.LooksLikeUrl("192.168.1.1"));
+
+        // 不能误判
+        Check("盘符不是网址", !Core.Qbar.QbarService.LooksLikeUrl("C:\\Users"));
+        Check("带空格的不是网址", !Core.Qbar.QbarService.LooksLikeUrl("hello world"));
+        Check("单个词不是网址", !Core.Qbar.QbarService.LooksLikeUrl("hello"));
+        Check("UNC 路径不是网址", !Core.Qbar.QbarService.LooksLikeUrl("\\\\server\\share"));
+        Check("空串不是网址", !Core.Qbar.QbarService.LooksLikeUrl(""));
+
+        // 路径识别
+        Check("识别盘符路径", Core.Qbar.QbarService.LooksLikePath("C:\\Users"));
+        Check("识别斜杠路径", Core.Qbar.QbarService.LooksLikePath("D:/code"));
+        Check("识别 UNC 路径", Core.Qbar.QbarService.LooksLikePath("\\\\server\\share"));
+        Check("普通词不是路径", !Core.Qbar.QbarService.LooksLikePath("hello"));
+
+        // 真实路径（数据目录一定存在）
+        string dir = AppPaths.DataDir;
+        Check("数据目录确实存在", Directory.Exists(dir));
+        Check("数据目录不是网址", !Core.Qbar.QbarService.LooksLikeUrl(dir));
+        Check("数据目录是路径", Core.Qbar.QbarService.LooksLikePath(dir));
+    }
+
+    /// <summary>
+    /// 键盘层：默认 10 层、默认触发键 = CapsLock 绑第 1 层，
+    /// 且老设置的 Keys 会被当作第 1 层（保证升级后行为不变）。
+    /// </summary>
+    private static void TestLayers()
+    {
+        var s = DefaultSettings.Create();
+        Check("默认 10 个层", s.Layers.Count == 10, s.Layers.Count.ToString());
+        Check("层 ID 从 1 到 10",
+            s.Layers.Select(l => l.Id).SequenceEqual(Enumerable.Range(1, 10)));
+        Check("第 1 层名为基础层", s.Layers[0].Name == "基础层");
+        Check("默认 1 个触发键", s.Triggers.Count == 1);
+        Check("默认触发键是 CapsLock", s.Triggers[0].Key == "capslock");
+        Check("默认触发键绑第 1 层", s.Triggers[0].LayerId == 1);
+        Check("默认长按阈值 200ms", s.Triggers[0].HoldMs == 200);
+        Check("默认短按切换大小写", s.Triggers[0].TapAction == "toggleCapsLock");
+
+        // 老设置（没有 Triggers/Layers）Normalize 之后要补齐，且 Keys 变第 1 层
+        var legacy = new AppSettings();
+        legacy.Keys.Add(new KeyBinding { Combo = "caps_q", Action = "qbar" });
+        SettingsStore.Normalize(legacy);
+        Check("老设置补齐出 10 层", legacy.Layers.Count == 10);
+        Check("老设置补齐出 1 个触发键", legacy.Triggers.Count == 1);
+        Check("老设置的 Keys 成为第 1 层",
+            legacy.Layers.First(l => l.Id == 1).Keys.Any(k => k.Combo == "caps_q"));
+        Check("LayerKeys(1) 能取到老绑定",
+            legacy.LayerKeys(1).Any(k => k.Combo == "caps_q"));
+    }
+
     private static void TestTranslateProviders()
     {
         var providers = Core.Translate.TranslateService.Providers;
@@ -990,7 +1061,22 @@ public static class SelfTest
         {
             lock (triggered) triggered.Add(action);
             return true;
-        });
+        })
+        {
+            // 自检没有真实时间流逝，等不到 200ms 长按阈值，
+            // 打开这个开关让触发键一按下就立刻进入层模式。
+            EnterLayerImmediatelyForTest = true,
+        };
+
+        // 先确认触发键能被认出来
+        Check("默认设置里有 CapsLock 触发键",
+            settings.Triggers.Any(t => t.Key == "capslock"));
+        Check("默认设置里有 10 层", settings.Layers.Count == 10);
+        Check("第 1 层有 Caps+S 绑定",
+            settings.Layers.FirstOrDefault(l => l.Id == 1)?.Keys
+                .Any(k => k.Combo == "caps_s") == true);
+        Check("capslock 能解析成虚拟键码",
+            KeyName.VkOf("capslock") == VK.CapsLock);
 
         Check("Caps 按下被吞掉", engine.SimulateKey(VK.CapsLock, true));
         Check("Caps 组合键被吞掉（不会打出字母）", engine.SimulateKey(0x53 /*S*/, true));
@@ -1050,6 +1136,14 @@ public static class SelfTest
 
         // 双击 Caps（需要先在设置里打开）
         settings.Global.DoubleTapCaps = true;
+        // 触发键自己的双击配置也要开（新的层模型读的是 TriggerKey.DoubleTapAction）
+        foreach (var t in settings.Triggers)
+            t.DoubleTapAction = "qbar";
+        triggered.Clear();
+        // 双击：连续两次短按。要先把 EnterLayerImmediatelyForTest 关掉，
+        // 否则每次按下都直接进层，永远走不到短按/双击分支。
+        engine.EnterLayerImmediatelyForTest = false;
+        engine.SimulateShortPressForTest = true;
         triggered.Clear();
         engine.SimulateKey(VK.CapsLock, true);
         engine.SimulateKey(VK.CapsLock, false);
@@ -1057,6 +1151,7 @@ public static class SelfTest
         engine.SimulateKey(VK.CapsLock, true);
         engine.SimulateKey(VK.CapsLock, false);
         Thread.Sleep(180);
+        engine.SimulateShortPressForTest = false;
         lock (triggered)
         {
             Check("双击 Caps 触发 Qbar", triggered.Contains("qbar"), string.Join(",", triggered));

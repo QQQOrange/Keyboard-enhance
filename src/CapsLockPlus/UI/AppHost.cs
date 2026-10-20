@@ -119,6 +119,20 @@ public sealed class AppHost : IDisposable
         Context.ReloadRequested += () => _dispatcher.BeginInvoke(() => ReloadAll());
         Context.ToggleEnabledRequested += () => _dispatcher.BeginInvoke(() => ToggleEnabled());
         Context.ScreenshotRequested += () => _dispatcher.BeginInvoke(() => Context.Screenshot());
+        Context.MacrosRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("macros"));
+    }
+
+    /// <summary>宏录制器（由宏页面驱动；null 表示当前没有在录制）。</summary>
+    private Core.Macro.MacroRecorder? _recorder;
+
+    /// <summary>
+    /// 开启 / 关闭宏录制。
+    /// 开启后引擎会把所有真实按键透传给录制器（不影响正常输入）。
+    /// </summary>
+    public void EnableMacroRecording(Core.Macro.MacroRecorder recorder)
+    {
+        _recorder = recorder;
+        Engine.MacroRecorder = recorder;
     }
 
     public void Start()

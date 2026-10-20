@@ -121,9 +121,7 @@ public sealed class WindowBindingService
             {
                 if (!string.IsNullOrEmpty(b.ExePath) && File.Exists(b.ExePath))
                 {
-                    try { Process.Start(new ProcessStartInfo(b.ExePath) { UseShellExecute = true }); }
-                    catch (Exception ex) { Notified?.Invoke("启动失败：" + ex.Message); return false; }
-                    Notified?.Invoke($"正在启动 {b.DisplayName}…");
+                    LaunchAndTrack(slot, b);
                     return true;
                 }
                 Notified?.Invoke($"槽位 {slot} 的窗口已经关闭");
@@ -142,14 +140,14 @@ public sealed class WindowBindingService
 
                 if (alreadyFront)
                 {
-                    // 再按一次：用 Genie 收起动画把窗口“吸”回任务栏
-                    WindowService.HideWithGenie(h);
-                    Notified?.Invoke($"已收起 {DescribeSlot(slot)}");
+                    // 再按一次：最小化（恢复原样）
+                    WindowService.Minimize(h);
+                    Notified?.Invoke($"已最小化 {DescribeSlot(slot)}");
                     return true;
                 }
 
-                // 切过去：从任务栏方向展开
-                WindowService.ActivateWithGenie(h);
+                // 切过去
+                WindowService.Activate(h);
                 Notified?.Invoke($"已切到 {DescribeSlot(slot)}");
                 return true;
             }
@@ -162,13 +160,13 @@ public sealed class WindowBindingService
             var next = new IntPtr(b.WindowIds[idx]);
             if (IsSameWindow(next, fg))
             {
-                // 又按回同一个：收起
-                WindowService.HideWithGenie(next);
-                Notified?.Invoke($"已收起 {DescribeSlot(slot)}");
+                // 又按回同一个：最小化
+                WindowService.Minimize(next);
+                Notified?.Invoke($"已最小化 {DescribeSlot(slot)}");
                 return true;
             }
             _cycleIndex[slot] = idx;
-            WindowService.ActivateWithGenie(next);
+            WindowService.Activate(next);
             Notified?.Invoke($"已切到 {DescribeSlot(slot)}");
             return true;
         }
@@ -180,6 +178,76 @@ public sealed class WindowBindingService
     /// 前台窗口可能是目标程序的子窗口 / 对话框（HWND 不同但同属一个根窗口），
     /// 这种情况也应视为“已在前台”，否则再按一次快捷键不会收起。
     /// </summary>
+    /// <summary>
+    /// 启动槽位绑定的程序，并等待它的窗口真正出现后再切过去。
+    ///
+    /// 常见痛点：软件没开时按槽位键，只是把程序拉起来，
+    /// 窗口还在初始化，用户看到的是桌面 —— 以为没反应。
+    /// 所以这里启动后会轮询等窗口出现（最多 15 秒），
+    /// 一旦出现就立即激活，真正实现"按一下就到那个窗口"。
+    /// </summary>
+    private void LaunchAndTrack(int slot, WinBinding b)
+    {
+        string exe = b.ExePath;
+        try
+        {
+            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Notified?.Invoke("启动失败：" + ex.Message);
+            CoreLog.Warn($"窗口绑定启动失败 {exe}: {ex.Message}");
+            return;
+        }
+
+        Notified?.Invoke($"正在启动 {b.DisplayName}…");
+        CoreLog.Info($"窗口绑定槽位 {slot}：启动 {exe}，等待窗口出现");
+
+        // 放到后台线程等，避免卡住按键回调
+        var th = new Thread(() =>
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            IntPtr found = IntPtr.Zero;
+
+            while (DateTime.UtcNow < deadline && found == IntPtr.Zero)
+            {
+                Thread.Sleep(350);
+
+                // 单窗口模式：按程序路径找窗口
+                var hit = WindowService.EnumerateTopLevel()
+                    .FirstOrDefault(w => string.Equals(w.ExePath, exe,
+                        StringComparison.OrdinalIgnoreCase));
+                if (hit.Handle != IntPtr.Zero)
+                {
+                    found = hit.Handle;
+                    lock (_gate)
+                    {
+                        b.WindowIds.Clear();
+                        b.WindowIds.Add(hit.Handle.ToInt64());
+                    }
+                    break;
+                }
+            }
+
+            if (found == IntPtr.Zero)
+            {
+                CoreLog.Warn($"窗口绑定槽位 {slot}：等了 15 秒仍未看到 {b.DisplayName} 的窗口");
+                Notified?.Invoke($"{b.DisplayName} 好像还没启动完成，再按一次槽位键试试");
+                return;
+            }
+
+            // 窗口出现了 —— 切过去
+            CoreLog.Info($"窗口绑定槽位 {slot}：等到窗口 0x{found.ToInt64():X}，激活");
+            Thread.Sleep(400);            // 让窗口把内容画完，避免激活到一个空白框
+            WindowService.Activate(found);
+        })
+        {
+            IsBackground = true,
+            Name = "bind-launch",
+        };
+        th.Start();
+    }
+
     private static bool IsSameWindow(IntPtr a, IntPtr b)
     {
         if (a == b) return true;

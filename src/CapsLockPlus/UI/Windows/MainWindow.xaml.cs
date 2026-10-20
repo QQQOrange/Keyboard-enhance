@@ -85,6 +85,7 @@ public partial class MainWindow : Window
             "bindings" => new BindingsView(),
             "clipboard" => new ClipboardView(),
             "translate" => new TranslateSettingsView(),
+            "macros" => new MacrosView(),
             "settings" => new SettingsView(),
             "help" => new HelpView(),
             "about" => new AboutView(),
@@ -99,6 +100,7 @@ public partial class MainWindow : Window
             case BindingsView b: b.Initialize(_host); break;
             case ClipboardView c: c.Initialize(_host); break;
             case TranslateSettingsView t: t.Initialize(_host); break;
+            case MacrosView m: m.Initialize(_host); break;
             case SettingsView s: s.Initialize(_host); break;
             case HelpView h: h.Initialize(_host); break;
             case AboutView a: a.Initialize(_host); break;
@@ -124,6 +126,7 @@ public partial class MainWindow : Window
             "bindings" => ("窗口绑定", "10 个槽位"),
             "clipboard" => ("剪贴板", "独立剪贴板"),
             "translate" => ("翻译", "选中即译"),
+            "macros" => ("宏", "录制并绑定"),
             "settings" => ("设置", "全局选项"),
             "help" => ("快捷键速查", "随时查看"),
             "about" => ("关于", "版本与更新"),

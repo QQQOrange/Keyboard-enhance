@@ -259,9 +259,15 @@ public static class SettingsStore
         s.Web ??= new List<QEntry>();
         s.HotStrings ??= new List<QEntry>();
         s.Bindings ??= new List<WinBinding>();
+        s.Triggers ??= new List<TriggerKey>();
+        s.Layers ??= new List<LayerOptions>();
+        s.Macros ??= new List<Macro>();
         s.Global.MouseSpeed = Math.Clamp(s.Global.MouseSpeed, 1, 20);
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
         if (string.IsNullOrWhiteSpace(s.Global.HotkeyScheme)) s.Global.HotkeyScheme = "capslox";
+
+        NormalizeLayers(s);
+
         // 去掉重复的绑定项，保留最后一条
         var dup = s.Keys.GroupBy(k => k.Combo, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).ToList();
         foreach (var g in dup)
@@ -269,6 +275,69 @@ public static class SettingsStore
             var last = g.Last();
             s.Keys.RemoveAll(k => string.Equals(k.Combo, last.Combo, StringComparison.OrdinalIgnoreCase));
             s.Keys.Add(last);
+        }
+    }
+
+    /// <summary>
+    /// 保证"层 / 触发键"这套新结构始终处于可用状态：
+    ///   * 老设置文件没有 Triggers / Layers，这里补齐默认值；
+    ///   * 老设置里的 Keys 视为第 1 层的绑定，行为完全不变；
+    ///   * 默认 10 层，每层独立；只创建缺失的层，不覆盖用户改过的。
+    /// </summary>
+    private static void NormalizeLayers(AppSettings s)
+    {
+        const int DefaultLayerCount = 10;
+
+        // 层
+        if (s.Layers.Count == 0)
+        {
+            for (int i = 1; i <= DefaultLayerCount; i++)
+            {
+                s.Layers.Add(new LayerOptions
+                {
+                    Id = i,
+                    Name = i == 1 ? "基础层" : $"第 {i} 层",
+                    Enabled = true,
+                    // 老用户的 Keys 就是第 1 层
+                    Keys = i == 1 ? s.Keys : new List<KeyBinding>(),
+                });
+            }
+        }
+        else
+        {
+            // 补齐到 10 层（用户可能手动删过）
+            for (int i = 1; i <= DefaultLayerCount; i++)
+            {
+                if (!s.Layers.Any(l => l.Id == i))
+                    s.Layers.Add(new LayerOptions { Id = i, Name = $"第 {i} 层" });
+            }
+            s.Layers = s.Layers.OrderBy(l => l.Id).ToList();
+
+            // 第 1 层若为空而 Keys 有内容，把 Keys 当作第 1 层
+            var first = s.Layers.First(l => l.Id == 1);
+            if (first.Keys.Count == 0 && s.Keys.Count > 0) first.Keys = s.Keys;
+        }
+
+        // 触发键：老用户默认 CapsLock → 第 1 层，短按行为沿用全局设置
+        if (s.Triggers.Count == 0)
+        {
+            s.Triggers.Add(new TriggerKey
+            {
+                Key = "capslock",
+                LayerId = 1,
+                HoldMs = 200,
+                TapAction = s.Global.TapCapsAction,
+                DoubleTapAction = s.Global.DoubleTapCaps ? s.Global.DoubleTapCapsAction : "",
+                Enabled = true,
+            });
+        }
+        else
+        {
+            foreach (var t in s.Triggers)
+            {
+                if (t.LayerId < 1 || t.LayerId > s.Layers.Count) t.LayerId = 1;
+                t.HoldMs = Math.Clamp(t.HoldMs, 50, 2000);
+            }
         }
     }
 }
@@ -624,6 +693,28 @@ public static class DefaultSettings
             new() { Key = "@@", Value = "你的邮箱@example.com", Comment = "邮箱" },
         };
         s.Bindings = Enumerable.Range(1, 10).Select(i => new WinBinding { Slot = i }).ToList();
+
+        // 键盘层：默认 10 层，第 1 层就是上面的 Keys；触发键默认只有 CapsLock。
+        for (int i = 1; i <= 10; i++)
+        {
+            s.Layers.Add(new LayerOptions
+            {
+                Id = i,
+                Name = i == 1 ? "基础层" : $"第 {i} 层",
+                Enabled = true,
+                Keys = i == 1 ? s.Keys : new List<KeyBinding>(),
+            });
+        }
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock",
+            LayerId = 1,
+            HoldMs = 200,
+            TapAction = s.Global.TapCapsAction,
+            DoubleTapAction = s.Global.DoubleTapCaps ? s.Global.DoubleTapCapsAction : "",
+            Enabled = true,
+        });
+
         return s;
     }
 

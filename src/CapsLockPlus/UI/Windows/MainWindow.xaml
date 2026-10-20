@@ -103,6 +103,15 @@
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
+                    <ListBoxItem Tag="macros">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE945;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="15" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Brush.TextSecondary}" />
+                            <TextBlock Text="宏" Margin="11,0,0,0" VerticalAlignment="Center"
+                                       Style="{StaticResource Text.Body}" />
+                        </StackPanel>
+                    </ListBoxItem>
                     <ListBoxItem Tag="settings">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"

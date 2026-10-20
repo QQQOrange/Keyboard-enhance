@@ -32,7 +32,6 @@ public partial class SettingsView : UserControl
         ToastBox.IsChecked = g.ShowToast;
         UpdateToastBox.IsChecked = g.ShowUpdateToast;
         FeedbackBox.IsChecked = g.ShowActionFeedback;
-        WinAnimBox.IsChecked = g.WindowActivationAnimation;
         DoubleTapBox.IsChecked = g.DoubleTapCaps;
         RepeatBox.IsChecked = g.RepeatWhenHeld;
         MouseSpeedSlider.Value = g.MouseSpeed;
@@ -103,15 +102,6 @@ public partial class SettingsView : UserControl
         Save();
         if (FeedbackBox.IsChecked == true)
             _host.Notify("已开启按键反馈：按 Caps+S 试试，角落会显示「左移」");
-    }
-
-    private void OnWinAnimChanged(object sender, RoutedEventArgs e)
-    {
-        if (_host == null || _suppress) return;
-        bool on = WinAnimBox.IsChecked == true;
-        _host.Settings.Global.WindowActivationAnimation = on;
-        Core.Windows.WindowService.AnimationEnabled = on;
-        Save();
     }
 
     private void OnDoubleTapChanged(object sender, RoutedEventArgs e)

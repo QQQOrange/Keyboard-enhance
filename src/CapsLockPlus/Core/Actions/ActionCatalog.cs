@@ -180,6 +180,23 @@ public sealed class ActionCatalog
         }
         c.Add("winbindOpenManager", "窗口绑定", "打开窗口绑定管理", "管理 10 个窗口槽位", _ => { ctx.RequestOpenBindings(); return true; });
 
+        // ---------------- 宏 ----------------
+        // 宏动作 ID 形如 macro:<宏ID>，参数可覆盖重复次数。
+        // 每个宏一个动作，这样就能像普通动作一样绑到任意层的任意按键上。
+        foreach (var macro in ctx.Settings().Macros)
+        {
+            string id = macro.Id;
+            string name = macro.Name;
+            int estMs = macro.EstimatedMs;
+            c.Add("macro:" + id, "宏", $"播放宏：{name}",
+                $"共 {macro.Steps.Count} 步，约 {estMs}ms", a =>
+                {
+                    ctx.PlayMacro(id, a);
+                    return true;
+                });
+        }
+        c.Add("macroManager", "宏", "打开宏管理", "录制 / 编辑 / 绑定宏", _ => { ctx.RequestOpenMacros(); return true; });
+
         return c;
     }
 
