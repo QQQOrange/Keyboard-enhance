@@ -32,6 +32,9 @@
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="触发键" Style="{StaticResource Text.H3}" />
+                    <TextBlock Grid.Row="0" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                               Margin="0,26,0,0"
+                               Text="每一项直接显示：按哪个键、进第几层、怎么进层。" />
 
                     <ListBox Grid.Row="1" x:Name="TriggerList" Background="Transparent" BorderThickness="0"
                              Margin="0,10,0,0" ItemContainerStyle="{StaticResource RowItem}"

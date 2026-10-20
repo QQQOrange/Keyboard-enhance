@@ -100,6 +100,10 @@ public static class SelfTest
         Section("组合键往返");
         TestComboRoundTrip();
         TestHoldOnOtherKey();
+        TestModifierTracker();
+
+        Section("触发键展示");
+        TestTriggerDisplayProps();
 
         Section("宏可绑定");
         TestMacroIsBindable();
@@ -2036,6 +2040,121 @@ public static class SelfTest
         e2.SimulateKey(VK.CapsLock, false);
         e2.Dispose();
         q2.Dispose();
+    }
+
+    /// <summary>
+    /// 修饰键跟踪：这是「能识别按键但录不到组合键」的回归测试。
+    ///
+    /// 根因是原实现用 GetAsyncKeyState 判断修饰键 —— 在低级钩子回调里
+    /// 这个 API 返回的是**上一个键**的状态，所以按 Ctrl+K 只能录到 K。
+    /// 现在改为从钩子事件自己维护按住集合。
+    /// </summary>
+    private static void TestModifierTracker()
+    {
+        var t = new ModifierTracker();
+
+        CheckEqual("初始没有修饰键", t.Current, KeyModifiers.None);
+
+        // 按下左 Ctrl → 应该是 Ctrl
+        t.Track(0xA2, true);
+        CheckEqual("按下左 Ctrl", t.Current, KeyModifiers.Ctrl);
+
+        // 按下左 Shift → Ctrl|Shift
+        t.Track(0xA0, true);
+        Check("Ctrl+Shift 同时按住",
+            t.Current == (KeyModifiers.Ctrl | KeyModifiers.Shift),
+            t.Current.ToString());
+
+        // 松开 Shift → 只剩 Ctrl
+        t.Track(0xA0, false);
+        CheckEqual("松开 Shift 后只剩 Ctrl", t.Current, KeyModifiers.Ctrl);
+
+        // 松开 Ctrl → 空
+        t.Track(0xA2, false);
+        CheckEqual("全部松开后为空", t.Current, KeyModifiers.None);
+
+        // 左右修饰键归一到同一个逻辑键
+        t.Clear();
+        t.Track(0xA3, true);          // 右 Ctrl
+        CheckEqual("右 Ctrl 也算 Ctrl", t.Current, KeyModifiers.Ctrl);
+        t.Track(0xA2, true);          // 再按左 Ctrl
+        t.Track(0xA3, false);         // 松开右 Ctrl
+        CheckEqual("松开右边仍按住左边时还是 Ctrl", t.Current, KeyModifiers.Ctrl);
+        t.Track(0xA2, false);
+        CheckEqual("两个都松开后为空", t.Current, KeyModifiers.None);
+
+        // 四个修饰键全按住
+        t.Clear();
+        t.Track(0xA2, true); t.Track(0xA0, true);
+        t.Track(0xA4, true); t.Track(0x5B, true);
+        var all = KeyModifiers.Ctrl | KeyModifiers.Shift | KeyModifiers.Alt | KeyModifiers.Win;
+        CheckEqual("四个修饰键全按住", t.Current, all);
+
+        // 非修饰键不该影响集合
+        t.Clear();
+        t.Track(0x41, true);          // A
+        CheckEqual("普通键不进修饰键集合", t.Current, KeyModifiers.None);
+
+        // 归一化函数
+        CheckEqual("0xA2 归一到 Ctrl", ModifierTracker.Normalize(0xA2), 0x11);
+        CheckEqual("0xA3 归一到 Ctrl", ModifierTracker.Normalize(0xA3), 0x11);
+        CheckEqual("0xA0 归一到 Shift", ModifierTracker.Normalize(0xA0), 0x10);
+        CheckEqual("0xA4 归一到 Alt", ModifierTracker.Normalize(0xA4), 0x12);
+        CheckEqual("0x5C 归一到 Win", ModifierTracker.Normalize(0x5C), 0x5B);
+
+        // IsModifier 判定
+        foreach (int vk in new[] { 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1, 0x12, 0xA4, 0xA5, 0x5B, 0x5C })
+            Check($"0x{vk:X2} 被认作修饰键", ModifierTracker.IsModifier(vk));
+        foreach (int vk in new[] { 0x41, 0x31, 0x70 })
+            Check($"0x{vk:X2} 不是修饰键", !ModifierTracker.IsModifier(vk));
+
+        // 组合串构造
+        CheckEqual("构造 Ctrl+Shift+K",
+            ModifierTracker.BuildCombo(KeyModifiers.Ctrl | KeyModifiers.Shift, "k"),
+            "ctrl+shift+k");
+        CheckEqual("构造单键",
+            ModifierTracker.BuildCombo(KeyModifiers.None, "k"), "k");
+
+        // Seed 播种（模拟"用户已经按着 Ctrl 才打开对话框"）
+        var t2 = new ModifierTracker();
+        t2.Seed(vk => vk == 0xA2);    // 只有左 Ctrl 是按着的
+        CheckEqual("播种后识别出 Ctrl", t2.Current, KeyModifiers.Ctrl);
+    }
+
+    /// <summary>
+    /// 触发键列表展示属性：列表里要能直接看到「按哪个键 / 进第几层」。
+    /// 之前 XAML 绑了 KeyLabel/Summary/Detail/Index，但类上没有这些属性，整行空白。
+    /// </summary>
+    private static void TestTriggerDisplayProps()
+    {
+        var t = new TriggerKey
+        {
+            Key = "capslock",
+            LayerId = 3,
+            HoldMs = 220,
+            TapAction = "toggleCapsLock",
+            HoldOnOtherKey = true,
+            Index = 0,
+        };
+
+        CheckEqual("键帽文字", t.KeyLabel, "CapsLock");
+        CheckEqual("主标题显示层号", t.Summary, "第 3 层");
+        Check("副标题包含短按动作", t.Detail.Contains("切换大小写"), t.Detail);
+        Check("副标题包含进层方式", t.Detail.Contains("进层"), t.Detail);
+        CheckEqual("Index 可写", t.Index, 0);
+
+        // 未设置键时要有占位符，不能是空白
+        var empty = new TriggerKey { Key = "" };
+        CheckEqual("空键显示占位符", empty.KeyLabel, "?");
+
+        // 关闭 hold-on-other-key 时要显示阈值
+        var t2 = new TriggerKey { Key = "f13", LayerId = 5, HoldMs = 350, HoldOnOtherKey = false };
+        Check("关闭即时进层时显示阈值", t2.Detail.Contains("350"), t2.Detail);
+
+        // 反射确认这些属性都存在（防止 XAML 绑定又对不上）
+        foreach (string prop in new[] { "KeyLabel", "Summary", "Detail", "Index", "Enabled" })
+            Check($"TriggerKey 有 {prop} 属性",
+                typeof(TriggerKey).GetProperty(prop) != null);
     }
 
     /// <summary>窗口激活与最小化：验证「按一次弹出、再按一次最小化」这两个动作。</summary>

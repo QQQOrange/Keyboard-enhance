@@ -250,6 +250,41 @@ public sealed class TriggerKey
     public bool Enabled { get; set; } = true;
 
     public string Display => string.IsNullOrEmpty(Key) ? "(未设置)" : Key;
+
+    // ---------------- 供列表直接绑定的只读展示属性 ----------------
+    //
+    // 触发键列表那一行要显示「键名 / 绑定到哪一层 / 阈值 / 启停」。
+    // 这些属性直接给界面绑，省得界面自己拼字符串
+    // （之前 XAML 绑了 KeyLabel/Summary/Detail 但类上没有，整行是空的）。
+
+    /// <summary>键帽上显示的名字。</summary>
+    public string KeyLabel => string.IsNullOrEmpty(Key)
+        ? "?"
+        : Input.KeyName.Display(Key);
+
+    /// <summary>主标题：这一项绑到第几层。</summary>
+    public string Summary => LayerId <= 0 ? "未绑定层" : $"第 {LayerId} 层";
+
+    /// <summary>副标题：阈值 + 短按动作，一眼看清这个触发键怎么用。</summary>
+    public string Detail
+    {
+        get
+        {
+            string tap = string.IsNullOrEmpty(TapAction) ? "无" : TapAction switch
+            {
+                "toggleCapsLock" => "切换大小写",
+                "esc" => "Esc",
+                "qbar" => "打开 Qbar",
+                "doNothing" => "无",
+                _ => TapAction,
+            };
+            string hold = HoldOnOtherKey ? "一按别的键就进层" : $"长按 {HoldMs}ms 进层";
+            return $"{hold}　·　短按：{tap}";
+        }
+    }
+
+    /// <summary>列表里的位置（供"启停"复选框回写用）。</summary>
+    public int Index { get; set; }
 }
 
 /// <summary>

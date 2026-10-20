@@ -93,6 +93,10 @@ public partial class KeyCaptureWindow : Window
             }
             Activate();
             Focus();
+            // 用户可能是"已经按着 Ctrl 才点开对话框"，那几个 down 事件我们没收到，
+            // 先播种一次初始状态，之后完全靠钩子事件维护。
+            SeedModifiers();
+            UpdateModifierBadges();
         };
         Closed += (_, _) =>
         {
@@ -104,9 +108,29 @@ public partial class KeyCaptureWindow : Window
         };
     }
 
-    private static bool IsModifier(int vk) => vk is
-        VK_CTRL_A or VK_CTRL_B or VK_SHIFT_A or VK_SHIFT_B or
-        VK_ALT_A or VK_ALT_B or VK_LWIN or VK_RWIN or 0x11 or 0x10 or 0x12;
+    /// <summary>
+    /// 修饰键跟踪器。
+    ///
+    /// 不用 <see cref="GetAsyncKeyState"/> 判断修饰键 —— 低级钩子回调里
+    /// 异步按键状态还没更新，查到的永远是上一个键的状态，
+    /// 表现就是"能识别按键但录不到组合键"。
+    /// 这里完全靠钩子的 down/up 事件维护。
+    /// </summary>
+    private readonly ModifierTracker _tracker = new();
+
+    /// <summary>当前按住的修饰键（从钩子事件推导）。</summary>
+    private KeyModifiers ReadModifiers() => _tracker.Current;
+
+    private void TrackModifier(int vk, bool down) => _tracker.Track(vk, down);
+
+    private static bool IsModifier(int vk) => ModifierTracker.IsModifier(vk);
+
+    /// <summary>
+    /// 窗口刚打开时补一次初始状态：用户可能**已经按着** Ctrl 才点开对话框，
+    /// 那几个键的 down 事件我们没收到。这里用 GetAsyncKeyState 做一次性播种，
+    /// 之后就完全靠钩子事件维护（那时它反而不可靠）。
+    /// </summary>
+    private void SeedModifiers() => _tracker.Seed(IsKeyDown);
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
@@ -134,8 +158,11 @@ public partial class KeyCaptureWindow : Window
 
         if (IsModifier(vk))
         {
-            // 修饰键：按下时实时刷新高亮；**抬起**时如果当前还没定案，
-            // 就把这个修饰键本身作为目标（方便单独绑定 Ctrl/Shift/Alt/Win）。
+            // 修饰键：先把按住状态记下来（这是唯一可靠的来源），再刷新高亮。
+            // **抬起**时如果还没定案，就把这个修饰键本身作为目标
+            // （方便单独绑定 Ctrl/Shift/Alt/Win）。
+            TrackModifier(vk, down);
+
             if (down)
             {
                 Dispatcher.BeginInvoke(UpdateModifierBadges);
@@ -151,7 +178,7 @@ public partial class KeyCaptureWindow : Window
                         string? modName = KeyName.NameOf(vk);
                         if (modName != null)
                         {
-                            CapturedMods = ReadModifiers();
+                            CapturedMods = KeyModifiers.None;
                             CapturedCombo = modName;
                             PromptText.Text = KeyName.Display(modName);
                             DetailText.Text = "单独绑定这个修饰键　·　按「确定绑定」生效";
@@ -194,16 +221,6 @@ public partial class KeyCaptureWindow : Window
         }
 
         return CallNextHookEx(_hook, nCode, wParam, lParam);
-    }
-
-    private static KeyModifiers ReadModifiers()
-    {
-        var m = KeyModifiers.None;
-        if (IsKeyDown(VK_CTRL_A) || IsKeyDown(VK_CTRL_B) || IsKeyDown(0x11)) m |= KeyModifiers.Ctrl;
-        if (IsKeyDown(VK_SHIFT_A) || IsKeyDown(VK_SHIFT_B) || IsKeyDown(0x10)) m |= KeyModifiers.Shift;
-        if (IsKeyDown(VK_ALT_A) || IsKeyDown(VK_ALT_B) || IsKeyDown(0x12)) m |= KeyModifiers.Alt;
-        if (IsKeyDown(VK_LWIN) || IsKeyDown(VK_RWIN)) m |= KeyModifiers.Win;
-        return m;
     }
 
     private static string BuildCombo(KeyModifiers mods, string? key)

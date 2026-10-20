@@ -38,13 +38,19 @@ public partial class LayersView : UserControl
 
         _suppress = true;
         TriggerList.ItemsSource = null;
-        TriggerList.ItemsSource = _host.Settings.Triggers.ToList();
+
+        // 把 Index 填好（"启停"复选框靠它回写），并让列表项能直接显示
+        // 「键名 / 第几层 / 阈值 / 短按动作」—— 这些是 TriggerKey 上的只读属性。
+        var list = _host.Settings.Triggers.ToList();
+        for (int i = 0; i < list.Count; i++) list[i].Index = i;
+
+        TriggerList.ItemsSource = list;
         if (_editing != null)
         {
-            TriggerList.SelectedItem = _host.Settings.Triggers
+            TriggerList.SelectedItem = list
                 .FirstOrDefault(t => ReferenceEquals(t, _editing));
         }
-        TriggerList.SelectedItem ??= _host.Settings.Triggers.FirstOrDefault();
+        TriggerList.SelectedItem ??= list.FirstOrDefault();
         _suppress = false;
 
         BindEditor();
