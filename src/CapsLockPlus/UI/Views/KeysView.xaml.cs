@@ -11,9 +11,39 @@ namespace CapsLockPlus.UI.Views;
 public partial class KeysView : UserControl
 {
     private AppHost? _host;
+
+    /// <summary>当前编辑的层 ID（1~10）。</summary>
+    private int _layerId = 1;
+
+    /// <summary>层内的修饰键子层：直接按 / LAlt / Win。</summary>
     private KeyModifiers _layer = KeyModifiers.None;
+
     private string _selectedKey = "q";
     private bool _suppressEvents;
+
+    /// <summary>
+    /// 当前层的绑定列表。
+    ///
+    /// 绑定是按层分开存的：第 1 层就是历史遗留的 <c>Settings.Keys</c>，
+    /// 其余层各自有 <c>Layers[i].Keys</c>。所有查找都必须走这里，
+    /// 否则在第 4~10 层编辑时会误改第 1 层。
+    /// </summary>
+    private List<KeyBinding> CurrentLayerKeys
+    {
+        get
+        {
+            if (_host == null) return new List<KeyBinding>();
+            var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
+            if (layer != null) return layer.Keys;
+            // 老设置没有层结构时，Keys 即第 1 层
+            return _layerId == 1 ? _host.Settings.Keys : new List<KeyBinding>();
+        }
+    }
+
+    /// <summary>在当前层里找绑定（大小写不敏感）。</summary>
+    private KeyBinding? FindInCurrentLayer(string combo) =>
+        CurrentLayerKeys.FirstOrDefault(k =>
+            string.Equals(k.Combo, combo, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>键盘行定义：每个键是 (显示文字, 键名ID, 宽度权重)。</summary>
     private static readonly (string Label, string? KeyId, double Width)[][] Rows =
@@ -54,24 +84,16 @@ public partial class KeysView : UserControl
     public KeysView() => InitializeComponent();
 
     /// <summary>
-    /// 切到指定层并刷新界面。
-    /// 层 ID 1 = 基础层；2 及以上用 Layer{id} 命名保存
-    /// （这里沿用现有的"修饰键层"概念：2 = LAlt 层，3 = Win 层）。
+    /// 切到指定层并刷新界面（从「触发键与层」页跳过来时用）。
     /// </summary>
     public void SelectLayerById(int layerId)
     {
         if (_host == null) return;
-        var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == layerId);
-        if (layer == null) return;
+        if (_host.Settings.Layers.All(l => l.Id != layerId)) return;
 
-        // 前 3 层沿用既有 UI（基础 / LAlt / Win）；更高层暂用基础层 UI 打开
-        _layer = layerId switch
-        {
-            2 => KeyModifiers.Alt,
-            3 => KeyModifiers.Win,
-            _ => KeyModifiers.None,
-        };
-        UpdateLayerButtons();
+        _layerId = layerId;
+        _layer = KeyModifiers.None;      // 切层时回到"直接按"子层
+        BuildLayerBox();
         SelectKey(_selectedKey);
     }
 
@@ -103,6 +125,7 @@ public partial class KeysView : UserControl
             }
         }
         _suppressEvents = false;
+        BuildLayerBox();
         BuildKeyboard();
         SelectKey(_selectedKey);
     }
@@ -134,7 +157,7 @@ public partial class KeysView : UserControl
                 }
 
                 string combo = KeyName.BuildCombo(_layer, keyId);
-                var binding = _host.Settings.FindBinding(combo);
+                var binding = FindInCurrentLayer(combo);
                 bool isBound = binding is { IsBound: true };
                 if (isBound) bound++;
 
@@ -155,17 +178,61 @@ public partial class KeysView : UserControl
             KeyboardPanel.Children.Add(grid);
         }
 
-        var tap = _host.Settings.FindBinding("press_caps");
+        var tap = FindInCurrentLayer("press_caps");
         string tapTitle = tap != null ? _host.Actions.Get(tap.Action)?.Title ?? tap.Action : "无";
-        LayerHint.Text = _layer switch
+
+        var layerObj = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
+        string layerName = layerObj?.Name ?? $"第 {_layerId} 层";
+        var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == _layerId);
+        string triggerText = trigger != null
+            ? $"长按 {KeyName.Display(trigger.Key)}"
+            : "（没有触发键指向这一层）";
+
+        string modText = _layer switch
         {
-            KeyModifiers.Alt => $"当前：Caps + LAlt 层（{bound} 个绑定）",
-            KeyModifiers.Win => $"当前：Caps + Win 层（{bound} 个绑定）",
-            _ => $"当前：基础层（{bound} 个绑定）",
+            KeyModifiers.Alt => " + LAlt",
+            KeyModifiers.Win => " + Win",
+            _ => "",
         };
-        CountText.Text = $"短按 Caps：{tapTitle}　·　点键盘上任意键即可修改它的功能，修改立刻生效。";
+        LayerHint.Text = $"当前：第 {_layerId} 层「{layerName}」{modText}（{bound} 个绑定）　·　{triggerText}";
+
+        // 短按动作只在第 1 层有意义（触发键的短按行为是全局的）
+        CountText.Text = _layerId == 1
+            ? $"短按触发键：{tapTitle}　·　点键盘上任意键即可修改它的功能，修改立刻生效。"
+            : $"这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。";
         UpdateLayerButtons();
         RefreshBoundList();
+    }
+
+    /// <summary>把层下拉框填上（10 个层，标注各自的触发键）。</summary>
+    private void BuildLayerBox()
+    {
+        if (_host == null) return;
+        _suppressEvents = true;
+        LayerBox.Items.Clear();
+        foreach (var layer in _host.Settings.Layers.OrderBy(l => l.Id))
+        {
+            var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == layer.Id);
+            string suffix = trigger != null
+                ? $"　← 长按 {KeyName.Display(trigger.Key)}"
+                : "　（未分配触发键）";
+            LayerBox.Items.Add(new ComboBoxItem
+            {
+                Content = $"{layer.Id}. {layer.Name}{suffix}",
+                Tag = layer.Id,
+            });
+            if (layer.Id == _layerId) LayerBox.SelectedIndex = LayerBox.Items.Count - 1;
+        }
+        if (LayerBox.SelectedIndex < 0 && LayerBox.Items.Count > 0) LayerBox.SelectedIndex = 0;
+        _suppressEvents = false;
+    }
+
+    private void OnLayerChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        if (LayerBox.SelectedItem is not ComboBoxItem { Tag: int id }) return;
+        _layerId = id;
+        SelectKey(_selectedKey);
     }
 
     private Border MakeCapsKey()
@@ -248,7 +315,7 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
         var items = new List<BoundVm>();
-        foreach (var binding in _host.Settings.Keys.Where(k => k.IsBound))
+        foreach (var binding in CurrentLayerKeys.Where(k => k.IsBound))
         {
             var parsed = KeyName.ParseCombo(binding.Combo);
             if (parsed == null) continue;
@@ -287,7 +354,7 @@ public partial class KeysView : UserControl
         if (_host == null) return;
         _selectedKey = keyId;
         string combo = KeyName.BuildCombo(_layer, keyId);
-        var binding = _host.Settings.FindBinding(combo);
+        var binding = FindInCurrentLayer(combo);
 
         EditKeyLabel.Text = KeyName.Display(keyId);
         _suppressEvents = true;
@@ -327,9 +394,16 @@ public partial class KeysView : UserControl
     }
 
     // ---------------- 事件 ----------------
-    private void OnLayerBase(object sender, RoutedEventArgs e) { _layer = KeyModifiers.None; SelectKey(_selectedKey); }
-    private void OnLayerAlt(object sender, RoutedEventArgs e) { _layer = KeyModifiers.Alt; SelectKey(_selectedKey); }
-    private void OnLayerWin(object sender, RoutedEventArgs e) { _layer = KeyModifiers.Win; SelectKey(_selectedKey); }
+    private void OnLayerBase(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.None);
+    private void OnLayerAlt(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Alt);
+    private void OnLayerWin(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Win);
+
+    /// <summary>层内修饰键切换后要刷新（键盘上的绑定标记会变）。</summary>
+    private void SelectModifierLayer(KeyModifiers mods)
+    {
+        _layer = mods;
+        SelectKey(_selectedKey);
+    }
 
     private void OnSearchChanged(object sender, TextChangedEventArgs e) => BuildKeyboard();
 
@@ -363,11 +437,13 @@ public partial class KeysView : UserControl
         if (_host == null || _suppressEvents) return;
         if (ActionBox.SelectedItem is not ComboBoxItem item || item.Tag is not string actionId) return;
         string combo = CurrentCombo();
-        var binding = _host.Settings.FindBinding(combo);
+        var binding = FindInCurrentLayer(combo);
         if (binding == null)
         {
+            // 必须加进**当前层**的列表。写进 Settings.Keys 会让
+            // 第 2~10 层新建的绑定跑到第 1 层去（这个 bug 之前就是这样）。
             binding = new KeyBinding { Combo = combo };
-            _host.Settings.Keys.Add(binding);
+            CurrentLayerKeys.Add(binding);
         }
         binding.Action = actionId;
         if (actionId == "doNothing") binding.Arg = "";
@@ -380,7 +456,7 @@ public partial class KeysView : UserControl
     private void OnArgChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppressEvents) return;
-        var binding = _host.Settings.FindBinding(CurrentCombo());
+        var binding = FindInCurrentLayer(CurrentCombo());
         if (binding == null) return;
         binding.Arg = ArgBox.Text.Trim();
         _host.SaveSettings();
@@ -389,7 +465,7 @@ public partial class KeysView : UserControl
     private void OnClearClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        var binding = _host.Settings.FindBinding(CurrentCombo());
+        var binding = FindInCurrentLayer(CurrentCombo());
         if (binding != null)
         {
             binding.Action = "doNothing";
@@ -404,7 +480,7 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
         string combo = KeyName.BuildCombo(_layer, _selectedKey);
-        var binding = _host.Settings.FindBinding(combo);
+        var binding = FindInCurrentLayer(combo);
         if (binding == null || !binding.IsBound) { _host.Notify("这个按键还没有绑定功能"); return; }
         _host.InvokeAction(binding.Action, binding.Arg);
     }

@@ -47,10 +47,38 @@ public static class VK
     public const int Oem7 = 0xDE;    // '
     public const int MediaNextTrack = 0xB0;
     public const int MediaPrevTrack = 0xB1;
+    public const int MediaStop = 0xB2;
     public const int MediaPlayPause = 0xB3;
     public const int VolumeMute = 0xAD;
     public const int VolumeDown = 0xAE;
     public const int VolumeUp = 0xAF;
+
+    // 浏览器功能键：很多键盘上有，Windows 也会原样投递，
+    // 用作触发键或宏步骤都很实用。
+    public const int BrowserBack = 0xA6;
+    public const int BrowserForward = 0xA7;
+    public const int BrowserRefresh = 0xA8;
+    public const int BrowserStop = 0xA9;
+    public const int BrowserSearch = 0xAA;
+    public const int BrowserFavorites = 0xAB;
+    public const int BrowserHome = 0xAC;
+
+    // 小键盘（注意：这几个是 NumLock 关闭时的方向/编辑语义）
+    public const int Numpad0 = 0x60;
+    public const int Numpad1 = 0x61;
+    public const int Numpad2 = 0x62;
+    public const int Numpad3 = 0x63;
+    public const int Numpad4 = 0x64;
+    public const int Numpad5 = 0x65;
+    public const int Numpad6 = 0x66;
+    public const int Numpad7 = 0x67;
+    public const int Numpad8 = 0x68;
+    public const int Numpad9 = 0x69;
+    public const int NumpadMultiply = 0x6A;
+    public const int NumpadAdd = 0x6B;
+    public const int NumpadSubtract = 0x6D;
+    public const int NumpadDecimal = 0x6E;
+    public const int NumpadDivide = 0x6F;
 }
 
 /// <summary>
@@ -73,6 +101,11 @@ public static class KeyName
         [0x70] = "f1", [0x71] = "f2", [0x72] = "f3", [0x73] = "f4", [0x74] = "f5",
         [0x75] = "f6", [0x76] = "f7", [0x77] = "f8", [0x78] = "f9", [0x79] = "f10",
         [0x7A] = "f11", [0x7B] = "f12",
+        // F13~F24：物理键盘上少见，但很多键盘驱动/自动化工具会用到，
+        // 也是"想找个没被占用的触发键"时最理想的选择。
+        [0x7C] = "f13", [0x7D] = "f14", [0x7E] = "f15", [0x7F] = "f16",
+        [0x80] = "f17", [0x81] = "f18", [0x82] = "f19", [0x83] = "f20",
+        [0x84] = "f21", [0x85] = "f22", [0x86] = "f23", [0x87] = "f24",
         [VK.Back] = "backspace",
         [VK.Tab] = "tab",
         [VK.Return] = "enter",
@@ -126,9 +159,30 @@ public static class KeyName
         [VK.MediaPrevTrack] = "mediaPrev",
         [VK.MediaNextTrack] = "mediaNext",
         [VK.MediaPlayPause] = "mediaPlayPause",
+        [VK.MediaStop] = "mediaStop",
         [VK.VolumeUp] = "volumeUp",
         [VK.VolumeDown] = "volumeDown",
         [VK.VolumeMute] = "volumeMute",
+
+        // 浏览器键（键盘上常印成主页 / 后退 / 刷新）
+        [VK.BrowserBack] = "browserBack",
+        [VK.BrowserForward] = "browserForward",
+        [VK.BrowserRefresh] = "browserRefresh",
+        [VK.BrowserStop] = "browserStop",
+        [VK.BrowserSearch] = "browserSearch",
+        [VK.BrowserFavorites] = "browserFavorites",
+        [VK.BrowserHome] = "browserHome",
+
+        // 小键盘
+        [VK.Numpad0] = "num0", [VK.Numpad1] = "num1", [VK.Numpad2] = "num2",
+        [VK.Numpad3] = "num3", [VK.Numpad4] = "num4", [VK.Numpad5] = "num5",
+        [VK.Numpad6] = "num6", [VK.Numpad7] = "num7", [VK.Numpad8] = "num8",
+        [VK.Numpad9] = "num9",
+        [VK.NumpadMultiply] = "numMultiply",
+        [VK.NumpadAdd] = "numAdd",
+        [VK.NumpadSubtract] = "numSubtract",
+        [VK.NumpadDecimal] = "numDecimal",
+        [VK.NumpadDivide] = "numDivide",
     };
 
     private static readonly Dictionary<string, int> ToVk =
@@ -181,6 +235,29 @@ public static class KeyName
         "mediaPrev" => "上一首",
         "mediaNext" => "下一首",
         "mediaPlayPause" => "播放/暂停",
+        "mediaStop" => "停止播放",
+        "browserBack" => "浏览器后退",
+        "browserForward" => "浏览器前进",
+        "browserRefresh" => "浏览器刷新",
+        "browserStop" => "浏览器停止",
+        "browserSearch" => "浏览器搜索",
+        "browserFavorites" => "浏览器收藏",
+        "browserHome" => "浏览器主页",
+        "num0" => "小键盘 0",
+        "num1" => "小键盘 1",
+        "num2" => "小键盘 2",
+        "num3" => "小键盘 3",
+        "num4" => "小键盘 4",
+        "num5" => "小键盘 5",
+        "num6" => "小键盘 6",
+        "num7" => "小键盘 7",
+        "num8" => "小键盘 8",
+        "num9" => "小键盘 9",
+        "numMultiply" => "小键盘 *",
+        "numAdd" => "小键盘 +",
+        "numSubtract" => "小键盘 -",
+        "numDecimal" => "小键盘 .",
+        "numDivide" => "小键盘 /",
         "volumeUp" => "音量+",
         "volumeDown" => "音量-",
         "volumeMute" => "静音",

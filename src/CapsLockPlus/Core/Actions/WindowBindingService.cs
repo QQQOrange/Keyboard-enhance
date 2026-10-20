@@ -40,6 +40,12 @@ public sealed class WindowBindingService
 
     public IReadOnlyList<WinBinding> All => _settings.Bindings;
 
+    /// <summary>
+    /// 仅供自检：拦截"启动程序"这一步，返回是否假装启动成功。
+    /// 置为 null 时走真实的 Process.Start。
+    /// </summary>
+    public static Func<string, bool>? LaunchInterceptForTest { get; set; }
+
     /// <summary>把当前前台窗口绑定到槽位（连续按多次 = 追加更多窗口）。</summary>
     public bool Bind(int slot)
     {
@@ -189,6 +195,16 @@ public sealed class WindowBindingService
     private void LaunchAndTrack(int slot, WinBinding b)
     {
         string exe = b.ExePath;
+
+        // 自检可以拦截启动动作：验证"要不要启动"的决策，
+        // 而不用真的把程序拉起来（真拉起来会留一个 15 秒的轮询线程）。
+        if (LaunchInterceptForTest != null)
+        {
+            bool ok = LaunchInterceptForTest(exe);
+            Notified?.Invoke(ok ? $"正在启动 {b.DisplayName}…" : "启动失败：被拦截");
+            return;
+        }
+
         try
         {
             Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });

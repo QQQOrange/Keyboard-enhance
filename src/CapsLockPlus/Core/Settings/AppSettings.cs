@@ -15,6 +15,28 @@ public sealed class KeyBinding
 
 public sealed class QEntry
 {
+    /// <summary>
+    /// 这条记录是否匹配过滤词。
+    ///
+    /// 按**关键字 / 备注 / 内容**三个字段做大小写不敏感的包含匹配 ——
+    /// 用户记不住关键字时可以用中文备注找（"剪贴板""翻译"），
+    /// 也可以用网址片段找。空过滤词 = 全部匹配。
+    ///
+    /// 抽成静态方法是为了让自检能直接验，而不必去驱动界面控件。
+    /// </summary>
+    public static bool Matches(QEntry entry, string? filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return true;
+        string f = filter.Trim();
+        return (entry.Key?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+               || (entry.Comment?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+               || (entry.Value?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    /// <summary>按过滤词筛一组记录。</summary>
+    public static List<QEntry> Filter(IEnumerable<QEntry> source, string? filter) =>
+        source.Where(e => Matches(e, filter)).ToList();
+
     public string Key { get; set; } = "";
     public string Value { get; set; } = "";
     public string Comment { get; set; } = "";
@@ -111,9 +133,6 @@ public sealed class GlobalOptions
     /// 默认关闭；开启后能一眼看出“按键有没有被识别”，排查问题时非常有用。
     /// </summary>
     public bool ShowActionFeedback { get; set; }
-
-    /// <summary>切换窗口时播放“从小到大”的动画。</summary>
-    public bool WindowActivationAnimation { get; set; } = true;
 
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;

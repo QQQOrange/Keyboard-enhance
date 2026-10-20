@@ -162,8 +162,6 @@ public sealed class AppHost : IDisposable
 
     public void Start()
     {
-        // 把设置里的动画开关同步给窗口层
-        WindowService.AnimationEnabled = Settings.Global.WindowActivationAnimation;
         Engine.Start();
         if (Settings.Global.ShowTrayIcon) CreateTray();
         _clipboard.Start();

@@ -82,8 +82,23 @@ public static class SelfTest
         Section("窗口绑定");
         TestWindowBindings();
 
-        Section("Genie 动画");
-        TestGenieAnimation();
+        Section("窗口激活与最小化");
+        TestWindowActivateAndMinimize();
+
+        Section("主题");
+        TestTheme();
+
+        Section("Qbar 引擎过滤");
+        TestQbarEntryFilter();
+
+        Section("触发键配置");
+        TestTriggerConfig();
+
+        Section("按键名表");
+        TestKeyNameTable();
+
+        Section("窗口绑定未启动时先启动");
+        TestWindowBindingLaunch();
 
         Section("窗口点选");
         TestWindowPreview();
@@ -97,6 +112,8 @@ public static class SelfTest
 
         Section("键盘层");
         TestLayers();
+        TestLayerIsolation();
+        TestHoldThreshold();
 
         Section("宏");
         TestMacroRecorder();
@@ -633,13 +650,16 @@ public static class SelfTest
         svc.Unbind(2);
         Check("清除后槽位为空", svc.DescribeSlot(2) == "未绑定");
 
-        // 激活动画开关可切换
-        bool saved = WindowService.AnimationEnabled;
-        WindowService.AnimationEnabled = true;
-        Check("动画开关可开启", WindowService.AnimationEnabled);
-        WindowService.AnimationEnabled = false;
-        Check("动画开关可关闭", !WindowService.AnimationEnabled);
-        WindowService.AnimationEnabled = saved;
+        // 动画已按用户要求全部删除：确认公开 API 里不再有动画开关，
+        // 免得以后有人又把它加回来而不自知。
+        Check("WindowService 不再暴露动画开关",
+            typeof(WindowService).GetProperty("AnimationEnabled") == null);
+        Check("WindowService 不再有 Genie 动画方法",
+            typeof(WindowService).GetMethod("ActivateWithGenie") == null &&
+            typeof(WindowService).GetMethod("HideWithGenie") == null);
+        Check("设置里不再有动画开关字段",
+            typeof(Core.Settings.GlobalOptions)
+                .GetProperty("WindowActivationAnimation") == null);
     }
 
     /// <summary>
@@ -925,11 +945,6 @@ public static class SelfTest
             $"字号 {defaultFontSize} 需要 {def:0.0}");
     }
 
-    /// <summary>
-    /// Genie 动画：验证动画帧确实会被驱动。
-    ///
-    /// 之前动画“看不出来”的根因是：调用方是钩子线程 / 动作线程，
-    /// 那里没有消息循环，`new DispatcherTimer()` 的 Tick 永远不触发。
     /// <summary>
     /// 备份加密：往返、错密码、篡改、明文兼容。
     /// 这些是"每次备份都加密"这条需求的底线，必须逐条验。
@@ -1289,7 +1304,124 @@ public static class SelfTest
         CheckEqual("删除后第 2 步是 50ms 延迟", macro.Steps[1].DelayMs, 50);
     }
 
-    /// <summary>Genie 动画：验证动画帧确实会被驱动。</summary>
+    /// <summary>
+    /// **真实的长按路径**：走计时器，而不是 EnterLayerImmediatelyForTest。
+    ///
+    /// 之前的自检用 EnterLayerImmediatelyForTest 直接跳过了计时器，
+    /// 等于"短按保留原功能、长按进层"这条最核心的链路从来没被验证过。
+    /// 这里真的等时间流逝，并泵消息循环让 DispatcherTimer 触发。
+    /// </summary>
+    private static void TestHoldThreshold()
+    {
+        var settings = DefaultSettings.Create();
+        // 阈值设成 120ms，测试跑得快一点
+        foreach (var t in settings.Triggers) t.HoldMs = 120;
+
+        var triggered = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => settings, (action, arg) =>
+        {
+            lock (triggered) triggered.Add(action);
+            return true;
+        });
+        // 不装钩子，只启计时器 —— 真实的长按判定就走这条
+        engine.StartHoldTimer();
+
+        // ① 按下后立刻检查：还没到阈值，不应该进层
+        engine.SimulateKey(VK.CapsLock, true);
+        engine.CheckHoldThresholdForTest();
+        CheckEqual("刚按下时还没进层", engine.ActiveLayer, -1);
+        Check("按下时触发键保持按住状态", engine.IsTriggerHeld);
+
+        // ② 等过阈值，让计时器真的跑起来
+        DoEvents(260);
+        CheckEqual("超过阈值后进入第 1 层", engine.ActiveLayer, 1);
+        CheckEqual("激活的是 CapsLock", engine.ActiveTriggerKey, "capslock");
+
+        // ③ 层模式下按键应该被吞掉并触发动作
+        bool swallowed = engine.SimulateKey(0x53 /*S*/, true);   // caps_s = 左移
+        Check("层模式下已绑定的键被吞掉", swallowed);
+        engine.SimulateKey(0x53, false);
+        DoEvents(120);
+        lock (triggered)
+        {
+            Check("层模式下触发了绑定动作", triggered.Count > 0,
+                string.Join(",", triggered));
+        }
+
+        // ④ 松开触发键后退出层
+        engine.SimulateKey(VK.CapsLock, false);
+        CheckEqual("松开后退出层", engine.ActiveLayer, -1);
+        Check("松开后不再处于按住状态", !engine.IsTriggerHeld);
+
+        engine.Dispose();
+        queue.Dispose();
+
+        // ⑤ 短按（没到阈值就松开）必须保留原功能，且不进层
+        var s2 = DefaultSettings.Create();
+        foreach (var t in s2.Triggers) t.HoldMs = 400;
+        var tapActions = new List<string>();
+        var q2 = new ActionQueue();
+        var e2 = new HotkeyEngine(q2, () => s2, (action, arg) =>
+        {
+            lock (tapActions) tapActions.Add(action);
+            return true;
+        });
+        e2.StartHoldTimer();
+
+        e2.SimulateKey(VK.CapsLock, true);
+        Thread.Sleep(60);                       // 远小于 400ms
+        bool swallowUp = e2.SimulateKey(VK.CapsLock, false);
+        DoEvents(160);
+
+        Check("短按时不进层", e2.ActiveLayer == -1);
+        Check("短按时触发键的抬起被放行（原功能生效）", !swallowUp);
+        lock (tapActions)
+        {
+            Check("短按触发了短按动作（切换大小写）",
+                tapActions.Contains("toggleCapsLock"),
+                string.Join(",", tapActions));
+        }
+
+        e2.Dispose();
+        q2.Dispose();
+    }
+
+    /// <summary>
+    /// 层的隔离性：在不同层里新建的绑定必须写进各自的列表，
+    /// 不能串到第 1 层去（这个 bug 真实存在过）。
+    /// </summary>
+    private static void TestLayerIsolation()
+    {
+        var s = DefaultSettings.Create();
+        int layer1Before = s.Layers.First(l => l.Id == 1).Keys.Count;
+
+        // 模拟"在第 5 层新建一条绑定"
+        var layer5 = s.Layers.First(l => l.Id == 5);
+        layer5.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_ctrl_k", Action = "qbar" });
+
+        CheckEqual("第 5 层多了一条绑定", layer5.Keys.Count, 1);
+        CheckEqual("第 1 层的绑定数没变",
+            s.Layers.First(l => l.Id == 1).Keys.Count, layer1Before);
+        Check("第 1 层没有出现第 5 层的绑定",
+            s.Layers.First(l => l.Id == 1).Keys.All(k => k.Combo != "caps_ctrl_k"));
+
+        // Settings.Keys 必须始终是第 1 层那一份（老代码依赖这个别名）
+        Check("Settings.Keys 就是第 1 层的列表",
+            ReferenceEquals(s.Keys, s.Layers.First(l => l.Id == 1).Keys));
+
+        // LayerKeys(5) 能取到第 5 层的内容
+        Check("LayerKeys(5) 取到的是第 5 层",
+            s.LayerKeys(5).Any(k => k.Combo == "caps_ctrl_k"));
+
+        // 归一化之后这个别名关系必须保持
+        SettingsStore.Normalize(s);
+        Check("归一化后别名关系仍保持",
+            ReferenceEquals(s.Keys, s.Layers.First(l => l.Id == 1).Keys));
+    }
+
+    /// <summary>
+    /// 宏录制：验证录制器能记录按键并生成步骤。
     ///
     /// 这是「点录制没反应」的回归测试。真实路径是
     /// 钩子 → HotkeyEngine.OnKeyEvent → MacroRecorder.Record，
@@ -1383,10 +1515,300 @@ public static class SelfTest
     private static bool IsModifierVk(int vk) => vk is
         0xA2 or 0xA3 or 0x11 or 0xA0 or 0xA1 or 0x10 or 0xA4 or 0xA5 or 0x12 or 0x5B or 0x5C;
 
-    /// 这里在一个 STA 线程里调用动画，并检查窗口尺寸是否被改动过 ——
-    /// 若一帧都没跑，尺寸不会变。
+    /// <summary>
+    /// 主题：三种模式都要能解析，切到浅色/深色时资源字典要真的换掉，
+    /// 且"跟随系统"模式下监听器会被启动（这是用户说的"不灵敏"那条）。
     /// </summary>
-    private static void TestGenieAnimation()
+    private static void TestTheme()
+    {
+        const string L = "Theme/Theme.Light.xaml";
+        const string D = "Theme/Theme.Dark.xaml";
+
+        CheckEqual("解析 system", UI.Theme.ThemeManager.Parse("system"), UI.Theme.ThemeManager.Mode.System);
+        CheckEqual("解析 light", UI.Theme.ThemeManager.Parse("light"), UI.Theme.ThemeManager.Mode.Light);
+        CheckEqual("解析 dark", UI.Theme.ThemeManager.Parse("dark"), UI.Theme.ThemeManager.Mode.Dark);
+        CheckEqual("未知值回退到 system",
+            UI.Theme.ThemeManager.Parse("乱写的"), UI.Theme.ThemeManager.Mode.System);
+
+        // 切主题必须真的换掉资源字典，而不只是改个字段
+        UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Light);
+        Check("浅色主题字典已装载", HasThemeDict(L));
+
+        UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
+        Check("深色主题字典已装载", HasThemeDict(D));
+        Check("深色时不会有浅色字典残留", !HasThemeDict(L));
+
+        // 最关键的一条：跟随系统时必须开始监听
+        UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.System);
+        Check("跟随系统模式下启动了监听", UI.Theme.ThemeManager.IsWatching);
+
+        // 切到固定主题应当停止监听（省掉没必要的轮询）
+        UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
+        Check("固定深色时停止监听", !UI.Theme.ThemeManager.IsWatching);
+
+        // 两种主题的实际配色必须不同（否则等于没切）
+        UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Light);
+        string lightBg = BrushColor("Brush.Background");
+        UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
+        string darkBg = BrushColor("Brush.Background");
+        Check("浅色与深色的背景色不同", lightBg != darkBg,
+            $"light={lightBg} dark={darkBg}");
+    }
+
+    private static bool HasThemeDict(string needle)
+    {
+        var app = System.Windows.Application.Current;
+        if (app == null) return false;
+        return app.Resources.MergedDictionaries.Any(d =>
+            d.Source != null &&
+            d.Source.OriginalString.EndsWith(needle, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>取当前主题里某个画刷的颜色（用于比较两套配色是否真的不同）。</summary>
+    private static string BrushColor(string key)
+    {
+        var app = System.Windows.Application.Current;
+        if (app == null) return "";
+        if (app.TryFindResource(key) is System.Windows.Media.SolidColorBrush b)
+            return b.Color.ToString();
+        return "";
+    }
+
+    /// <summary>
+    /// Qbar 面板内的引擎搜索：按关键字 / 备注 / 内容匹配。
+    /// 用户明确要求"主要就通过备注或者关键字来搜索"。
+    /// </summary>
+    private static void TestQbarEntryFilter()
+    {
+        var list = new List<QEntry>
+        {
+            new() { Key = "bd", Value = "https://www.baidu.com/s?wd={q}", Comment = "百度" },
+            new() { Key = "zh", Value = "https://www.zhihu.com/search?q={q}", Comment = "知乎" },
+            new() { Key = "go", Value = "https://www.google.com/search?q={q}", Comment = "Google" },
+            new() { Key = "bi", Value = "https://www.bing.com/search?q={q}", Comment = "必应" },
+        };
+
+        CheckEqual("空过滤词返回全部", QEntry.Filter(list, "").Count, 4);
+        CheckEqual("null 过滤词返回全部", QEntry.Filter(list, null).Count, 4);
+        CheckEqual("只有空格也算不过滤", QEntry.Filter(list, "   ").Count, 4);
+
+        var byKey = QEntry.Filter(list, "bd");
+        CheckEqual("按关键字能搜到", byKey.Count, 1);
+        CheckEqual("搜到的是百度", byKey[0].Comment, "百度");
+
+        var byComment = QEntry.Filter(list, "知乎");
+        CheckEqual("按中文备注能搜到", byComment.Count, 1);
+        CheckEqual("搜到的是知乎", byComment[0].Key, "zh");
+
+        var byValue = QEntry.Filter(list, "google.com");
+        CheckEqual("按网址内容能搜到", byValue.Count, 1);
+        CheckEqual("搜到的是 Google", byValue[0].Key, "go");
+
+        CheckEqual("按大小写不敏感匹配", QEntry.Filter(list, "GOOGLE").Count, 1);
+        CheckEqual("英文备注小写也能搜", QEntry.Filter(list, "bing").Count, 1);
+        CheckEqual("搜不到时返回空", QEntry.Filter(list, "不存在的词xyz").Count, 0);
+
+        // 真实引擎表规模
+        var real = DefaultSettings.Create().Search;
+        Check("内置引擎表足够大", real.Count > 200, real.Count.ToString());
+        var hit = QEntry.Filter(real, "知乎");
+        Check("在真实引擎表里能搜到知乎", hit.Any(e => e.Comment == "知乎"),
+            string.Join(",", hit.Select(e => e.Comment)));
+        Check("在真实引擎表里能搜到哔哩哔哩",
+            QEntry.Filter(real, "哔哩").Any());
+    }
+
+    /// <summary>
+    /// 触发键配置：默认 CapsLock、可改、每个绑一层、不能重复。
+    /// </summary>
+    private static void TestTriggerConfig()
+    {
+        var s = DefaultSettings.Create();
+        CheckEqual("默认只有一个触发键", s.Triggers.Count, 1);
+        CheckEqual("默认触发键是 capslock", s.Triggers[0].Key, "capslock");
+        CheckEqual("默认绑第 1 层", s.Triggers[0].LayerId, 1);
+        Check("默认是启用的", s.Triggers[0].Enabled);
+
+        // 改触发键（用户要求"默认是 CapsLock，但可以自己修改成别的"）
+        s.Triggers[0].Key = "f13";
+        SettingsStore.Normalize(s);
+        CheckEqual("触发键可以改成别的键", s.Triggers[0].Key, "f13");
+
+        // 加第二个触发键，绑第 5 层
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "f14", LayerId = 5, HoldMs = 250,
+            TapAction = "esc", Enabled = true,
+        });
+        SettingsStore.Normalize(s);
+        CheckEqual("可以有多个触发键", s.Triggers.Count, 2);
+        CheckEqual("第二个触发键绑第 5 层", s.Triggers[1].LayerId, 5);
+        CheckEqual("第二个触发键的阈值", s.Triggers[1].HoldMs, 250);
+        CheckEqual("第二个触发键的短按动作", s.Triggers[1].TapAction, "esc");
+
+        // 阈值要被夹到合理范围
+        s.Triggers[1].HoldMs = 99999;
+        SettingsStore.Normalize(s);
+        Check("过大的阈值被夹到上限", s.Triggers[1].HoldMs <= 2000,
+            s.Triggers[1].HoldMs.ToString());
+        s.Triggers[1].HoldMs = 1;
+        SettingsStore.Normalize(s);
+        Check("过小的阈值被夹到下限", s.Triggers[1].HoldMs >= 50,
+            s.Triggers[1].HoldMs.ToString());
+
+        // 层 ID 越界要回退（否则永远进不了层）
+        s.Triggers[1].LayerId = 99;
+        SettingsStore.Normalize(s);
+        Check("越界的层 ID 回退到第 1 层", s.Triggers[1].LayerId == 1,
+            s.Triggers[1].LayerId.ToString());
+
+        // 触发键的键名必须能解析成 VK，否则永远匹配不上
+        foreach (var t in s.Triggers)
+            Check($"触发键「{t.Key}」能解析成虚拟键码", KeyName.VkOf(t.Key) != null);
+        Check("capslock 能解析", KeyName.VkOf("capslock") == VK.CapsLock);
+    }
+
+    /// <summary>
+    /// 按键名表的**双向一致性**：每个 VK 都要有名字，每个名字都要能反查回 VK。
+    ///
+    /// 这是"按键录不到 / 触发键失效"那类 bug 的系统性防线 ——
+    /// 之前 CapsLock 和修饰键都是漏在这张表上，一次只发现一个。
+    /// </summary>
+    private static void TestKeyNameTable()
+    {
+        // 必须支持的关键键（漏一个就会导致某个功能整体不可用）
+        var mustHave = new (int Vk, string Why)[]
+        {
+            (VK.CapsLock, "默认触发键"),
+            (0xA2, "左 Ctrl"), (0xA3, "右 Ctrl"),
+            (0xA0, "左 Shift"), (0xA1, "右 Shift"),
+            (0xA4, "左 Alt"), (0xA5, "右 Alt"),
+            (0x5B, "左 Win"), (0x5C, "右 Win"),
+            (0x7C, "F13"), (0x7D, "F14"), (0x87, "F24"),
+            (0xA6, "浏览器后退"), (0xAC, "浏览器主页"),
+            (0x60, "小键盘 0"), (0x6F, "小键盘 /"),
+        };
+        foreach (var (vk, why) in mustHave)
+        {
+            Check($"{why} (0x{vk:X2}) 在按键表里", KeyName.NameOf(vk) != null,
+                KeyName.NameOf(vk) ?? "缺失");
+        }
+
+        // 双向一致：所有 F1~F24 都应该可用
+        var missingF = new List<string>();
+        for (int i = 0; i < 24; i++)
+        {
+            int vk = 0x70 + i;
+            if (KeyName.NameOf(vk) == null) missingF.Add($"F{i + 1}");
+        }
+        Check("F1~F24 全部可用", missingF.Count == 0, string.Join(",", missingF));
+
+        // 双向一致：小键盘 0~9 都应该可用
+        var missingNum = new List<string>();
+        for (int i = 0; i < 10; i++)
+        {
+            int vk = 0x60 + i;
+            if (KeyName.NameOf(vk) == null) missingNum.Add(i.ToString());
+        }
+        Check("小键盘 0~9 全部可用", missingNum.Count == 0, string.Join(",", missingNum));
+
+        // 反向：常见键名都要能查出 VK
+        string[] names =
+        {
+            "a", "z", "0", "9", "f1", "f12", "f13", "f24",
+            "capslock", "space", "tab", "enter", "esc", "backspace",
+            "lctrl", "rctrl", "lshift", "rshift", "lalt", "ralt", "lwin", "rwin",
+            "num0", "num9", "numDivide", "browserBack", "browserHome",
+            "mediaPlayPause", "volumeUp", "up", "down", "left", "right",
+        };
+        var badNames = names.Where(n => KeyName.VkOf(n) == null).ToList();
+        Check("所有常用键名都能反查 VK", badNames.Count == 0, string.Join(",", badNames));
+
+        // 名字必须唯一（重复会导致反查表构造时抛异常或后写覆盖前写）
+        var dupNames = new List<string>();
+        var seen = new Dictionary<int, string>();
+        for (int vk = 0; vk <= 0xFF; vk++)
+        {
+            string? n = KeyName.NameOf(vk);
+            if (n != null) seen[vk] = n;
+        }
+        var byName = seen.GroupBy(kv => kv.Value, StringComparer.OrdinalIgnoreCase)
+                         .Where(g => g.Count() > 1)
+                         .Select(g => g.Key);
+        dupNames.AddRange(byName);
+        Check("键名没有重复", dupNames.Count == 0, string.Join(",", dupNames));
+    }
+
+    /// <summary>
+    /// 窗口绑定：**程序没启动时要先把它启动起来**。
+    /// 这是用户明确要求的行为，用拦截器验证决策而不真的拉进程。
+    /// </summary>
+    private static void TestWindowBindingLaunch()
+    {
+        var settings = DefaultSettings.Create();
+        var notes = new List<string>();
+        var svc = new WindowBindingService(settings);
+        svc.Notified += m => { lock (notes) notes.Add(m); };
+
+        string launched = "";
+        WindowBindingService.LaunchInterceptForTest = exe =>
+        {
+            launched = exe;
+            return true;
+        };
+
+        try
+        {
+            // ① 槽位绑过一个程序，但窗口已经关了 → 应该去启动它
+            var b = settings.Bindings.First(x => x.Slot == 3);
+            b.ExePath = @"C:\Windows\System32\notepad.exe";
+            b.DisplayName = "notepad.exe";
+            b.WindowIds.Clear();          // 模拟"程序没在运行"
+
+            bool ok = svc.Activate(3);
+            Check("窗口不在时 Activate 返回成功（表示已去启动）", ok);
+            CheckEqual("确实调用了启动，且用的是绑定的 exe 路径",
+                launched, @"C:\Windows\System32\notepad.exe");
+            lock (notes)
+            {
+                Check("给出了「正在启动」的提示",
+                    notes.Any(n => n.Contains("正在启动")),
+                    string.Join(" | ", notes));
+            }
+
+            // ② 槽位没绑过任何程序 → 不该去启动，应提示还未绑定
+            launched = "";
+            lock (notes) notes.Clear();
+            bool ok2 = svc.Activate(7);
+            Check("空槽位不会去启动程序", !ok2 && launched.Length == 0);
+            lock (notes)
+            {
+                Check("空槽位给出「还没绑定」的提示",
+                    notes.Any(n => n.Contains("还没绑定")),
+                    string.Join(" | ", notes));
+            }
+
+            // ③ 有 ExePath 但文件不存在 → 也不该盲目启动
+            launched = "";
+            lock (notes) notes.Clear();
+            var b2 = settings.Bindings.First(x => x.Slot == 4);
+            b2.ExePath = @"C:\不存在的程序\xyz.exe";
+            b2.WindowIds.Clear();
+            bool ok3 = svc.Activate(4);
+            Check("exe 不存在时不去启动", !ok3 && launched.Length == 0);
+
+            // ④ 绑定里必须真的存了 exe 路径（否则启动无从谈起）
+            Check("绑定结构里有 ExePath 字段",
+                typeof(WinBinding).GetProperty("ExePath") != null);
+        }
+        finally
+        {
+            WindowBindingService.LaunchInterceptForTest = null;
+        }
+    }
+
+    /// <summary>窗口激活与最小化：验证「按一次弹出、再按一次最小化」这两个动作。</summary>
+    private static void TestWindowActivateAndMinimize()
     {
         var probe = new System.Windows.Window
         {
@@ -1407,31 +1829,37 @@ public static class SelfTest
 
             var before = WindowService.GetRect(h);
 
-            // 在后台线程上触发动画（复现真实调用路径：钩子线程）
+            // 激活不应该改变窗口尺寸（没有动画了）
+            WindowService.Activate(h);
+            DoEvents(200);
+            var after = WindowService.GetRect(h);
+            Check("激活后窗口尺寸不变（无动画）",
+                Math.Abs(after.Width - before.Width) <= 1 &&
+                Math.Abs(after.Height - before.Height) <= 1,
+                $"{before.Width}x{before.Height} -> {after.Width}x{after.Height}");
+
+            // 在后台线程上调用也不能抛（真实调用路径是钩子线程）
             Exception? error = null;
             var t = new Thread(() =>
             {
-                try { WindowService.ActivateWithGenie(h, 200); }
+                try { WindowService.Activate(h); }
                 catch (Exception ex) { error = ex; }
             })
             { IsBackground = true };
             t.SetApartmentState(ApartmentState.STA);
             t.Start();
             t.Join(3000);
+            Check("后台线程上激活不抛异常", error == null, error?.Message ?? "");
 
-            Check("动画调用没有抛异常", error == null, error?.Message ?? "");
+            // 最小化
+            WindowService.Minimize(h);
             DoEvents(400);
+            Check("最小化后窗口已最小化", NativeWindowIsIconic(h));
 
-            var after = WindowService.GetRect(h);
-            Check("动画结束后窗口尺寸保持原样（未损坏）",
-                Math.Abs(after.Width - before.Width) <= 1 &&
-                Math.Abs(after.Height - before.Height) <= 1,
-                $"{before.Width}x{before.Height} -> {after.Width}x{after.Height}");
-
-            // 收起一次，确认最小化路径可用
-            WindowService.HideWithGenie(h, 150);
-            DoEvents(500);
-            Check("收起后窗口已最小化", NativeWindowIsIconic(h));
+            // 再激活一次要能还原回来
+            WindowService.Activate(h);
+            DoEvents(400);
+            Check("再次激活后已还原", !NativeWindowIsIconic(h));
         }
         finally
         {

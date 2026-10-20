@@ -99,18 +99,11 @@ public partial class QbarSettingsView : UserControl
 
         // 过滤：按关键字 / 备注 / 内容模糊匹配，大小写不敏感。
         // 这样内置 300 多个引擎也能很快找到想要的那个。
+        // 匹配规则抽在 QEntry.Matches 里，自检能直接验。
         string filter = FilterBox?.Text?.Trim() ?? "";
-        IEnumerable<QEntry> source = CurrentList();
-        int total = source.Count();
-        if (filter.Length > 0)
-        {
-            source = source.Where(e =>
-                (e.Key?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (e.Comment?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (e.Value?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false));
-        }
-
-        var items = source.Select(e => new EntryVm(e)).ToList();
+        var all = CurrentList().ToList();
+        int total = all.Count;
+        var items = QEntry.Filter(all, filter).Select(e => new EntryVm(e)).ToList();
         EntryList.ItemsSource = items;
         if (items.Count > 0) EntryList.SelectedIndex = 0;
         _suppress = false;

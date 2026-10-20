@@ -368,6 +368,18 @@ public static class SettingsStore
             if (first.Keys.Count == 0 && s.Keys.Count > 0) first.Keys = s.Keys;
         }
 
+        /* ⚠ `Settings.Keys` 必须**始终**是第 1 层那一份列表（同一个对象）。
+         *
+         * 引擎查第 1 层时先看 Layers[0].Keys，而界面/旧代码走 Settings.Keys；
+         * 两者一旦不是同一个 List，就会出现"界面上改了但按键没生效"
+         * 或者"第 5 层新建的绑定跑到第 1 层去"这类诡异问题。
+         * 这里统一成同一份引用，从根上消除这种可能。 */
+        {
+            var first = s.Layers.First(l => l.Id == 1);
+            if (first.Keys.Count == 0 && s.Keys.Count > 0) first.Keys = s.Keys;
+            s.Keys = first.Keys;
+        }
+
         // 触发键：老用户默认 CapsLock → 第 1 层，短按行为沿用全局设置
         if (s.Triggers.Count == 0)
         {

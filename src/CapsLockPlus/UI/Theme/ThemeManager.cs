@@ -87,13 +87,23 @@ public static class ThemeManager
         _watch = null;
     }
 
+    /// <summary>是否正在监听系统主题变化（只有"跟随系统"模式才会）。</summary>
+    public static bool IsWatching => _watch != null;
+
     public static event Action<bool>? ThemeChanged;
 
-    public static Mode Parse(string? value) => value?.ToLowerInvariant() switch
+    /// <summary>
+    /// 解析设置里的主题名。
+    ///
+    /// 认不出来（含 null / 空 / 被改坏的值）时回退到 **System**，
+    /// 而不是 Light：默认设置本来就是 system，
+    /// 配置损坏时"跟随系统"是最不让人意外的行为。
+    /// </summary>
+    public static Mode Parse(string? value) => value?.Trim().ToLowerInvariant() switch
     {
         "dark" => Mode.Dark,
-        "system" => Mode.System,
-        _ => Mode.Light,
+        "light" => Mode.Light,
+        _ => Mode.System,
     };
 
     public static string ToSetting(Mode mode) => mode switch

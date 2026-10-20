@@ -80,12 +80,23 @@
 
                     <StackPanel Grid.Row="2" VerticalAlignment="Bottom">
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button Content="基础层" x:Name="LayerBase" Style="{StaticResource Button.Base}"
-                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerBase" />
-                            <Button Content="Caps + LAlt 层" x:Name="LayerAlt" Style="{StaticResource Button.Base}"
-                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerAlt" />
-                            <Button Content="Caps + Win 层" x:Name="LayerWin" Style="{StaticResource Button.Base}"
-                                    Padding="12,5" Click="OnLayerWin" />
+                            <TextBlock Text="层" Style="{StaticResource Text.Secondary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="LayerBox" Style="{StaticResource ComboBox.Base}" Width="260"
+                                      SelectionChanged="OnLayerChanged" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="层内修饰键" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <Button Content="直接按" x:Name="LayerBase" Style="{StaticResource Button.Base}"
+                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerBase"
+                                    ToolTip="进入层后直接按的键" />
+                            <Button Content="+ LAlt" x:Name="LayerAlt" Style="{StaticResource Button.Base}"
+                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerAlt"
+                                    ToolTip="进入层后再按住左 Alt 按的键" />
+                            <Button Content="+ Win" x:Name="LayerWin" Style="{StaticResource Button.Base}"
+                                    Padding="12,5" Click="OnLayerWin"
+                                    ToolTip="进入层后再按住 Win 按的键" />
                         </StackPanel>
                         <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}"
                                    Margin="0,10,0,0" TextWrapping="Wrap" />

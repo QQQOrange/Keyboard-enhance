@@ -105,25 +105,44 @@ public sealed class HotkeyEngine : IDisposable
     public void Start()
     {
         _hook.Start();
-        // 长按判定计时器：钩子回调里不能做定时，放到界面线程的计时器上跑。
-        // 每 20ms 检查一次"当前触发的键是否已按住超过阈值"，
-        // 一旦超过就切到层模式。
+        StartHoldTimer();
+        CoreLog.Info("键盘钩子已启动");
+    }
+
+    /// <summary>
+    /// 启动长按判定计时器。
+    ///
+    /// 钩子回调里不能做定时，所以阈值判定放在界面线程的计时器上：
+    /// 每 20ms 检查一次"当前触发的键是否已按住超过阈值"，超过就切到层模式。
+    ///
+    /// 单独抽出来是为了让自检能**只启计时器、不装钩子**地验证真实长按路径
+    /// （之前的自检用 EnterLayerImmediatelyForTest 直接跳过了计时器，
+    ///  等于这条最关键的链路从来没被测过）。
+    /// </summary>
+    public void StartHoldTimer()
+    {
+        if (_holdTimer != null) return;
         _holdTimer = new System.Windows.Threading.DispatcherTimer(
             System.Windows.Threading.DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(20),
         };
-        _holdTimer.Tick += (_, _) =>
-        {
-            if (!_triggerHeld || _layerActive) return;
-            var trigger = _activeTrigger;
-            if (trigger == null) return;
-            if ((DateTime.Now - _triggerDownTime).TotalMilliseconds >= trigger.HoldMs)
-                OnHoldThresholdReached();
-        };
+        _holdTimer.Tick += (_, _) => CheckHoldThreshold();
         _holdTimer.Start();
-        CoreLog.Info("键盘钩子已启动");
     }
+
+    /// <summary>阈值检查（计时器每 20ms 调一次；自检也可直接调）。</summary>
+    private void CheckHoldThreshold()
+    {
+        if (!_triggerHeld || _layerActive) return;
+        var trigger = _activeTrigger;
+        if (trigger == null) return;
+        if ((DateTime.Now - _triggerDownTime).TotalMilliseconds >= trigger.HoldMs)
+            OnHoldThresholdReached();
+    }
+
+    /// <summary>仅供自检：手动跑一次阈值检查，不依赖计时器。</summary>
+    public void CheckHoldThresholdForTest() => CheckHoldThreshold();
 
     private System.Windows.Threading.DispatcherTimer? _holdTimer;
 
