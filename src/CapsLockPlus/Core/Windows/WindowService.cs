@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows;
 using CapsLockPlus.Core.Interop;
 using static CapsLockPlus.Core.Interop.NativeMethods;
 
@@ -156,7 +157,136 @@ public static class WindowService
     public static bool AnimationEnabled { get; set; } = true;
 
     /// <summary>
-    /// 激活窗口并播放一段“从小到大”的动画。
+    /// 激活窗口并播放 macOS「神奇效果（Genie）」式动画：窗口从任务栏/Dock 的位置
+    /// 由小放大展开。按一次唤出用展开动画，再按一次收起用缩小动画。
+    ///
+    /// 与旧版单纯「原地缩放」的区别：旧版以窗口中心为锚点，看起来只是变大变小；
+    /// Genie 的锚点在任务栏，所以窗口像是从任务栏"被拉出来"再塞回去，
+    /// 更接近 macOS 的行为，方向感明确。
+    ///
+    /// 实现要点：
+    ///   * 锚点取任务栏所在边的中点（默认屏幕底部）；
+    ///   * 位置与尺寸同步插值，锚点处保持不动；
+    ///   * 最小化/最大化窗口不做动画，避免与系统还原动画打架；
+    ///   * 收尾把窗口精确对齐回原矩形，避免累积误差。
+    /// </summary>
+    public static void ActivateWithGenie(IntPtr hwnd, int durationMs = 260)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return;
+
+        bool wasMinimized = IsIconic(hwnd);
+        bool wasMaximized = IsZoomed(hwnd);
+        if (wasMinimized) ShowWindowAsync(hwnd, SW_RESTORE);
+
+        var target = GetRect(hwnd);
+        bool canAnimate = AnimationEnabled
+                          && !wasMaximized
+                          && target.Width > 120 && target.Height > 80
+                          && !wasMinimized;
+        if (!canAnimate)
+        {
+            Activate(hwnd);
+            return;
+        }
+
+        var anchor = DockAnchor();
+        PlayGenie(hwnd, target, anchor, expand: true, durationMs);
+        Activate(hwnd);
+    }
+
+    /// <summary>收起窗口：与 <see cref="ActivateWithGenie"/> 相反方向的动画。</summary>
+    public static void HideWithGenie(IntPtr hwnd, int durationMs = 260)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return;
+        if (IsIconic(hwnd) || IsZoomed(hwnd))
+        {
+            Minimize(hwnd);
+            return;
+        }
+
+        var target = GetRect(hwnd);
+        if (!AnimationEnabled || target.Width <= 120 || target.Height <= 80)
+        {
+            Minimize(hwnd);
+            return;
+        }
+
+        var anchor = DockAnchor();
+        PlayGenie(hwnd, target, anchor, expand: false, durationMs, onDone: () =>
+        {
+            // 动画结束后再最小化，否则窗口会提前消失
+            Minimize(hwnd);
+            // 还原矩形，避免下次唤出时从错误的位置展开
+            SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top, target.Width, target.Height,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        });
+    }
+
+    /// <summary>任务栏锚点：取任务栏所在屏幕边的中点。</summary>
+    private static Point DockAnchor()
+    {
+        try
+        {
+            // 工作区通常不含任务栏，所以用"整屏底边"作为锚点：
+            // 先取主屏全屏矩形，失败则退到工作区中点。
+            int sw = GetSystemMetrics(0);      // SM_CXSCREEN
+            int sh = GetSystemMetrics(1);      // SM_CYSCREEN
+            if (sw > 0 && sh > 0)
+                return new Point(sw / 2, sh - 6);
+        }
+        catch { }
+        var wa = WorkArea(IntPtr.Zero);
+        return new Point(wa.Left + wa.Width / 2, wa.Bottom);
+    }
+
+    /// <summary>播放 Genie 动画（展开或收起）。</summary>
+    private static void PlayGenie(IntPtr hwnd, RECT target, Point anchor,
+        bool expand, int durationMs, Action? onDone = null)
+    {
+        int frames = Math.Max(6, durationMs / 16);
+        var timer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+        int frame = 0;
+        // 展开：0 -> 1；收起：1 -> 0
+        double Start = expand ? 0.06 : 1.0;
+        double End = expand ? 1.0 : 0.06;
+
+        timer.Tick += (_, _) =>
+        {
+            frame++;
+            double t = Math.Clamp((double)frame / frames, 0, 1);
+            // 展开用缓出（出场快、收尾稳），收起用缓入（先慢后快，像被吸进去）
+            double eased = expand
+                ? 1 - Math.Pow(1 - t, 3)
+                : Math.Pow(t, 3);
+            double s = Start + (End - Start) * eased;
+
+            // 以锚点为基准做等比缩放：锚点处坐标不变
+            int w = Math.Max(8, (int)(target.Width * s));
+            int h = Math.Max(8, (int)(target.Height * s));
+            int left = (int)(anchor.X - (anchor.X - target.Left) * s);
+            int top = (int)(anchor.Y - (anchor.Y - target.Top) * s);
+
+            SetWindowPos(hwnd, IntPtr.Zero, left, top, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+
+            if (frame >= frames)
+            {
+                timer.Stop();
+                if (expand)
+                {
+                    SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top,
+                        target.Width, target.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+                onDone?.Invoke();
+            }
+        };
+        timer.Start();
+    }
+
+    /// <summary>激活窗口并播放一段“从小到大”的动画。
     ///
     /// 做法：记住窗口原本的位置和大小，先把它收缩成一个较小的矩形，
     /// 再分帧放大回原尺寸。这样切换窗口时有明确的视觉反馈，

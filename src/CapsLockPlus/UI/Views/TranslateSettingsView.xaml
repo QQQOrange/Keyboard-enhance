@@ -15,21 +15,18 @@
                            Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,6,0,16" />
 
                 <TextBlock Text="翻译服务" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
-                <ComboBox x:Name="ProviderBox" Style="{StaticResource ComboBox.Base}" SelectionChanged="OnProviderChanged">
-                    <ComboBoxItem Content="内置免费引擎（无需配置，推荐）" Tag="none" />
-                    <ComboBoxItem Content="有道智云（需要 AppId / AppSecret）" Tag="youdao" />
-                </ComboBox>
+                <ComboBox x:Name="ProviderBox" Style="{StaticResource ComboBox.Base}" SelectionChanged="OnProviderChanged" />
 
-                <StackPanel x:Name="YoudaoPanel" Margin="0,14,0,0" Visibility="Collapsed">
-                    <TextBlock Text="应用 ID（AppKey）" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
+                <StackPanel x:Name="KeyPanel" Margin="0,14,0,0" Visibility="Collapsed">
+                    <TextBlock x:Name="KeyIdLabel" Text="应用 ID" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
                     <TextBox x:Name="AppIdBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                              VerticalContentAlignment="Center" TextChanged="OnCredentialChanged" />
-                    <TextBlock Text="应用密钥（AppSecret）" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
-                    <PasswordBox x:Name="AppSecretBox" Height="36" Padding="10,7" FontSize="13.5"
-                                 BorderBrush="{DynamicResource Brush.BorderStrong}" BorderThickness="1"
-                                 PasswordChanged="OnSecretChanged" />
-                    <TextBlock Text="在 https://ai.youdao.com/console 创建「文本翻译」应用后可以获得。"
-                               Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <TextBlock x:Name="KeySecretLabel" Text="应用密钥" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
+                    <!-- 必须用 TextBox.Base：WPF 默认 PasswordBox 是白底方角，
+                         在深色主题下会变成一块刺眼的白板，也破坏整体风格。 -->
+                    <PasswordBox x:Name="AppSecretBox" Style="{StaticResource PasswordBox.Base}"
+                                 MinHeight="36" PasswordChanged="OnSecretChanged" />
+                    <TextBlock x:Name="KeyHint" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,8,0,0" />
                 </StackPanel>
 
                 <TextBlock Text="目标语言" Style="{StaticResource Text.Secondary}" Margin="0,16,0,6" />

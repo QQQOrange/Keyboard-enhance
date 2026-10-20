@@ -1,0 +1,40 @@
+<Window x:Class="CapsLockPlus.UI.Windows.KeyCaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="自定义按键" Width="440" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True"
+        ResizeMode="NoResize" FontFamily="{StaticResource Font.Ui}">
+
+    <Grid Margin="14">
+        <Border CornerRadius="18" Background="#1A000000" Margin="8,12,8,-2" Opacity="0.7" />
+        <Border CornerRadius="16" BorderThickness="1.5" Background="{DynamicResource Brush.Surface}"
+                BorderBrush="{DynamicResource Brush.Border}">
+            <StackPanel Margin="20,18">
+                <TextBlock Text="按下任意按键" FontSize="16" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.TextPrimary}" />
+                <TextBlock Text="直接按键盘上的目标键即可，Esc 取消。&#x0a;支持小键盘、功能键、媒体键、浏览器键等键盘上不显示的按键。"
+                           Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+                <!-- 捕获显示区 -->
+                <Border Margin="0,16,0,0" Padding="18,14" CornerRadius="12"
+                        Background="{DynamicResource Brush.SurfaceAlt}"
+                        BorderBrush="{DynamicResource Brush.AccentSoftBorder}" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock x:Name="PromptText" Text="等待按键…" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="DetailText" Text="" Style="{StaticResource Text.Tertiary}"
+                                   HorizontalAlignment="Center" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                    <Button Content="取消" Style="{StaticResource Button.Ghost}" Padding="16,7"
+                            Margin="0,0,8,0" Click="OnCancel" />
+                    <Button Content="确定绑定" Style="{StaticResource Button.Primary}" Padding="16,7"
+                            Click="OnConfirm" IsEnabled="False" x:Name="ConfirmButton" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -134,9 +134,14 @@ public sealed class WindowBindingService
             if (b.WindowIds.Count == 1)
             {
                 var h = new IntPtr(b.WindowIds[0]);
-                if (h == fg) { WindowService.Minimize(h); return true; }
-                // 切过去时播放“从小到大”的动画，让用户看清是哪个窗口
-                WindowService.ActivateWithZoom(h);
+                if (h == fg)
+                {
+                    // 再按一次：用 Genie 收起动画把窗口"吸"回任务栏
+                    WindowService.HideWithGenie(h);
+                    return true;
+                }
+                // 切过去：从任务栏方向展开
+                WindowService.ActivateWithGenie(h);
                 return true;
             }
 
@@ -145,8 +150,13 @@ public sealed class WindowBindingService
             int fgIdx = b.WindowIds.FindIndex(id => new IntPtr(id) == fg);
             if (fgIdx >= 0) idx = fgIdx;
             idx = (idx + 1) % b.WindowIds.Count;
-            _cycleIndex[slot] = idx;
-            WindowService.ActivateWithZoom(new IntPtr(b.WindowIds[idx]));
+            var next = new IntPtr(b.WindowIds[idx]);
+            if (next == fg)
+            {
+                WindowService.HideWithGenie(next);
+                return true;
+            }
+            WindowService.ActivateWithGenie(next);
             return true;
         }
     }

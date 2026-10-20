@@ -117,6 +117,11 @@
                                 <TextBlock x:Name="EditKeyLabel" Text="Q" FontSize="12.5" FontWeight="SemiBold"
                                            Foreground="{DynamicResource Brush.Accent}" />
                             </Border>
+
+                            <!-- 自定义按键：键盘上没有的键也能绑 -->
+                            <Button Content="自定义按键…" Style="{StaticResource Button.Base}"
+                                    Padding="12,6" Margin="14,0,0,0" Click="OnCustomKeyClick"
+                                    ToolTip="绑定键盘上不存在的键（例如小键盘、媒体键、浏览器键等）" />
                         </StackPanel>
                     </StackPanel>
 

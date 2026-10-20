@@ -41,13 +41,20 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TabControl Grid.Row="0" x:Name="Tabs" Background="Transparent" BorderThickness="0"
-                            SelectionChanged="OnTabChanged">
-                    <TabControl.Resources>
+                <Grid Grid.Row="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TabControl x:Name="Tabs" Background="Transparent" BorderThickness="0"
+                                SelectionChanged="OnTabChanged">
+                        <TabControl.Resources>
                         <Style TargetType="TabItem">
                             <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
                             <Setter Property="FontSize" Value="13" />
@@ -82,7 +89,27 @@
                     <TabItem Header="文字替换" Tag="hotstring" />
                 </TabControl>
 
-                <ListBox Grid.Row="1" x:Name="EntryList" Background="Transparent" BorderThickness="0"
+                <!-- 过滤框：按关键字或备注模糊搜索当前标签下的条目 -->
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="&#xE721;"
+                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                               Foreground="{DynamicResource Brush.TextTertiary}"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}"
+                             MinHeight="34" VerticalContentAlignment="Center"
+                             TextChanged="OnFilterChanged" />
+                    <TextBlock Grid.Column="2" x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
+                               VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="70"
+                               TextAlignment="Right" />
+                </Grid>
+                </Grid>
+
+                <ListBox Grid.Row="2" x:Name="EntryList" Background="Transparent" BorderThickness="0"
                          ItemContainerStyle="{StaticResource RowItem}" Margin="0,10,0,0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          SelectionChanged="OnEntrySelected">
@@ -107,7 +134,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
                     <Button Content="新增" Style="{StaticResource Button.Primary}" Click="OnAddClick" />
                     <Button Content="删除" Style="{StaticResource Button.Danger}" Margin="8,0,0,0"
                             Click="OnDeleteClick" />

@@ -387,6 +387,32 @@ public partial class KeysView : UserControl
         _host.InvokeAction(binding.Action, binding.Arg);
     }
 
+    /// <summary>
+    /// 自定义按键：弹出捕获窗口，用户按下的键即成为新的绑定目标。
+    ///
+    /// 键盘上画出来的键之外，也支持小键盘、媒体键、浏览器键等
+    /// （这些键的 VK 在 WPF 键盘事件里拿不到，必须走低级键盘钩子）。
+    /// </summary>
+    private void OnCustomKeyClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var dlg = new UI.Windows.KeyCaptureWindow
+        {
+            Owner = Window.GetWindow(this),
+        };
+        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedKey)) return;
+
+        string keyId = dlg.CapturedKey;
+
+        // 复用 SelectKey，让界面立刻反映新键
+        SelectKey(keyId);
+
+        // 同步给用户一个明确反馈：这个键已进入编辑状态
+        ActionDesc.Text = $"已选中自定义按键「{KeyName.Display(keyId)}」，" +
+                          $"在下面选一个功能即可绑定。";
+    }
+
     private void OnResetClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;

@@ -96,12 +96,34 @@ public partial class QbarSettingsView : UserControl
         _editing = null;
         _suppress = true;
         EntryList.ItemsSource = null;
-        var items = CurrentList().Select(e => new EntryVm(e)).ToList();
+
+        // 过滤：按关键字 / 备注 / 内容模糊匹配，大小写不敏感。
+        // 这样内置 300 多个引擎也能很快找到想要的那个。
+        string filter = FilterBox?.Text?.Trim() ?? "";
+        IEnumerable<QEntry> source = CurrentList();
+        int total = source.Count();
+        if (filter.Length > 0)
+        {
+            source = source.Where(e =>
+                (e.Key?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (e.Comment?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (e.Value?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        var items = source.Select(e => new EntryVm(e)).ToList();
         EntryList.ItemsSource = items;
         if (items.Count > 0) EntryList.SelectedIndex = 0;
         _suppress = false;
         if (items.Count > 0) BindEditor(items[0].Entry);
         else ClearEditor();
+
+        if (FilterCount != null)
+        {
+            FilterCount.Text = filter.Length > 0
+                ? $"匹配 {items.Count} / {total}"
+                : $"共 {total} 项";
+        }
+
         ValueHelp.Text = _tab switch
         {
             "search" => "用 {q} 代表关键词。例如 https://www.bing.com/search?q={q}。关键字填 default 表示默认搜索。",
@@ -194,6 +216,8 @@ public partial class QbarSettingsView : UserControl
         IconFallback.Text = "?";
         IconFallback.Foreground = (Brush)FindResource("Brush.TextTertiary");
     }
+
+    private void OnFilterChanged(object sender, TextChangedEventArgs e) => LoadEntries();
 
     private void OnTabChanged(object sender, SelectionChangedEventArgs e)
     {
