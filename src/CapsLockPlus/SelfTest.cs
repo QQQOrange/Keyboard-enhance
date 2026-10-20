@@ -82,6 +82,9 @@ public static class SelfTest
         Section("窗口绑定");
         TestWindowBindings();
 
+        Section("Genie 动画");
+        TestGenieAnimation();
+
         Section("窗口点选");
         TestWindowPreview();
         TestPickerWithOverlayVisible();
@@ -830,6 +833,73 @@ public static class SelfTest
         double def = Core.Text.TextMetrics.MinBoxHeight(defaultFontSize);
         Check("默认字号所需高度不超过模板 MinHeight 38", def <= 38,
             $"字号 {defaultFontSize} 需要 {def:0.0}");
+    }
+
+    /// <summary>
+    /// Genie 动画：验证动画帧确实会被驱动。
+    ///
+    /// 之前动画“看不出来”的根因是：调用方是钩子线程 / 动作线程，
+    /// 那里没有消息循环，`new DispatcherTimer()` 的 Tick 永远不触发。
+    /// 这里在一个 STA 线程里调用动画，并检查窗口尺寸是否被改动过 ——
+    /// 若一帧都没跑，尺寸不会变。
+    /// </summary>
+    private static void TestGenieAnimation()
+    {
+        var probe = new System.Windows.Window
+        {
+            Width = 600,
+            Height = 400,
+            WindowStyle = System.Windows.WindowStyle.None,
+            ShowInTaskbar = false,
+            Left = -32000,
+            Top = -32000,
+        };
+        probe.Show();
+        DoEvents(200);
+
+        try
+        {
+            var h = new System.Windows.Interop.WindowInteropHelper(probe).Handle;
+            Check("测试窗口已创建", h != IntPtr.Zero);
+
+            var before = WindowService.GetRect(h);
+
+            // 在后台线程上触发动画（复现真实调用路径：钩子线程）
+            Exception? error = null;
+            var t = new Thread(() =>
+            {
+                try { WindowService.ActivateWithGenie(h, 200); }
+                catch (Exception ex) { error = ex; }
+            })
+            { IsBackground = true };
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+            t.Join(3000);
+
+            Check("动画调用没有抛异常", error == null, error?.Message ?? "");
+            DoEvents(400);
+
+            var after = WindowService.GetRect(h);
+            Check("动画结束后窗口尺寸保持原样（未损坏）",
+                Math.Abs(after.Width - before.Width) <= 1 &&
+                Math.Abs(after.Height - before.Height) <= 1,
+                $"{before.Width}x{before.Height} -> {after.Width}x{after.Height}");
+
+            // 收起一次，确认最小化路径可用
+            WindowService.HideWithGenie(h, 150);
+            DoEvents(500);
+            Check("收起后窗口已最小化", NativeWindowIsIconic(h));
+        }
+        finally
+        {
+            probe.Close();
+            DoEvents(120);
+        }
+    }
+
+    private static bool NativeWindowIsIconic(IntPtr h)
+    {
+        return Core.Interop.NativeMethods.IsIconic(h);
     }
 
     private static void TestWindows()

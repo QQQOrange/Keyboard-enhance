@@ -101,6 +101,12 @@ public sealed class GlobalOptions
     public bool ShowToast { get; set; } = true;
 
     /// <summary>
+    /// 自动更新完成后是否弹出「已更新到 x.x.x」提示。
+    /// 开机自启的用户每次更新都被弹一次很烦，所以独立成一个开关（默认开）。
+    /// </summary>
+    public bool ShowUpdateToast { get; set; } = true;
+
+    /// <summary>
     /// 每次组合键触发时在屏幕上显示动作名称。
     /// 默认关闭；开启后能一眼看出“按键有没有被识别”，排查问题时非常有用。
     /// </summary>

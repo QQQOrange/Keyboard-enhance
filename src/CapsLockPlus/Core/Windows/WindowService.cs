@@ -31,6 +31,20 @@ public static class WindowService
 
     public static IntPtr Foreground => GetForegroundWindow();
 
+    /// <summary>
+    /// 取窗口的根（顶层）窗口句柄。
+    ///
+    /// 前台窗口常是某个程序的子窗口或模态对话框（HWND 与主窗口不同），
+    /// 判断“这个程序是否已在前台”时必须归一到根窗口再比，
+    /// 否则会误判成“没激活过”。
+    /// </summary>
+    public static IntPtr RootOf(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return IntPtr.Zero;
+        var root = GetAncestor(hwnd, GA_ROOT);
+        return root == IntPtr.Zero ? hwnd : root;
+    }
+
     public static bool Exists(IntPtr hwnd) => hwnd != IntPtr.Zero && IsWindow(hwnd);
 
     public static WindowInfo? Describe(IntPtr hwnd)
@@ -239,48 +253,89 @@ public static class WindowService
         return new Point(wa.Left + wa.Width / 2, wa.Bottom);
     }
 
-    /// <summary>播放 Genie 动画（展开或收起）。</summary>
+    /// <summary>
+    /// 播放 Genie 动画（展开或收起）。
+    ///
+    /// 关键实现细节：动画帧必须由**界面线程的 DispatcherTimer** 驱动。
+    /// 调用方是钩子线程 / 动作线程，那里没有消息循环，
+    /// 若直接用 `new DispatcherTimer()` 拿到的线程调度器，Tick 永远不会触发，
+    /// 结果就是"没有任何动画"——这正是之前用户反馈的现象。
+    ///
+    /// 所以这里统一 `Dispatcher.CurrentDispatcher` 之外，
+    /// 显式用 Application 的 Dispatcher 来跑计时器（没有 Application 时退化为
+    /// 一个专用 STA 线程 + 自己的消息循环）。
+    /// </summary>
     private static void PlayGenie(IntPtr hwnd, RECT target, Point anchor,
         bool expand, int durationMs, Action? onDone = null)
     {
         int frames = Math.Max(6, durationMs / 16);
-        var timer = new System.Windows.Threading.DispatcherTimer(
-            System.Windows.Threading.DispatcherPriority.Render)
-        {
-            Interval = TimeSpan.FromMilliseconds(16),
-        };
-        int frame = 0;
-        // 展开：0 -> 1；收起：1 -> 0
-        double Start = expand ? 0.06 : 1.0;
-        double End = expand ? 1.0 : 0.06;
+        double start = expand ? 0.06 : 1.0;
+        double end = expand ? 1.0 : 0.06;
 
-        timer.Tick += (_, _) =>
+        // 每帧要做的事：按缓动曲线算缩放，再以锚点为基准算位置与尺寸
+        void Step(int frame)
         {
-            frame++;
             double t = Math.Clamp((double)frame / frames, 0, 1);
-            // 展开用缓出（出场快、收尾稳），收起用缓入（先慢后快，像被吸进去）
-            double eased = expand
-                ? 1 - Math.Pow(1 - t, 3)
-                : Math.Pow(t, 3);
-            double s = Start + (End - Start) * eased;
+            double eased = expand ? 1 - Math.Pow(1 - t, 3) : Math.Pow(t, 3);
+            double s = start + (end - start) * eased;
 
-            // 以锚点为基准做等比缩放：锚点处坐标不变
             int w = Math.Max(8, (int)(target.Width * s));
             int h = Math.Max(8, (int)(target.Height * s));
             int left = (int)(anchor.X - (anchor.X - target.Left) * s);
             int top = (int)(anchor.Y - (anchor.Y - target.Top) * s);
 
             SetWindowPos(hwnd, IntPtr.Zero, left, top, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
 
+        Action finish = () =>
+        {
+            if (expand)
+            {
+                SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top,
+                    target.Width, target.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            onDone?.Invoke();
+        };
+
+        // 有 WPF Application 时直接用它自己的 Dispatcher
+        var appDispatcher = Application.Current?.Dispatcher;
+        if (appDispatcher != null && !appDispatcher.HasShutdownStarted)
+        {
+            RunFrames(appDispatcher, frames, Step, finish);
+            return;
+        }
+
+        // 兜底：起一个专用 STA 线程跑消息循环（自检 / 无界面场景）
+        var thread = new Thread(() =>
+        {
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            RunFrames(dispatcher, frames, Step, finish);
+            System.Windows.Threading.Dispatcher.Run();
+        })
+        {
+            IsBackground = true,
+        };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+    }
+
+    private static void RunFrames(System.Windows.Threading.Dispatcher dispatcher,
+        int frames, Action<int> step, Action finish)
+    {
+        int frame = 0;
+        var timer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Render, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+        timer.Tick += (_, _) =>
+        {
+            frame++;
+            step(frame);
             if (frame >= frames)
             {
                 timer.Stop();
-                if (expand)
-                {
-                    SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top,
-                        target.Width, target.Height, SWP_NOZORDER | SWP_NOACTIVATE);
-                }
-                onDone?.Invoke();
+                finish();
             }
         };
         timer.Start();

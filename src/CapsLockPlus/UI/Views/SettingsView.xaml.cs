@@ -30,6 +30,7 @@ public partial class SettingsView : UserControl
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
         ToastBox.IsChecked = g.ShowToast;
+        UpdateToastBox.IsChecked = g.ShowUpdateToast;
         FeedbackBox.IsChecked = g.ShowActionFeedback;
         WinAnimBox.IsChecked = g.WindowActivationAnimation;
         DoubleTapBox.IsChecked = g.DoubleTapCaps;
@@ -85,6 +86,13 @@ public partial class SettingsView : UserControl
     {
         if (_host == null || _suppress) return;
         _host.Settings.Global.ShowToast = ToastBox.IsChecked == true;
+        Save();
+    }
+
+    private void OnUpdateToastChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        _host.Settings.Global.ShowUpdateToast = UpdateToastBox.IsChecked == true;
         Save();
     }
 

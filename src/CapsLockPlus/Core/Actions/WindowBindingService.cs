@@ -134,31 +134,59 @@ public sealed class WindowBindingService
             if (b.WindowIds.Count == 1)
             {
                 var h = new IntPtr(b.WindowIds[0]);
-                if (h == fg)
+
+                // “是不是已经在前台”要用**根窗口**判断：
+                // 前台可能是同一程序弹出的对话框（另一个 HWND），
+                // 直接比 HWND 会误判成“没激活过”，于是再按一次不会收起。
+                bool alreadyFront = IsSameWindow(fg, h);
+
+                if (alreadyFront)
                 {
-                    // 再按一次：用 Genie 收起动画把窗口"吸"回任务栏
+                    // 再按一次：用 Genie 收起动画把窗口“吸”回任务栏
                     WindowService.HideWithGenie(h);
+                    Notified?.Invoke($"已收起 {DescribeSlot(slot)}");
                     return true;
                 }
+
                 // 切过去：从任务栏方向展开
                 WindowService.ActivateWithGenie(h);
+                Notified?.Invoke($"已切到 {DescribeSlot(slot)}");
                 return true;
             }
 
             // 多窗口：循环切换到下一个
             int idx = _cycleIndex.TryGetValue(slot, out var ci) ? ci : -1;
-            int fgIdx = b.WindowIds.FindIndex(id => new IntPtr(id) == fg);
+            int fgIdx = b.WindowIds.FindIndex(id => IsSameWindow(fg, new IntPtr(id)));
             if (fgIdx >= 0) idx = fgIdx;
             idx = (idx + 1) % b.WindowIds.Count;
             var next = new IntPtr(b.WindowIds[idx]);
-            if (next == fg)
+            if (IsSameWindow(next, fg))
             {
+                // 又按回同一个：收起
                 WindowService.HideWithGenie(next);
+                Notified?.Invoke($"已收起 {DescribeSlot(slot)}");
                 return true;
             }
+            _cycleIndex[slot] = idx;
             WindowService.ActivateWithGenie(next);
+            Notified?.Invoke($"已切到 {DescribeSlot(slot)}");
             return true;
         }
+    }
+
+    /// <summary>
+    /// 判断两个句柄是否指向同一个顶层窗口。
+    ///
+    /// 前台窗口可能是目标程序的子窗口 / 对话框（HWND 不同但同属一个根窗口），
+    /// 这种情况也应视为“已在前台”，否则再按一次快捷键不会收起。
+    /// </summary>
+    private static bool IsSameWindow(IntPtr a, IntPtr b)
+    {
+        if (a == b) return true;
+        if (a == IntPtr.Zero || b == IntPtr.Zero) return false;
+        var ra = WindowService.RootOf(a);
+        var rb = WindowService.RootOf(b);
+        return ra == rb || ra == b || a == rb;
     }
 
     /// <summary>

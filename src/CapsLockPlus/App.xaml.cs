@@ -178,7 +178,12 @@ public partial class App : Application
 
         if (justUpdated)
         {
-            Host.Notify($"已更新到 {UpdateService.CurrentVersion}");
+            // “已更新到 x.x.x”只在用户没关掉提示时才弹。
+            // 开机自启场景下每次更新都弹一次通知很烦，所以把它做成可选项。
+            if (settings.Global.ShowUpdateToast)
+                Host.Notify($"已更新到 {UpdateService.CurrentVersion}");
+            else
+                CoreLog.Info($"已更新到 {UpdateService.CurrentVersion}（提示已在设置中关闭）");
         }
         // 自动更新：延迟几秒再检查，避免和首屏抢资源
         Host.ScheduleUpdateCheck();
