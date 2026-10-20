@@ -231,10 +231,32 @@ public sealed class HotkeyEngine : IDisposable
             return _swallowLastUp;
         }
 
-        // ---- 2. 不在层模式：全部放行 ----
+        // ---- 2. 触发键按住中，但还没到长按阈值 ----
+        if (_triggerHeld && !_layerActive)
+        {
+            /* 按住触发键期间又按了别的键 → **立刻进层**，不等阈值。
+             *
+             * 为什么必须这样：如果非要等满 200ms 才进层，
+             * 那用户每次想按组合键（Caps+Q、Caps+Ctrl+K）都得先"等一下"，
+             * 手感非常别扭 —— 组合键会显得"时灵时不灵"。
+             *
+             * 判据也很自然：又按了别的键，说明用户明确是想用组合键，
+             * 而不是单纯点一下触发键。纯点一下（没碰别的键）仍然走短按，
+             * 保留切换大小写这类原功能。
+             *
+             * 这是 QMK / kanata 里 tap-hold 的标准做法（hold-on-other-key-press）。 */
+            if (down && _activeTrigger?.HoldOnOtherKey == true)
+            {
+                _layerActive = true;
+                _tapHandled = true;      // 已经不算"干净短按"了
+                CoreLog.Info($"触发键 {_activeTrigger.Key} 期间按了其它键，立即进入第 {_activeLayer} 层");
+            }
+        }
+
+        // ---- 3. 不在层模式：全部放行 ----
         if (!_triggerHeld || !_layerActive) return false;
 
-        // ---- 3. 层模式内的按键 ----
+        // ---- 4. 层模式内的按键 ----
         return down ? OnKeyDownInLayer(vk) : OnKeyUpInLayer(vk);
     }
 

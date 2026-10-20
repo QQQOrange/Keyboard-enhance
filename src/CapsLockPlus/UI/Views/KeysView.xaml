@@ -89,13 +89,19 @@
                             <TextBlock Text="层内修饰键" Style="{StaticResource Text.Tertiary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Button Content="直接按" x:Name="LayerBase" Style="{StaticResource Button.Base}"
-                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerBase"
-                                    ToolTip="进入层后直接按的键" />
+                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerBase"
+                                    ToolTip="进入层后直接按的键（Caps + 键）" />
+                            <Button Content="+ Ctrl" x:Name="LayerCtrl" Style="{StaticResource Button.Base}"
+                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerCtrl"
+                                    ToolTip="进入层后再按住 Ctrl 按的键（Caps + Ctrl + 键）" />
+                            <Button Content="+ Shift" x:Name="LayerShift" Style="{StaticResource Button.Base}"
+                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerShift"
+                                    ToolTip="进入层后再按住 Shift 按的键（Caps + Shift + 键）" />
                             <Button Content="+ LAlt" x:Name="LayerAlt" Style="{StaticResource Button.Base}"
-                                    Padding="12,5" Margin="0,0,6,0" Click="OnLayerAlt"
+                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerAlt"
                                     ToolTip="进入层后再按住左 Alt 按的键" />
                             <Button Content="+ Win" x:Name="LayerWin" Style="{StaticResource Button.Base}"
-                                    Padding="12,5" Click="OnLayerWin"
+                                    Padding="10,5" Click="OnLayerWin"
                                     ToolTip="进入层后再按住 Win 按的键" />
                         </StackPanel>
                         <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}"
@@ -137,9 +143,24 @@
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Margin="0,18,0,0">
-                        <TextBlock Text="功能" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
-                        <ComboBox x:Name="ActionBox" Style="{StaticResource ComboBox.Base}"
-                                  SelectionChanged="OnActionChanged" MaxDropDownHeight="320" />
+                        <!-- 功能分两级选：先选分类，再从该分类里选具体功能。
+                             一个下拉里塞一百多项实在难找。 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                <ComboBox x:Name="CategoryBox" Style="{StaticResource ComboBox.Base}"
+                                          SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="功能" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                <ComboBox x:Name="ActionBox" Style="{StaticResource ComboBox.Base}"
+                                          SelectionChanged="OnActionChanged" MaxDropDownHeight="420" />
+                            </StackPanel>
+                        </Grid>
                         <TextBlock x:Name="ActionDesc" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
                                    Margin="0,8,0,0" />
 

@@ -34,7 +34,7 @@ public sealed class AppHost : IDisposable
 
     public AppSettings Settings { get; set; }
     public HotkeyEngine Engine { get; }
-    public ActionCatalog Actions { get; }
+    public ActionCatalog Actions { get; private set; }
     public ActionContext Context { get; }
     public ClipboardService Clipboard { get; }
     public WindowBindingService Bindings { get; }
@@ -230,6 +230,7 @@ public sealed class AppHost : IDisposable
         Context.Mouse.Speed = Settings.Global.MouseSpeed;
         Context.Mouse.Step = Settings.Global.MouseMoveStep;
         Engine.Suspended = false;
+        RebuildActions();
         ApplyStartupSetting();
         _tray?.SetEnabled(Engine.Enabled);
         _qbar?.InvalidateStyle();
@@ -426,6 +427,25 @@ public sealed class AppHost : IDisposable
 
     /// <summary>同步完成事件（界面刷新用）。</summary>
     public event Action<Core.Sync.SyncResult>? SyncCompleted;
+
+    /// <summary>动作表重建后触发（界面需要刷新功能下拉）。</summary>
+    public event Action? ActionsChanged;
+
+    /// <summary>
+    /// 重建动作表。
+    ///
+    /// 必须能重建：宏动作（macro:&lt;id&gt;）是在 <c>ActionCatalog.Create</c> 时
+    /// 按当时的宏列表注册的。动作表只在启动时建一次的话，
+    /// **用户新建的宏永远不会出现在"功能"下拉里** ——
+    /// 这正是用户反馈的"按键绑不了宏"。
+    ///
+    /// 所以任何会改变动作集合的操作（增删宏、重新加载配置）之后都要调它。
+    /// </summary>
+    public void RebuildActions()
+    {
+        Actions = ActionCatalog.Create(Context);
+        ActionsChanged?.Invoke();
+    }
 
     /// <summary>手动触发一次同步并通知界面。</summary>
     public async Task<Core.Sync.SyncResult> RunSyncNowAsync(bool upload)

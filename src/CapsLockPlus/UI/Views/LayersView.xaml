@@ -105,6 +105,27 @@
                                 <TextBlock Text="按住超过这个时间才进入层；在此之前松开 = 短按，走下面的短按动作。"
                                            Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0" />
 
+                                <Border Style="{StaticResource Divider}" Margin="0,14,0,12" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="按住触发键时按别的键，立即进层"
+                                                   Style="{StaticResource Text.Body}" TextWrapping="Wrap" />
+                                        <TextBlock Text="推荐开启。否则每次按组合键都要先等满上面的阈值，手感会明显发涩。"
+                                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                                   Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1" x:Name="HoldOnOtherBox"
+                                              Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                              Click="OnHoldOnOtherChanged" />
+                                </Grid>
+
+                                <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
+
                                 <TextBlock Text="短按动作" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
                                 <ComboBox x:Name="TapActionBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnTapActionChanged" MaxDropDownHeight="320" />

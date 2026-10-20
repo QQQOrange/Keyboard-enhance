@@ -235,6 +235,14 @@ public sealed class TriggerKey
     /// <summary>短按时要执行的动作（默认切换大小写；可设为 Esc / 无操作等）。</summary>
     public string TapAction { get; set; } = "toggleCapsLock";
 
+    /// <summary>
+    /// 按住触发键期间又按了别的键时，**立即进入层**而不等长按阈值。
+    ///
+    /// 开（默认）：Caps 按住后马上按 Q 就能触发组合键，手感与旧版一致。
+    /// 关：必须按满 <see cref="HoldMs"/> 才进层，组合键要"等一下"。
+    /// </summary>
+    public bool HoldOnOtherKey { get; set; } = true;
+
     /// <summary>双击触发键时执行的动作（空 = 关闭双击功能）。</summary>
     public string DoubleTapAction { get; set; } = "";
 

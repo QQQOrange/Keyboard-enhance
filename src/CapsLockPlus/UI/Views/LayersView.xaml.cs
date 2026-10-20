@@ -109,6 +109,7 @@ public partial class LayersView : UserControl
         if (LayerBox.SelectedIndex < 0 && LayerBox.Items.Count > 0) LayerBox.SelectedIndex = 0;
 
         HoldMsBox.Text = t.HoldMs.ToString();
+        HoldOnOtherBox.IsChecked = t.HoldOnOtherKey;
 
         // 动作下拉（带"无"选项）
         TapActionBox.Items.Clear();
@@ -279,6 +280,13 @@ public partial class LayersView : UserControl
             _editing.HoldMs = Math.Clamp(ms, 50, 2000);
             _host.SaveSettings();
         }
+    }
+
+    private void OnHoldOnOtherChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress || _editing == null) return;
+        _editing.HoldOnOtherKey = HoldOnOtherBox.IsChecked == true;
+        _host.SaveSettings();
     }
 
     private void OnTapActionChanged(object sender, SelectionChangedEventArgs e)

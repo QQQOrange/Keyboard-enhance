@@ -264,19 +264,50 @@ public static class KeyName
         _ => name.Length <= 2 ? name.ToUpperInvariant() : char.ToUpperInvariant(name[0]) + name[1..],
     };
 
-    /// <summary>把设置里的组合键名（caps_a / caps_lalt_a / caps_win_1）解析成 (修饰键, 按键名)。</summary>
+    /// <summary>
+    /// 把设置里的组合键名解析成 (修饰键, 按键名)。
+    ///
+    /// 这是 <see cref="BuildComboEx"/> 的逆运算，两种形式都要认：
+    ///   caps_q              -> (None, "q")
+    ///   caps_lalt_q         -> (Alt, "q")         ← 老布局
+    ///   caps_win_1          -> (Win, "1")
+    ///   caps_ctrl_shift_k   -> (Ctrl|Shift, "k")  ← 自定义按键捕获的
+    ///
+    /// 做法是剥掉 `caps_` 前缀后按 `_` 切，把开头的**修饰键记号**逐个吃掉，
+    /// 剩下的拼回去就是键名（键名里不含下划线，所以拼回是无损的）。
+    ///
+    /// ⚠ 不能再用"前缀 startsWith"的写法：那样 `caps_ctrl_k` 会被当成
+    /// 基础层的键名 `ctrl_k`，导致组合键既不显示也绑不上 —— 正是用户
+    /// 反馈的"自定义按键不能用组合键"。
+    /// </summary>
     public static (KeyModifiers Mods, string Key)? ParseCombo(string comboId)
     {
         if (string.IsNullOrEmpty(comboId)) return null;
-        if (comboId.StartsWith("caps_lalt_", StringComparison.OrdinalIgnoreCase))
-            return (KeyModifiers.Alt, comboId["caps_lalt_".Length..]);
-        if (comboId.StartsWith("caps_win_", StringComparison.OrdinalIgnoreCase))
-            return (KeyModifiers.Win, comboId["caps_win_".Length..]);
-        if (comboId.StartsWith("caps_", StringComparison.OrdinalIgnoreCase))
-            return (KeyModifiers.None, comboId["caps_".Length..]);
         if (comboId.Equals("press_caps", StringComparison.OrdinalIgnoreCase))
             return (KeyModifiers.None, "capslock");
-        return null;
+        if (!comboId.StartsWith("caps_", StringComparison.OrdinalIgnoreCase)) return null;
+
+        var parts = comboId["caps_".Length..].Split('_', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return null;
+
+        var mods = KeyModifiers.None;
+        int i = 0;
+        for (; i < parts.Length - 1; i++)          // 最后一段一定是键名，不能当修饰键吃
+        {
+            var m = parts[i].ToLowerInvariant() switch
+            {
+                "ctrl" or "lctrl" or "rctrl" => KeyModifiers.Ctrl,
+                "shift" or "lshift" or "rshift" => KeyModifiers.Shift,
+                "lalt" or "ralt" or "alt" => KeyModifiers.Alt,
+                "win" or "lwin" or "rwin" => KeyModifiers.Win,
+                _ => KeyModifiers.None,
+            };
+            if (m == KeyModifiers.None) break;     // 不是修饰键，后面整段都算键名
+            mods |= m;
+        }
+
+        string key = string.Join('_', parts[i..]);
+        return key.Length == 0 ? null : (mods, key);
     }
 
     /// <summary>

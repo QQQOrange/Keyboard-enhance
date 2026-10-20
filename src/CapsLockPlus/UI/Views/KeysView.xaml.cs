@@ -112,22 +112,56 @@ public partial class KeysView : UserControl
         _suppressEvents = true;
         SchemeBox.SelectedIndex = _host.Settings.Global.HotkeyScheme == "capslock_plus" ? 1 : 0;
 
-        ActionBox.Items.Clear();
-        foreach (var group in _host.Actions.Items.GroupBy(i => i.Category))
-        {
-            foreach (var item in group)
-            {
-                ActionBox.Items.Add(new ComboBoxItem
-                {
-                    Content = $"{group.Key} · {item.Title}",
-                    Tag = item.Id,
-                });
-            }
-        }
+        BuildCategoryBox();
         _suppressEvents = false;
         BuildLayerBox();
         BuildKeyboard();
         SelectKey(_selectedKey);
+    }
+
+    /// <summary>
+    /// 填"分类"下拉。分类来自动作表本身，所以加了宏就会多出「宏」这一类。
+    /// 顺序是按动作表里的出现顺序，宏排在最后（它是用户自己的东西）。
+    /// </summary>
+    private void BuildCategoryBox()
+    {
+        if (_host == null) return;
+        string? keep = (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+
+        CategoryBox.Items.Clear();
+        foreach (var cat in _host.Actions.Items.Select(i => i.Category).Distinct())
+            CategoryBox.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
+
+        // 尽量保留用户原来选的分类
+        foreach (ComboBoxItem it in CategoryBox.Items)
+        {
+            if (it.Tag as string == keep) { CategoryBox.SelectedItem = it; break; }
+        }
+        if (CategoryBox.SelectedIndex < 0 && CategoryBox.Items.Count > 0)
+            CategoryBox.SelectedIndex = 0;
+
+        BuildActionBox();
+    }
+
+    /// <summary>填"功能"下拉，只列当前分类下的动作。</summary>
+    private void BuildActionBox()
+    {
+        if (_host == null) return;
+        string? cat = (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+
+        ActionBox.Items.Clear();
+        foreach (var item in _host.Actions.Items.Where(i => i.Category == cat))
+            ActionBox.Items.Add(new ComboBoxItem { Content = item.Title, Tag = item.Id });
+
+        if (ActionBox.Items.Count > 0) ActionBox.SelectedIndex = 0;
+    }
+
+    private void OnCategoryChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        _suppressEvents = true;
+        BuildActionBox();
+        _suppressEvents = false;
     }
 
     // ---------------- 键盘绘制 ----------------
@@ -156,7 +190,7 @@ public partial class KeysView : UserControl
                     continue;
                 }
 
-                string combo = KeyName.BuildCombo(_layer, keyId);
+                string combo = KeyName.BuildComboEx(_layer, keyId);
                 var binding = FindInCurrentLayer(combo);
                 bool isBound = binding is { IsBound: true };
                 if (isBound) bound++;
@@ -307,6 +341,8 @@ public partial class KeysView : UserControl
             b.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
         }
         Apply(LayerBase, _layer == KeyModifiers.None);
+        Apply(LayerCtrl, _layer == KeyModifiers.Ctrl);
+        Apply(LayerShift, _layer == KeyModifiers.Shift);
         Apply(LayerAlt, _layer == KeyModifiers.Alt);
         Apply(LayerWin, _layer == KeyModifiers.Win);
     }
@@ -320,8 +356,14 @@ public partial class KeysView : UserControl
             var parsed = KeyName.ParseCombo(binding.Combo);
             if (parsed == null) continue;
             var (mods, key) = parsed.Value;
-            if (mods != _layer || key == "capslock") continue;
-            items.Add(new BoundVm(key, KeyName.Display(key), _host.Actions.Get(binding.Action)?.Title ?? binding.Action));
+            if (key == "capslock") continue;
+            // 不再按修饰键过滤：这一层里所有绑定都要列出来，
+            // 否则用自定义按键绑的 Ctrl+Shift+K 之类就"看不见"了。
+            string label = mods == KeyModifiers.None
+                ? KeyName.Display(key)
+                : $"{ModifierText(mods)} {KeyName.Display(key)}";
+            items.Add(new BoundVm(mods, key, label,
+                _host.Actions.Get(binding.Action)?.Title ?? binding.Action));
         }
         BoundList.ItemsSource = items
             .OrderBy(i => KeyOrder(i.Key))
@@ -353,12 +395,32 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
         _selectedKey = keyId;
-        string combo = KeyName.BuildCombo(_layer, keyId);
+        string combo = CurrentCombo();
         var binding = FindInCurrentLayer(combo);
 
         EditKeyLabel.Text = KeyName.Display(keyId);
         _suppressEvents = true;
+
         string actionId = binding?.Action ?? "doNothing";
+
+        // 两级下拉：先按动作找到它所属分类，切过去，再在分类里选中它
+        var info = _host.Actions.Get(actionId);
+        if (info != null)
+        {
+            foreach (ComboBoxItem it in CategoryBox.Items)
+            {
+                if (it.Tag as string == info.Category)
+                {
+                    if (!ReferenceEquals(CategoryBox.SelectedItem, it))
+                    {
+                        CategoryBox.SelectedItem = it;
+                        BuildActionBox();
+                    }
+                    break;
+                }
+            }
+        }
+
         foreach (ComboBoxItem item in ActionBox.Items)
         {
             if (item.Tag is string tag && tag.Equals(actionId, StringComparison.OrdinalIgnoreCase))
@@ -370,7 +432,6 @@ public partial class KeysView : UserControl
         ArgBox.Text = binding?.Arg ?? "";
         _suppressEvents = false;
 
-        var info = _host.Actions.Get(actionId);
         ActionDesc.Text = info?.Description ?? "";
         bool needsArg = info?.NeedsArg == true || actionId is "moveLeft" or "moveRight" or "moveUp" or "moveDown"
             or "selectLeft" or "selectRight" or "selectUp" or "selectDown" or "moveWordLeft" or "moveWordRight"
@@ -395,6 +456,8 @@ public partial class KeysView : UserControl
 
     // ---------------- 事件 ----------------
     private void OnLayerBase(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.None);
+    private void OnLayerCtrl(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Ctrl);
+    private void OnLayerShift(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Shift);
     private void OnLayerAlt(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Alt);
     private void OnLayerWin(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Win);
 
@@ -409,7 +472,13 @@ public partial class KeysView : UserControl
 
     private void OnBoundSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (BoundList.SelectedItem is BoundVm vm) SelectKey(vm.Key);
+        // 点列表里的条目要把**修饰键一起**还原，否则点了 Ctrl+Shift+K
+        // 只会选中 K，编辑的其实是另一个绑定。
+        if (BoundList.SelectedItem is BoundVm vm)
+        {
+            _layer = vm.Mods;
+            SelectKey(vm.Key);
+        }
     }
 
     private void OnSchemeChanged(object sender, SelectionChangedEventArgs e)
@@ -479,7 +548,7 @@ public partial class KeysView : UserControl
     private void OnTestClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        string combo = KeyName.BuildCombo(_layer, _selectedKey);
+        string combo = CurrentCombo();
         var binding = FindInCurrentLayer(combo);
         if (binding == null || !binding.IsBound) { _host.Notify("这个按键还没有绑定功能"); return; }
         _host.InvokeAction(binding.Action, binding.Arg);
@@ -493,12 +562,25 @@ public partial class KeysView : UserControl
     /// </summary>
     /// <summary>
     /// 当前编辑目标对应的 combo ID。
-    /// 捕获过自定义组合键时用捕获到的修饰键，否则用当前层的修饰键。
+    ///
+    /// 层内修饰键（<see cref="_layer"/>）就是组合键的修饰部分 ——
+    /// 自定义按键捕获到 Ctrl+Shift+K 时，直接把 `_layer` 设成 Ctrl|Shift、
+    /// 把 `_selectedKey` 设成 "k"，于是这里一律用同一个公式，
+    /// 不存在"捕获到的修饰键被丢掉"的可能。
     /// </summary>
-    private string CurrentCombo() =>
-        _capturedMods == KeyModifiers.None
-            ? KeyName.BuildCombo(_layer, _selectedKey)
-            : BuildComboFromCapture(_capturedMods, _selectedKey);
+    private string CurrentCombo() => KeyName.BuildComboEx(_layer, _selectedKey);
+
+    /// <summary>层内修饰键的中文说明（界面提示用）。</summary>
+    private static string ModifierText(KeyModifiers m)
+    {
+        if (m == KeyModifiers.None) return "直接按";
+        var parts = new List<string>();
+        if (m.HasFlag(KeyModifiers.Ctrl)) parts.Add("Ctrl");
+        if (m.HasFlag(KeyModifiers.Shift)) parts.Add("Shift");
+        if (m.HasFlag(KeyModifiers.Alt)) parts.Add("LAlt");
+        if (m.HasFlag(KeyModifiers.Win)) parts.Add("Win");
+        return "+ " + string.Join(" + ", parts);
+    }
 
     private void OnCustomKeyClick(object sender, RoutedEventArgs e)
     {
@@ -510,39 +592,14 @@ public partial class KeysView : UserControl
         };
         if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
 
-        // 组合键要转成引擎认识的 combo ID：
-        //   Ctrl+Shift+K + 当前层  ->  caps_ctrl_shift_k
-        //   K                      ->  caps_k
+        // 捕获结果直接把"层内修饰键 + 主键"设进当前编辑状态，
+        // 于是组合键与单键走的是同一条路径，不会再出现"录了却没绑上"。
         string key = dlg.CapturedKey ?? dlg.CapturedCombo;
-        _capturedMods = dlg.CapturedMods;
+        _layer = dlg.CapturedMods;
 
         SelectKey(key);
-        string combo = BuildComboFromCapture(_capturedMods, key);
-        ActionDesc.Text = $"已选中自定义组合键「{combo}」，在下面选一个功能即可绑定。";
-    }
-
-    /// <summary>当前捕获到的修饰键（配合 SelectKey 使用）。</summary>
-    private KeyModifiers _capturedMods;
-
-    /// <summary>
-    /// 把捕获窗口给出的 (修饰键, 主键) 转成引擎的组合键 ID。
-    ///
-    /// 引擎里修饰键原本只有 LAlt / Win 两种（caps_lalt_x / caps_win_x），
-    /// 而用户可能捕获到 Ctrl/Shift。这里按顺序拼进 combo ID：
-    ///   Caps + Ctrl+Shift+K  ->  caps_ctrl_shift_k
-    /// 引擎侧原样查表，所以只要能存进去、查得到就行。
-    /// </summary>
-    private string BuildComboFromCapture(KeyModifiers mods, string key)
-    {
-        var parts = new List<string>();
-        if (_layer == KeyModifiers.Alt) parts.Add("lalt");
-        else if (_layer == KeyModifiers.Win) parts.Add("win");
-        if (mods.HasFlag(KeyModifiers.Ctrl)) parts.Add("ctrl");
-        if (mods.HasFlag(KeyModifiers.Shift)) parts.Add("shift");
-        if (mods.HasFlag(KeyModifiers.Alt)) parts.Add("lalt");
-        if (mods.HasFlag(KeyModifiers.Win)) parts.Add("win");
-        parts.Add(key);
-        return "caps_" + string.Join("_", parts);
+        ActionDesc.Text = $"已选中「{KeyName.Display(key)}」{ModifierText(_layer)}" +
+                          $"（{CurrentCombo()}），在右边选一个功能即可绑定。";
     }
 
     private void OnResetClick(object sender, RoutedEventArgs e)
@@ -557,5 +614,5 @@ public partial class KeysView : UserControl
         _host.Notify("按键映射已恢复默认");
     }
 
-    private sealed record BoundVm(string Key, string KeyLabel, string Action);
+    private sealed record BoundVm(KeyModifiers Mods, string Key, string KeyLabel, string Action);
 }

@@ -122,7 +122,7 @@ public partial class MacrosView : UserControl
             _host.Engine.MacroRecorder = null;          // 告诉引擎：录制结束
             _host.Settings.Macros.Add(macro);
             _editing = macro;
-            _host.SaveSettings();
+            SaveAndRebuild();
             Reload();
             RecordButton.Content = "开始录制";
             RecordStatus.Text = $"已生成 {macro.Steps.Count} 步";
@@ -140,13 +140,27 @@ public partial class MacrosView : UserControl
 
     // ---------------- 增删 ----------------
 
+    /// <summary>
+    /// 保存设置并重建动作表。
+    ///
+    /// 宏在动作表里是以「播放宏：xxx」的形式注册的，动作表不重建的话
+    /// 新建的宏不会出现在「按键映射」页的功能下拉里 —— 用户就绑不上它。
+    /// 这就是"通过触发键进层后按键绑不了宏"的原因。
+    /// </summary>
+    private void SaveAndRebuild()
+    {
+        if (_host == null) return;
+        _host.SaveSettings();
+        _host.RebuildActions();
+    }
+
     private void OnNewClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
         var m = new Macro { Name = "新宏", Repeat = 1 };
         _host.Settings.Macros.Add(m);
         _editing = m;
-        _host.SaveSettings();
+        SaveAndRebuild();
         Reload();
         NameBox.Focus();
     }
@@ -157,7 +171,7 @@ public partial class MacrosView : UserControl
         string name = _editing.Name;
         _host.Settings.Macros.RemoveAll(m => m.Id == _editing.Id);
         _editing = null;
-        _host.SaveSettings();
+        SaveAndRebuild();
         Reload();
         _host.Notify($"已删除宏「{name}」");
     }
@@ -179,7 +193,8 @@ public partial class MacrosView : UserControl
     {
         if (_editing == null || NameBox.Text == _editing.Name) return;
         _editing.Name = NameBox.Text;
-        _host?.SaveSettings();
+        // 改名要重建动作表：功能下拉里显示的就是宏名
+        SaveAndRebuild();
         MacroList.Items.Refresh();
     }
 

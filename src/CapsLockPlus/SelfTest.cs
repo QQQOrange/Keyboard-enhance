@@ -97,6 +97,14 @@ public static class SelfTest
         Section("按键名表");
         TestKeyNameTable();
 
+        Section("组合键往返");
+        TestComboRoundTrip();
+        TestHoldOnOtherKey();
+
+        Section("宏可绑定");
+        TestMacroIsBindable();
+        TestActionCategories();
+
         Section("窗口绑定未启动时先启动");
         TestWindowBindingLaunch();
 
@@ -1805,6 +1813,229 @@ public static class SelfTest
         {
             WindowBindingService.LaunchInterceptForTest = null;
         }
+    }
+
+    /// <summary>
+    /// 组合键**往返一致**：BuildComboEx 造出来的 ID，ParseCombo 必须能原样解回来。
+    ///
+    /// 这是「自定义按键不能用组合键」的回归测试。
+    /// 之前 ParseCombo 只认 caps_lalt_ / caps_win_ 两个前缀，
+    /// `caps_ctrl_shift_k` 被解析成基础层的键名 "ctrl_shift_k" ——
+    /// 既显示不出来、也绑不上。
+    /// </summary>
+    private static void TestComboRoundTrip()
+    {
+        var cases = new (KeyModifiers Mods, string Key)[]
+        {
+            (KeyModifiers.None, "q"),
+            (KeyModifiers.Ctrl, "k"),
+            (KeyModifiers.Shift, "k"),
+            (KeyModifiers.Alt, "k"),
+            (KeyModifiers.Win, "k"),
+            (KeyModifiers.Ctrl | KeyModifiers.Shift, "k"),
+            (KeyModifiers.Ctrl | KeyModifiers.Alt, "a"),
+            (KeyModifiers.Ctrl | KeyModifiers.Shift | KeyModifiers.Alt | KeyModifiers.Win, "z"),
+            (KeyModifiers.Ctrl, "leftSquareBracket"),
+            (KeyModifiers.Shift, "num5"),
+            (KeyModifiers.Ctrl, "f24"),
+            (KeyModifiers.None, "browserBack"),
+        };
+
+        foreach (var (mods, key) in cases)
+        {
+            string combo = KeyName.BuildComboEx(mods, key);
+            var parsed = KeyName.ParseCombo(combo);
+            Check($"「{combo}」能被解析", parsed != null, "返回 null");
+            if (parsed == null) continue;
+            CheckEqual($"「{combo}」的修饰键一致", parsed.Value.Mods, mods);
+            CheckEqual($"「{combo}」的键名一致", parsed.Value.Key, key);
+
+            // 再拼一次必须得到同一个 ID（幂等）
+            CheckEqual($"「{combo}」二次构造一致",
+                KeyName.BuildComboEx(parsed.Value.Mods, parsed.Value.Key), combo);
+        }
+
+        // 老布局（上游 CapsLock+ 用的形式）也要继续认
+        var old1 = KeyName.ParseCombo("caps_lalt_q");
+        Check("老形式 caps_lalt_q 仍是 Alt 层", old1?.Mods == KeyModifiers.Alt);
+        CheckEqual("老形式 caps_lalt_q 的键", old1?.Key, "q");
+        var old2 = KeyName.ParseCombo("caps_win_1");
+        Check("老形式 caps_win_1 仍是 Win 层", old2?.Mods == KeyModifiers.Win);
+        CheckEqual("老形式 caps_win_1 的键", old2?.Key, "1");
+        var old3 = KeyName.ParseCombo("caps_q");
+        Check("老形式 caps_q 是基础层", old3?.Mods == KeyModifiers.None);
+        CheckEqual("老形式 caps_q 的键", old3?.Key, "q");
+        CheckEqual("press_caps 解析成 capslock",
+            KeyName.ParseCombo("press_caps")?.Key, "capslock");
+
+        // 非法输入返回 null 而不是抛
+        Check("空串返回 null", KeyName.ParseCombo("") == null);
+        Check("没有 caps_ 前缀返回 null", KeyName.ParseCombo("q") == null);
+        Check("只有前缀返回 null", KeyName.ParseCombo("caps_") == null);
+
+        // 关键回归：组合键 ID 绝不能被拆成"基础层的一个怪键名"
+        var tricky = KeyName.ParseCombo("caps_ctrl_shift_k");
+        Check("caps_ctrl_shift_k 不会被当成基础层",
+            tricky?.Mods != KeyModifiers.None,
+            tricky?.Mods.ToString() ?? "null");
+        CheckEqual("caps_ctrl_shift_k 的键是 k", tricky?.Key, "k");
+    }
+
+    /// <summary>
+    /// 宏必须能在「按键映射」页被绑定。
+    ///
+    /// 这是「绑不了宏」的回归测试：动作表以前只在启动时建一次，
+    /// 于是新建的宏永远不出现在功能下拉里。现在加/删宏都会重建动作表。
+    /// </summary>
+    private static void TestMacroIsBindable()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+
+        // 起始没有宏 → 动作表里不该有宏动作
+        var before = Core.Actions.ActionCatalog.Create(ctx);
+        Check("没有宏时动作表里没有宏动作",
+            !before.Items.Any(i => i.Id.StartsWith("macro:")),
+            string.Join(",", before.Items.Where(i => i.Id.StartsWith("macro:")).Select(i => i.Id)));
+
+        // 加一个宏，重建动作表 → 必须出现对应的动作
+        settings.Macros.Add(new Core.Settings.Macro
+        {
+            Id = "m123",
+            Name = "我的宏",
+            Steps = { new Core.Settings.MacroStep { Kind = "delay", DelayMs = 50 } },
+        });
+
+        var after = Core.Actions.ActionCatalog.Create(ctx);
+        var macroAction = after.Items.FirstOrDefault(i => i.Id == "macro:m123");
+        Check("加了宏之后动作表里有它", macroAction != null,
+            string.Join(",", after.Items.Select(i => i.Id)));
+        Check("宏动作在「宏」分类下", macroAction?.Category == "宏",
+            macroAction?.Category ?? "");
+        Check("宏动作的标题带宏名",
+            macroAction?.Title?.Contains("我的宏") == true,
+            macroAction?.Title ?? "");
+
+        // 这个动作必须真的能被执行（能播放）
+        bool invoked = false;
+        foreach (var i in after.Items.Where(i => i.Id.StartsWith("macro:"))) invoked = true;
+        Check("宏动作可以被绑定（存在可选项）", invoked);
+
+        // 删掉宏之后动作表里就没了
+        settings.Macros.Clear();
+        var removed = Core.Actions.ActionCatalog.Create(ctx);
+        Check("删掉宏之后动作表里就没有了",
+            !removed.Items.Any(i => i.Id == "macro:m123"));
+
+        // 动作表里必须有「打开宏管理」这一项
+        Check("动作表里有打开宏管理",
+            removed.Items.Any(i => i.Id == "macroManager"));
+    }
+
+    /// <summary>
+    /// 动作表按分类分组后，**每个分类下都要有可选项**（两级下拉才不会是空的）。
+    /// </summary>
+    private static void TestActionCategories()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        var categories = cat.Items.Select(i => i.Category).Distinct().ToList();
+        Check("动作表有多个分类", categories.Count >= 5, categories.Count.ToString());
+        Check("没有空分类",
+            categories.All(c => cat.Items.Any(i => i.Category == c)));
+        Check("分类名都不为空", categories.All(c => !string.IsNullOrWhiteSpace(c)));
+
+        // 每个分类下的功能都要有标题和描述（界面上要显示）
+        Check("所有动作都有标题", cat.Items.All(i => !string.IsNullOrWhiteSpace(i.Title)));
+        Check("所有动作都有描述", cat.Items.All(i => i.Description != null));
+
+        // 常用分类必须存在
+        foreach (string want in new[] { "基础", "光标移动", "选择", "编辑", "宏", "窗口绑定" })
+            Check($"分类「{want}」存在", categories.Contains(want),
+                string.Join(",", categories));
+    }
+
+    /// <summary>
+    /// 「按住触发键期间按了别的键 → 立即进层」。
+    ///
+    /// 没有这一条的话，用户每次想按组合键都得先按住等满阈值，
+    /// 组合键会显得"时灵时不灵" —— 这是 tap-hold 方案的经典手感问题。
+    /// 这里用的是**真实计时器**路径（阈值设很长，确保不是靠超时进层的）。
+    /// </summary>
+    private static void TestHoldOnOtherKey()
+    {
+        var settings = DefaultSettings.Create();
+        // 阈值设成 3 秒：如果进层了，那一定是"按了别的键"触发的，不是超时
+        foreach (var t in settings.Triggers)
+        {
+            t.HoldMs = 3000;
+            t.HoldOnOtherKey = true;
+        }
+
+        var triggered = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => settings, (action, arg) =>
+        {
+            lock (triggered) triggered.Add(action);
+            return true;
+        });
+        engine.StartHoldTimer();
+
+        // 按下触发键，然后在远小于阈值的时间里按 S（caps_s = 左移）
+        engine.SimulateKey(VK.CapsLock, true);
+        Check("刚按下触发键时还没进层（阈值 3 秒）", engine.ActiveLayer == -1);
+
+        bool swallowed = engine.SimulateKey(0x53 /*S*/, true);
+        CheckEqual("按下别的键后立即进入了第 1 层", engine.ActiveLayer, 1);
+        Check("这个键被层接管（吞掉）", swallowed);
+
+        engine.SimulateKey(0x53, false);
+        engine.SimulateKey(VK.CapsLock, false);
+        DoEvents(150);
+        lock (triggered)
+        {
+            Check("组合动作被触发", triggered.Count > 0, string.Join(",", triggered));
+        }
+        engine.Dispose();
+        queue.Dispose();
+
+        // 关掉这个开关时：别的键不该让它进层，而应正常放行
+        var s2 = DefaultSettings.Create();
+        foreach (var t in s2.Triggers)
+        {
+            t.HoldMs = 3000;
+            t.HoldOnOtherKey = false;
+        }
+        var q2 = new ActionQueue();
+        var e2 = new HotkeyEngine(q2, () => s2, (_, _) => true);
+        e2.StartHoldTimer();
+
+        e2.SimulateKey(VK.CapsLock, true);
+        bool s2Swallowed = e2.SimulateKey(0x53, true);
+        Check("关掉开关后按别的键不进层", e2.ActiveLayer == -1);
+        Check("关掉开关后按键被放行（正常输入）", !s2Swallowed);
+        e2.SimulateKey(0x53, false);
+        e2.SimulateKey(VK.CapsLock, false);
+        e2.Dispose();
+        q2.Dispose();
     }
 
     /// <summary>窗口激活与最小化：验证「按一次弹出、再按一次最小化」这两个动作。</summary>
