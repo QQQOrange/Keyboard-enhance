@@ -94,10 +94,19 @@
                             <TextBlock x:Name="PermissionText" Style="{StaticResource Text.Tertiary}"
                                        Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
-                        <Button Grid.Column="1" x:Name="ElevateButton" Content="以管理员身份重启"
-                                Style="{StaticResource Button.Base}" Padding="12,6"
-                                VerticalAlignment="Center" Click="OnElevateClick"
-                                ToolTip="重启后键盘钩子才能收到管理员程序窗口的输入" />
+
+                        <!--
+                            提权开关。
+                            ⚠ 切到管理员后，「选中文字 → 直接搜索」会失效 ——
+                            管理员进程无法向普通权限的浏览器 / 编辑器注入输入
+                            （Windows 的 UIPI 限制）。所以默认关闭。
+                        -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <CheckBox x:Name="RunAsAdminBox" Style="{StaticResource ToggleSwitch}"
+                                      Click="OnRunAsAdminChanged" />
+                            <TextBlock Text="以管理员身份运行" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,6,0,0" HorizontalAlignment="Center" />
+                        </StackPanel>
                     </Grid>
 
                     <Border Style="{StaticResource Divider}" />

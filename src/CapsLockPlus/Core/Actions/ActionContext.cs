@@ -106,7 +106,15 @@ public sealed class ActionContext
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            Notify("没有选中的文字 —— 先选中要搜索的内容再按这个键");
+            /* 提权运行时，三条取词通道（UIA / WM_COPY / SendInput）都会被
+             * Windows 的 UIPI 拦掉。这时必须把**真正的原因**告诉用户，
+             * 否则他会以为功能坏了 —— 这正是之前反复反馈"取不到"的根源。 */
+            if (Core.ElevationHelper.IsElevated)
+                Notify("读不到选区：当前是管理员模式。请到「设置 → 运行权限」"
+                     + "关掉「以管理员身份运行」后重启 —— Windows 不允许管理员"
+                     + "进程向普通权限的程序注入输入。");
+            else
+                Notify("没有选中的文字 —— 先选中要搜索的内容再按这个键");
             return true;
         }
 

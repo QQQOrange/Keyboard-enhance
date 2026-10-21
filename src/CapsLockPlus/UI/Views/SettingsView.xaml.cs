@@ -101,32 +101,50 @@ public partial class SettingsView : UserControl
     {
         bool admin = Core.ElevationHelper.IsElevated;
         AdminBadge.Visibility = admin ? Visibility.Visible : Visibility.Collapsed;
-        ElevateButton.Visibility = admin ? Visibility.Collapsed : Visibility.Visible;
+        if (RunAsAdminBox != null) RunAsAdminBox.IsChecked = _host?.Settings.Global.RunAsAdmin ?? false;
         PermissionText.Text = Core.ElevationHelper.PermissionSummary();
     }
 
-    private void OnElevateClick(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 「以管理员身份运行」开关。
+    ///
+    /// ⚠ 保存后需要**重启**才生效（启动时才决定是否提权）。
+    /// 并在开启时明确告知后果：取词功能会失效。
+    /// </summary>
+    private void OnRunAsAdminChanged(object sender, RoutedEventArgs e)
     {
-        if (_host == null) return;
+        if (_host == null || _suppress) return;
+        bool enable = RunAsAdminBox.IsChecked == true;
 
-        var ok = MessageBox.Show(Window.GetWindow(this),
-            "将以管理员身份重新启动按键增强。\n\n" +
-            "这样做的好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n" +
-            "（注意：锁屏状态下无法使用快捷键 —— 这是 Windows 的安全限制，\n" +
-            " 任何用户态程序都做不到，管理员权限也不行。）\n\n继续吗？",
-            "以管理员身份重启", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (ok != MessageBoxResult.OK) return;
+        if (enable)
+        {
+            var ok = MessageBox.Show(Window.GetWindow(this),
+                "以管理员身份运行后，「选中文字 → 直接搜索」会失效。\n\n" +
+                "原因：Windows 禁止管理员进程向普通权限的浏览器 / 编辑器\n" +
+                "注入输入（UIPI 安全限制），取词通道会全部被拦掉。\n\n" +
+                "（好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n" +
+                " 另外，锁屏状态下任何用户态程序都无法使用快捷键，\n" +
+                " 这与是否管理员无关。）\n\n" +
+                "确定要开启吗？",
+                "开启管理员模式", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (ok != MessageBoxResult.OK)
+            {
+                _suppress = true;
+                RunAsAdminBox.IsChecked = false;
+                _suppress = false;
+                return;
+            }
+        }
 
-        if (Core.ElevationHelper.RelaunchElevated(Environment.GetCommandLineArgs()[1..], out var err))
-        {
-            _host.ExitApp();
-        }
-        else
-        {
-            MessageBox.Show(Window.GetWindow(this),
-                "提权失败：" + (err ?? "未知原因"), "无法提权",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
+        _host.Settings.Global.RunAsAdmin = enable;
+        Save();
+
+        var ok2 = MessageBox.Show(Window.GetWindow(this),
+            enable ? "已保存。重启程序后以管理员身份运行。" : "已保存。重启程序后以普通权限运行。",
+            "需要重启", MessageBoxButton.OK, MessageBoxImage.Information);
+
+        // 立刻重启，避免用户以为开关没生效
+        _host.ExitApp(restart: true);
     }
 
     private void OnFeedbackChanged(object sender, RoutedEventArgs e)

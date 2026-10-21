@@ -120,11 +120,24 @@ public partial class App : Application
             return;
         }
 
-        // 需要管理员权限才能操作提权窗口；普通启动时自动提权一次
+        /* 是否提权，**看用户设置**，不再无条件自动提权。
+         *
+         * ⚠ 之前这里是无条件 `TryRelaunchElevated`，等于强制所有用户都以
+         * 管理员身份运行。副作用是**取词功能全废**：
+         * 管理员进程向普通权限的浏览器 / 编辑器注入输入会被 UIPI 拦掉，
+         * 跨进程 UIA 查询也被拒 —— 用户在任何程序里都取不到选区。
+         *
+         * 现在只有用户明确在「设置」里勾了"以管理员身份运行"才提权。
+         * 默认普通权限运行，取词、窗口绑定等全都正常；
+         * 确实需要操作提权窗口时再手动开。 */
         bool relaunched = false;
         try
         {
-            relaunched = ElevationHelper.TryRelaunchElevated(e.Args);
+            var s = SettingsStore.Load();
+            if (s.Global.RunAsAdmin)
+                relaunched = ElevationHelper.TryRelaunchElevated(e.Args);
+            else
+                CoreLog.Info("以普通权限运行（设置里未开启管理员模式）");
         }
         catch (Exception ex)
         {

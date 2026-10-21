@@ -47,4 +47,9 @@
     <Resource Include="Assets\engine-icons\*.png" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- UI Automation：直接读取选区，不受 UIPI 限制 -->
+    <PackageReference Include="Interop.UIAutomationClient" Version="10.16299.0" />
+  </ItemGroup>
+
 </Project>

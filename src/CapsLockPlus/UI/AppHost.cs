@@ -525,12 +525,25 @@ public sealed class AppHost : IDisposable
         return r;
     }
 
-    public void ExitApp()
+    public void ExitApp(bool restart = false)
     {
         Exiting = true;
         SaveSettings();
         _tray?.Dispose();
         _tray = null;
+        if (restart)
+        {
+            /* 重启自己（权限切换必须重启才生效）。
+             * 用 explorer 启动而不是当前进程 —— 否则子进程会继承
+             * 当前进程的完整性级别，达不到"降权重启"的目的。 */
+            try
+            {
+                var exe = Environment.ProcessPath ?? AppPaths.AppDir.TrimEnd('\\') + "\\KeyboardEnhance.exe";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe)
+                { UseShellExecute = true, WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory });
+            }
+            catch (Exception ex) { CoreLog.Warn("重启失败：" + ex.Message); }
+        }
         Application.Current.Shutdown();
     }
 

@@ -135,6 +135,19 @@ public sealed class GlobalOptions
     public bool ShowToast { get; set; } = true;
 
     /// <summary>
+    /// 是否以管理员身份启动。
+    ///
+    /// **默认 false**，这是刻意的。
+    ///
+    /// 管理员权限会让程序无法向普通权限的窗口注入输入（UIPI 限制），
+    /// 于是"选中文字 → 直接搜索"这类功能在浏览器、编辑器里**全部失效**。
+    /// 而绝大多数功能（键盘钩子、窗口绑定、宏、Qbar）并不需要管理员权限。
+    ///
+    /// 只有确实要操作提权窗口时才需要打开它。
+    /// </summary>
+    public bool RunAsAdmin { get; set; } = false;
+
+    /// <summary>
     /// 自动更新完成后是否弹出「已更新到 x.x.x」提示。
     /// 开机自启的用户每次更新都被弹一次很烦，所以独立成一个开关（默认开）。
     /// </summary>

@@ -40,8 +40,24 @@ public static class TextActions
     /// </summary>
     public static string GetSelectedText(int timeoutMs = DefaultTimeoutMs)
     {
+        /* ===== 分步诊断 =====
+         * 每一步都记日志，定位"到底哪一步失败"用。
+         * 用户反馈过好几次"取不到选区"，靠推理已经不可靠了。 */
+        string fgTitle = "?";
+        string fgClass = "?";
+        IntPtr fgHwnd = IntPtr.Zero;
+        try
+        {
+            fgHwnd = Core.Windows.WindowService.Foreground;
+            var info = Core.Windows.WindowService.Describe(fgHwnd);
+            if (info != null) { fgTitle = info.Title; fgClass = info.ClassName; }
+        }
+        catch { }
+        CoreLog.Info($"[取词] 前台 hwnd=0x{fgHwnd.ToInt64():X} class={fgClass} title={fgTitle}");
+
         // ① UIA：不碰剪贴板，最干净
         string viaUia = UiaSelectionReader.GetSelectedText();
+        CoreLog.Info($"[取词] UIA 结果长度={viaUia?.Length ?? -1} 内容={Trim4(viaUia)}");
         if (!string.IsNullOrWhiteSpace(viaUia)) return viaUia;
 
         lock (ClipGate)
@@ -57,7 +73,10 @@ public static class TextActions
             try
             {
                 // ② WM_COPY：走窗口消息，绕过输入队列
+                bool posted = WindowMessageCopier.PostCopyToFocus();
+                CoreLog.Info($"[取词] WM_COPY 已投递={posted}");
                 string text = TryCopyVia(() => WindowMessageCopier.PostCopyToFocus(), timeoutMs);
+                CoreLog.Info($"[取词] WM_COPY 后剪贴板结果长度={text.Length}");
                 if (!string.IsNullOrEmpty(text)) return text;
 
                 // ③ SendInput：同权限时有效（0x43 = C）
@@ -65,7 +84,9 @@ public static class TextActions
                 if (!string.IsNullOrEmpty(text)) return text;
 
                 // ④ 再试 Ctrl+Insert（终端、部分老程序只认这个）
-                return TryCopyVia(() => InputSender.CopyChord(VK.Insert), timeoutMs);
+                string last = TryCopyVia(() => InputSender.CopyChord(VK.Insert), timeoutMs);
+                CoreLog.Info($"[取词] 最终结果长度={last.Length} 内容={Trim4(last)}");
+                return last;
             }
             catch (Exception ex)
             {
@@ -97,7 +118,11 @@ public static class TextActions
         // 给前台程序一点时间处理按键（浏览器可能要跑一小段 JS/渲染）
         Thread.Sleep(35);
 
-        if (!WaitForClipboardChange(before, timeoutMs)) return string.Empty;
+        uint afterSeq = before;
+        try { afterSeq = GetClipboardSequenceNumber(); } catch { }
+        bool changed = afterSeq != before;
+        CoreLog.Info($"[取词] 剪贴板序号 before={before} after={afterSeq} 变化={changed}");
+        if (!changed) return string.Empty;
 
         /* 序号变了 = 复制确实发生。但内容可能还在路上：
          * 再等一小段，并重试读取，避免"序号变了但读不到文本"。 */
@@ -121,6 +146,13 @@ public static class TextActions
     {
         try { return Clipboard.ContainsText() ? Clipboard.GetText() : "(无文本)"; }
         catch (Exception ex) { return "(异常:" + ex.Message + ")"; }
+    }
+
+    private static string Trim4(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "(空)";
+        s = s.Replace("\r", " ").Replace("\n", " ");
+        return s.Length <= 40 ? s : s[..40] + "…";
     }
 
     /// <summary>等待剪贴板序号发生变化（= 前台程序确实写入了新内容）。</summary>

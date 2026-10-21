@@ -1,4 +1,6 @@
+using System;
 using System.Runtime.InteropServices;
+using System.Windows.Automation;
 
 namespace CapsLockPlus.Core.Text;
 
@@ -10,166 +12,160 @@ namespace CapsLockPlus.Core.Text;
 ///   · **不受 UIPI 限制** —— 以管理员身份运行时，
 ///     SendInput 往非管理员的浏览器 / 编辑器投递按键会被系统拦掉，
 ///     而 UIA 是跨进程 COM 调用，不经过输入队列，照样能读到选区。
-///   · 不需要目标窗口在前台获得焦点（读的是"当前有选区"的控件）
 ///
-/// 覆盖范围：实现了 UIA TextPattern 的程序 —— Chromium 系浏览器、
-/// Electron 应用、Office、大部分现代编辑器。
-/// 自绘 UI（部分国产客户端）没有实现，那边由 WM_COPY / SendInput 兜底。
+/// 两个必须做对的细节（参考 QuickSearch 的实测结论）：
+///
+///  ① **向上遍历父元素**
+///     焦点元素常常是个 Pane / 自定义控件，本身没有 TextPattern。
+///     要沿父链往上找（最多 10 层）才能找到真正带文本模式的元素。
+///
+///  ② **先「唤醒」Chromium 的无障碍树**
+///     Chromium（Chrome / Edge / WebView2 / Electron）是**懒加载**的：
+///     只有检测到「有 UIA 客户端在听」才真正构建无障碍树。
+///     被动查询打到的永远是桌面 —— 这就是不唤醒时浏览器里永远读不到的原因。
 /// </summary>
 public static class UiaSelectionReader
 {
-    // ---- COM 接口 GUID ----
-    private static readonly Guid CLSID_CUIAutomation =
-        new("FF48DBA4-60EF-4201-AA87-54103EEF594E");
-
-    private static readonly int UIA_TextPatternId = 10014;
-
-    // ---- UIA 结构 ----
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SAFEARRAY
-    {
-        public ushort cDims;
-        public ushort fFeatures;
-        public uint cbElements;
-        public uint cLocks;
-        public IntPtr pvData;
-        public IntPtr rgsabound;
-    }
+    /// <summary>最多向上找几层父元素（再多就是桌面/窗口框架了，没意义）。</summary>
+    private const int MaxParentLevels = 10;
 
     /// <summary>
-    /// 读当前焦点元素的选区文本。
+    /// 读当前选区文本。取不到返回空串。
     ///
-    /// 必须在 **STA** 线程调用（COM 要求）。取不到就返回空串，
-    /// 绝不抛异常 —— 取词失败不该影响用户操作。
+    /// ⚠ 必须在 **STA** 线程调用（UIAutomationClient 的 COM 要求）。
+    /// 引擎的动作队列本来就是 STA 线程，正常路径没问题。
     /// </summary>
     public static string GetSelectedText()
     {
-        object? automation = null;
-        object? focused = null;
-        object? pattern = null;
-        object? ranges = null;
-
         try
         {
-            automation = Activator.CreateInstance(Type.GetTypeFromCLSID(CLSID_CUIAutomation)!);
-            if (automation == null) return "";
+            // ① 唤醒无障碍树（对 Chromium 系是必需的）
+            WakeAccessibilityTree();
 
-            dynamic ui = automation;
-
-            // 拿"当前有键盘焦点的元素"
-            focused = ui.GetFocusedElement();
-            if (focused == null) return "";
-
-            dynamic el = focused;
-
-            // 取 TextPattern
+            // ② 收集候选元素：焦点元素 + 前台窗口根元素
+            var candidates = new List<AutomationElement>();
             try
             {
-                pattern = el.GetCurrentPattern(UIA_TextPatternId);
+                var focused = AutomationElement.FocusedElement;
+                if (focused != null) candidates.Add(focused);
             }
-            catch { return ""; }
+            catch { }
 
-            if (pattern == null) return "";
-
-            dynamic tp = pattern;
-
-            // 取当前所有选区
             try
             {
-                ranges = tp.GetSelection();
-            }
-            catch { return ""; }
-
-            if (ranges == null) return "";
-
-            // SAFEARRAY 里存的是 IUIAutomationTextRange* 数组
-            int count = GetArrayLength(ranges);
-            if (count <= 0) return "";
-
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < count; i++)
-            {
-                object? range = GetArrayItem(ranges, i);
-                if (range == null) continue;
-                try
+                IntPtr fg = Core.Windows.WindowService.Foreground;
+                if (fg != IntPtr.Zero)
                 {
-                    dynamic r = range;
-                    string piece = r.GetText(4096) as string ?? "";
-                    if (piece.Length > 0) sb.Append(piece);
+                    var root = AutomationElement.FromHandle(fg);
+                    if (root != null) candidates.Add(root);
                 }
-                catch { }
-                finally { Release(range); }
+            }
+            catch { }
+
+            // ③ 沿父链找带 TextPattern 的元素
+            bool sawPattern = false;
+            foreach (var start in candidates)
+            {
+                AutomationElement? cur = start;
+                for (int level = 0; level < MaxParentLevels && cur != null; level++)
+                {
+                    if (cur.TryGetCurrentPattern(TextPattern.Pattern, out var raw))
+                    {
+                        sawPattern = true;
+                        if (raw is TextPattern pattern)
+                        {
+                            string text = ReadSelection(pattern);
+                            if (!string.IsNullOrEmpty(text)) return text;
+                        }
+                    }
+
+                    try { cur = TreeWalker.ControlViewWalker.GetParent(cur); }
+                    catch { break; }
+                }
             }
 
-            return sb.ToString();
+            // 找到了文本模式但选区是空的 —— 说明程序不支持"读选区"，
+            // 只能退回模拟复制。
+            return "";
         }
         catch
         {
+            // 取词失败不该影响用户操作，静默返回
             return "";
         }
-        finally
-        {
-            Release(ranges);
-            Release(pattern);
-            Release(focused);
-            Release(automation);
-        }
     }
 
-    // ---- SAFEARRAY 辅助 ----
-    //
-    // UIA 返回的选区集合是 SAFEARRAY(IUnknown*)。C# 没有内建读取器，
-    // 这里手工解析头部 + 取元素。
-
-    private static int GetArrayLength(object array)
+    /// <summary>读 TextPattern 的所有选区，拼成一段文本。</summary>
+    private static string ReadSelection(TextPattern pattern)
     {
         try
         {
-            IntPtr psa = Marshal.GetIUnknownForObject(array);
-            try
+            var ranges = pattern.GetSelection();
+            if (ranges.Length == 0) return "";
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var range in ranges)
             {
-                // SAFEARRAY 布局：cDims(2) fFeatures(2) cbElements(4) cLocks(4)
-                //                pvData(ptr) rgsabound(ptr)
-                // 一维数组的元素个数在 rgsabound[0].cElements
-                IntPtr rgsabound = Marshal.ReadIntPtr(psa, 16);
-                if (rgsabound == IntPtr.Zero) return 0;
-                // SAFEARRAYBOUND: cElements(4) lLbound(4)
-                return Marshal.ReadInt32(rgsabound);
+                try
+                {
+                    string piece = range.GetText(-1);
+                    if (!string.IsNullOrEmpty(piece)) sb.Append(piece);
+                }
+                catch { }
             }
-            finally { Marshal.Release(psa); }
+            return sb.ToString();
         }
-        catch { return 0; }
+        catch { return ""; }
     }
 
-    private static object? GetArrayItem(object array, int index)
+    // ---- 唤醒 Chromium 无障碍树 ----
+
+    private static bool _woken;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeoutW(
+        IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out IntPtr result);
+
+    private const uint WM_GETOBJECT = 0x003D;
+    private const uint OBJID_CLIENT = 0xFFFFFFFC;
+    private const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    /// <summary>
+    /// 唤醒 Chromium / Electron 的无障碍树。
+    ///
+    /// 两条路都走：
+    ///   ① 订阅焦点变化事件 → 会话级「有 UIA 客户端在听」置位，
+    ///      Chromium 轮询到之后把树建起来
+    ///   ② 直接 WM_GETOBJECT 要 provider，强制实例化
+    ///
+    /// 只做一次（进程内缓存），避免每次取词都重复唤醒。
+    /// </summary>
+    private static void WakeAccessibilityTree()
     {
+        if (_woken) return;
+        _woken = true;
+
+        // ① 事件订阅：注册一个空的焦点变化监听器
         try
         {
-            IntPtr psa = Marshal.GetIUnknownForObject(array);
-            try
-            {
-                IntPtr pvData = Marshal.ReadIntPtr(psa, 12);
-                if (pvData == IntPtr.Zero) return null;
-
-                // 元素是指针（IUnknown*），按 IntPtr 大小步进
-                IntPtr elemPtr = Marshal.ReadIntPtr(pvData, index * IntPtr.Size);
-                if (elemPtr == IntPtr.Zero) return null;
-
-                return Marshal.GetObjectForIUnknown(elemPtr);
-            }
-            finally { Marshal.Release(psa); }
-        }
-        catch { return null; }
-    }
-
-    private static void Release(object? com)
-    {
-        if (com == null) return;
-        try
-        {
-            if (Marshal.IsComObject(com)) Marshal.ReleaseComObject(com);
+            Automation.AddAutomationFocusChangedEventHandler((s, e) => { });
         }
         catch { }
+
+        // ② WM_GETOBJECT：直接找窗口要 provider
+        try
+        {
+            IntPtr fg = Core.Windows.WindowService.Foreground;
+            if (fg != IntPtr.Zero)
+            {
+                SendMessageTimeoutW(fg, WM_GETOBJECT, new IntPtr(OBJID_CLIENT),
+                    IntPtr.Zero, SMTO_ABORTIFHUNG, 200, out _);
+            }
+        }
+        catch { }
+
+        // Chromium 建树是异步的，给它一点时间
+        try { System.Threading.Thread.Sleep(60); } catch { }
     }
 }
