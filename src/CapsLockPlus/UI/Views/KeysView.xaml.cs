@@ -46,83 +46,102 @@ public partial class KeysView : UserControl
             string.Equals(k.Combo, combo, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// 标准 ANSI 108 键布局。
+    /// 标准 ANSI 108 键布局 —— **统一坐标系**。
     ///
-    /// 每个键 = (显示文字, 键名ID, 宽度权重)；宽度 1.0 = 一个标准单位。
-    /// 跨行的大键（Enter / Shift / Space / 小键盘回车 / 小键盘 0）按
-    /// 真实物理宽度给权重，其余严格按 108 键 ANSI 标准排布：
+    /// ⚠ 上一版是错的：每行各自用 Star 分配宽度，各行总权重不同
+    /// （18 / 15 / 15 / 15 / 15 / 13.75），于是同一"1 单位"在不同行
+    /// 的物理宽度不一样，键全对不齐，看起来就是"完全混乱"。
     ///
-    ///   ┌ Esc ─┬ F1 F2 F3 F4 ┬ F5 F6 F7 F8 ┬ F9 F10 F11 F12 ┐ PrtSc ScrLk Pause
-    ///   │ ` 1…0 - = ⌫ ×2 ─ Ins Home PgUp ─ Num / * -
-    ///   │ Tab ×1.5 Q…P [ ] \ ×1.5 ─ Del End PgDn ─ 7 8 9 (+)
-    ///   │ Caps ×1.75 A…L ; ' Enter ×2.25 ─┐       4 5 6 ┐
-    ///   │ Shift ×2.25 Z…M , . / ─ Shift ×2.75 │ ↑ │   1 2 3 ┐Enter×2
-    ///   │ Ctrl Win Alt Space×6.25 Alt Win ☰ Ctrl │ ← ↓ → │ 0×2.25 .
+    /// 现在改成**整个键盘用同一个 92 列坐标系**：
+    ///   * 1 个标准键宽 = 4 列；
+    ///   * 每个键记录它的**绝对起始列**与跨列数；
+    ///   * 所有行共用同一套 ColumnDefinition，按键绝对落位。
     ///
-    /// 用 <c>Pad</c> 辅助把每行补齐到相同总宽度，不靠手写占位键 ——
-    /// 占位键之前把小键盘列数搞乱，是上一版布局看起来乱的直接原因。
+    /// 92 列 = 主键区 15 单位(60 列) + 间距 1 列 + 编辑簇 3 单位(12 列)
+    ///        + 间距 1 列 + 小键盘 4 单位(16 列) + 右侧留白 2 列。
+    ///
+    /// 布局（列号）：
+    ///   主键区  0..59    编辑簇 61..72    小键盘 74..89
     /// </summary>
-    private static readonly (string Label, string? KeyId, double Width)[][] Main =
+    private static readonly (string Label, string? KeyId, int Col, int Span)[][] Layout =
     {
-        // ① 功能键行（ANSI：Esc 单独一排，F1~F12 四组，Printer 键三个）
+        // ① 功能键行 y=0
         new[]
         {
-            ("Esc", "esc", 3.0), ("F1", "f1", 1.0), ("F2", "f2", 1.0), ("F3", "f3", 1.0), ("F4", "f4", 1.0),
-            ("F5", "f5", 1.0), ("F6", "f6", 1.0), ("F7", "f7", 1.0), ("F8", "f8", 1.0),
-            ("F9", "f9", 1.0), ("F10", "f10", 1.0), ("F11", "f11", 1.0), ("F12", "f12", 1.0),
-            ("PrtSc", "printScreen", 1.0), ("ScrLk", "scrollLock", 1.0), ("Pause", "pause", 1.0),
+            ("Esc","esc",0,4),
+            ("F1","f1",8,4),("F2","f2",12,4),("F3","f3",16,4),("F4","f4",20,4),
+            ("F5","f5",28,4),("F6","f6",32,4),("F7","f7",36,4),("F8","f8",40,4),
+            ("F9","f9",48,4),("F10","f10",52,4),("F11","f11",56,4),("F12","f12",60,4),
+            ("PrtSc","printScreen",68,7),("ScrLk","scrollLock",75,7),("Pause","pause",82,7),
         },
-        // ② 数字行
+        // ② 数字行 y=1
         new[]
         {
-            ("`", "backquote", 1.0), ("1", "1", 1.0), ("2", "2", 1.0), ("3", "3", 1.0), ("4", "4", 1.0),
-            ("5", "5", 1.0), ("6", "6", 1.0), ("7", "7", 1.0), ("8", "8", 1.0), ("9", "9", 1.0),
-            ("0", "0", 1.0), ("-", "minus", 1.0), ("=", "equal", 1.0), ("⌫", "backspace", 2.0),
+            ("`","backquote",0,4),
+            ("1","1",4,4),("2","2",8,4),("3","3",12,4),("4","4",16,4),
+            ("5","5",20,4),("6","6",24,4),("7","7",28,4),("8","8",32,4),
+            ("9","9",36,4),("0","0",40,4),("-","minus",44,4),("=","equal",48,4),
+            ("⌫","backspace",52,8),
+            ("Ins","insert",61,4),("Home","home",65,4),("PgUp","pageUp",69,4),
+            ("Num","numLock",74,4),("/","numDivide",78,4),("*","numMultiply",82,4),("-","numSubtract",86,4),
         },
-        // ③ Tab 行
+        // ③ Tab 行 y=2
         new[]
         {
-            ("Tab", "tab", 1.5), ("Q", "q", 1.0), ("W", "w", 1.0), ("E", "e", 1.0), ("R", "r", 1.0),
-            ("T", "t", 1.0), ("Y", "y", 1.0), ("U", "u", 1.0), ("I", "i", 1.0), ("O", "o", 1.0),
-            ("P", "p", 1.0), ("[", "leftSquareBracket", 1.0), ("]", "rightSquareBracket", 1.0),
-            ("\\", "backslash", 1.5),
+            ("Tab","tab",0,6),
+            ("Q","q",6,4),("W","w",10,4),("E","e",14,4),("R","r",18,4),("T","t",22,4),
+            ("Y","y",26,4),("U","u",30,4),("I","i",34,4),("O","o",38,4),("P","p",42,4),
+            ("[","leftSquareBracket",46,4),("]","rightSquareBracket",50,4),
+            ("\\","backslash",54,6),
+            ("Del","delete",61,4),("End","end",65,4),("PgDn","pageDown",69,4),
+            ("7","num7",74,4),("8","num8",78,4),("9","num9",82,4),
+            ("+","numAdd",86,4),
         },
-        // ④ Caps 行
+        // ④ Caps 行 y=3
         new[]
         {
-            ("Caps", "capslock", 1.75), ("A", "a", 1.0), ("S", "s", 1.0), ("D", "d", 1.0), ("F", "f", 1.0),
-            ("G", "g", 1.0), ("H", "h", 1.0), ("J", "j", 1.0), ("K", "k", 1.0), ("L", "l", 1.0),
-            (";", "semicolon", 1.0), ("'", "quote", 1.0), ("Enter", "enter", 2.25),
+            ("Caps","capslock",0,7),
+            ("A","a",7,4),("S","s",11,4),("D","d",15,4),("F","f",19,4),("G","g",23,4),
+            ("H","h",27,4),("J","j",31,4),("K","k",35,4),("L","l",39,4),
+            (";","semicolon",43,4),("'","quote",47,4),
+            ("Enter","enter",51,9),
+            ("4","num4",74,4),("5","num5",78,4),("6","num6",82,4),
+            ("+","numAdd",86,4),           // 与上一行的 + 合并成跨两行：见下方 MergeRows
         },
-        // ⑤ Shift 行
+        // ⑤ Shift 行 y=4
         new[]
         {
-            ("LShift", "lshift", 2.25), ("Z", "z", 1.0), ("X", "x", 1.0), ("C", "c", 1.0), ("V", "v", 1.0),
-            ("B", "b", 1.0), ("N", "n", 1.0), ("M", "m", 1.0), (",", "comma", 1.0), (".", "dot", 1.0),
-            ("/", "slash", 1.0), ("RShift", "rshift", 2.75),
+            ("LShift","lshift",0,9),
+            ("Z","z",9,4),("X","x",13,4),("C","c",17,4),("V","v",21,4),("B","b",25,4),
+            ("N","n",29,4),("M","m",33,4),(",","comma",37,4),(".","dot",41,4),("/","slash",45,4),
+            ("RShift","rshift",49,11),
+            ("↑","up",65,4),
+            ("1","num1",74,4),("2","num2",78,4),("3","num3",82,4),
+            ("⏎","enter",86,4),            // 小键盘回车（跨两行：见下方 MergeRows）
         },
-        // ⑥ 底行
+        // ⑥ 底行 y=5
         new[]
         {
-            ("LCtrl", "lctrl", 1.25), ("LWin", "lwin", 1.25), ("LAlt", "lalt", 1.25), ("", "space", 6.25),
-            ("RAlt", "ralt", 1.25), ("RWin", "rwin", 1.25), ("☰", "apps", 1.25), ("RCtrl", "rctrl", 1.25),
+            ("LCtrl","lctrl",0,5),("LWin","lwin",5,4),("LAlt","lalt",9,4),
+            ("Space","space",13,26),
+            ("RAlt","ralt",39,4),("RWin","rwin",43,4),("☰","apps",47,4),("RCtrl","rctrl",51,9),
+            ("←","left",61,4),("↓","down",65,4),("→","right",69,4),
+            ("0","num0",74,8),(".","numDecimal",82,4),("⏎","enter",86,4),
         },
     };
 
-    /// <summary>编辑键簇（垂直排，与主键区右侧对齐；null 行是空隙）。</summary>
-    private static readonly (string Label, string? KeyId)[][] Edit =
-    {
-        new[] { ("", (string?)null) },
-        new[] { ("Ins", "insert"), ("Home", "home"), ("PgUp", "pageUp") },
-        new[] { ("Del", "delete"), ("End", "end"), ("PgDn", "pageDown") },
-        new[] { ("", (string?)null) },
-        new[] { ("", (string?)null), ("↑", "up"), ("", (string?)null) },
-        new[] { ("←", "left"), ("↓", "down"), ("→", "right") },
-    };
+    /// <summary>整个键盘的列数（4 列 = 1 个标准键宽）。</summary>
+    private const int TotalCols = 92;
 
-    /// <summary>主键区 + 编辑键簇的标准总宽度（14 单位 + 3 单位）。</summary>
-    private const double MainRowWidth = 14.0;
-    private const double EditClusterWidth = 3.0;
+    /// <summary>
+    /// 需要**纵向合并**的键：小键盘的 + 与回车各跨两行。
+    /// (行号, 键名, 跨行数)
+    /// </summary>
+    private static readonly (int Row, string KeyId, int Span)[] RowMerges =
+    {
+        (3, "numAdd", 2),
+        (4, "enter", 2),
+    };
 
 
     public KeysView() => InitializeComponent();
@@ -223,144 +242,61 @@ public partial class KeysView : UserControl
 
         /* 触发键在键盘上的**真实位置**高亮。
          *
-         * 之前写死显示在左上角（Caps 位），用户把 F13 绑到第 3 层时，
-         * 切过去亮的还是 Caps 位 —— 符号换了但位置没换，跟配置对不上。
+         * 之前写死显示在左上角（Caps 位）：把 F13 绑到第 3 层时
+         * 切过去亮的还是 Caps 位，符号换了位置没换。
          * 现在：当前层的触发键是哪个键，就高亮键盘上那个键本身。 */
         string? triggerKey = CurrentTriggerKey;
 
-        // 外层：主键区 + 右侧竖排（编辑键簇 / 小键盘）
-        var outer = new Grid { Margin = new Thickness(0, 0, 0, 6) };
-        outer.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(MainRowWidth + EditClusterWidth, GridUnitType.Star),
-        });
-        outer.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(4.0, GridUnitType.Star),
-        });
-
-        // ---- 左：主键区 + 编辑键簇 ----
-        var left = new Grid();
-        left.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(MainRowWidth, GridUnitType.Star),
-        });
-        left.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(EditClusterWidth, GridUnitType.Star),
-        });
-
-        for (int r = 0; r < Main.Length; r++)
-        {
-            left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var row = new Grid();
-            Grid.SetRow(row, r);
-            Grid.SetColumn(row, 0);
-            foreach (var (_, _, w) in Main[r])
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w, GridUnitType.Star) });
-
-            for (int i = 0; i < Main[r].Length; i++)
+        /* 整个键盘用**唯一一个 92 列 Grid**。
+         *
+         * 上一版每行各自 new Grid + 各自的 Star 宽度 —— 各行总权重不同，
+         * 同一"1 单位"在每行的实际像素宽度都不一样，键全对不齐。
+         * 现在所有行共用同一套 ColumnDefinition，键按绝对列号落位。 */
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        for (int c = 0; c < TotalCols; c++)
+            grid.ColumnDefinitions.Add(new ColumnDefinition
             {
-                var (label, keyId, w) = Main[r][i];
+                Width = new GridLength(1, GridUnitType.Star),
+            });
+        for (int r = 0; r < Layout.Length; r++)
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        // 找出需要纵向合并的键：这些键从 Layout 里剔除，单独按 RowSpan 摆放
+        var mergeLookup = RowMerges.ToDictionary(m => (m.Row, m.KeyId), m => m.Span);
+
+        for (int r = 0; r < Layout.Length; r++)
+        {
+            foreach (var (label, keyId, col, span) in Layout[r])
+            {
                 if (keyId == null) continue;
+                // 跨行键只在它起始行放一次
+                if (mergeLookup.ContainsKey((r, keyId))) continue;
 
-                var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
-                if (cap == null) continue;                       // 被搜索过滤掉
-                Grid.SetColumn(cap, i);
-                row.Children.Add(cap);
-            }
-            left.Children.Add(row);
-        }
-        outer.Children.Add(left);
-
-        // 编辑键簇（垂直排在与主键区同一栅格的第 1 列）
-        var editPanel = new Grid();
-        Grid.SetColumn(editPanel, 1);
-        for (int r = 0; r < Edit.Length; r++)
-        {
-            editPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var keys = Edit[r];
-            // 单格占位行：第一行很短（与功能键行错开），其余行是正常键高
-            if (keys.Length == 1 && keys[0].Item2 == null)
-            {
-                editPanel.RowDefinitions[^1] = new RowDefinition
-                { Height = new GridLength(r == 0 ? 20 : 52) };
-                continue;
-            }
-            for (int c = 0; c < keys.Length; c++)
-            {
-                var (label, keyId) = keys[c];
-                if (keyId == null) continue;
                 var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
                 if (cap == null) continue;
                 Grid.SetRow(cap, r);
-                Grid.SetColumn(cap, c);
-                editPanel.Children.Add(cap);
-            }
-        }
-        left.Children.Add(editPanel);
-
-        // ---- 右：小键盘（4 列宽，含 + 键与跨两格的回车） ----
-        // 标准小键盘：第 1 行 Num/÷/×/−，2~4 行数字，第 5 行 0(跨两格) 与 .
-        string[][] fixedRows =
-        {
-            new[] { "numLock", "numDivide", "numMultiply", "numSubtract" },
-            new[] { "num7", "num8", "num9", "numAdd" },
-            new[] { "num4", "num5", "num6", "" },                 // 第 4 列由回转车占（跨两行）
-            new[] { "num1", "num2", "num3", "" },
-            new[] { "num0", "numDecimal" },
-        };
-
-        var num = new Grid();
-        Grid.SetColumn(num, 1);
-        num.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });  // 与功能键行错开
-        foreach (var _ in fixedRows)
-            num.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        for (int r = 0; r < fixedRows.Length; r++)
-        {
-            var keys = fixedRows[r];
-            for (int c = 0; c < keys.Length; c++)
-            {
-                string keyId = keys[c];
-                if (keyId.Length == 0) continue;
-
-                string label = keyId switch
-                {
-                    "numLock" => "Num",
-                    "numDivide" => "/",
-                    "numMultiply" => "*",
-                    "numSubtract" => "-",
-                    "numAdd" => "+",
-                    "numDecimal" => ".",
-                    "num0" => "0",
-                    _ => keyId[^1].ToString(),
-                };
-
-                var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
-                if (cap == null) continue;
-                Grid.SetRow(cap, r + 1);
-                Grid.SetColumn(cap, c);
-                if (keyId == "num0")
-                {
-                    Grid.SetColumnSpan(cap, 2);      // 小键盘 0 跨两格
-                }
-                num.Children.Add(cap);
+                Grid.SetColumn(cap, col);
+                Grid.SetColumnSpan(cap, span);
+                grid.Children.Add(cap);
             }
         }
 
-        // 小键盘回车（跨两行）+ 上下键（把方向键 ↑ ↓ 也放进来更完整）
-        var numEnter = BuildKeycapEntry("Enter", "enter", filter, ref bound, triggerKey);
-        if (numEnter != null)
+        // 跨行大键（小键盘 + 与回车）
+        foreach (var (row, keyId, rowSpan) in RowMerges)
         {
-            Grid.SetRow(numEnter, 3);
-            Grid.SetColumn(numEnter, 3);
-            Grid.SetRowSpan(numEnter, 2);
-            num.Children.Add(numEnter);
-        }
-        outer.Children.Add(num);
+            var def = Layout[row].FirstOrDefault(k => k.KeyId == keyId);
+            if (def.KeyId == null) continue;      // 元组默认值的 KeyId 是 null
 
-        KeyboardPanel.Children.Add(outer);
+            var cap = BuildKeycapEntry(def.Label, keyId, filter, ref bound, triggerKey);
+            if (cap == null) continue;
+            Grid.SetRow(cap, row);
+            Grid.SetRowSpan(cap, rowSpan);
+            Grid.SetColumn(cap, def.Col);
+            Grid.SetColumnSpan(cap, def.Span);
+            grid.Children.Add(cap);
+        }
+
+        KeyboardPanel.Children.Add(grid);
 
         // ---- 状态文字 ----
         var tap = FindInCurrentLayer("press_caps");
@@ -462,9 +398,10 @@ public partial class KeysView : UserControl
 
         var border = new Border
         {
-            Height = 52,
-            Margin = new Thickness(0, 0, 6, 6),
-            CornerRadius = new CornerRadius(10),
+            // 92 列坐标系下一个单位键只有 4 列，键帽要相应缩小才排得下
+            Height = 44,
+            Margin = new Thickness(1, 1, 1, 1),
+            CornerRadius = new CornerRadius(7),
             BorderThickness = new Thickness(isTrigger ? 2 : 1),
             Cursor = Cursors.Hand,
             ToolTip = isTrigger
@@ -484,22 +421,23 @@ public partial class KeysView : UserControl
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(new TextBlock
         {
-            Text = isTrigger ? "★ " + label : label,
-            FontSize = label.Length > 4 ? 10 : 13,
+            Text = isTrigger ? "★" + label : label,
+            FontSize = label.Length > 4 ? 8.5 : label.Length > 2 ? 10 : 11.5,
             FontWeight = FontWeights.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = (Brush)FindResource(isTrigger ? "Brush.Surface"
                 : isBound ? "Brush.Accent" : "Brush.TextSecondary"),
         });
-        // 已绑定时把功能名缩略显示在键帽下方，一眼看到"这个键当前干什么"
+        // 已绑定时把功能名缩略显示在键帽下方（键帽只有 44px 高，字体要小）
         if (isBound && !string.IsNullOrEmpty(actionTitle) && !isTrigger)
         {
             stack.Children.Add(new TextBlock
             {
                 Text = Shorten(actionTitle),
-                FontSize = 9,
+                FontSize = 7.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 2, 0, 0),
+                Margin = new Thickness(0, 1, 0, 0),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Foreground = (Brush)FindResource("Brush.TextTertiary"),
             });

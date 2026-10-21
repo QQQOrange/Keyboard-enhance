@@ -120,6 +120,7 @@ public static class SelfTest
         TestKeepKeyTapAction();
         TestQbarEngineActions();
         TestTriggerKeyPosition();
+        TestKeyboardLayoutGeometry();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2369,6 +2370,113 @@ public static class SelfTest
     /// 关键回归：把第 2 层的触发键换成 F13 后，第 2 层的高亮键必须是
     /// "f13" 而不是 "capslock"。之前写死显示在 Caps 位，符号换了位置没换。
     /// </summary>
+    /// <summary>
+    /// 108 键布局的几何正确性 —— 直接从源码里的列坐标定义校验。
+    ///
+    /// 上一版每行各自用 Star 分配宽度，各行总权重不同，同一"1 单位"
+    /// 在每行宽窄都不一样，键根本对不齐（用户反馈"完全混乱"）。
+    /// 现在所有行共用一个 92 列坐标系，这里验证：
+    ///   1. 所有键都落在 0..91 内；
+    ///   2. 同一行内**没有重叠**；
+    ///   3. Q → A → Z 左边界阶梯递增（ANSI 标准）；
+    ///   4. 数字 1 在 Q 左侧；
+    ///   5. 小键盘全部在主键区右侧（>= 74 列）；
+    ///   6. 编辑键簇在 61..72 区间；
+    ///   7. 6 行都有内容。
+    /// </summary>
+    private static void TestKeyboardLayoutGeometry()
+    {
+        // 用反射读 KeysView 里的 Layout 定义（private static field）
+        var t = typeof(CapsLockPlus.UI.Views.KeysView);
+        var f = t.GetField("Layout",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Check("Layout 字段存在", f != null);
+        if (f?.GetValue(null) is not Array rowsArr)
+        {
+            Check("Layout 可读取", false);
+            return;
+        }
+
+        const int TotalCols = 92;
+        int rowCount = 0;
+        var all = new List<(string Label, string KeyId, int Col, int Span)>[rowsArr.Length];
+
+        for (int r = 0; r < rowsArr.Length; r++)
+        {
+            var row = (Array)rowsArr.GetValue(r)!;
+            var list = new List<(string, string, int, int)>();
+            foreach (var item in row)
+            {
+                var it = item!;
+                var type = it.GetType();
+                string label = (string)type.GetField("Item1")!.GetValue(it)!;
+                string keyId = (string)type.GetField("Item2")!.GetValue(it)!;
+                int col = (int)type.GetField("Item3")!.GetValue(it)!;
+                int span = (int)type.GetField("Item4")!.GetValue(it)!;
+                list.Add((label, keyId, col, span));
+
+                if (col < 0 || col + span > TotalCols)
+                    Check($"第{r + 1}行「{label}」在 0..{TotalCols} 内", false,
+                        $"col={col} span={span}");
+            }
+            all[r] = list;
+            if (list.Count > 0) rowCount++;
+        }
+
+        Check("键盘有 6 行", rowCount == 6, rowCount.ToString());
+
+        // 同一行无重叠
+        for (int r = 0; r < all.Length; r++)
+        {
+            var used = new HashSet<int>();
+            bool overlap = false;
+            foreach (var (label, _, col, span) in all[r])
+            {
+                for (int c = col; c < col + span; c++)
+                    if (!used.Add(c)) overlap = true;
+            }
+            Check($"第{r + 1}行无键帽重叠", !overlap);
+        }
+
+        // ANSI 阶梯：Q < A < Z
+        int ColOf(int row, string label)
+        {
+            var hit = all[row].FirstOrDefault(k => k.Label == label);
+            return hit.KeyId == null ? -1 : hit.Col;
+        }
+        int q = ColOf(2, "Q"), a = ColOf(3, "A"), z = ColOf(4, "Z");
+        Check("Q/A/Z 都找得到", q >= 0 && a >= 0 && z >= 0, $"Q={q} A={a} Z={z}");
+        Check("ANSI 阶梯 Q < A < Z", q < a && a < z, $"Q={q} A={a} Z={z}");
+
+        // 数字 1 在 Q 左侧
+        int one = ColOf(1, "1");
+        Check("数字 1 在 Q 左侧", one >= 0 && one < q, $"1={one} Q={q}");
+
+        // 小键盘独立在右侧
+        var numCols = all.SelectMany(r => r)
+                         .Where(k => k.KeyId.StartsWith("num", StringComparison.Ordinal))
+                         .Select(k => k.Col).ToList();
+        Check("小键盘有键", numCols.Count >= 15, numCols.Count.ToString());
+        Check("小键盘全部在 74 列之后", numCols.All(c => c >= 74),
+            string.Join(",", numCols.Where(c => c < 74)));
+
+        // 编辑键簇区间
+        string[] editLabels = { "Ins", "Home", "PgUp", "Del", "End", "PgDn" };
+        var editCols = all.SelectMany(r => r)
+                          .Where(k => editLabels.Contains(k.Label))
+                          .Select(k => k.Col).Distinct().ToList();
+        Check("编辑键簇在 61..72", editCols.All(c => c >= 61 && c <= 72),
+            string.Join(",", editCols));
+
+        // 总列数常量必须与最大右边界一致（防手滑写错）
+        var f2 = t.GetField("TotalCols",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        int declared = (int)(f2?.GetValue(null) ?? 0);
+        int maxRight = all.SelectMany(r => r).Max(k => k.Col + k.Span);
+        Check("声明的总列数覆盖所有键", declared >= maxRight,
+            $"declared={declared} maxRight={maxRight}");
+    }
+
     private static void TestTriggerKeyPosition()
     {
         var s = DefaultSettings.Create();
