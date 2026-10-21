@@ -2069,6 +2069,14 @@ public static class SelfTest
             macroAction?.Title?.Contains("我的宏") == true,
             macroAction?.Title ?? "");
 
+        // 空名字的宏（真实用户配置里就有）不能出现"播放宏："这种半截标题
+        settings.Macros[0].Name = "";
+        var blank = Core.Actions.ActionCatalog.Create(ctx);
+        var blankAction = blank.Items.FirstOrDefault(i => i.Id == "macro:m123");
+        Check("空名字的宏有占位名", blankAction?.Title == "播放宏：（未命名宏）",
+            blankAction?.Title ?? "");
+        settings.Macros[0].Name = "我的宏";
+
         // 这个动作必须真的能被执行（能播放）
         bool invoked = false;
         foreach (var i in after.Items.Where(i => i.Id.StartsWith("macro:"))) invoked = true;

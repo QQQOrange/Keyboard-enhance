@@ -54,7 +54,7 @@
                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
                                     <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Brush.TextPrimary}"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding Summary}" Style="{StaticResource Text.Tertiary}"

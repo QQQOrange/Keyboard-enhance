@@ -527,7 +527,15 @@ public sealed class Macro
     }
 
     /// <summary>
-    /// 列表副标题：步数与循环次数。
+    /// 列表里显示的名字：空名字给个占位。
+    ///
+    /// 真实用户配置里就存在 Name 为空的宏（早期版本"新建"后没填名字），
+    /// 直接绑 Name 会在列表里出现一行空白，动作下拉里变成「播放宏：」。
+    /// </summary>
+    [JsonIgnore]
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "（未命名宏）" : Name;
+
+    /// <summary>列表副标题：步数与循环次数。
     ///
     /// 界面里宏列表绑定了 Summary / DurationText，但这两个属性曾是**不存在的** ——
     /// 结果整个宏列表只有名字和图标，副标题与时长永远空白。

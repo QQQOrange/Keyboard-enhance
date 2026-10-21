@@ -22,6 +22,9 @@ public partial class MacrosView : UserControl
     /// <summary>程序化填充控件时置 true，避免把回填当成用户输入再存一遍。</summary>
     private bool _suppress;
 
+    /// <summary>正在重设宏列表（此时的选中变化不是用户操作）。</summary>
+    private bool _reloading;
+
     // 录制器放在 AppHost 上而不是这里：页面会被缓存复用，
     // 但万一被重建，本地字段就丢了，录制会"点了没反应"。
 
@@ -76,24 +79,44 @@ public partial class MacrosView : UserControl
     public void Reload()
     {
         if (_host == null) return;
+
+        /* 重设 ItemsSource 会让 ListBox 先清空选择，进而触发一次
+         * SelectionChanged(null) —— 早先没挡住这一下，_editing 被清成 null，
+         * 于是"切走再切回宏页"右侧就空了，之前正在编辑的宏也丢了。
+         * 这里用 _reloading 把重载期间的选中变化挡掉，重载完再按 ID 选回来。 */
+        string? keepId = _editing?.Id;
+
+        _reloading = true;
         MacroList.ItemsSource = null;
         MacroList.ItemsSource = _host.Settings.Macros.ToList();
+        _reloading = false;
 
-        // 没有选中项时自动选中第一个：否则进页面右边一片空白，
-        // 用户会以为"宏页坏了"（其实只是还没点某一行）
-        if (_editing == null && _host.Settings.Macros.Count > 0)
-            _editing = _host.Settings.Macros[0];
+        var macros = _host.Settings.Macros;
+        var target = (keepId != null ? macros.FirstOrDefault(m => m.Id == keepId) : null)
+                     ?? macros.FirstOrDefault();
 
-        if (_editing != null)
+        EmptyHint.Visibility = macros.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (target != null)
         {
-            MacroList.SelectedItem = _host.Settings.Macros.FirstOrDefault(m => m.Id == _editing.Id);
+            // 走 OnMacroSelected 把名称/重复/步骤一起回填
+            MacroList.SelectedItem = target;
         }
-        EmptyHint.Visibility = _host.Settings.Macros.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        RefreshSteps();
+        else
+        {
+            _editing = null;
+            _selectedStep = -1;
+            NameBox.Text = "";
+            RepeatBox.Text = "1";
+            RefreshSteps();
+            StatusText.Text = "选一个宏，或新建一个";
+        }
     }
 
     private void OnMacroSelected(object sender, SelectionChangedEventArgs e)
     {
+        if (_reloading) return;          // 列表重载引起的空选择，不是用户在点
+
         var m = Selected;
         _editing = m;
 

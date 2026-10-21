@@ -313,7 +313,7 @@ public sealed class ActionCatalog
         foreach (var macro in ctx.Settings().Macros)
         {
             string id = macro.Id;
-            string name = macro.Name;
+            string name = macro.DisplayName;
             int estMs = macro.EstimatedMs;
             c.Add("macro:" + id, "宏", $"播放宏：{name}",
                 $"共 {macro.Steps.Count} 步，约 {estMs}ms", a =>
