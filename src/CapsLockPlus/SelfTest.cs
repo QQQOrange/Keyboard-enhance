@@ -119,6 +119,7 @@ public static class SelfTest
         TestMacroBindableInKeysView();
         TestKeepKeyTapAction();
         TestQbarEngineActions();
+        TestTriggerKeyPosition();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2362,6 +2363,42 @@ public static class SelfTest
     /// <c>qbar:&lt;关键字&gt;</c> 形式的动作，且 RequestQbar 要把
     /// 引擎关键字传出去（而不是静默丢弃）。
     /// </summary>
+    /// <summary>
+    /// 触发键在键盘上的**真实位置**高亮。
+    ///
+    /// 关键回归：把第 2 层的触发键换成 F13 后，第 2 层的高亮键必须是
+    /// "f13" 而不是 "capslock"。之前写死显示在 Caps 位，符号换了位置没换。
+    /// </summary>
+    private static void TestTriggerKeyPosition()
+    {
+        var s = DefaultSettings.Create();
+
+        // 第 1 层默认 CapsLock；给第 2 层加一个 F13 触发键
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "f13", LayerId = 2, HoldMs = 200,
+            TapAction = "keepKey", Enabled = true,
+        });
+
+        SettingsStore.Normalize(s);
+
+        // 每层应当解析出各自的触发键名（界面靠这个决定高亮哪个键）
+        string? TriggerOf(int layer) => s.Triggers
+            .FirstOrDefault(t => t.LayerId == layer && t.Enabled)?.Key;
+
+        CheckEqual("第 1 层触发键是 capslock", TriggerOf(1), "capslock");
+        CheckEqual("第 2 层触发键是 f13", TriggerOf(2), "f13");
+        Check("第 3 层没有触发键", TriggerOf(3) == null);
+
+        // 触发键名必须能在键盘布局里找到对应键位
+        Check("capslock 在键盘布局里", KeyName.VkOf("capslock") != null);
+        Check("f13 在键盘布局里", KeyName.VkOf("f13") != null);
+
+        // 关键：两层的触发键不同 → 高亮的键位必须不同
+        Check("两层的触发键不是同一个键", TriggerOf(1) != TriggerOf(2),
+            $"{TriggerOf(1)} vs {TriggerOf(2)}");
+    }
+
     private static void TestQbarEngineActions()
     {
         var settings = DefaultSettings.Create();

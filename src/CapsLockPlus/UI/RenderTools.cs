@@ -83,6 +83,17 @@ public static class RenderTools
         Save(qbar, Path.Combine(outDir, "qbar-chip.png"));
         count++;
 
+        /* 引擎预填直达：走**生产路径** Open("zh ")，
+         * 验证 qbar:<key> 动作绑到按键后，弹出的面板真的已经带上引擎标签
+         * （而不是只把 "zh " 当普通文字塞进输入框）。 */
+        qbar.Open("zh ");
+        Pump(260);
+        qbar.Height = qbar.ActualHeight;
+        qbar.UpdateLayout();
+        Pump(120);
+        Save(qbar, Path.Combine(outDir, "qbar-engine-prefill.png"));
+        count++;
+
         // 标签 + 已输入搜索词
         qbar.OpenForRender("bd", "天气 预报");
         Pump(260);

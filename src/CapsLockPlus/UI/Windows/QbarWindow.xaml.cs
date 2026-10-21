@@ -86,10 +86,33 @@ public partial class QbarWindow : Window
         Activate();
         Topmost = true;
         Focus();
-        SetInputText(prefill ?? "");
+
+        /* prefill 有两种形态：
+         *   ① "bd "           —— 引擎关键字（由 qbar:<key> 动作传入）
+         *   ② "要搜索的内容"   —— 普通预填文本
+         *
+         * 形态 ① 必须**立刻变成标签**，否则它只是输入框里的一段文字：
+         * 用户按 Caps+G 打开却看到输入框写着 "go "，还得自己再敲个空格
+         * 才变标签 —— 等于"绑定没生效"。这里直接判定并转换。 */
+        string pre = prefill ?? "";
+        SetInputText(pre);
+        if (pre.Length > 0 && TryMakeChip())
+        {
+            // 已变成引擎标签：清空输入，让用户直接打关键词
+            SetInputText("");
+            RunQuery();
+        }
+        else if (pre.Length == 0)
+        {
+            RunQuery();
+        }
+        else
+        {
+            RunQuery();       // 普通预填：按内容正常搜
+        }
+
         Input.Focus();
         Keyboard.Focus(Input);
-        if (string.IsNullOrEmpty(Input.Text)) RunQuery();
         PlayShowAnimation();
     }
 
