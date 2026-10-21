@@ -119,9 +119,6 @@ public sealed class AppHost : IDisposable
         Context.MathBoardRequested += () => _dispatcher.BeginInvoke(() => ShowMathBoard());
         Context.SettingsRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow());
         Context.HelpRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("help"));
-        // 窗口绑定已并入按键映射页（作为动作），旧的"打开绑定管理"直接跳过去
-        Context.BindingsRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("keys"));
-        Context.KeysPageRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("keys"));
         Context.ClipboardHistoryRequested += () => _dispatcher.BeginInvoke(() => ShowClipboardHistory());
         Context.TranslateRequested += () => _dispatcher.BeginInvoke(() => ShowTranslate());
         Context.ReloadRequested += () => _dispatcher.BeginInvoke(() => ReloadAll());

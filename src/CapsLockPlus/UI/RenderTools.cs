@@ -46,6 +46,30 @@ public static class RenderTools
             main.Navigate(page);
             Pump(220);
             Save(main, Path.Combine(outDir, $"{page}.png"));
+
+            /* 额外截一张"窗口绑定面板"的样子。
+             *
+             * 这个面板只有选中「窗口绑定」动作时才出现，普通 keys.png 里看不到，
+             * 所以单独渲染一张，用于确认它真的画出来了、布局没崩。 */
+            if (page == "keys" &&
+                main.GetPage("keys") is CapsLockPlus.UI.Views.KeysView kv)
+            {
+                try
+                {
+                    if (kv.ShowWinBindPanelForRender())
+                    {
+                        Pump(200);
+                        Save(main, Path.Combine(outDir, "keys-winbind.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染窗口绑定面板失败：" + ex.Message);
+                }
+                kv.ResetRenderState();
+                Pump(120);
+            }
+
             // 诊断文件只在显式要求时输出（--render-diag <目录>），
             // 免得把一堆中间产物混进 docs/screenshots。
             if (DiagnosticsRequested)

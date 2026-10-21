@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -342,6 +343,14 @@ public partial class KeysView : UserControl
             actionTitle = _host?.Actions.Get(binding.Action)?.Title ?? binding.Action;
             if (actionTitle.StartsWith("播放宏：", StringComparison.OrdinalIgnoreCase))
                 actionTitle = "▶ " + actionTitle["播放宏：".Length..];
+
+            /* 窗口绑定：键帽上显示**程序名**而不是"切换窗口"。
+             * 用户要的是"一眼看到这个键对应哪个软件"。 */
+            if (binding.Action == "winBind" && !string.IsNullOrWhiteSpace(binding.Arg))
+            {
+                try { actionTitle = Path.GetFileNameWithoutExtension(binding.Arg); }
+                catch { actionTitle = "切换窗口"; }
+            }
         }
 
         bool match = filter.Length == 0 ||
@@ -560,15 +569,23 @@ public partial class KeysView : UserControl
             or "selectWordLeft" or "selectWordRight" or "pageMoveLineUp" or "pageMoveLineDown";
         ArgPanel.Visibility = needsArg ? Visibility.Visible : Visibility.Collapsed;
 
-        // 「选择程序…」按钮只在窗口绑定类动作下出现
-        PickProgramButton.Visibility = actionId is "winBind"
-            ? Visibility.Visible : Visibility.Collapsed;
+        /* 「窗口绑定」不走普通参数框，而是换成专用面板。
+         *
+         * 用户原话：「我在分类里面选了窗口绑定，那旁边的功能图标就会自动变成
+         * 一个选择程序的图标」。所以这里直接给出"选程序"这件事本身，
+         * 而不是让他在"参数框"和"另一个动作"之间琢磨。
+         */
+        bool isWinBind = actionId == "winBind";
+        WinBindPanel.Visibility = isWinBind ? Visibility.Visible : Visibility.Collapsed;
+        ArgPanel.Visibility = isWinBind
+            ? Visibility.Collapsed
+            : (needsArg ? Visibility.Visible : Visibility.Collapsed);
+        if (isWinBind) RefreshWinBindPanel();
 
         ArgLabel.Text = actionId switch
         {
             "openUrl" => "网址",
             "runProgram" => "程序路径或命令",
-            "winBind" => "要绑定的程序",
             "wrapSelection" => "起始符号",
             _ => "次数 / 参数",
         };
@@ -576,18 +593,111 @@ public partial class KeysView : UserControl
         {
             "openUrl" => "例如 https://github.com",
             "runProgram" => "例如 notepad.exe",
-            "winBind" => "点右边的「选择程序…」挑一个 exe。"
-                       + "之后按这个键：程序没开就自动启动，已开着就切过去，再按一次最小化。",
             "wrapSelection" => "例如 ( 会把选中文字变成 (文字)",
             _ => "不填默认 1，填 5 表示一次移动 5 个字符",
         };
         BuildKeyboard();
     }
 
+    // ---------------- 窗口绑定面板 ----------------
+
     /// <summary>
-    /// 给「切换窗口（绑定程序）」挑一个 exe，把路径填进参数栏。
+    /// 仅供渲染：把界面切到「窗口绑定」动作，让面板显示出来，好截一张图确认。
+    /// 返回 true 表示成功切过去了。
     /// </summary>
-    private void OnPickProgramClick(object sender, RoutedEventArgs e)
+    public bool ShowWinBindPanelForRender()
+    {
+        if (_host == null) return false;
+
+        // 分类切到「窗口绑定」
+        foreach (ComboBoxItem it in CategoryBox.Items)
+        {
+            if (it.Tag as string == "窗口绑定")
+            {
+                CategoryBox.SelectedItem = it;
+                BuildActionBox();
+                break;
+            }
+        }
+        // 功能切到 winBind
+        foreach (ComboBoxItem it in ActionBox.Items)
+        {
+            if (it.Tag as string == "winBind")
+            {
+                ActionBox.SelectedItem = it;
+                return WinBindPanel.Visibility == Visibility.Visible;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>仅供渲染：截图后把界面恢复到"当前按键真实状态"。</summary>
+    public void ResetRenderState() => SelectKey(_selectedKey);
+
+    /// <summary>当前按键已绑定的程序路径（取自绑定的 Arg）。</summary>
+    private string CurrentWinBindExe()
+    {
+        var b = FindInCurrentLayer(CurrentCombo());
+        return b?.Action == "winBind" ? (b.Arg ?? "") : "";
+    }
+
+    /// <summary>把"已选程序"区域刷新成当前绑定的样子。</summary>
+    private void RefreshWinBindPanel()
+    {
+        string exe = CurrentWinBindExe();
+        bool has = !string.IsNullOrWhiteSpace(exe) && File.Exists(exe);
+
+        if (has)
+        {
+            WinBindName.Text = Path.GetFileNameWithoutExtension(exe);
+            WinBindPath.Text = exe;
+            WinBindClearButton.Visibility = Visibility.Visible;
+            WinBindHint.Text = "按这个键：程序没开就自动启动；已开着就切过去；"
+                             + "已经在前台时再按一次会最小化。";
+        }
+        else if (!string.IsNullOrWhiteSpace(exe))
+        {
+            // 路径记着但文件没了（程序被卸载/移动）
+            WinBindName.Text = Path.GetFileNameWithoutExtension(exe);
+            WinBindPath.Text = exe + "（文件不存在）";
+            WinBindClearButton.Visibility = Visibility.Visible;
+            WinBindHint.Text = "这个程序已经不在了，重新选一个吧。";
+        }
+        else
+        {
+            WinBindName.Text = "还没选择";
+            WinBindPath.Text = "点下面任一按钮选择要绑定的程序";
+            WinBindClearButton.Visibility = Visibility.Collapsed;
+            WinBindHint.Text = "";
+        }
+
+        // 程序图标（取不到就不显示，不留空框）
+        WinBindIcon.Source = has ? Core.Icons.IconCache.FromFile(exe) : null;
+    }
+
+    /// <summary>把选好的程序写进当前按键的绑定。</summary>
+    private void ApplyWinBindExe(string exePath)
+    {
+        if (_host == null || string.IsNullOrWhiteSpace(exePath)) return;
+
+        string combo = CurrentCombo();
+        var binding = FindInCurrentLayer(combo);
+        if (binding == null)
+        {
+            binding = new KeyBinding { Combo = combo };
+            CurrentLayerKeys.Add(binding);
+        }
+        binding.Action = "winBind";
+        binding.Arg = exePath;
+        _host.SaveSettings();
+
+        RefreshWinBindPanel();
+        BuildKeyboard();
+        _host.Notify($"已绑定：{Path.GetFileNameWithoutExtension(exePath)}");
+    }
+
+    /// <summary>入口一：选程序文件（适合还没运行的程序）。</summary>
+    private void OnPickProgramFile(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
@@ -595,11 +705,47 @@ public partial class KeysView : UserControl
             Filter = "程序 (*.exe)|*.exe|所有文件|*.*",
             CheckFileExists = true,
         };
+        // 从已选程序所在目录打开，连着改几个程序时更省事
+        string cur = CurrentWinBindExe();
+        if (File.Exists(cur))
+        {
+            try { dlg.InitialDirectory = Path.GetDirectoryName(cur); } catch { }
+        }
         if (dlg.ShowDialog() != true) return;
+        ApplyWinBindExe(dlg.FileName);
+    }
 
-        ArgBox.Text = dlg.FileName;
-        // TextChanged 会触发 OnArgChanged 落盘，这里不用再手动存
-        _host?.Notify($"已选定：{System.IO.Path.GetFileName(dlg.FileName)}");
+    /// <summary>入口二：十字准星点选已打开的窗口，取其 exe 路径。</summary>
+    private void OnPickWindow(object sender, RoutedEventArgs e)
+    {
+        var picker = new UI.Windows.WindowPickerWindow();
+        if (Window.GetWindow(this) is { } owner) picker.Owner = owner;
+        picker.ShowDialog();
+
+        var h = picker.PickedWindow;
+        if (h == IntPtr.Zero) return;
+
+        var info = Core.Windows.WindowService.Describe(h);
+        if (info == null || string.IsNullOrEmpty(info.ExePath))
+        {
+            _host?.Notify("取不到这个窗口的程序路径，改用「选择程序文件」试试");
+            return;
+        }
+        ApplyWinBindExe(info.ExePath);
+    }
+
+    /// <summary>清除这个键的程序绑定。</summary>
+    private void OnWinBindClear(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null) return;
+        b.Arg = "";
+        b.Action = "doNothing";
+        _host.SaveSettings();
+        RefreshWinBindPanel();
+        BuildKeyboard();
+        SelectKey(_selectedKey);      // 让功能下拉也回到"不绑定"
     }
 
     // ---------------- 事件 ----------------

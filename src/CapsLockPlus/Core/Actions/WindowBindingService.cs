@@ -437,6 +437,13 @@ public sealed class WindowBindingService
                 .Where(h => h != IntPtr.Zero)
                 .ToList();
 
+            /* 按窗口句柄排序，保证**多次按键之间顺序稳定**。
+             *
+             * EnumWindows 返回的是 Z 序，用户每切一次窗口它就会变；
+             * 不排序的话"循环到下一个窗口"会随机跳，看起来像乱切。
+             * 句柄值在同一会话内是稳定且唯一的，拿来定序最合适。 */
+            handles.Sort((a, b) => a.ToInt64().CompareTo(b.ToInt64()));
+
             if (handles.Count == 0)
             {
                 // 没在运行 → 启动并等窗口出现
@@ -445,6 +452,21 @@ public sealed class WindowBindingService
             }
 
             var fg = WindowService.Foreground;
+
+            /* 先把"最小化的窗口"单独挑出来。
+             *
+             * ⚠ 这是最容易漏的一处：用户按一次键把窗口最小化，再按一次
+             * 期望它回来 —— 但如果直接对最小化窗口调 SetForegroundWindow，
+             * Windows **不会**帮你还原，表现就是"按键没反应"。
+             * 所以先挑第一个最小化的窗口，还原它。 */
+            var minimized = handles.FirstOrDefault(h => WindowService.IsMinimized(h));
+            if (minimized != IntPtr.Zero)
+            {
+                WindowService.Restore(minimized);
+                WindowService.Activate(minimized);
+                Notified?.Invoke($"已恢复 {name}");
+                return true;
+            }
 
             // 单个窗口：前台就最小化，否则切过去
             if (handles.Count == 1)

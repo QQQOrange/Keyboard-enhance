@@ -167,6 +167,15 @@ public static class WindowService
     public static void Minimize(IntPtr hwnd) => ShowWindowAsync(hwnd, SW_MINIMIZE);
     public static void Restore(IntPtr hwnd) => ShowWindowAsync(hwnd, SW_RESTORE);
 
+    /// <summary>
+    /// 窗口是否处于最小化状态。
+    ///
+    /// 用于"按键绑定窗口"：用户按一次最小化，再按一次要能还原回来。
+    /// 如果直接对最小化窗口调 SetForegroundWindow，Windows 不会帮你还原 ——
+    /// 表现就是"按键没反应"。所以必须先判断这个状态再决定是 Restore 还是 Activate。
+    /// </summary>
+    public static bool IsMinimized(IntPtr hwnd) => IsIconic(hwnd);
+
     // 窗口激活不再播放任何动画（用户明确要求删掉）。
     // 只保留「弹到前台」与「最小化」两个动作，见 WindowBindingService。
 

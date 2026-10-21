@@ -122,6 +122,7 @@ public static class SelfTest
         TestTriggerKeyPosition();
         TestKeyboardLayoutGeometry();
         TestArbitraryWindowBinding();
+        TestWinBindRestoreLogic();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2415,7 +2416,10 @@ public static class SelfTest
         Check("winBind 在「窗口绑定」分类", wb?.Category == "窗口绑定", wb?.Category ?? "");
         Check("winBind 需要参数（程序路径）", wb?.NeedsArg == true);
         Check("winBind 有参数提示", !string.IsNullOrEmpty(wb?.ArgHint), wb?.ArgHint ?? "");
-        Check("有「选择程序…」动作", cat.Items.Any(i => i.Id == "winBindPick"));
+        // 「窗口绑定」分类下只应有这一个"选择"入口动作（选程序由专用面板承担），
+        // 不允许多余的 winBindPick 之类的动作再占一格。
+        Check("窗口绑定分类下没有多余的 winBindPick 动作",
+            !cat.Items.Any(i => i.Id == "winBindPick"));
 
         // 旧槽位动作保留，老配置不受影响
         Check("旧槽位 1 仍存在", cat.Items.Any(i => i.Id == "winbindActivate1"));
@@ -2455,6 +2459,77 @@ public static class SelfTest
             Check($"「{combo}」能存 winBind 绑定",
                 layer.Keys.Any(k => k.Combo == combo && k.Action == "winBind"));
         }
+    }
+
+    /// <summary>
+    /// 窗口绑定的最小化/还原逻辑。
+    ///
+    /// 最容易漏的一处：用户按一次最小化，再按一次期望它回来。
+    /// 但如果直接对最小化窗口调 SetForegroundWindow，Windows **不会**还原它 ——
+    /// 表现就是"按键没反应"。所以必须先判断 IsIconic 再决定 Restore 还是 Activate。
+    /// 这里用一个真实创建的 WPF 窗口来验证这条链路。
+    /// </summary>
+    private static void TestWinBindRestoreLogic()
+    {
+        // WindowService.IsMinimized 必须存在且可用
+        Check("WindowService 有 IsMinimized",
+            typeof(WindowService).GetMethod("IsMinimized") != null);
+
+        var probe = new System.Windows.Window
+        {
+            Width = 420, Height = 300,
+            WindowStyle = System.Windows.WindowStyle.None,
+            ShowInTaskbar = false,
+            Left = -32000, Top = -32000,
+        };
+        probe.Show();
+        DoEvents(200);
+
+        try
+        {
+            var h = new System.Windows.Interop.WindowInteropHelper(probe).Handle;
+            Check("探针窗口已创建", h != IntPtr.Zero);
+
+            Check("新建窗口不是最小化", !WindowService.IsMinimized(h));
+
+            WindowService.Minimize(h);
+            DoEvents(400);
+            Check("最小化后 IsMinimized 为 true", WindowService.IsMinimized(h));
+
+            // 关键：还原后必须真的回来（模拟用户再按一次）
+            WindowService.Restore(h);
+            WindowService.Activate(h);
+            DoEvents(400);
+            Check("还原后 IsMinimized 为 false（再按一次能回来）",
+                !WindowService.IsMinimized(h));
+        }
+        finally
+        {
+            probe.Close();
+            DoEvents(120);
+        }
+
+        // 窗口绑定分类下只应有一个"选择"动作（面板承担选择，不靠动作）
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+        int winBindCount = cat.Items.Count(i => i.Category == "窗口绑定");
+        Check("「窗口绑定」分类下只有 1 个动作", winBindCount == 1,
+            $"{winBindCount}: " + string.Join(",",
+                cat.Items.Where(i => i.Category == "窗口绑定").Select(i => i.Id)));
+
+        // 旧槽位挪到独立分类，不和新用法混在一起
+        Check("旧槽位在独立分类",
+            cat.Items.Count(i => i.Category == "窗口绑定（旧槽位）") >= 20,
+            cat.Items.Count(i => i.Category == "窗口绑定（旧槽位）").ToString());
     }
 
     private static void TestKeyboardLayoutGeometry()    {
