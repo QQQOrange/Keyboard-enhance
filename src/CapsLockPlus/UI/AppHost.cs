@@ -27,6 +27,7 @@ public sealed class AppHost : IDisposable
     private TrayIcon? _tray;
     private MainWindow? _main;
     private QbarWindow? _qbar;
+    private Core.Text.SelectionWatcher? _selectionWatcher;
     private MathBoardWindow? _math;
     private TranslateWindow? _translate;
     private ClipboardHistoryWindow? _clipHistory;
@@ -175,6 +176,22 @@ public sealed class AppHost : IDisposable
         if (Settings.Global.ShowTrayIcon) CreateTray();
         _clipboard.Start();
         _watchdog.Start();
+
+        /* 「选中即捕获」：监听用户的 Ctrl+C。
+         *
+         * 这是**主力取词通道**。主动取词（UIA / WM_COPY / SendInput）
+         * 在 Electron / Chromium 上全部不可靠 —— 实测确认：
+         * Edge 拒绝 UIA 访问、Chromium 过滤合成输入。
+         * 但用户**真实按下**的 Ctrl+C 谁都拦不住，
+         * 我们只要在旁边看着剪贴板序号变化就能拿到选区。 */
+        try
+        {
+            _selectionWatcher ??= new Core.Text.SelectionWatcher();
+            Context.SelectionWatcher = _selectionWatcher;
+            _selectionWatcher.Start();
+        }
+        catch (Exception ex) { CoreLog.Warn("选区监听启动失败：" + ex.Message); }
+
         ApplyStartupSetting();
         CoreLog.Info($"{AppInfo.ProductName} 已启动（管理员：{ElevationHelper.IsElevated}）");
     }
@@ -281,6 +298,10 @@ public sealed class AppHost : IDisposable
         Engine.Suspended = false;
         RebuildActions();
         ApplyStartupSetting();
+        // 选区监听器在 Start() 里已启动；RebuildActions 会重建 Context，
+        // 这里只需把引用补回去，否则取词会退回主动取词那条不可靠的路。
+        if (_selectionWatcher != null) Context.SelectionWatcher = _selectionWatcher;
+
         _tray?.SetEnabled(Engine.Enabled);
         _qbar?.InvalidateStyle();
         _main?.ReloadFromSettings();
@@ -531,6 +552,7 @@ public sealed class AppHost : IDisposable
         SaveSettings();
         _tray?.Dispose();
         _tray = null;
+        try { _selectionWatcher?.Dispose(); _selectionWatcher = null; } catch { }
         if (restart)
         {
             /* 重启自己（权限切换必须重启才生效）。

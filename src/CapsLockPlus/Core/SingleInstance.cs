@@ -19,6 +19,19 @@ namespace CapsLockPlus.Core;
 public static class SingleInstance
 {
     private const string MutexName = "CapsLockPlus.SingleInstance.7E3A-4C19-9F42-BD08B4E6A1C7";
+
+    /// <summary>
+    /// 互斥体名。设了环境变量 <c>CAPSLOCKPLUS_MUTEX_SUFFIX</c> 就加后缀 ——
+    /// 用于并行测试多个实例（比如一边跑稳定版、一边跑调试版）。
+    /// </summary>
+    private static string EffectiveMutexName
+    {
+        get
+        {
+            string? suffix = Environment.GetEnvironmentVariable("CAPSLOCKPLUS_MUTEX_SUFFIX");
+            return string.IsNullOrWhiteSpace(suffix) ? MutexName : MutexName + "." + suffix;
+        }
+    }
     private static Mutex? _mutex;
     private static bool _owned;
 
@@ -42,7 +55,7 @@ public static class SingleInstance
         {
             try
             {
-                _mutex = new Mutex(true, MutexName, out bool created);
+                _mutex = new Mutex(true, EffectiveMutexName, out bool created);
                 _owned = created;
                 if (created) return true;
 

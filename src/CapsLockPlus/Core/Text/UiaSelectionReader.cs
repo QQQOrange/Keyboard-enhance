@@ -62,6 +62,30 @@ public static class UiaSelectionReader
             }
             catch { }
 
+            /* ②b UIA SelectionPattern：某些程序（Win11 记事本等）只在
+             * SelectionPattern 里暴露选中项，没有 TextPattern。 */
+            foreach (var c in candidates)
+            {
+                try
+                {
+                    if (c.TryGetCurrentPattern(SelectionPattern.Pattern, out var selRaw))
+                    {
+                        var sp = (SelectionPattern)selRaw;
+                        var items = sp.Current.GetSelection();
+                        if (items.Length > 0)
+                        {
+                            var sb2 = new System.Text.StringBuilder();
+                            foreach (var it in items)
+                            {
+                                try { sb2.Append(it.Current.Name); } catch { }
+                            }
+                            if (sb2.Length > 0) return sb2.ToString();
+                        }
+                    }
+                }
+                catch { }
+            }
+
             // ③ 沿父链找带 TextPattern 的元素
             bool sawPattern = false;
             foreach (var start in candidates)

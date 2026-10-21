@@ -83,7 +83,13 @@ public static class TextActions
                 text = TryCopyVia(() => InputSender.CopyChord(0x43), timeoutMs);
                 if (!string.IsNullOrEmpty(text)) return text;
 
-                // ④ 再试 Ctrl+Insert（终端、部分老程序只认这个）
+                /* ④ 线程级注入：attach 到目标输入队列 + 同步键盘状态。
+                 * 这是最接近真实键盘的一条路，用于 SendInput 被程序过滤的情况。 */
+                string viaThread = TryCopyVia(() => ThreadKeyboardSender.SendCtrlChord(0x43), timeoutMs);
+                CoreLog.Info($"[取词] 线程级注入结果长度={viaThread.Length}");
+                if (!string.IsNullOrEmpty(viaThread)) return viaThread;
+
+                // ⑤ 再试 Ctrl+Insert（终端、部分老程序只认这个）
                 string last = TryCopyVia(() => InputSender.CopyChord(VK.Insert), timeoutMs);
                 CoreLog.Info($"[取词] 最终结果长度={last.Length} 内容={Trim4(last)}");
                 return last;

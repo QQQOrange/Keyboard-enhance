@@ -138,6 +138,8 @@ public static class SelfTest
         TestTypeTextAction();
         TestDirectSearchCoversAllEngines();
         TestCopyChordEndToEnd();
+        TestSelectionWatcher();
+        TestContextHasSelectionWatcher();
 
         Section("审计修复");
         TestAuditFindings();
@@ -3282,6 +3284,56 @@ public static class SelfTest
             win.Close();
             DoEvents(150);
         }
+    }
+
+    /// <summary>
+    /// 「选中即捕获」监听器：装得上、卸得掉、默认没有残留选区。
+    ///
+    /// 这是主力取词通道 —— 主动取词（UIA / WM_COPY / SendInput）
+    /// 在 Electron / Chromium 上全部不可靠，用户真实按下的 Ctrl+C 才拦不住。
+    /// </summary>
+    private static void TestSelectionWatcher()
+    {
+        var watcher = new Core.Text.SelectionWatcher();
+
+        // ① 能装上钩子
+        bool started = watcher.Start();
+        Check("选区监听能启动", started);
+        Check("启动后 IsRunning", watcher.IsRunning);
+
+        // ② 重复启动安全（不能抛异常、不能装两个钩子）
+        bool again = watcher.Start();
+        Check("重复启动安全", again && watcher.IsRunning);
+
+        // ③ 还没捕获过任何东西
+        Check("初始无选区", string.IsNullOrEmpty(watcher.LastSelection));
+
+        // ④ 能停掉
+        watcher.Stop();
+        Check("停止后 IsRunning=false", !watcher.IsRunning);
+
+        // ⑤ 停掉后再启动还能用
+        Check("停止后可重启", watcher.Start());
+        watcher.Stop();
+        watcher.Dispose();
+    }
+
+    /// <summary>ActionContext 暴露了 SelectionWatcher 槽位。</summary>
+    private static void TestContextHasSelectionWatcher()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        Check("ActionContext 有 SelectionWatcher 属性",
+            typeof(Core.Actions.ActionContext).GetProperty("SelectionWatcher") != null);
+        Check("初始为 null", ctx.SelectionWatcher == null);
     }
 
     private static void TestKeyboardLayoutGeometry()    {

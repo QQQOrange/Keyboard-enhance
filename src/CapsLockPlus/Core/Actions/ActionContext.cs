@@ -102,7 +102,16 @@ public sealed class ActionContext
          * GetSelectedText 的实现是"模拟 Ctrl+C 读剪贴板"，
          * 需要几十毫秒；它在引擎的动作队列里跑（不在钩子回调里），
          * 所以阻塞这一下不会触发 Windows 的钩子超时。 */
-        string text = overrideText ?? Text.TextActions.GetSelectedText();
+        /* 取选中文字。优先用「选中即捕获」监听器的结果 ——
+         * 用户真实按下的 Ctrl+C 不会被任何程序过滤，
+         * 而主动取词（UIA / WM_COPY / SendInput）在 Electron /
+         * Chromium 上全部不可靠（实测确认）。
+         *
+         * 只有监听器没捕获到（用户没复制过 / 监听器没启动）
+         * 才退回主动取词。 */
+        string text = overrideText
+            ?? SelectionWatcher?.LastSelection
+            ?? Text.TextActions.GetSelectedText();
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -139,6 +148,13 @@ public sealed class ActionContext
     /// 走 InputSender.Text（逐字符 Unicode 发送），不用剪贴板 ——
     /// 既不会破坏用户剪贴板内容，也能正常走 IME。
     /// </summary>
+    /// <summary>
+    /// 「选中即捕获」监听器。用户在任何程序里 Ctrl+C 时，
+    /// 这里就存下了选中的文字 —— 比主动取词可靠得多
+    /// （Electron / Chromium 会过滤合成输入，但用户的真实按键不会被拦）。
+    /// </summary>
+    public Core.Text.SelectionWatcher? SelectionWatcher { get; set; }
+
     public bool TypeText(string text)
     {
         if (string.IsNullOrEmpty(text)) return true;
