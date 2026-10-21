@@ -23,7 +23,7 @@ public sealed class ActionContext
     public required MouseService Mouse { get; init; }
     public required Action<string> Notify { get; init; }
 
-    public event Action? QbarRequested;
+    public event Action<string?>? QbarRequested;
     public event Action? MathBoardRequested;
     public event Action? SettingsRequested;
     public event Action? HelpRequested;
@@ -35,7 +35,13 @@ public sealed class ActionContext
     public event Action? ScreenshotRequested;
     public event Action? MacrosRequested;
 
-    public void RequestQbar() => QbarRequested?.Invoke();
+    /// <summary>
+    /// 请求打开 Qbar。
+    /// </summary>
+    /// <param name="engineKey">默认搜索引擎的关键字（如 "zh" = 知乎）；
+    /// 为空时用设置里的 default 引擎。绑定按键时可以指定，
+    /// 实现"按 Caps+G 打开就是 Google 搜索"。</param>
+    public void RequestQbar(string? engineKey = null) => QbarRequested?.Invoke(engineKey);
     public void RequestMathBoard() => MathBoardRequested?.Invoke();
     public void RequestOpenSettings() => SettingsRequested?.Invoke();
     public void RequestHelp() => HelpRequested?.Invoke();

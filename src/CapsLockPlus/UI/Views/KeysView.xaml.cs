@@ -46,73 +46,84 @@ public partial class KeysView : UserControl
             string.Equals(k.Combo, combo, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// 键盘行定义：108 键全尺寸布局（每个键 = 显示文字, 键名ID, 宽度权重）。
+    /// 标准 ANSI 108 键布局。
     ///
-    /// 完整覆盖：
-    ///   * 主键区 Esc / F1~F12 / 数字行 / QWERTY / 修饰键 + 字母 / 底部+方向键
-    ///   * 编辑键（Ins/Del/Home/End/PgUp/PgDn）
-    ///   * 小键盘（NumLock 状态下是数字，附常用键名）
+    /// 每个键 = (显示文字, 键名ID, 宽度权重)；宽度 1.0 = 一个标准单位。
+    /// 跨行的大键（Enter / Shift / Space / 小键盘回车 / 小键盘 0）按
+    /// 真实物理宽度给权重，其余严格按 108 键 ANSI 标准排布：
     ///
-    /// 宽度按真实物理比例给（单位键除外），这样看起来就是一把键盘。
+    ///   ┌ Esc ─┬ F1 F2 F3 F4 ┬ F5 F6 F7 F8 ┬ F9 F10 F11 F12 ┐ PrtSc ScrLk Pause
+    ///   │ ` 1…0 - = ⌫ ×2 ─ Ins Home PgUp ─ Num / * -
+    ///   │ Tab ×1.5 Q…P [ ] \ ×1.5 ─ Del End PgDn ─ 7 8 9 (+)
+    ///   │ Caps ×1.75 A…L ; ' Enter ×2.25 ─┐       4 5 6 ┐
+    ///   │ Shift ×2.25 Z…M , . / ─ Shift ×2.75 │ ↑ │   1 2 3 ┐Enter×2
+    ///   │ Ctrl Win Alt Space×6.25 Alt Win ☰ Ctrl │ ← ↓ → │ 0×2.25 .
+    ///
+    /// 用 <c>Pad</c> 辅助把每行补齐到相同总宽度，不靠手写占位键 ——
+    /// 占位键之前把小键盘列数搞乱，是上一版布局看起来乱的直接原因。
     /// </summary>
-    private static readonly (string Label, string? KeyId, double Width)[][] Rows =
+    private static readonly (string Label, string? KeyId, double Width)[][] Main =
     {
-        // ---- 功能键行 ----
+        // ① 功能键行（ANSI：Esc 单独一排，F1~F12 四组，Printer 键三个）
         new[]
         {
-            ("Esc", "esc", 1.2), ("", null, 1.0),
-            ("F1", "f1", 1.0), ("F2", "f2", 1.0), ("F3", "f3", 1.0), ("F4", "f4", 1.0),
+            ("Esc", "esc", 3.0), ("F1", "f1", 1.0), ("F2", "f2", 1.0), ("F3", "f3", 1.0), ("F4", "f4", 1.0),
             ("F5", "f5", 1.0), ("F6", "f6", 1.0), ("F7", "f7", 1.0), ("F8", "f8", 1.0),
             ("F9", "f9", 1.0), ("F10", "f10", 1.0), ("F11", "f11", 1.0), ("F12", "f12", 1.0),
-            ("PrtSc", "printScreen", 1.2), ("ScrLk", "scrollLock", 1.2), ("Pause", "pause", 1.2),
+            ("PrtSc", "printScreen", 1.0), ("ScrLk", "scrollLock", 1.0), ("Pause", "pause", 1.0),
         },
-        // ---- 数字行 ----
+        // ② 数字行
         new[]
         {
             ("`", "backquote", 1.0), ("1", "1", 1.0), ("2", "2", 1.0), ("3", "3", 1.0), ("4", "4", 1.0),
             ("5", "5", 1.0), ("6", "6", 1.0), ("7", "7", 1.0), ("8", "8", 1.0), ("9", "9", 1.0),
-            ("0", "0", 1.0), ("-", "minus", 1.0), ("=", "equal", 1.0), ("⌫", "backspace", 2.3),
-            ("Ins", "insert", 1.2), ("Home", "home", 1.2), ("PgUp", "pageUp", 1.2),
-            ("Num", "numLock", 1.2), ("/", "numDivide", 1.2), ("*", "numMultiply", 1.2), ("-", "numSubtract", 1.2),
+            ("0", "0", 1.0), ("-", "minus", 1.0), ("=", "equal", 1.0), ("⌫", "backspace", 2.0),
         },
-        // ---- 第一字母行 ----
+        // ③ Tab 行
         new[]
         {
-            ("Tab", "tab", 1.7), ("Q", "q", 1.0), ("W", "w", 1.0), ("E", "e", 1.0), ("R", "r", 1.0),
+            ("Tab", "tab", 1.5), ("Q", "q", 1.0), ("W", "w", 1.0), ("E", "e", 1.0), ("R", "r", 1.0),
             ("T", "t", 1.0), ("Y", "y", 1.0), ("U", "u", 1.0), ("I", "i", 1.0), ("O", "o", 1.0),
             ("P", "p", 1.0), ("[", "leftSquareBracket", 1.0), ("]", "rightSquareBracket", 1.0),
-            ("\\", "backslash", 1.6),
-            ("Del", "delete", 1.2), ("End", "end", 1.2), ("PgDn", "pageDown", 1.2),
-            ("7", "num7", 1.2), ("8", "num8", 1.2), ("9", "num9", 1.2),
-            ("+", "numAdd", 1.2),
+            ("\\", "backslash", 1.5),
         },
-        // ---- 第二字母行 ----
+        // ④ Caps 行
         new[]
         {
-            ("Caps", null, 2.0), ("A", "a", 1.0), ("S", "s", 1.0), ("D", "d", 1.0), ("F", "f", 1.0),
+            ("Caps", "capslock", 1.75), ("A", "a", 1.0), ("S", "s", 1.0), ("D", "d", 1.0), ("F", "f", 1.0),
             ("G", "g", 1.0), ("H", "h", 1.0), ("J", "j", 1.0), ("K", "k", 1.0), ("L", "l", 1.0),
-            (";", "semicolon", 1.0), ("'", "quote", 1.0), ("Enter", "enter", 2.4),
-            ("", null, 1.2), ("", null, 1.2), ("", null, 1.2),
-            ("4", "num4", 1.2), ("5", "num5", 1.2), ("6", "num6", 1.2),
+            (";", "semicolon", 1.0), ("'", "quote", 1.0), ("Enter", "enter", 2.25),
         },
-        // ---- 第三字母行 ----
+        // ⑤ Shift 行
         new[]
         {
-            ("LShift", "lshift", 1.4), ("Z", "z", 1.0), ("X", "x", 1.0), ("C", "c", 1.0), ("V", "v", 1.0),
+            ("LShift", "lshift", 2.25), ("Z", "z", 1.0), ("X", "x", 1.0), ("C", "c", 1.0), ("V", "v", 1.0),
             ("B", "b", 1.0), ("N", "n", 1.0), ("M", "m", 1.0), (",", "comma", 1.0), (".", "dot", 1.0),
-            ("/", "slash", 1.0), ("RShift", "rshift", 1.4),
-            ("", null, 1.2), ("↑", "up", 1.2), ("", null, 1.2),
-            ("1", "num1", 1.2), ("2", "num2", 1.2), ("3", "num3", 1.2), ("Enter", "enter", 1.2),
+            ("/", "slash", 1.0), ("RShift", "rshift", 2.75),
         },
-        // ---- 底部行 ----
+        // ⑥ 底行
         new[]
         {
-            ("LCtrl", "lctrl", 1.4), ("LWin", "lwin", 1.2), ("LAlt", "lalt", 1.2), ("Space", "space", 6.0),
-            ("RAlt", "ralt", 1.2), ("RWin", "rwin", 1.2), ("☰", "apps", 1.2), ("RCtrl", "rctrl", 1.4),
-            ("←", "left", 1.2), ("↓", "down", 1.2), ("→", "right", 1.2),
-            ("0", "num0", 2.4), (".", "numDecimal", 1.2),
+            ("LCtrl", "lctrl", 1.25), ("LWin", "lwin", 1.25), ("LAlt", "lalt", 1.25), ("", "space", 6.25),
+            ("RAlt", "ralt", 1.25), ("RWin", "rwin", 1.25), ("☰", "apps", 1.25), ("RCtrl", "rctrl", 1.25),
         },
     };
+
+    /// <summary>编辑键簇（垂直排，与主键区右侧对齐；null 行是空隙）。</summary>
+    private static readonly (string Label, string? KeyId)[][] Edit =
+    {
+        new[] { ("", (string?)null) },
+        new[] { ("Ins", "insert"), ("Home", "home"), ("PgUp", "pageUp") },
+        new[] { ("Del", "delete"), ("End", "end"), ("PgDn", "pageDown") },
+        new[] { ("", (string?)null) },
+        new[] { ("", (string?)null), ("↑", "up"), ("", (string?)null) },
+        new[] { ("←", "left"), ("↓", "down"), ("→", "right") },
+    };
+
+    /// <summary>主键区 + 编辑键簇的标准总宽度（14 单位 + 3 单位）。</summary>
+    private const double MainRowWidth = 14.0;
+    private const double EditClusterWidth = 3.0;
+
 
     public KeysView() => InitializeComponent();
 
@@ -198,6 +209,11 @@ public partial class KeysView : UserControl
     }
 
     // ---------------- 键盘绘制 ----------------
+
+    /// <summary>当前层的触发键名（用于在键盘真实位置高亮它）。</summary>
+    private string? CurrentTriggerKey =>
+        _host?.Settings.Triggers.FirstOrDefault(t => t.LayerId == _layerId && t.Enabled)?.Key;
+
     private void BuildKeyboard()
     {
         if (_host == null) return;
@@ -205,77 +221,200 @@ public partial class KeysView : UserControl
         string filter = SearchBox.Text?.Trim() ?? "";
         int bound = 0;
 
-        foreach (var row in Rows)
+        /* 触发键在键盘上的**真实位置**高亮。
+         *
+         * 之前写死显示在左上角（Caps 位），用户把 F13 绑到第 3 层时，
+         * 切过去亮的还是 Caps 位 —— 符号换了但位置没换，跟配置对不上。
+         * 现在：当前层的触发键是哪个键，就高亮键盘上那个键本身。 */
+        string? triggerKey = CurrentTriggerKey;
+
+        // 外层：主键区 + 右侧竖排（编辑键簇 / 小键盘）
+        var outer = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        outer.ColumnDefinitions.Add(new ColumnDefinition
         {
-            var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
-            double total = row.Sum(k => k.Width);
-            foreach (var (_, _, width) in row)
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width, GridUnitType.Star) });
+            Width = new GridLength(MainRowWidth + EditClusterWidth, GridUnitType.Star),
+        });
+        outer.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(4.0, GridUnitType.Star),
+        });
 
-            for (int i = 0; i < row.Length; i++)
+        // ---- 左：主键区 + 编辑键簇 ----
+        var left = new Grid();
+        left.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(MainRowWidth, GridUnitType.Star),
+        });
+        left.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(EditClusterWidth, GridUnitType.Star),
+        });
+
+        for (int r = 0; r < Main.Length; r++)
+        {
+            left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var row = new Grid();
+            Grid.SetRow(row, r);
+            Grid.SetColumn(row, 0);
+            foreach (var (_, _, w) in Main[r])
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w, GridUnitType.Star) });
+
+            for (int i = 0; i < Main[r].Length; i++)
             {
-                var (label, keyId, _) = row[i];
-                if (keyId == null)
-                {
-                    // 第 2 行起始的占位（Esc 后面的空隙）不画
-                    if (label.Length == 0) continue;
-                    var trig = MakeTriggerKey();
-                    Grid.SetColumn(trig, i);
-                    grid.Children.Add(trig);
-                    continue;
-                }
+                var (label, keyId, w) = Main[r][i];
+                if (keyId == null) continue;
 
-                string combo = KeyName.BuildComboEx(_layer, keyId);
-                var binding = FindInCurrentLayer(combo);
-                bool isBound = binding is { IsBound: true };
-                if (isBound) bound++;
-
-                string actionTitle = "";
-                if (isBound && binding != null)
-                {
-                    actionTitle = _host.Actions.Get(binding.Action)?.Title ?? binding.Action;
-                    // 宏动作的标题形如「播放宏：我的宏」，键帽上取冒号后面的名字更易读
-                    if (actionTitle.StartsWith("播放宏：", StringComparison.OrdinalIgnoreCase))
-                        actionTitle = "▶ " + actionTitle["播放宏：".Length..];
-                }
-
-                bool match = filter.Length == 0 ||
-                             label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                             keyId.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                             actionTitle.Contains(filter, StringComparison.OrdinalIgnoreCase);
-                if (!match && filter.Length > 0) continue;
-
-                var cap = MakeKeycap(label, keyId, isBound, actionTitle);
+                var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
+                if (cap == null) continue;                       // 被搜索过滤掉
                 Grid.SetColumn(cap, i);
-                grid.Children.Add(cap);
+                row.Children.Add(cap);
             }
-            KeyboardPanel.Children.Add(grid);
+            left.Children.Add(row);
+        }
+        outer.Children.Add(left);
+
+        // 编辑键簇（垂直排在与主键区同一栅格的第 1 列）
+        var editPanel = new Grid();
+        Grid.SetColumn(editPanel, 1);
+        for (int r = 0; r < Edit.Length; r++)
+        {
+            editPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var keys = Edit[r];
+            // 单格占位行：第一行很短（与功能键行错开），其余行是正常键高
+            if (keys.Length == 1 && keys[0].Item2 == null)
+            {
+                editPanel.RowDefinitions[^1] = new RowDefinition
+                { Height = new GridLength(r == 0 ? 20 : 52) };
+                continue;
+            }
+            for (int c = 0; c < keys.Length; c++)
+            {
+                var (label, keyId) = keys[c];
+                if (keyId == null) continue;
+                var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
+                if (cap == null) continue;
+                Grid.SetRow(cap, r);
+                Grid.SetColumn(cap, c);
+                editPanel.Children.Add(cap);
+            }
+        }
+        left.Children.Add(editPanel);
+
+        // ---- 右：小键盘（4 列宽，含 + 键与跨两格的回车） ----
+        // 标准小键盘：第 1 行 Num/÷/×/−，2~4 行数字，第 5 行 0(跨两格) 与 .
+        string[][] fixedRows =
+        {
+            new[] { "numLock", "numDivide", "numMultiply", "numSubtract" },
+            new[] { "num7", "num8", "num9", "numAdd" },
+            new[] { "num4", "num5", "num6", "" },                 // 第 4 列由回转车占（跨两行）
+            new[] { "num1", "num2", "num3", "" },
+            new[] { "num0", "numDecimal" },
+        };
+
+        var num = new Grid();
+        Grid.SetColumn(num, 1);
+        num.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });  // 与功能键行错开
+        foreach (var _ in fixedRows)
+            num.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        for (int r = 0; r < fixedRows.Length; r++)
+        {
+            var keys = fixedRows[r];
+            for (int c = 0; c < keys.Length; c++)
+            {
+                string keyId = keys[c];
+                if (keyId.Length == 0) continue;
+
+                string label = keyId switch
+                {
+                    "numLock" => "Num",
+                    "numDivide" => "/",
+                    "numMultiply" => "*",
+                    "numSubtract" => "-",
+                    "numAdd" => "+",
+                    "numDecimal" => ".",
+                    "num0" => "0",
+                    _ => keyId[^1].ToString(),
+                };
+
+                var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
+                if (cap == null) continue;
+                Grid.SetRow(cap, r + 1);
+                Grid.SetColumn(cap, c);
+                if (keyId == "num0")
+                {
+                    Grid.SetColumnSpan(cap, 2);      // 小键盘 0 跨两格
+                }
+                num.Children.Add(cap);
+            }
         }
 
+        // 小键盘回车（跨两行）+ 上下键（把方向键 ↑ ↓ 也放进来更完整）
+        var numEnter = BuildKeycapEntry("Enter", "enter", filter, ref bound, triggerKey);
+        if (numEnter != null)
+        {
+            Grid.SetRow(numEnter, 3);
+            Grid.SetColumn(numEnter, 3);
+            Grid.SetRowSpan(numEnter, 2);
+            num.Children.Add(numEnter);
+        }
+        outer.Children.Add(num);
+
+        KeyboardPanel.Children.Add(outer);
+
+        // ---- 状态文字 ----
         var tap = FindInCurrentLayer("press_caps");
         string tapTitle = tap != null ? _host.Actions.Get(tap.Action)?.Title ?? tap.Action : "无";
-
         var layerObj = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
         string layerName = layerObj?.Name ?? $"第 {_layerId} 层";
         var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == _layerId);
         string triggerText = trigger != null
-            ? $"长按 {KeyName.Display(trigger.Key)}"
+            ? $"触发键 {KeyName.Display(trigger.Key)}（键盘上已高亮）"
             : "（没有触发键指向这一层）";
 
         string modText = _layer switch
         {
+            KeyModifiers.Ctrl => " + Ctrl",
+            KeyModifiers.Shift => " + Shift",
             KeyModifiers.Alt => " + LAlt",
             KeyModifiers.Win => " + Win",
             _ => "",
         };
         LayerHint.Text = $"当前：第 {_layerId} 层「{layerName}」{modText}（{bound} 个绑定）　·　{triggerText}";
 
-        // 短按动作只在第 1 层有意义（触发键的短按行为是全局的）
         CountText.Text = _layerId == 1
             ? $"短按触发键：{tapTitle}　·　点键盘上任意键即可修改它的功能，修改立刻生效。"
             : $"这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。";
         UpdateLayerButtons();
         RefreshBoundList();
+    }
+
+    /// <summary>
+    /// 建一个键帽；被搜索过滤掉时返回 null。
+    /// </summary>
+    private Border? BuildKeycapEntry(string label, string keyId, string filter,
+        ref int bound, string? triggerKey)
+    {
+        string combo = KeyName.BuildComboEx(_layer, keyId);
+        var binding = FindInCurrentLayer(combo);
+        bool isBound = binding is { IsBound: true };
+        if (isBound) bound++;
+
+        string actionTitle = "";
+        if (isBound && binding != null)
+        {
+            actionTitle = _host?.Actions.Get(binding.Action)?.Title ?? binding.Action;
+            if (actionTitle.StartsWith("播放宏：", StringComparison.OrdinalIgnoreCase))
+                actionTitle = "▶ " + actionTitle["播放宏：".Length..];
+        }
+
+        bool match = filter.Length == 0 ||
+                     label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                     keyId.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                     actionTitle.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        if (!match && filter.Length > 0) return null;
+
+        return MakeKeycap(label, keyId, isBound, actionTitle, triggerKey);
     }
 
     /// <summary>把层下拉框填上（10 个层，标注各自的触发键）。</summary>
@@ -310,60 +449,33 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
-    /// 键盘上这个"本层触发键"位置。
-    ///
-    /// ⚠ 显示的是**当前层绑定的触发键**，不是写死的 CapsLock。
-    /// 用户把 F13 绑到第 3 层时切过去，这里就该显示 F13 ——
-    /// 否则所有层都亮着"Caps"，跟实际配置对不上（正是你反馈的问题）。
+    /// 建一个键帽。
     /// </summary>
-    private Border MakeTriggerKey()
+    /// <param name="triggerKey">当前层的触发键名（非 null 时该键会额外高亮 +
+    /// 加"触发键"角标，用户一眼看到"我按哪个键进这一层"）。</param>
+    private Border MakeKeycap(string label, string keyId, bool isBound,
+        string actionTitle, string? triggerKey)
     {
-        var trigger = _host?.Settings.Triggers
-            .FirstOrDefault(t => t.LayerId == _layerId && t.Enabled);
-
-        string label = trigger != null ? KeyName.Display(trigger.Key) : "未绑定";
-        string tip = trigger != null
-            ? $"「{label}」是第 {_layerId} 层的触发键\n长按它进入这一层；短按执行「{trigger.TapAction}」"
-            : $"第 {_layerId} 层还没有触发键——到「触发键与层」页分配一个";
+        // 触发键在键盘**真实位置**高亮（不再写死在左上角）
+        bool isTrigger = triggerKey != null
+                         && string.Equals(triggerKey, keyId, StringComparison.OrdinalIgnoreCase);
 
         var border = new Border
         {
             Height = 52,
-            Margin = new Thickness(0, 0, 6, 0),
+            Margin = new Thickness(0, 0, 6, 6),
             CornerRadius = new CornerRadius(10),
-            Background = (Brush)FindResource(trigger != null ? "Brush.Accent" : "Brush.Keycap"),
-            BorderBrush = (Brush)FindResource(trigger != null ? "Brush.AccentHover" : "Brush.KeycapBorder"),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(isTrigger ? 2 : 1),
             Cursor = Cursors.Hand,
-            ToolTip = tip,
+            ToolTip = isTrigger
+                ? $"★ {label} = 本层触发键\n长按它进入这一层；短按执行短按动作"
+                : isBound ? $"{label} → {actionTitle}" : $"{label}（未绑定）",
+            Background = (Brush)FindResource(isTrigger ? "Brush.Accent"
+                : isBound ? "Brush.AccentSoft" : "Brush.Keycap"),
+            BorderBrush = (Brush)FindResource(isTrigger ? "Brush.AccentHover"
+                : isBound ? "Brush.AccentSoftBorder" : "Brush.KeycapBorder"),
         };
-        border.Child = new TextBlock
-        {
-            Text = label,
-            FontSize = trigger != null && label.Length > 5 ? 10 : 12,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource(trigger != null ? "Brush.Surface" : "Brush.TextTertiary"),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-        return border;
-    }
-
-    private Border MakeKeycap(string label, string keyId, bool isBound, string actionTitle)
-    {
-        var border = new Border
-        {
-            Height = 52,
-            Margin = new Thickness(0, 0, 6, 0),
-            CornerRadius = new CornerRadius(10),
-            BorderThickness = new Thickness(1),
-            Cursor = Cursors.Hand,
-            ToolTip = isBound ? $"{label} → {actionTitle}" : $"{label}（未绑定）",
-            Background = (Brush)FindResource(isBound ? "Brush.AccentSoft" : "Brush.Keycap"),
-            BorderBrush = (Brush)FindResource(isBound ? "Brush.AccentSoftBorder" : "Brush.KeycapBorder"),
-        };
-        if (keyId == _selectedKey)
+        if (keyId == _selectedKey && !isTrigger)
         {
             border.BorderThickness = new Thickness(2);
             border.BorderBrush = (Brush)FindResource("Brush.Accent");
@@ -372,14 +484,15 @@ public partial class KeysView : UserControl
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(new TextBlock
         {
-            Text = label,
+            Text = isTrigger ? "★ " + label : label,
             FontSize = label.Length > 4 ? 10 : 13,
             FontWeight = FontWeights.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = (Brush)FindResource(isBound ? "Brush.Accent" : "Brush.TextSecondary"),
+            Foreground = (Brush)FindResource(isTrigger ? "Brush.Surface"
+                : isBound ? "Brush.Accent" : "Brush.TextSecondary"),
         });
         // 已绑定时把功能名缩略显示在键帽下方，一眼看到"这个键当前干什么"
-        if (isBound && !string.IsNullOrEmpty(actionTitle))
+        if (isBound && !string.IsNullOrEmpty(actionTitle) && !isTrigger)
         {
             stack.Children.Add(new TextBlock
             {

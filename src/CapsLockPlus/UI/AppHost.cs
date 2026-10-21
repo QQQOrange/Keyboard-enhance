@@ -111,12 +111,11 @@ public sealed class AppHost : IDisposable
 
     private void WireEvents()
     {
-        // 注意：这里必须用 lambda 包一层。
-        // 直接写 BeginInvoke(ShowQbar) 会走 Delegate 的反射调用，
-        // 而 ShowQbar 带可选参数（string? prefill），反射按“1 个参数”调用，
-        // 与 Action 的 0 参数签名不匹配，会抛 TargetParameterCountException，
-        // 结果就是按 Caps+Q 完全没反应。
-        Context.QbarRequested += () => _dispatcher.BeginInvoke(() => ShowQbar());
+        // 注意：这里必须用 lambda 包一层（原因见下）。
+        // 而且要把引擎关键字传下去：qbar:<引擎> 动作绑定到按键后，
+        // 按下去弹出的 Qbar 要**默认用那个引擎**搜索。
+        Context.QbarRequested += engineKey =>
+            _dispatcher.BeginInvoke(() => ShowQbar(EnginePrefill(engineKey)));
         Context.MathBoardRequested += () => _dispatcher.BeginInvoke(() => ShowMathBoard());
         Context.SettingsRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow());
         Context.HelpRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("help"));
@@ -283,6 +282,23 @@ public sealed class AppHost : IDisposable
     {
         _qbar ??= new QbarWindow(this);
         _qbar.Open(prefill);
+    }
+
+    /// <summary>
+    /// 把动作带的引擎关键字转成 Qbar 的预填文本。
+    ///
+    /// 面板本身就是"关键字 + 空格 + 内容"的语法（bd 关键词 = 百度搜），
+    /// 所以预填成 "bd " 让用户直接接着打字即可，不必新增一套输入协议。
+    /// </summary>
+    private string? EnginePrefill(string? engineKey)
+    {
+        if (string.IsNullOrWhiteSpace(engineKey)) return null;
+        string key = engineKey.Trim();
+        // 只为真实存在的引擎生成预填，别把乱码塞进输入框
+        return Settings.Search.Any(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase)
+                                        && !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase))
+            ? key + " "
+            : null;
     }
 
     public void ShowMathBoard()

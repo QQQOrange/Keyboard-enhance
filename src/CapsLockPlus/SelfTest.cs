@@ -118,6 +118,7 @@ public static class SelfTest
         Section("宏绑定与 keepKey");
         TestMacroBindableInKeysView();
         TestKeepKeyTapAction();
+        TestQbarEngineActions();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2354,6 +2355,56 @@ public static class SelfTest
     /// 短按动作 "keepKey"：把非 CapsLock 键设成触发键时，
     /// 短按必须保留它的原功能（补发真实按键）。
     /// </summary>
+    /// <summary>
+    /// Qbar 引擎动作：每个常用搜索引擎都要能绑到按键上。
+    ///
+    /// 这是「Qbar 面板绑定引擎」的回归测试：动作表里要有
+    /// <c>qbar:&lt;关键字&gt;</c> 形式的动作，且 RequestQbar 要把
+    /// 引擎关键字传出去（而不是静默丢弃）。
+    /// </summary>
+    private static void TestQbarEngineActions()
+    {
+        var settings = DefaultSettings.Create();
+        string? requested = "(未请求)";
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        ctx.QbarRequested += key => requested = key ?? "(null)";
+
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        // 常见引擎都必须有动作
+        foreach (string key in new[] { "bd", "zh", "bili", "go", "bi", "tb", "jd", "gh", "db", "wx" })
+        {
+            var item = cat.Items.FirstOrDefault(i => i.Id == "qbar:" + key);
+            Check($"引擎 {key} 有可用动作", item != null,
+                string.Join(",", cat.Items.Where(i => i.Id.StartsWith("qbar:")).Select(i => i.Id)));
+            if (item == null) continue;
+            Check($"引擎 {key} 的动作在「Qbar 搜索」分类", item.Category == "Qbar 搜索", item.Category);
+        }
+
+        // 不要塞成 300 个（否则功能下拉没法用）
+        int engineActions = cat.Items.Count(i => i.Id.StartsWith("qbar:"));
+        Check("引擎动作数量受控（不撑爆下拉）", engineActions <= 30, engineActions.ToString());
+        Check("引擎动作数量足够用（>= 8）", engineActions >= 8, engineActions.ToString());
+
+        // default 引擎不该成为动作
+        Check("default 引擎没有动作", !cat.Items.Any(i => i.Id == "qbar:default"));
+
+        // 执行动作必须把关键字传出来
+        cat.Invoke("qbar:bd", "");
+        CheckEqual("执行 qbar:bd 时传出引擎关键字", requested, "bd");
+
+        cat.Invoke("qbar:zh", "");
+        CheckEqual("执行 qbar:zh 时传出引擎关键字", requested, "zh");
+    }
+
     private static void TestKeepKeyTapAction()
     {
         // ① 动作表里有 keepKey

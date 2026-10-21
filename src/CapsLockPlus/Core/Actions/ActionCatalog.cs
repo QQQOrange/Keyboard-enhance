@@ -119,6 +119,31 @@ public sealed class ActionCatalog
 
         // ---------------- 面板 / 工具 ----------------
         c.Add("qbar", "面板", "Qbar 快速启动", "打开 Qbar：搜索、启动程序、打开网址、计算", _ => { ctx.RequestQbar(); return true; });
+
+        // ---- 直接用指定搜索引擎开 Qbar ----
+        //
+        // 每个引擎一个动作（qbar:<关键字>），在「按键映射」页像普通动作一样
+        // 绑到任意层的任意按键。按下后弹出的 Qbar **默认就用这个引擎搜索**，
+        // 省得每次再在面板里选一次。
+        //
+        // ⚠ 只注册**常用引擎**而不是全部 300 个：塞进功能下拉会把列表撑爆，
+        // 正常键盘也按不出 300 个组合键。别的引擎仍可在面板里手动输入关键字用。
+        string[] quickEngines =
+        {
+            "bd", "zh", "bili", "go", "bi", "tb", "jd", "gh",
+            "wx", "db", "xhs",
+        };
+        foreach (var e in ctx.Settings().Search.Where(x =>
+                     !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+                     quickEngines.Contains(x.Key, StringComparer.OrdinalIgnoreCase)))
+        {
+            string key = e.Key;
+            string name = string.IsNullOrWhiteSpace(e.Comment) ? key : e.Comment;
+            c.Add("qbar:" + key, "Qbar 搜索",
+                $"Qbar：{name}",
+                $"打开 Qbar 并直接用「{name}」搜索",
+                _ => { ctx.RequestQbar(key); return true; });
+        }
         c.Add("mathBoard", "面板", "计算器", "打开带历史记录的计算器", _ => { ctx.RequestMathBoard(); return true; });
         c.Add("tabScript", "面板", "Tab 计算 / 热字串", "把光标前的算式直接算出结果，或展开热字串", _ => ctx.RunTabScript());
         c.Add("translate", "面板", "翻译选中文本", "调用翻译服务并显示结果", _ => { ctx.RequestTranslate(); return true; });
