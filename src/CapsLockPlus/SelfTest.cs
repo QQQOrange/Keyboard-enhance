@@ -115,6 +115,10 @@ public static class SelfTest
         TestMacroDisplayProps();
         TestHelpCoversAllLayers();
 
+        Section("宏绑定与 keepKey");
+        TestMacroBindableInKeysView();
+        TestKeepKeyTapAction();
+
         Section("审计修复");
         TestAuditFindings();
 
@@ -2299,6 +2303,121 @@ public static class SelfTest
     /// <summary>
     /// 快捷键速查表必须覆盖**所有层**，不能只列第 1 层。
     /// </summary>
+    /// <summary>
+    /// 宏绑定到按键：按键映射页要能选中宏动作。
+    ///
+    /// 这是「宏没办法绑定按键」的回归测试。动作表里必须有宏动作，
+    /// 且动作 ID 与绑定里写的一致（macro:&lt;id&gt;），
+    /// 这样 SelectKey 才能把下拉定位到「宏」分类并选中它。
+    /// </summary>
+    private static void TestMacroBindableInKeysView()
+    {
+        var settings = DefaultSettings.Create();
+        settings.Macros.Add(new Core.Settings.Macro
+        {
+            Id = "bind1",
+            Name = "要绑定的宏",
+            Steps = { new Core.Settings.MacroStep { Kind = "delay", DelayMs = 50 } },
+        });
+
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        var item = cat.Items.FirstOrDefault(i => i.Id == "macro:bind1");
+        Check("动作表里有这个宏的动作", item != null,
+            string.Join(",", cat.Items.Where(i => i.Id.StartsWith("macro:")).Select(i => i.Id)));
+        Check("宏动作在「宏」分类", item?.Category == "宏", item?.Category ?? "");
+        Check("宏动作标题带宏名", item?.Title?.Contains("要绑定的宏") == true, item?.Title ?? "");
+
+        // 按分类过滤后仍能找到（按键映射页是两级下拉）
+        var inCategory = cat.Items.Where(i => i.Category == "宏").ToList();
+        Check("「宏」分类下有可选项", inCategory.Count > 0, inCategory.Count.ToString());
+        Check("分类过滤能选中目标", inCategory.Any(i => i.Id == "macro:bind1"));
+
+        // Actions.Get 必须能反查到（SelectKey 靠它定位分类）
+        Check("Get(macro:bind1) 能查到", cat.Get("macro:bind1") != null);
+
+        // 全分类覆盖：每个分类至少一个动作（下拉不会是空的）
+        foreach (string c in cat.Items.Select(i => i.Category).Distinct())
+            Check($"分类「{c}」非空", cat.Items.Any(i => i.Category == c));
+    }
+
+    /// <summary>
+    /// 短按动作 "keepKey"：把非 CapsLock 键设成触发键时，
+    /// 短按必须保留它的原功能（补发真实按键）。
+    /// </summary>
+    private static void TestKeepKeyTapAction()
+    {
+        // ① 动作表里有 keepKey
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+        var keep = cat.Items.FirstOrDefault(i => i.Id == "keepKey");
+        Check("动作表有「保留按键原功能」", keep != null);
+        Check("它在「基础」分类", keep?.Category == "基础", keep?.Category ?? "");
+        Check("它有说明文字", !string.IsNullOrEmpty(keep?.Description));
+
+        // ② 触发键选 keepKey 时短按补发原键（而不是执行别的动作）
+        var s2 = DefaultSettings.Create();
+        s2.Triggers.Clear();
+        s2.Triggers.Add(new TriggerKey
+        {
+            Key = "f5",                 // 把 F5 设成触发键
+            LayerId = 1,
+            HoldMs = 3000,               // 长阈值：本次一定走短按
+            TapAction = "keepKey",
+            Enabled = true,
+        });
+
+        var queue = new ActionQueue();
+        var acts = new List<string>();
+        var engine = new HotkeyEngine(queue, () => s2, (a, _) =>
+        {
+            lock (acts) acts.Add(a);
+            return true;
+        });
+        engine.StartHoldTimer();
+
+        // F5 短按：应当被吞、之后补发真实 F5 的按下+抬起。
+        // InputSender.Tap 是 SendInput（沙箱里会被拒），但不抛异常，
+        // 关键是"没有执行任何动作表里的动作"。
+        engine.SimulateKey(0x74 /*F5*/, true);
+        Thread.Sleep(60);                 // 远小于 3000ms
+        engine.SimulateKey(0x74, false);
+        DoEvents(200);
+
+        Check("F5 短按后不进层", engine.ActiveLayer == -1);
+        Check("F5 短按后没有按住状态残留", !engine.IsTriggerHeld);
+        lock (acts)
+        {
+            Check("F5 短按没有执行别的动作（走的是补发原键）",
+                acts.Count == 0, string.Join(",", acts));
+        }
+        engine.Dispose();
+        queue.Dispose();
+
+        // ③ 默认触发键（CapsLock）仍保持旧行为 —— 不能回归
+        var s3 = DefaultSettings.Create();
+        CheckEqual("默认 CapsLock 触发键仍是切换大小写",
+            s3.Triggers[0].TapAction, "toggleCapsLock");
+    }
+
     private static void TestHelpCoversAllLayers()
     {
         var s = DefaultSettings.Create();

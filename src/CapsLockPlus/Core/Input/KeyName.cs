@@ -45,6 +45,13 @@ public static class VK
     public const int Oem5 = 0xDC;    // \
     public const int Oem6 = 0xDD;    // ]
     public const int Oem7 = 0xDE;    // '
+
+    // 编辑 / 系统键（108 键键盘上都有；Pause 已在上面定义）
+    public const int PrintScreen = 0x2C;
+    public const int ScrollLock = 0x91;
+    public const int NumLock = 0x90;
+    public const int Apps = 0x5D;         // 菜单键（右 Ctrl 左边那个）
+
     public const int MediaNextTrack = 0xB0;
     public const int MediaPrevTrack = 0xB1;
     public const int MediaStop = 0xB2;
@@ -79,6 +86,7 @@ public static class VK
     public const int NumpadSubtract = 0x6D;
     public const int NumpadDecimal = 0x6E;
     public const int NumpadDivide = 0x6F;
+    public const int NumpadEnter = 0x0D;   // 小键盘回车（与主回车同 VK，键名区分）
 }
 
 /// <summary>
@@ -183,6 +191,13 @@ public static class KeyName
         [VK.NumpadSubtract] = "numSubtract",
         [VK.NumpadDecimal] = "numDecimal",
         [VK.NumpadDivide] = "numDivide",
+
+        // 编辑 / 系统键（108 键键盘）
+        [VK.PrintScreen] = "printScreen",
+        [VK.ScrollLock] = "scrollLock",
+        [VK.Pause] = "pause",
+        [VK.NumLock] = "numLock",
+        [VK.Apps] = "apps",
     };
 
     private static readonly Dictionary<string, int> ToVk =

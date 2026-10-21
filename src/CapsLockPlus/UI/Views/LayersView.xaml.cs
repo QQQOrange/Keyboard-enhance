@@ -62,6 +62,9 @@ public partial class LayersView : UserControl
         if (_host == null) return;
 
         var rows = new List<LayerRow>();
+        // 当前正在编辑的触发键属于哪一层 → 那一层高亮
+        int activeLayerId = _editing?.LayerId ?? 0;
+
         foreach (var layer in _host.Settings.Layers.OrderBy(l => l.Id))
         {
             var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == layer.Id);
@@ -71,13 +74,18 @@ public partial class LayersView : UserControl
                 6 => "6", 7 => "7", 8 => "8", 9 => "9", 10 => "0",
                 _ => "?",
             };
+
+            /* 显示的触发键**来自配置**，不是写死 CapsLock。
+             * 这样"哪个键触发哪一层"一眼可见（正是你反馈的问题）。 */
+            string triggerName = trigger != null ? KeyName.Display(trigger.Key) : null;
             rows.Add(new LayerRow(
                 Id: layer.Id,
                 Badge: badge,
                 Name: layer.Name,
-                Detail: trigger != null
-                    ? $"触发键 {KeyName.Display(trigger.Key)}（长按 {trigger.HoldMs}ms）　·　{layer.Keys.Count} 个绑定"
-                    : $"未被触发键绑定　·　{layer.Keys.Count} 个绑定"));
+                Detail: triggerName != null
+                    ? $"触发键 {triggerName}（长按 {trigger.HoldMs}ms 进层）　·　{layer.Keys.Count} 个绑定"
+                    : $"未分配触发键　·　{layer.Keys.Count} 个绑定",
+                IsActiveLayer: layer.Id == activeLayerId));
         }
         LayerList.ItemsSource = rows;
     }
@@ -129,7 +137,7 @@ public partial class LayersView : UserControl
                 Tag = item.Tag,
             });
         }
-        SelectByTag(TapActionBox, t.TapAction, "toggleCapsLock");
+        SelectByTag(TapActionBox, t.TapAction, "keepKey");
         SelectByTag(DoubleTapBox, string.IsNullOrEmpty(t.DoubleTapAction) ? "none" : t.DoubleTapAction, "none");
 
         _suppress = false;
@@ -319,5 +327,12 @@ public partial class LayersView : UserControl
         _host.SelectKeysLayer(layerId);
     }
 
-    private sealed record LayerRow(int Id, string Badge, string Name, string Detail);
+    private sealed record LayerRow(int Id, string Badge, string Name, string Detail, bool IsActiveLayer)
+    {
+        /// <summary>高亮色的边框（当前正在编辑的触发键所属层）。</summary>
+        public System.Windows.Media.Brush RowBorder => (System.Windows.Media.Brush)
+            System.Windows.Application.Current.FindResource(IsActiveLayer
+                ? "Brush.Accent"
+                : "Brush.Border");
+    }
 }

@@ -466,9 +466,18 @@ public sealed class HotkeyEngine : IDisposable
                 _lastTapTime = DateTime.Now;
                 _hasLastTap = true;
 
-                if (tapAction is "toggleCapsLock" or "" or "doNothing")
+                /* 短按行为的判定。
+                 *
+                 * 新增 "keepKey" = **保留按键原功能**（显式选项）。
+                 * 以前只有 toggleCapsLock / 空 / doNothing 才走补发原键那条路，
+                 * 用户把 F5、问号这类键设成触发键时，短按就不知道该干嘛了
+                 * （默认值还是 toggleCapsLock，跟那些键完全不搭）。
+                 * 现在「触发键与层」页可以直接选"按键原功能"，
+                 * 语义明确：短按 = 当这个键没被改造过一样用。 */
+                if (tapAction is "toggleCapsLock" or "" or "doNothing" or "keepKey")
                 {
-                    // 补发原键：对 CapsLock 就是翻转大写，对别的键就是它的正常功能
+                    /* 补发原键：对 CapsLock 是翻转大写，对 F5 是打开刷新，
+                     * 对问号是正常输入 "?" —— 系统状态是真实产生的。 */
                     int vkToSend = vk;
                     _queue.Post(() => InputSender.Tap(vkToSend));
                 }

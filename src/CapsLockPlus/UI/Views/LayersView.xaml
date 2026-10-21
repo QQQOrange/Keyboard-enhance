@@ -152,7 +152,7 @@
                                     <DataTemplate>
                                         <Border Margin="0,0,0,6" Padding="12,10" CornerRadius="10"
                                                 Background="{DynamicResource Brush.SurfaceAlt}"
-                                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                                BorderBrush="{Binding RowBorder}" BorderThickness="1">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />

@@ -41,6 +41,8 @@ public sealed class ActionCatalog
         // ---------------- 基础 ----------------
         c.Add("doNothing", "基础", "不绑定", "该组合键不执行任何动作", _ => true);
         c.Add("toggleCapsLock", "基础", "切换大小写", "等价于按一下 CapsLock", _ => { HotkeyEngineToggle(); return true; });
+        c.Add("keepKey", "基础", "保留按键原功能",
+            "短按触发键 = 这个键本来的意思。把 F5 设为触发键时，短按就是刷新", _ => true);
         c.Add("esc", "基础", "Esc", "发送 Esc", _ => Send(VK_Esc));
         c.Add("enter", "基础", "回车", "发送回车", _ => Send(VK_Enter));
         c.Add("tab", "基础", "Tab", "发送 Tab", _ => Send(VK_Tab));
