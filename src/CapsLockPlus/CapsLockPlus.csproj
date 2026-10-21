@@ -12,9 +12,9 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>3.0.0</Version>
-    <FileVersion>3.0.0.0</FileVersion>
-    <AssemblyVersion>3.0.0.0</AssemblyVersion>
+    <Version>3.1.0</Version>
+    <FileVersion>3.1.0.0</FileVersion>
+    <AssemblyVersion>3.1.0.0</AssemblyVersion>
     <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
     <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达网页、独立剪贴板、宏与多图层</Description>

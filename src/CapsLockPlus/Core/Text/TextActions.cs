@@ -19,27 +19,33 @@ public static class TextActions
     /// <summary>
     /// 取当前选中的文本；没有选区或取不到时返回空串。
     ///
-    /// **浏览器里选中网页文字也必须能取到** —— 这是最容易翻车的场景。
+    /// **三条通道依次尝试**，因为每条都有各自的失效场景：
     ///
-    /// 三个曾经踩过的坑：
-    ///   1. 先 <c>Clipboard.Clear()</c> 再发 Ctrl+C，中间没有间隔：
-    ///      浏览器还没处理完剪贴板占用，复制请求就被丢弃了。
-    ///   2. 等待时要求"序号变了**且立刻能读到文本**"：
-    ///      浏览器写剪贴板是异步的（序号先变、内容后到），
-    ///      那几毫秒里读不到文本就判成失败。
-    ///   3. Ctrl+Insert 在 Chrome/Edge/Firefox 里**不是复制**。
+    ///   ① **UI Automation**（首选）
+    ///      跨进程 COM 调用，直接问程序"你现在选了什么"。
+    ///      不碰剪贴板、不模拟按键 —— 因此**不受 UIPI 限制**。
+    ///      这是"以管理员身份运行时取词全都不工作"的正解：
+    ///      管理员进程用 SendInput 往普通权限的浏览器发按键，会被系统拦掉。
+    ///      覆盖：Chromium 系浏览器、Electron、Office、现代编辑器。
     ///
-    /// 现在的做法：
-    ///   · **不清空剪贴板**，只靠序号变化判断这次复制有没有发生
-    ///   · 发按键后先等一小段，再开始轮询
-    ///   · 序号变化后再给内容一点落地时间
-    ///   · 先 Ctrl+C（浏览器都认），失败再试 Ctrl+Insert（终端）
+    ///   ② **WM_COPY 窗口消息**
+    ///      同样不走输入队列，UIPI 拦不住。用于 UIA 没实现 TextPattern 的程序。
+    ///
+    ///   ③ **SendInput 模拟 Ctrl+C**
+    ///      老路子，只在同权限（或本程序未提权）时有效。
+    ///      带扫描码、四次分开发（Chromium / Qt 系才认）。
+    ///
+    /// 每次尝试都用剪贴板序号严格确认"真的复制到了"，
+    /// 且结束后恢复用户原有剪贴板。
     /// </summary>
     public static string GetSelectedText(int timeoutMs = DefaultTimeoutMs)
     {
+        // ① UIA：不碰剪贴板，最干净
+        string viaUia = UiaSelectionReader.GetSelectedText();
+        if (!string.IsNullOrWhiteSpace(viaUia)) return viaUia;
+
         lock (ClipGate)
         {
-            // 备份用户剪贴板，结束后恢复
             string old = string.Empty;
             bool hadText = false;
             try
@@ -50,13 +56,15 @@ public static class TextActions
 
             try
             {
-                /* ① Ctrl+C：浏览器、Office、绝大多数编辑器都认。
-                 *    0x43 = 'C' */
-                // 用 CopyChord（带扫描码、分四次发）—— 浏览器才认
-                string text = TryCopyVia(() => InputSender.CopyChord(0x43), timeoutMs);
+                // ② WM_COPY：走窗口消息，绕过输入队列
+                string text = TryCopyVia(() => WindowMessageCopier.PostCopyToFocus(), timeoutMs);
                 if (!string.IsNullOrEmpty(text)) return text;
 
-                // ② Ctrl+Insert：终端、部分老程序只认这个
+                // ③ SendInput：同权限时有效（0x43 = C）
+                text = TryCopyVia(() => InputSender.CopyChord(0x43), timeoutMs);
+                if (!string.IsNullOrEmpty(text)) return text;
+
+                // ④ 再试 Ctrl+Insert（终端、部分老程序只认这个）
                 return TryCopyVia(() => InputSender.CopyChord(VK.Insert), timeoutMs);
             }
             catch (Exception ex)
