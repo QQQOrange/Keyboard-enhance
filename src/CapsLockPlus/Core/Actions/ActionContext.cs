@@ -127,11 +127,27 @@ public sealed class ActionContext
         return text;
     }
 
+    /// <summary>
+    /// 仅供自检：拦截"打开网址"这一步，免得测试真的拉起浏览器。
+    /// 置为 null 时走真实的 Process.Start。
+    /// </summary>
+    public static Action<string>? OpenUrlInterceptForTest { get; set; }
+
     public void OpenUrl(string url)
     {
+        /* 用户可能只填了 "github.com" —— 补成 https://github.com 再开，
+         * 否则 ShellExecute 会当成"找这个文件"而失败。 */
+        string target = UrlUtil.Normalize(url) ?? url;
+
+        if (OpenUrlInterceptForTest != null)
+        {
+            OpenUrlInterceptForTest(target);
+            return;
+        }
+
         try
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
         }
         catch (Exception ex) { Notify("打开网址失败：" + ex.Message); }
     }

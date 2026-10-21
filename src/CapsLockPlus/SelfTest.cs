@@ -123,6 +123,8 @@ public static class SelfTest
         TestKeyboardLayoutGeometry();
         TestArbitraryWindowBinding();
         TestWinBindRestoreLogic();
+        TestWebPageCategory();
+        TestKeycapVisualStates();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2510,6 +2512,138 @@ public static class SelfTest
         // 旧槽位分类已彻底移除
         Check("没有「窗口绑定（旧槽位）」分类",
             cat.Items.All(i => i.Category != "窗口绑定（旧槽位）"));
+    }
+
+    /// <summary>
+    /// 「直达网页」分类：网址 + 备注，备注显示在键帽上。
+    ///
+    /// 验证：
+    ///   1. 动作表里有 webPage 且属于「直达网页」分类；
+    ///   2. 执行时把（规范化后的）网址交给浏览器；
+    ///   3. KeyBinding.Note 能存能读，空值不写进 JSON；
+    ///   4. 网址规范化容忍各种写法（不带协议、带 www、内网 http）；
+    ///   5. 备注优先于域名显示在键帽上。
+    /// </summary>
+    private static void TestWebPageCategory()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+
+        string? opened = null;
+        Core.Actions.ActionContext.OpenUrlInterceptForTest = u => opened = u;
+        try
+        {
+            var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+            // 1. 动作存在且在正确分类
+            var wp = cat.Items.FirstOrDefault(i => i.Id == "webPage");
+            Check("动作表有 webPage", wp != null,
+                string.Join(",", cat.Items.Where(i => i.Category == "直达网页").Select(i => i.Id)));
+            CheckEqual("webPage 在「直达网页」分类", wp?.Category, "直达网页");
+            Check("webPage 需要参数（网址）", wp?.NeedsArg == true);
+
+            // 2. 执行时把规范化后的网址传出去
+            cat.Invoke("webPage", "https://example.com");
+            CheckEqual("执行 webPage 传出网址", opened, "https://example.com/");
+
+            opened = null;
+            cat.Invoke("webPage", "github.com");
+            Check("不带协议的网址被补成 https",
+                opened != null && opened.StartsWith("https://github.com", StringComparison.Ordinal),
+                opened ?? "(null)");
+        }
+        finally
+        {
+            Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
+        }
+
+        // 3. Note 字段能存能读，空值不序列化
+        var b = new KeyBinding
+        {
+            Combo = "caps_w", Action = "webPage",
+            Arg = "https://example.com", Note = "公司后台",
+        };
+        CheckEqual("Note 能存", b.Note, "公司后台");
+
+        var noNote = new KeyBinding { Combo = "caps_e", Action = "webPage", Arg = "https://x.com" };
+        string json = System.Text.Json.JsonSerializer.Serialize(noNote);
+        Check("空备注不出现在 JSON 里", !json.Contains("Note"), json);
+
+        // 中文会被默认转义成 \uXXXX，所以断言"非空"而不是断言字面文本
+        string jsonWith = System.Text.Json.JsonSerializer.Serialize(b);
+        Check("非空备注出现在 JSON 里", jsonWith.Contains("\"Note\""), jsonWith);
+
+        // 4. 网址规范化
+        CheckEqual("裸域名补 https",
+            Core.Actions.UrlUtil.Normalize("github.com"), "https://github.com/");
+        CheckEqual("已带协议不改写",
+            Core.Actions.UrlUtil.Normalize("http://intranet/wiki"), "http://intranet/wiki");
+        CheckEqual("空输入返回 null",
+            Core.Actions.UrlUtil.Normalize("  "), null);
+        CheckEqual("取域名去掉 www",
+            Core.Actions.UrlUtil.HostOf("https://www.baidu.com/s?wd=x"), "baidu.com");
+        CheckEqual("坏输入不抛异常",
+            Core.Actions.UrlUtil.HostOf("!!!not a url!!!"), "网页");
+
+        // 5. 键帽标签：备注优先
+        CheckEqual("有备注用备注",
+            Core.Actions.UrlUtil.LabelOf("公司后台", "https://example.com"), "公司后台");
+        CheckEqual("无备注用域名",
+            Core.Actions.UrlUtil.LabelOf("", "https://x.com/a/b"), "x.com");
+    }
+
+    /// <summary>
+    /// 键帽的颜色区分：已绑定 = 深蓝实心，未绑定 = 浅色。
+    ///
+    /// 这里不测像素，而是验证"决定颜色和文字的那套数据规则"：
+    ///   1. 已绑定的键 IsBound 为 true、未绑定为 false；
+    ///   2. 不同动作类型在键帽上显示的文字各不相同且非空
+    ///      （窗口绑定显示程序名、直达网页显示备注/域名、宏显示宏名）；
+    ///   3. 备注为空时退化到域名，不会显示空串（键帽上没字很难看）。
+    /// </summary>
+    private static void TestKeycapVisualStates()
+    {
+        // 1. IsBound 语义
+        Check("未绑定 doNothing 不算绑定",
+            !new KeyBinding { Action = "doNothing" }.IsBound);
+        Check("空动作不算绑定",
+            !new KeyBinding { Action = "" }.IsBound);
+        Check("有动作算绑定",
+            new KeyBinding { Action = "webPage", Arg = "https://a.com" }.IsBound);
+
+        // 2. 各类型键帽标签
+        CheckEqual("窗口绑定显示程序名",
+            System.IO.Path.GetFileNameWithoutExtension(@"C:\Apps\Photoshop.exe"),
+            "Photoshop");
+
+        CheckEqual("直达网页有备注用备注",
+            Core.Actions.UrlUtil.LabelOf("公司后台", "https://intranet.corp"), "公司后台");
+        CheckEqual("直达网页无备注用域名",
+            Core.Actions.UrlUtil.LabelOf(null, "https://github.com/x"), "github.com");
+        CheckEqual("直达网页无备注无域名有兜底",
+            Core.Actions.UrlUtil.LabelOf(null, ""), "网页");
+
+        // 3. 标签永远非空（键帽渲染依赖这一点）
+        foreach (var (note, url) in new[]
+                 {
+                     ((string?)null, (string?)null),
+                     ("", ""),
+                     ("  ", "   "),
+                     (null, "不是网址"),
+                 })
+        {
+            string label = Core.Actions.UrlUtil.LabelOf(note, url);
+            Check($"标签非空 (note={note ?? "null"}, url={url ?? "null"})",
+                !string.IsNullOrWhiteSpace(label), label);
+        }
     }
 
     private static void TestKeyboardLayoutGeometry()    {

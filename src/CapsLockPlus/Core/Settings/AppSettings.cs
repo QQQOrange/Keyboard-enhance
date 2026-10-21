@@ -9,6 +9,17 @@ public sealed class KeyBinding
     public string Action { get; set; } = "doNothing";
     public string Arg { get; set; } = "";
 
+    /// <summary>
+    /// 备注（可选）。目前用于「直达网页」：给一个网址起个好记的名字，
+    /// 这样键帽上显示的是"公司后台"而不是一长串 URL。
+    ///
+    /// 默认值是 <c>null</c> 而不是 <c>""</c>：配合 WhenWritingNull，
+    /// 没写备注时这个字段根本不出现在设置文件里 —— 配置文件与旧版完全一致。
+    /// 读取时统一用 <c>?.Trim()</c> 处理，不会因为 null 出问题。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Note { get; set; }
+
     [JsonIgnore]
     public bool IsBound => !string.IsNullOrEmpty(Action) && Action != "doNothing";
 }

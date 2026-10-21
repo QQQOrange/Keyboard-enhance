@@ -190,43 +190,48 @@ public partial class KeysView : UserControl
     private void BuildCategoryBox()
     {
         if (_host == null) return;
-        string? keep = (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        string? keep = SelectedCategory;
         string? keepWin = (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string;
+        string? keepWeb = (CategoryBoxWeb.SelectedItem as ComboBoxItem)?.Tag as string;
 
         var cats = _host.Actions.Items.Select(i => i.Category).Distinct().ToList();
 
-        /* 两个分类下拉填同样的内容：
+        /* 三个分类下拉填同样的内容：
          *   · CategoryBox        —— 普通模式（分类 + 功能两级）
          *   · CategoryBoxWinBind —— 窗口绑定模式（分类 + 两个按钮）
-         * 两者必须同步，否则用户在哪个里面选都看不到另一个。 */
+         *   · CategoryBoxWeb     —— 直达网页模式（分类 + 网址 + 备注）
+         * 三者必须同步，否则用户在哪个里面选都看不到另一个。 */
         CategoryBox.Items.Clear();
         CategoryBoxWinBind.Items.Clear();
+        CategoryBoxWeb.Items.Clear();
         foreach (var cat in cats)
         {
             CategoryBox.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
             CategoryBoxWinBind.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
+            CategoryBoxWeb.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
         }
 
-        // 尽量保留用户原来选的分类
-        foreach (ComboBoxItem it in CategoryBox.Items)
-        {
-            if (it.Tag as string == keep) { CategoryBox.SelectedItem = it; break; }
-        }
-        foreach (ComboBoxItem it in CategoryBoxWinBind.Items)
-        {
-            if (it.Tag as string == keepWin) { CategoryBoxWinBind.SelectedItem = it; break; }
-        }
+        Restore(CategoryBox, keep);
+        Restore(CategoryBoxWinBind, keepWin);
+        Restore(CategoryBoxWeb, keepWeb);
 
-        if (CategoryBox.SelectedIndex < 0 && CategoryBox.Items.Count > 0)
-            CategoryBox.SelectedIndex = 0;
-        if (CategoryBoxWinBind.SelectedIndex < 0 && CategoryBoxWinBind.Items.Count > 0)
-            CategoryBoxWinBind.SelectedIndex = 0;
+        static void Restore(ComboBox box, string? tag)
+        {
+            foreach (ComboBoxItem it in box.Items)
+            {
+                if (it.Tag as string == tag) { box.SelectedItem = it; return; }
+            }
+            if (box.Items.Count > 0) box.SelectedIndex = 0;
+        }
 
         BuildActionBox();
     }
 
     /// <summary>「窗口绑定」分类的名字（这个分类不走功能下拉）。</summary>
     private const string WinBindCategory = "窗口绑定";
+
+    /// <summary>「直达网页」分类的名字（同样不走功能下拉，只要网址 + 备注）。</summary>
+    private const string WebPageCategory = "直达网页";
 
     /// <summary>当前分类是不是「窗口绑定」。</summary>
     private bool IsWinBindCategory =>
@@ -245,12 +250,63 @@ public partial class KeysView : UserControl
         if (ActionBox.Items.Count > 0) ActionBox.SelectedIndex = 0;
     }
 
+    /// <summary>界面当前处于哪种编辑模式。</summary>
+    private enum EditorMode
+    {
+        /// <summary>普通：分类 + 功能两级下拉 + 参数框。</summary>
+        Normal,
+        /// <summary>窗口绑定：分类 + 两个按钮（点选窗口 / 选程序文件）。</summary>
+        WinBind,
+        /// <summary>直达网页：分类 + 网址 + 备注。</summary>
+        WebPage,
+    }
+
+    /// <summary>根据分类名判断该用哪种模式。</summary>
+    private static EditorMode ModeOf(string? category) => category switch
+    {
+        WinBindCategory => EditorMode.WinBind,
+        WebPageCategory => EditorMode.WebPage,
+        _ => EditorMode.Normal,
+    };
+
+    /// <summary>当前选中的分类（普通模式那个下拉）。</summary>
+    private string? SelectedCategory =>
+        (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+
+    /// <summary>
+    /// 切换编辑模式：三个面板互斥显示。
+    ///
+    /// 这就是"选了分类，下面就换成对应的东西"的实现 ——
+    ///   · 窗口绑定 → 两个按钮
+    ///   · 直达网页 → 网址 + 备注
+    ///   · 其它     → 功能下拉 + 参数框
+    /// </summary>
+    private void ApplyEditorMode(EditorMode mode)
+    {
+        NormalActionPicker.Visibility = mode == EditorMode.Normal ? Visibility.Visible : Visibility.Collapsed;
+        WinBindPicker.Visibility = mode == EditorMode.WinBind ? Visibility.Visible : Visibility.Collapsed;
+        WebPagePicker.Visibility = mode == EditorMode.WebPage ? Visibility.Visible : Visibility.Collapsed;
+
+        WinBindPanel.Visibility = mode == EditorMode.WinBind ? Visibility.Visible : Visibility.Collapsed;
+
+        // 非普通模式不显示参数框（普通模式的显隐由 ShowArgPanelFor 决定）
+        if (mode != EditorMode.Normal) ArgPanel.Visibility = Visibility.Collapsed;
+
+        switch (mode)
+        {
+            case EditorMode.WinBind:
+                ActionDesc.Text = "选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。";
+                RefreshWinBindPanel();
+                break;
+            case EditorMode.WebPage:
+                ActionDesc.Text = "填一个网址：按这个键就用默认浏览器打开它。备注会显示在键帽上。";
+                RefreshWebPageFields();
+                break;
+        }
+    }
+
     /// <summary>
     /// 分类切换。
-    ///
-    /// 「窗口绑定」是特例：它不显示"功能"下拉，而是直接给两个按钮
-    /// （点选窗口 / 选择程序文件）—— 因为绑哪个窗口是**抓来的**，
-    /// 不是从列表里选出来的。
     /// </summary>
     private void OnCategoryChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -259,24 +315,25 @@ public partial class KeysView : UserControl
         _suppressEvents = true;
         try
         {
-            if (IsWinBindCategory)
+            SyncCategoryBoxes(sender);
+
+            var mode = ModeOf(SelectedCategory);
+            ApplyEditorMode(mode);
+
+            if (mode == EditorMode.Normal)
             {
-                // 切成"按钮模式"
-                NormalActionPicker.Visibility = Visibility.Collapsed;
-                WinBindPicker.Visibility = Visibility.Visible;
-                SyncWinBindCategoryBoxes(sender);
-                ActionDesc.Text = "选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。";
-                ShowWinBindArea(true);
-            }
-            else
-            {
-                // 切成"下拉模式"
-                NormalActionPicker.Visibility = Visibility.Visible;
-                WinBindPicker.Visibility = Visibility.Collapsed;
-                SyncWinBindCategoryBoxes(sender);
-                ShowWinBindArea(false);
                 BuildActionBox();
                 ApplySelectedAction();       // 让下方参数面板跟着刷新
+            }
+            else if (mode == EditorMode.WinBind)
+            {
+                // 选了窗口绑定分类：若当前键还没绑窗口，先把动作切成 winBind，
+                // 这样用户接下来点"选择程序"就能直接落盘。
+                EnsureActionForCategory("winBind");
+            }
+            else if (mode == EditorMode.WebPage)
+            {
+                EnsureActionForCategory("webPage");
             }
         }
         finally
@@ -286,19 +343,48 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
-    /// 两个分类下拉（普通模式 / 窗口绑定模式）互相同步 ——
-    /// 用户从哪个里面选了「窗口绑定」，另一个也跟着切过去。
+    /// 把当前按键的动作设成指定 ID（若还没设过）。
+    /// 用于窗口绑定 / 直达网页这类"选了分类就等于选了唯一动作"的场景。
     /// </summary>
-    private void SyncWinBindCategoryBoxes(object? source)
+    private void EnsureActionForCategory(string actionId)
     {
-        string? tag = source == CategoryBoxWinBind
-            ? (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string
-            : (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
-
-        var target = source == CategoryBoxWinBind ? CategoryBox : CategoryBoxWinBind;
-        foreach (ComboBoxItem it in target.Items)
+        if (_host == null) return;
+        string combo = CurrentCombo();
+        var binding = FindInCurrentLayer(combo);
+        if (binding == null)
         {
-            if (it.Tag as string == tag) { target.SelectedItem = it; break; }
+            binding = new KeyBinding { Combo = combo };
+            CurrentLayerKeys.Add(binding);
+        }
+        if (binding.Action == actionId) return;      // 已经是了，别覆盖 Arg
+
+        binding.Action = actionId;
+        _host.SaveSettings();
+        BuildKeyboard();
+    }
+
+    /// <summary>
+    /// 三个分类下拉（普通 / 窗口绑定 / 直达网页）互相同步 ——
+    /// 用户从哪个里面选了分类，另外两个也跟着切过去。
+    /// </summary>
+    private void SyncCategoryBoxes(object? source)
+    {
+        string? tag = source switch
+        {
+            var s when ReferenceEquals(s, CategoryBox) => (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string,
+            var s when ReferenceEquals(s, CategoryBoxWinBind) => (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string,
+            var s when ReferenceEquals(s, CategoryBoxWeb) => (CategoryBoxWeb.SelectedItem as ComboBoxItem)?.Tag as string,
+            _ => SelectedCategory,
+        };
+        if (tag == null) return;
+
+        foreach (var box in new[] { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb })
+        {
+            if (ReferenceEquals(box, source)) continue;
+            foreach (ComboBoxItem it in box.Items)
+            {
+                if (it.Tag as string == tag) { box.SelectedItem = it; break; }
+            }
         }
     }
 
@@ -448,17 +534,8 @@ public partial class KeysView : UserControl
         string actionTitle = "";
         if (isBound && binding != null)
         {
-            actionTitle = _host?.Actions.Get(binding.Action)?.Title ?? binding.Action;
-            if (actionTitle.StartsWith("播放宏：", StringComparison.OrdinalIgnoreCase))
-                actionTitle = "▶ " + actionTitle["播放宏：".Length..];
-
-            /* 窗口绑定：键帽上显示**程序名**而不是"切换窗口"。
-             * 用户要的是"一眼看到这个键对应哪个软件"。 */
-            if (binding.Action == "winBind" && !string.IsNullOrWhiteSpace(binding.Arg))
-            {
-                try { actionTitle = Path.GetFileNameWithoutExtension(binding.Arg); }
-                catch { actionTitle = "切换窗口"; }
-            }
+            // 统一走 DescribeActionOf，键帽与"本层已绑定"列表的文字保证一致
+            actionTitle = DescribeActionOf(binding);
         }
 
         bool match = filter.Length == 0 ||
@@ -512,63 +589,134 @@ public partial class KeysView : UserControl
         // 触发键在键盘**真实位置**高亮（不再写死在左上角）
         bool isTrigger = triggerKey != null
                          && string.Equals(triggerKey, keyId, StringComparison.OrdinalIgnoreCase);
+        bool isSelected = string.Equals(keyId, _selectedKey, StringComparison.OrdinalIgnoreCase);
+
+        /* 三种视觉状态，一眼可分：
+         *
+         *   触发键（本层）  → 深蓝实心 + 白字 + ★     （它是"入口"，最该显眼）
+         *   已绑定功能      → 深蓝实心 + 白字          （用户要的：深蓝色一眼看出有东西）
+         *   未绑定          → 浅色键帽 + 次要色文字    （安静，不抢注意力）
+         *
+         * 之前"已绑定"只是浅蓝底 + 蓝字，对比度低，扫一眼看不出哪些键有功能。
+         */
+        Brush background, borderBrush, textBrush, subTextBrush;
+        if (isTrigger || isBound)
+        {
+            background = (Brush)FindResource("Brush.Accent");
+            borderBrush = (Brush)FindResource("Brush.AccentHover");
+            textBrush = (Brush)FindResource("Brush.Surface");         // 白字
+            subTextBrush = (Brush)FindResource("Brush.Surface");
+        }
+        else
+        {
+            background = (Brush)FindResource("Brush.Keycap");
+            borderBrush = (Brush)FindResource("Brush.KeycapBorder");
+            textBrush = (Brush)FindResource("Brush.TextSecondary");
+            subTextBrush = (Brush)FindResource("Brush.TextTertiary");
+        }
 
         var border = new Border
         {
-            // 92 列坐标系下一个单位键只有 4 列，键帽要相应缩小才排得下
-            Height = 44,
+            // 92 列坐标系下一个单位键只有 4 列；高度要放下"键名 + 功能名"两行
+            Height = isBound ? 46 : 44,
             Margin = new Thickness(1, 1, 1, 1),
             CornerRadius = new CornerRadius(7),
-            BorderThickness = new Thickness(isTrigger ? 2 : 1),
+            BorderThickness = new Thickness(1),
             Cursor = Cursors.Hand,
+            Background = background,
+            BorderBrush = borderBrush,
             ToolTip = isTrigger
                 ? $"★ {label} = 本层触发键\n长按它进入这一层；短按执行短按动作"
                 : isBound ? $"{label} → {actionTitle}" : $"{label}（未绑定）",
-            Background = (Brush)FindResource(isTrigger ? "Brush.Accent"
-                : isBound ? "Brush.AccentSoft" : "Brush.Keycap"),
-            BorderBrush = (Brush)FindResource(isTrigger ? "Brush.AccentHover"
-                : isBound ? "Brush.AccentSoftBorder" : "Brush.KeycapBorder"),
         };
-        if (keyId == _selectedKey && !isTrigger)
+
+        /* 当前选中的键用更粗的描边圈出来。
+         * 已绑定的键本身就是深蓝底，再用蓝描边会看不见 ——
+         * 所以选中态改用白色描边（在深蓝底上对比明显）。 */
+        if (isSelected)
         {
             border.BorderThickness = new Thickness(2);
-            border.BorderBrush = (Brush)FindResource("Brush.Accent");
+            border.BorderBrush = isBound || isTrigger
+                ? (Brush)FindResource("Brush.Surface")
+                : (Brush)FindResource("Brush.Accent");
         }
 
-        var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var stack = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(1, 0, 1, 0),
+        };
+
+        /* 第一行永远是**按键名**（F5 / Q / Space…）。
+         *
+         * 这一行不能省：深蓝底色只说明"有绑定"，但用户还得知道
+         * "这是哪个键"，否则一眼扫过去全是功能名，容易搞混。 */
         stack.Children.Add(new TextBlock
         {
             Text = isTrigger ? "★" + label : label,
-            FontSize = label.Length > 4 ? 8.5 : label.Length > 2 ? 10 : 11.5,
+            FontSize = label.Length switch
+            {
+                <= 1 => 12,
+                2 => 10.5,
+                3 => 9,
+                _ => 8,
+            },
             FontWeight = FontWeights.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.NoWrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = (Brush)FindResource(isTrigger ? "Brush.Surface"
-                : isBound ? "Brush.Accent" : "Brush.TextSecondary"),
+            Foreground = textBrush,
         });
-        // 已绑定时把功能名缩略显示在键帽下方（键帽只有 44px 高，字体要小）
-        if (isBound && !string.IsNullOrEmpty(actionTitle) && !isTrigger)
+
+        /* 第二行是**功能名**（已绑定时才显示）。
+         *
+         * 键帽实际可用宽度很窄：92 列铺满这张卡片，单位键只有约 26px。
+         * 7px 字号下中文一个字约 7px，所以窄键只能放 3 个字
+         * （"下一行""粘贴""github" 这样），宽键放到 8 个。
+         *
+         * 完整名字在悬停 tooltip 和右侧「本层已绑定」列表里都有，
+         * 键帽上只需要"认得出是哪个功能"就够了。 */
+        if (isBound && !string.IsNullOrWhiteSpace(actionTitle))
         {
+            bool wide = IsWideKey(keyId);
             stack.Children.Add(new TextBlock
             {
-                Text = Shorten(actionTitle),
-                FontSize = 7.5,
+                Text = Shorten(actionTitle, wide ? 8 : 3),
+                FontSize = wide ? 8 : 6.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 1, 0, 0),
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Foreground = (Brush)FindResource("Brush.TextTertiary"),
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.NoWrap,
+                Margin = new Thickness(0, 0, 0, 0),
+                Foreground = subTextBrush,
+                Opacity = 0.85,
             });
         }
         border.Child = stack;
 
         string captured = keyId;
         border.MouseLeftButtonUp += (_, _) => SelectKey(captured);
-        border.MouseEnter += (_, _) => border.Opacity = 0.8;
+        border.MouseEnter += (_, _) => border.Opacity = 0.82;
         border.MouseLeave += (_, _) => border.Opacity = 1.0;
         return border;
     }
 
-    private static string Shorten(string text) => text.Length <= 6 ? text : text[..6];
+    /// <summary>
+    /// 宽度足够放下第二行文字的键（≥ 6 列）。
+    /// 这些键上多显示一个功能名不会显得挤。
+    /// </summary>
+    private static bool IsWideKey(string keyId) => keyId is
+        "space" or "enter" or "backspace" or "tab"
+        or "lshift" or "rshift" or "lctrl" or "rctrl"
+        or "capslock";
+
+    /// <summary>截断到指定字数（超长部分直接省掉，键帽上放不下省略号）。</summary>
+    private static string Shorten(string text, int max)
+    {
+        if (string.IsNullOrEmpty(text) || max <= 0) return "";
+        text = text.Trim();
+        return text.Length <= max ? text : text[..max];
+    }
 
     private void UpdateLayerButtons()
     {
@@ -601,8 +749,12 @@ public partial class KeysView : UserControl
             string label = mods == KeyModifiers.None
                 ? KeyName.Display(key)
                 : $"{ModifierText(mods)} {KeyName.Display(key)}";
-            items.Add(new BoundVm(mods, key, label,
-                _host.Actions.Get(binding.Action)?.Title ?? binding.Action));
+
+            /* 列表里的"功能"列要和键帽一致：
+             * 窗口绑定显示程序名，直达网页显示备注/域名 ——
+             * 否则用户看到的是"覆盖""打开网页"，对不上自己绑的东西。 */
+            string action = DescribeActionOf(binding);
+            items.Add(new BoundVm(mods, key, label, action));
         }
         BoundList.ItemsSource = items
             .OrderBy(i => KeyOrder(i.Key))
@@ -672,29 +824,35 @@ public partial class KeysView : UserControl
 
         // 同步"窗口绑定模式"的分类下拉
         foreach (ComboBoxItem it in CategoryBoxWinBind.Items)
+        // 同步另外两个"专用模式"的分类下拉
+        foreach (ComboBoxItem wi in CategoryBoxWinBind.Items)
         {
-            if (it.Tag as string == info?.Category) { CategoryBoxWinBind.SelectedItem = it; break; }
+            if (wi.Tag as string == info?.Category) { CategoryBoxWinBind.SelectedItem = wi; break; }
         }
-
-        bool isWinBind = actionId == "winBind" || info?.Category == WinBindCategory;
-
-        /* 模式切换：
-         *   · 窗口绑定 → 隐藏"功能"下拉，露出两个按钮 + 当前绑定卡片
-         *   · 其它     → 恢复两级下拉，隐藏窗口绑定卡片
-         */
-        NormalActionPicker.Visibility = isWinBind ? Visibility.Collapsed : Visibility.Visible;
-        WinBindPicker.Visibility = isWinBind ? Visibility.Visible : Visibility.Collapsed;
-        WinBindPanel.Visibility = isWinBind ? Visibility.Visible : Visibility.Collapsed;
+        foreach (ComboBoxItem wb2 in CategoryBoxWeb.Items)
+        {
+            if (wb2.Tag as string == info?.Category) { CategoryBoxWeb.SelectedItem = wb2; break; }
+        }
 
         _suppressEvents = false;
 
-        ActionDesc.Text = isWinBind
-            ? "选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。"
-            : (info?.Description ?? "");
+        /* 按动作所属分类决定用哪个模式 ——
+         *   winBind   → 两个按钮 + 当前绑定卡片
+         *   webPage   → 网址 + 备注
+         *   其它      → 功能下拉 + 参数框 */
+        var mode = actionId switch
+        {
+            "winBind" => EditorMode.WinBind,
+            "webPage" => EditorMode.WebPage,
+            _ => EditorMode.Normal,
+        };
+        ApplyEditorMode(mode);
 
-        if (isWinBind) RefreshWinBindPanel();
-
-        ShowArgPanelFor(actionId, info?.NeedsArg == true || IsCountArgAction(actionId), isWinBind);
+        if (mode == EditorMode.Normal)
+        {
+            ActionDesc.Text = info?.Description ?? "";
+            ShowArgPanelFor(actionId, info?.NeedsArg == true || IsCountArgAction(actionId));
+        }
 
         BuildKeyboard();
     }
@@ -731,7 +889,25 @@ public partial class KeysView : UserControl
     // ---------------- 窗口绑定面板 ----------------
 
     /// <summary>
-    /// 仅供渲染：切到「窗口绑定」模式，好截一张图确认按钮和卡片都画出来了。
+    /// 仅供渲染：切到「直达网页」模式，好截一张图确认网址/备注框都画出来了。
+    /// </summary>
+    public bool ShowWebPagePanelForRender()
+    {
+        if (_host == null) return false;
+
+        foreach (ComboBoxItem it in CategoryBox.Items)
+        {
+            if (it.Tag as string == WebPageCategory)
+            {
+                CategoryBox.SelectedItem = it;
+                return WebPagePicker.Visibility == Visibility.Visible;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 仅供渲染：把界面切到「窗口绑定」模式，好截一张图确认按钮和卡片都画出来了。
     /// </summary>
     public bool ShowWinBindPanelForRender()
     {
@@ -750,6 +926,76 @@ public partial class KeysView : UserControl
 
     /// <summary>仅供渲染：截图后把界面恢复到"当前按键真实状态"。</summary>
     public void ResetRenderState() => SelectKey(_selectedKey);
+
+    /// <summary>
+    /// 一个绑定在界面上该显示成什么。
+    ///
+    /// 键帽和"本层已绑定"列表都用它，保证两处文字一致 ——
+    /// 早先键帽显示程序名、列表显示"覆盖"，用户对不上号。
+    /// </summary>
+    private string DescribeActionOf(KeyBinding binding)
+    {
+        string id = binding.Action ?? "";
+
+        if (id == "winBind")
+        {
+            if (string.IsNullOrWhiteSpace(binding.Arg)) return "切换窗口（未选程序）";
+            try { return Path.GetFileNameWithoutExtension(binding.Arg); }
+            catch { return "切换窗口"; }
+        }
+
+        if (id == "webPage")
+            return Core.Actions.UrlUtil.LabelOf(binding.Note, binding.Arg);
+
+        if (id.StartsWith("macro:", StringComparison.OrdinalIgnoreCase))
+        {
+            string t = _host?.Actions.Get(id)?.Title ?? id;
+            return t.StartsWith("播放宏：", StringComparison.OrdinalIgnoreCase)
+                ? "▶ " + t["播放宏：".Length..]
+                : t;
+        }
+
+        return _host?.Actions.Get(id)?.Title ?? id;
+    }
+
+    /// <summary>
+    /// 从网址里取出域名做键帽标签（写不出备注时的退化显示）。
+    /// 解析失败就原样返回，绝不抛异常 —— 键帽渲染不能因为一个坏网址崩掉。
+    /// </summary>
+    private static string WebHostOf(string? url) => Core.Actions.UrlUtil.HostOf(url);
+
+    // ---------------- 直达网页面板 ----------------
+
+    /// <summary>把"网址 / 备注"两个输入框刷成当前绑定的内容。</summary>
+    private void RefreshWebPageFields()
+    {
+        var b = FindInCurrentLayer(CurrentCombo());
+        bool isWeb = b?.Action == "webPage";
+        WebUrlBox.Text = isWeb ? (b!.Arg ?? "") : "";
+        WebNoteBox.Text = isWeb ? (b.Note ?? "") : "";
+    }
+
+    private void OnWebUrlChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "webPage") return;
+
+        b.Arg = WebUrlBox.Text.Trim();
+        _host.SaveSettings();
+        BuildKeyboard();          // 键帽上要跟着变
+    }
+
+    private void OnWebNoteChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "webPage") return;
+
+        b.Note = WebNoteBox.Text.Trim();
+        _host.SaveSettings();
+        BuildKeyboard();
+    }
 
     /// <summary>当前按键已绑定的程序路径（取自绑定的 Arg）。</summary>
     private string CurrentWinBindExe()

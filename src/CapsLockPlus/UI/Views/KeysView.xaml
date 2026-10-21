@@ -106,6 +106,22 @@
                         </StackPanel>
                         <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}"
                                    Margin="0,10,0,0" TextWrapping="Wrap" />
+
+                        <!-- 颜色图例：不看文字也知道深蓝=已绑定 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                            <Border Width="13" Height="13" CornerRadius="3"
+                                    Background="{DynamicResource Brush.Accent}"
+                                    BorderBrush="{DynamicResource Brush.AccentHover}" BorderThickness="1"
+                                    VerticalAlignment="Center" />
+                            <TextBlock Text="已绑定功能" Style="{StaticResource Text.Tertiary}"
+                                       Margin="6,0,16,0" VerticalAlignment="Center" />
+                            <Border Width="13" Height="13" CornerRadius="3"
+                                    Background="{DynamicResource Brush.Keycap}"
+                                    BorderBrush="{DynamicResource Brush.KeycapBorder}" BorderThickness="1"
+                                    VerticalAlignment="Center" />
+                            <TextBlock Text="未绑定" Style="{StaticResource Text.Tertiary}"
+                                       Margin="6,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -201,6 +217,30 @@
                             </StackPanel>
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,8,0,0"
                                        Text="点选窗口：鼠标变成准星，点哪个窗口就绑哪个程序。&#x0a;选择程序文件：从资源管理器挑一个 exe（程序没在运行也能绑）。" />
+                        </StackPanel>
+
+                        <!-- ================= 直达网页：网址 + 备注 =================
+                             同样不显示"功能"下拉 —— 选了「直达网页」分类后，
+                             要填的就是这两样东西。
+                        -->
+                        <StackPanel x:Name="WebPagePicker" Visibility="Collapsed">
+                            <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                            <ComboBox x:Name="CategoryBoxWeb" Style="{StaticResource ComboBox.Base}"
+                                      Width="150" HorizontalAlignment="Left"
+                                      SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
+
+                            <TextBlock Text="网址" Style="{StaticResource Text.Secondary}" Margin="0,14,0,7" />
+                            <TextBox x:Name="WebUrlBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                                     VerticalContentAlignment="Center" TextChanged="OnWebUrlChanged"
+                                     ToolTip="例如 https://github.com；不带 http 也会自动补全" />
+
+                            <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,12,0,7" />
+                            <TextBox x:Name="WebNoteBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                                     VerticalContentAlignment="Center" TextChanged="OnWebNoteChanged"
+                                     ToolTip="给这个网址起个好记的名字，会显示在键帽上" />
+                            <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="备注会显示在键盘上对应的按键里，切到这一层就能看到。留空则显示网址本身。" />
                         </StackPanel>
 
                         <TextBlock x:Name="ActionDesc" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"

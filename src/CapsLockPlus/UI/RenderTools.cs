@@ -68,6 +68,22 @@ public static class RenderTools
                 }
                 kv.ResetRenderState();
                 Pump(120);
+
+                // 同理：直达网页面板（网址 + 备注）也只有选那个分类才出现
+                try
+                {
+                    if (kv.ShowWebPagePanelForRender())
+                    {
+                        Pump(200);
+                        Save(main, Path.Combine(outDir, "keys-webpage.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染直达网页面板失败：" + ex.Message);
+                }
+                kv.ResetRenderState();
+                Pump(120);
             }
 
             // 诊断文件只在显式要求时输出（--render-diag <目录>），
