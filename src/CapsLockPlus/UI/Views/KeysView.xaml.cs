@@ -1,4 +1,6 @@
 using System.IO;
+using System.Threading.Tasks;
+using System.Windows.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -59,10 +61,14 @@ public partial class KeysView : UserControl
     ///   * 所有行共用同一套 ColumnDefinition，按键绝对落位。
     ///
     /// 92 列 = 主键区 15 单位(60 列) + 间距 1 列 + 编辑簇 3 单位(12 列)
-    ///        + 间距 1 列 + 小键盘 4 单位(16 列) + 右侧留白 2 列。
+    ///        + 间距 1 列 + 小键盘 4 单位(16 列)。
     ///
     /// 布局（列号）：
     ///   主键区  0..59    编辑簇 61..72    小键盘 74..89
+    ///
+    /// ⚠ 小键盘的 **+** 与 **回车** 是跨行的，只在 <see cref="RowMerges"/>
+    /// 里声明一次，**不要**在下面的 Layout 里重复写 —— 上一版两处都写了，
+    /// 结果键盘上出现了两个加号。
     /// </summary>
     private static readonly (string Label, string? KeyId, int Col, int Span)[][] Layout =
     {
@@ -84,7 +90,7 @@ public partial class KeysView : UserControl
             ("9","9",36,4),("0","0",40,4),("-","minus",44,4),("=","equal",48,4),
             ("⌫","backspace",52,8),
             ("Ins","insert",61,4),("Home","home",65,4),("PgUp","pageUp",69,4),
-            ("Num","numLock",74,4),("/","numDivide",78,4),("*","numMultiply",82,4),("-","numSubtract",86,4),
+            ("Num","numLock",74,4),("/","numDivide",78,4),("*","numMultiply",82,4),("−","numSubtract",86,4),
         },
         // ③ Tab 行 y=2
         new[]
@@ -96,7 +102,7 @@ public partial class KeysView : UserControl
             ("\\","backslash",54,6),
             ("Del","delete",61,4),("End","end",65,4),("PgDn","pageDown",69,4),
             ("7","num7",74,4),("8","num8",78,4),("9","num9",82,4),
-            ("+","numAdd",86,4),
+            // 第 4 列是小键盘 +，跨 y=2..3 两行 → 在 RowMerges 里声明
         },
         // ④ Caps 行 y=3
         new[]
@@ -107,7 +113,7 @@ public partial class KeysView : UserControl
             (";","semicolon",43,4),("'","quote",47,4),
             ("Enter","enter",51,9),
             ("4","num4",74,4),("5","num5",78,4),("6","num6",82,4),
-            ("+","numAdd",86,4),           // 与上一行的 + 合并成跨两行：见下方 MergeRows
+            // 第 4 列仍是被 + 占据（跨行），这里不写
         },
         // ⑤ Shift 行 y=4
         new[]
@@ -118,16 +124,18 @@ public partial class KeysView : UserControl
             ("RShift","rshift",49,11),
             ("↑","up",65,4),
             ("1","num1",74,4),("2","num2",78,4),("3","num3",82,4),
-            ("⏎","enter",86,4),            // 小键盘回车（跨两行：见下方 MergeRows）
+            // 第 4 列是小键盘回车，跨 y=4..5 两行 → 在 RowMerges 里声明
         },
         // ⑥ 底行 y=5
         new[]
         {
-            ("LCtrl","lctrl",0,5),("LWin","lwin",5,4),("LAlt","lalt",9,4),
+            // 修饰键标签故意用 2~3 个字符：4 列宽（约 26px）放不下 "LCtrl"
+            ("Ctrl","lctrl",0,5),("Win","lwin",5,4),("Alt","lalt",9,4),
             ("Space","space",13,26),
-            ("RAlt","ralt",39,4),("RWin","rwin",43,4),("☰","apps",47,4),("RCtrl","rctrl",51,9),
+            ("Alt","ralt",39,4),("Win","rwin",43,4),("☰","apps",47,4),("Ctrl","rctrl",51,9),
             ("←","left",61,4),("↓","down",65,4),("→","right",69,4),
-            ("0","num0",74,8),(".","numDecimal",82,4),("⏎","enter",86,4),
+            ("0","num0",74,8),(".","numDecimal",82,4),
+            // 第 4 列仍是被回车占据（跨行）
         },
     };
 
@@ -136,12 +144,16 @@ public partial class KeysView : UserControl
 
     /// <summary>
     /// 需要**纵向合并**的键：小键盘的 + 与回车各跨两行。
-    /// (行号, 键名, 跨行数)
+    ///
+    /// ⚠ 这些键**不能**同时出现在 <see cref="Layout"/> 里 ——
+    /// 那样会被画两次（上一版小键盘就出现了两个加号）。
+    /// (行号, 键名, 跨行数, 起始列, 跨列数)
     /// </summary>
-    private static readonly (int Row, string KeyId, int Span)[] RowMerges =
+    private static readonly (int Row, string KeyId, int RowSpan, int Col, int ColSpan, string Label)[] RowMerges =
     {
-        (3, "numAdd", 2),
-        (4, "enter", 2),
+        (2, "numAdd", 2, 86, 4, "+"),
+        (4, "enter", 2, 86, 4, "⏎"),
+
     };
 
 
@@ -456,16 +468,15 @@ public partial class KeysView : UserControl
         for (int r = 0; r < Layout.Length; r++)
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // 找出需要纵向合并的键：这些键从 Layout 里剔除，单独按 RowSpan 摆放
-        var mergeLookup = RowMerges.ToDictionary(m => (m.Row, m.KeyId), m => m.Span);
-
+        /* 画普通键（单行）。
+         *
+         * 跨行键（小键盘 + 与回车）**不在 Layout 里出现**，只由 RowMerges 声明，
+         * 所以这里不需要"跳过"逻辑 —— 上一版两处都写了，导致 + 被画两次。 */
         for (int r = 0; r < Layout.Length; r++)
         {
             foreach (var (label, keyId, col, span) in Layout[r])
             {
                 if (keyId == null) continue;
-                // 跨行键只在它起始行放一次
-                if (mergeLookup.ContainsKey((r, keyId))) continue;
 
                 var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
                 if (cap == null) continue;
@@ -476,18 +487,15 @@ public partial class KeysView : UserControl
             }
         }
 
-        // 跨行大键（小键盘 + 与回车）
-        foreach (var (row, keyId, rowSpan) in RowMerges)
+        // 跨行大键（小键盘 + 与回车）：位置与标签都在 RowMerges 里
+        foreach (var (row, keyId, rowSpan, col, colSpan, label) in RowMerges)
         {
-            var def = Layout[row].FirstOrDefault(k => k.KeyId == keyId);
-            if (def.KeyId == null) continue;      // 元组默认值的 KeyId 是 null
-
-            var cap = BuildKeycapEntry(def.Label, keyId, filter, ref bound, triggerKey);
+            var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
             if (cap == null) continue;
             Grid.SetRow(cap, row);
             Grid.SetRowSpan(cap, rowSpan);
-            Grid.SetColumn(cap, def.Col);
-            Grid.SetColumnSpan(cap, def.Span);
+            Grid.SetColumn(cap, col);
+            Grid.SetColumnSpan(cap, colSpan);
             grid.Children.Add(cap);
         }
 
@@ -964,6 +972,43 @@ public partial class KeysView : UserControl
     /// </summary>
     private static string WebHostOf(string? url) => Core.Actions.UrlUtil.HostOf(url);
 
+    // ---------------- 就地状态提示 ----------------
+
+    /// <summary>
+    /// 在编辑面板里显示一行结果（绿色=成功，红色=失败）。
+    ///
+    /// 为什么不只用 <see cref="AppHost.Notify"/>：那是屏幕右下角的 toast，
+    /// 用户正在主窗口里点按钮，视线根本不在那儿 —— 会以为"没反应"。
+    /// </summary>
+    private void ShowBindStatus(string message, bool ok = true)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            BindStatusBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        BindStatusText.Text = message;
+        BindStatusBar.Background = (Brush)FindResource(ok ? "Brush.AccentSoft" : "Brush.SurfaceAlt");
+        BindStatusText.Foreground = (Brush)FindResource(ok ? "Brush.Accent" : "Brush.TextSecondary");
+        BindStatusBar.BorderBrush = (Brush)FindResource(ok ? "Brush.AccentSoftBorder" : "Brush.Border");
+        BindStatusBar.BorderThickness = new Thickness(1);
+        BindStatusBar.Visibility = Visibility.Visible;
+
+        // 3 秒后自动淡出，避免一直占着版面
+        _statusTimer?.Stop();
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3.5) };
+        _statusTimer.Tick += (_, _) =>
+        {
+            _statusTimer?.Stop();
+            _statusTimer = null;
+            BindStatusBar.Visibility = Visibility.Collapsed;
+        };
+        _statusTimer.Start();
+    }
+
+    private DispatcherTimer? _statusTimer;
+
     // ---------------- 直达网页面板 ----------------
 
     /// <summary>把"网址 / 备注"两个输入框刷成当前绑定的内容。</summary>
@@ -984,6 +1029,97 @@ public partial class KeysView : UserControl
         b.Arg = WebUrlBox.Text.Trim();
         _host.SaveSettings();
         BuildKeyboard();          // 键帽上要跟着变
+
+        // 网址填完就去抓标题当备注（用户要求"一定要先拉一下"）
+        MaybeFetchTitle();
+    }
+
+    /// <summary>
+    /// 抓网页标题填进备注。
+    ///
+    /// 时机：网址变化后**防抖 700ms** —— 用户还在敲字时不要一路请求。
+    /// 只在备注为空时自动填：如果用户已经自己写过备注，绝不覆盖。
+    /// </summary>
+    private void MaybeFetchTitle(bool force = false)
+    {
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "webPage") return;
+        if (string.IsNullOrWhiteSpace(b.Arg)) return;
+
+        // 已有备注且不是手动点"重新取标题" → 不覆盖用户写的东西
+        if (!force && !string.IsNullOrWhiteSpace(b.Note)) return;
+
+        _titleTimer?.Stop();
+        _titleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        _titleTimer.Tick += (_, _) =>
+        {
+            _titleTimer?.Stop();
+            _titleTimer = null;
+            StartTitleFetch(force);
+        };
+        _titleTimer.Start();
+    }
+
+    private DispatcherTimer? _titleTimer;
+
+    /// <summary>真正发起抓取（后台线程，不卡界面）。</summary>
+    private void StartTitleFetch(bool overwrite)
+    {
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "webPage") return;
+        string url = b.Arg ?? "";
+        if (string.IsNullOrWhiteSpace(url)) return;
+
+        WebFetchStatus.Text = "正在获取网页标题…";
+        FetchTitleButton.IsEnabled = false;
+
+        // 用 Task.Run 而不是同步调用：HttpClient 最长等 3 秒，同步会冻结界面
+        Task.Run(() => Core.Actions.WebTitleFetcher.Fetch(url))
+            .ContinueWith(t =>
+            {
+                string? title = t.IsCompletedSuccessfully ? t.Result : null;
+
+                Dispatcher.Invoke(() =>
+                {
+                    FetchTitleButton.IsEnabled = true;
+
+                    // 用户可能在等待期间切走了别的键，重新取一次当前绑定
+                    var cur = FindInCurrentLayer(CurrentCombo());
+                    if (cur == null || cur.Action != "webPage") return;
+
+                    if (string.IsNullOrWhiteSpace(title))
+                    {
+                        WebFetchStatus.Text = "没能取到标题（网站在线吗？），可以直接手写备注。";
+                        return;
+                    }
+
+                    if (!overwrite && !string.IsNullOrWhiteSpace(cur.Note))
+                    {
+                        WebFetchStatus.Text = $"取到标题「{title}」，但你已有备注，保留你的。";
+                        return;
+                    }
+
+                    cur.Note = title;
+                    _host?.SaveSettings();
+                    _suppressEvents = true;
+                    WebNoteBox.Text = title;
+                    _suppressEvents = false;
+
+                    WebFetchStatus.Text = $"已取到标题：{title}（可以改）";
+                    BuildKeyboard();
+                });
+            });
+    }
+
+    private void OnFetchTitleClick(object sender, RoutedEventArgs e)
+    {
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "webPage" || string.IsNullOrWhiteSpace(b.Arg))
+        {
+            ShowBindStatus("先填一个网址，再取标题。", ok: false);
+            return;
+        }
+        StartTitleFetch(overwrite: true);
     }
 
     private void OnWebNoteChanged(object sender, TextChangedEventArgs e)
@@ -995,6 +1131,10 @@ public partial class KeysView : UserControl
         b.Note = WebNoteBox.Text.Trim();
         _host.SaveSettings();
         BuildKeyboard();
+
+        // 有备注了就给个确认（用户反馈"没有提示"）
+        if (!string.IsNullOrWhiteSpace(b.Note))
+            ShowBindStatus($"备注已保存：「{b.Note}」—— 键帽上会显示这个名字");
     }
 
     /// <summary>当前按键已绑定的程序路径（取自绑定的 Arg）。</summary>
@@ -1052,11 +1192,19 @@ public partial class KeysView : UserControl
         }
         binding.Action = "winBind";
         binding.Arg = exePath;
+
+        // 换程序时旧备注（如果有）就不适用了，清掉免得显示错的
+        binding.Note = null;
+
         _host.SaveSettings();
 
         RefreshWinBindPanel();
         BuildKeyboard();
-        _host.Notify($"已绑定：{Path.GetFileNameWithoutExtension(exePath)}");
+
+        string name = Path.GetFileNameWithoutExtension(exePath);
+        string keyLabel = KeyName.Display(_selectedKey);
+        ShowBindStatus($"{keyLabel} 已绑定「{name}」—— 按一次切过去，再按一次最小化");
+        _host.Notify($"{keyLabel} → {name}");
     }
 
     /// <summary>入口一：选程序文件（适合还没运行的程序）。</summary>

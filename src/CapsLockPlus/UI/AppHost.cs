@@ -176,7 +176,7 @@ public sealed class AppHost : IDisposable
         _clipboard.Start();
         _watchdog.Start();
         ApplyStartupSetting();
-        CoreLog.Info($"CapsLock+ 已启动（管理员：{ElevationHelper.IsElevated}）");
+        CoreLog.Info($"{AppInfo.ProductName} 已启动（管理员：{ElevationHelper.IsElevated}）");
     }
 
     private void ApplyStartupSetting()
@@ -211,7 +211,7 @@ public sealed class AppHost : IDisposable
         Engine.Enabled = enabled;
         _tray?.SetEnabled(enabled);
         EnabledChanged?.Invoke(enabled);
-        Notify(enabled ? "CapsLock+ 已启用" : "CapsLock+ 已暂停");
+        Notify(enabled ? AppInfo.ShortName + " 已启用" : AppInfo.ShortName + " 已暂停");
     }
 
     // ---------------- 设置 ----------------

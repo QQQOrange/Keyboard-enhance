@@ -5,7 +5,7 @@ using System.Text;
 namespace CapsLockPlus.Core;
 
 /// <summary>
-/// 按键诊断：检查本机环境是否允许 CapsLock+ 正常工作。
+/// 按键诊断：检查本机环境是否允许按键增强正常工作。
 ///
 /// 用 `CapsLockPlus.exe --diag` 运行，会输出一份人类可读的报告，
 /// 说明：钩子能否安装、前台会话状态、以及最可能的失败原因与解决办法。
@@ -87,7 +87,7 @@ public static class KeyDiagnostics
     public static int Run(int listenSeconds = 8)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("CapsLock+ 按键诊断报告");
+        sb.AppendLine("按键增强 按键诊断报告");
         sb.AppendLine("======================");
         sb.AppendLine($"时间        : {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"管理员权限  : {(ElevationHelper.IsElevated ? "是" : "否")}");

@@ -110,7 +110,7 @@ public partial class SettingsView : UserControl
         if (_host == null) return;
 
         var ok = MessageBox.Show(Window.GetWindow(this),
-            "将以管理员身份重新启动 CapsLock+。\n\n" +
+            "将以管理员身份重新启动按键增强。\n\n" +
             "这样做的好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n" +
             "（注意：锁屏状态下无法使用快捷键 —— 这是 Windows 的安全限制，\n" +
             " 任何用户态程序都做不到，管理员权限也不行。）\n\n继续吗？",

@@ -12,12 +12,12 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.10.0</Version>
-    <FileVersion>1.10.0.0</FileVersion>
-    <AssemblyVersion>1.10.0.0</AssemblyVersion>
-    <Product>CapsLock+（QQQOrange）</Product>
+    <Version>2.0.0</Version>
+    <FileVersion>2.0.0.0</FileVersion>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
-    <Description>CapsLock 键增强：光标移动 / 选择、Qbar 快速启动、窗口绑定、独立剪贴板</Description>
+    <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达网页、独立剪贴板、宏与多图层</Description>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>

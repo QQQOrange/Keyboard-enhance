@@ -72,14 +72,14 @@ public sealed class QbarService
 
     public static readonly BuiltinCommand[] Commands =
     {
-        new("/settings", "打开设置", "CapsLock+ 设置窗口", "openSettings"),
+        new("/settings", "打开设置", "按键增强 设置窗口", "openSettings"),
         new("/bindings", "窗口绑定管理", "管理 10 个窗口槽位", "openBindings"),
         new("/clipboard", "剪贴板历史", "最近复制的内容", "openClipboard"),
         new("/help", "使用帮助", "快捷键速查表", "openHelp"),
         new("/math", "计算器", "带历史记录的计算器", "openMath"),
         new("/reload", "重新加载配置", "重新读取设置文件", "reload"),
-        new("/pause", "暂停 / 恢复", "临时关闭 CapsLock+ 热键", "toggleEnabled"),
-        new("/exit", "退出 CapsLock+", "完全退出程序", "exit"),
+        new("/pause", "暂停 / 恢复", "临时关闭按键增强热键", "toggleEnabled"),
+        new("/exit", "退出按键增强", "完全退出程序", "exit"),
     };
 
     /// <summary>

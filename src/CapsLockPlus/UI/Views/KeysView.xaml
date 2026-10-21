@@ -236,15 +236,39 @@
 
                             <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
                                        Margin="0,12,0,7" />
-                            <TextBox x:Name="WebNoteBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                                     VerticalContentAlignment="Center" TextChanged="OnWebNoteChanged"
-                                     ToolTip="给这个网址起个好记的名字，会显示在键帽上" />
-                            <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       Text="备注会显示在键盘上对应的按键里，切到这一层就能看到。留空则显示网址本身。" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="WebNoteBox" Style="{StaticResource TextBox.Base}"
+                                         MinHeight="36" VerticalContentAlignment="Center"
+                                         TextChanged="OnWebNoteChanged"
+                                         ToolTip="给这个网址起个好记的名字，会显示在键帽上" />
+                                <Button Grid.Column="1" x:Name="FetchTitleButton" Content="重新取标题"
+                                        Style="{StaticResource Button.Base}" Padding="12,6" Margin="8,0,0,0"
+                                        Click="OnFetchTitleClick"
+                                        ToolTip="再抓一次那个网页的标题" />
+                            </Grid>
+                            <TextBlock x:Name="WebFetchStatus" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" Margin="0,6,0,0" />
+                            <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="填完网址会自动抓取网页标题作为备注，不满意可以直接改。备注会显示在键帽上，切到这一层就能看到。" />
                         </StackPanel>
 
                         <TextBlock x:Name="ActionDesc" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
                                    Margin="0,8,0,0" />
+
+                        <!--
+                            就地状态提示。
+                            之前绑定成功后只弹右下角 toast，用户正盯着主窗口根本注意不到，
+                            感觉像"没提示"。这里直接在编辑区里显示一行结果。
+                        -->
+                        <Border x:Name="BindStatusBar" Margin="0,10,0,0" Padding="11,8" CornerRadius="8"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="BindStatusText" FontSize="12" TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Border>
 
                         <!-- ============ 已绑定的程序（窗口绑定专用） ============ -->
                         <Border x:Name="WinBindPanel" Margin="0,14,0,0" Padding="14,12" CornerRadius="11"

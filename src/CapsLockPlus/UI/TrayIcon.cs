@@ -22,9 +22,9 @@ public sealed class TrayIcon : IDisposable
         _host = host;
         _customIcon = LoadIcon();
 
-        var menu = new ToolStripMenuItem("CapsLock+") { Enabled = false };
+        var menu = new ToolStripMenuItem(AppInfo.ProductName) { Enabled = false };
 
-        _enabledItem = new ToolStripMenuItem("暂停 CapsLock+", null, (_, _) => host.ToggleEnabled())
+        _enabledItem = new ToolStripMenuItem("暂停 " + AppInfo.ShortName, null, (_, _) => host.ToggleEnabled())
         {
             CheckOnClick = false,
         };
@@ -33,7 +33,7 @@ public sealed class TrayIcon : IDisposable
         var open = new ToolStripMenuItem("打开设置…", null, (_, _) => host.ShowMainWindow());
         var qbar = new ToolStripMenuItem("打开 Qbar  (Caps+Q)", null, (_, _) => host.ShowQbar());
         var math = new ToolStripMenuItem("计算器  (Caps+F2)", null, (_, _) => host.ShowMathBoard());
-        var bindings = new ToolStripMenuItem("窗口绑定管理", null, (_, _) => host.ShowMainWindow("bindings"));
+        var bindings = new ToolStripMenuItem("窗口绑定（按键映射页）", null, (_, _) => host.ShowMainWindow("keys"));
         var help = new ToolStripMenuItem("使用帮助", null, (_, _) => host.ShowMainWindow("help"));
         var reload = new ToolStripMenuItem("重新加载配置  (Caps+F5)", null, (_, _) => host.ReloadAll());
         var exit = new ToolStripMenuItem("退出", null, (_, _) => ExitApp());
@@ -65,13 +65,13 @@ public sealed class TrayIcon : IDisposable
         _icon = new NotifyIcon
         {
             Icon = _customIcon ?? SystemIcons.Application,
-            Text = "CapsLock+（QQQOrange）",
+            Text = AppInfo.ProductName,
             Visible = true,
             ContextMenuStrip = context,
         };
         _icon.DoubleClick += (_, _) => host.ShowMainWindow();
         _icon.BalloonTipClicked += (_, _) => host.ShowMainWindow();
-        _icon.ShowBalloonTip(1200, "CapsLock+ 已启动", "按住 CapsLock 试试 A / S / D / F，或按 Caps+Q 打开 Qbar。",
+        _icon.ShowBalloonTip(1200, AppInfo.ShortName + " 已启动", "按住 CapsLock 试试 A / S / D / F，或按 Caps+Q 打开搜索面板。",
             ToolTipIcon.Info);
     }
 
@@ -82,7 +82,7 @@ public sealed class TrayIcon : IDisposable
 
     private void UpdateCapsState()
     {
-        _enabledItem.Text = _host.Engine.Enabled ? "暂停 CapsLock+" : "恢复 CapsLock+";
+        _enabledItem.Text = _host.Engine.Enabled ? "暂停 " + AppInfo.ShortName : "恢复 " + AppInfo.ShortName;
         _capsStateItem.Text = Core.Input.HotkeyEngine.CapsLockOn ? "大写锁定：开" : "大写锁定：关";
         _icon.Icon = _customIcon ?? SystemIcons.Application;
     }
@@ -91,8 +91,8 @@ public sealed class TrayIcon : IDisposable
     {
         try
         {
-            _enabledItem.Text = enabled ? "暂停 CapsLock+" : "恢复 CapsLock+";
-            _icon.Text = enabled ? "CapsLock+（QQQOrange）" : "CapsLock+ 已暂停";
+            _enabledItem.Text = enabled ? "暂停 " + AppInfo.ShortName : "恢复 " + AppInfo.ShortName;
+            _icon.Text = enabled ? AppInfo.ProductName : AppInfo.ShortName + " 已暂停";
         }
         catch { }
     }

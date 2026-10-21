@@ -72,7 +72,7 @@ public sealed class WindowBindingService
         if (info == null) { Notified?.Invoke("没有可绑定的窗口"); return false; }
         if (info.ExeName.Equals("CapsLockPlus.exe", StringComparison.OrdinalIgnoreCase))
         {
-            Notified?.Invoke("不能绑定 CapsLock+ 自己的窗口");
+            Notified?.Invoke("不能绑定按键增强自己的窗口");
             return false;
         }
 
@@ -312,7 +312,7 @@ public sealed class WindowBindingService
         if (runningPath != null &&
             Path.GetFullPath(exePath).Equals(Path.GetFullPath(runningPath), StringComparison.OrdinalIgnoreCase))
         {
-            Notified?.Invoke("不能绑定 CapsLock+ 自己");
+            Notified?.Invoke("不能绑定按键增强自己");
             return false;
         }
 
@@ -351,7 +351,7 @@ public sealed class WindowBindingService
         }
         if (info.ExeName.Equals("CapsLockPlus.exe", StringComparison.OrdinalIgnoreCase))
         {
-            Notified?.Invoke("不能绑定 CapsLock+ 自己的窗口");
+            Notified?.Invoke("不能绑定按键增强自己的窗口");
             return false;
         }
 

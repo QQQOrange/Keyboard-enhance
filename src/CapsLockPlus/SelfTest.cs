@@ -125,6 +125,9 @@ public static class SelfTest
         TestWinBindRestoreLogic();
         TestWebPageCategory();
         TestKeycapVisualStates();
+        TestProductIdentity();
+        TestWebTitleExtract();
+        TestNoDuplicateKeycaps();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2644,6 +2647,117 @@ public static class SelfTest
             Check($"标签非空 (note={note ?? "null"}, url={url ?? "null"})",
                 !string.IsNullOrWhiteSpace(label), label);
         }
+    }
+
+    /// <summary>
+    /// 产品标识（改名 按键增强 / Keyboard Enhance，版本 2.0）。
+    /// </summary>
+    private static void TestProductIdentity()
+    {
+        CheckEqual("产品名", AppInfo.ProductName, "按键增强");
+        CheckEqual("英文名", AppInfo.EnglishName, "Keyboard Enhance");
+        CheckEqual("短名", AppInfo.ShortName, "按键增强");
+        Check("标题包含名称和英文名",
+            AppInfo.TitleWithEnglish.Contains("按键增强")
+            && AppInfo.TitleWithEnglish.Contains("Keyboard Enhance"),
+            AppInfo.TitleWithEnglish);
+
+        // 可执行文件名**刻意**保持 CapsLockPlus.exe：
+        // 改了会让已注册的开机自启、快捷方式全部失效。
+        CheckEqual("可执行文件名保持不变", AppInfo.ExeName, "CapsLockPlus.exe");
+
+        // 版本号
+        var ver = typeof(AppInfo).Assembly.GetName().Version;
+        Check("主版本号是 2", ver?.Major == 2, ver?.ToString() ?? "(null)");
+    }
+
+    /// <summary>
+    /// 网页标题抓取：解析 HTML 的 title，处理实体与空白。
+    /// </summary>
+    private static void TestWebTitleExtract()
+    {
+        CheckEqual("基本 title",
+            Core.Actions.WebTitleFetcher.ExtractTitle("<html><head><title>Hello</title></head></html>"),
+            "Hello");
+
+        CheckEqual("大写标签也认",
+            Core.Actions.WebTitleFetcher.ExtractTitle("<TITLE>GitHub</TITLE>"), "GitHub");
+
+        CheckEqual("带属性的 title",
+            Core.Actions.WebTitleFetcher.ExtractTitle("<title lang=\"zh\">知乎</title>"), "知乎");
+
+        CheckEqual("HTML 实体解码",
+            Core.Actions.WebTitleFetcher.ExtractTitle("<title>A &amp; B &lt;C&gt;</title>"), "A & B <C>");
+
+        CheckEqual("折叠空白",
+            Core.Actions.WebTitleFetcher.ExtractTitle("<title>  很多\n   空格  </title>"), "很多 空格");
+
+        Check("没有 title 返回 null",
+            Core.Actions.WebTitleFetcher.ExtractTitle("<html>no title</html>") == null);
+        Check("空 HTML 返回 null",
+            Core.Actions.WebTitleFetcher.ExtractTitle("") == null);
+
+        // 过长标题要截断（备注字段不该塞几百字）
+        string longTitle = new string('字', 200);
+        var got = Core.Actions.WebTitleFetcher.ExtractTitle($"<title>{longTitle}</title>");
+        Check("超长标题被截断", got != null && got.Length <= 60, (got?.Length ?? 0).ToString());
+
+        // 通过测试钩子验证"抓取 → 标题"整条链（不真的发网络请求）
+        Core.Actions.WebTitleFetcher.InterceptForTest = _ => "抓到的标题";
+        try
+        {
+            CheckEqual("抓取链返回标题",
+                Core.Actions.WebTitleFetcher.Fetch("example.com"), "抓到的标题");
+            Check("非法网址不去抓",
+                Core.Actions.WebTitleFetcher.Fetch("  ") == null);
+        }
+        finally
+        {
+            Core.Actions.WebTitleFetcher.InterceptForTest = null;
+        }
+    }
+
+    /// <summary>
+    /// 键盘布局不能有重复的物理键（例如小键盘 + 被画两次）。
+    ///
+    /// 这是 v1.10 的真实缺陷："+" 同时出现在 Layout 的 y=2 和 y=3 两行，
+    /// 又经 RowMerges 合并，结果键盘上出现两个加号。
+    /// </summary>
+    private static void TestNoDuplicateKeycaps()
+    {
+        var t = typeof(CapsLockPlus.UI.Views.KeysView);
+
+        var fl = t.GetField("Layout",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var fm = t.GetField("RowMerges",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Check("Layout 可读", fl != null);
+        Check("RowMerges 可读", fm != null);
+        if (fl?.GetValue(null) is not Array rows || fm?.GetValue(null) is not Array merges) return;
+
+        var ids = new List<string>();
+        foreach (var row in rows)
+            foreach (var item in (Array)row!)
+            {
+                var ty = item!.GetType();
+                ids.Add((string)ty.GetField("Item2")!.GetValue(item)!);
+            }
+        foreach (var m in merges)
+        {
+            var ty = m!.GetType();
+            ids.Add((string)ty.GetField("Item2")!.GetValue(m)!);
+        }
+
+        var dup = ids.GroupBy(x => x).Where(g => g.Count() > 1).ToList();
+        // 主 Enter 和小键盘 Enter 共用一个 VK/键名，属于合法重复
+        var illegal = dup.Where(g => !(g.Key == "enter" && g.Count() == 2)).ToList();
+
+        Check("没有重复的物理键", illegal.Count == 0,
+            string.Join(", ", illegal.Select(g => $"{g.Key}×{g.Count()}")));
+
+        // 小键盘加号只能出现一次
+        Check("小键盘 + 只出现一次", ids.Count(x => x == "numAdd") == 1,
+            ids.Count(x => x == "numAdd").ToString());
     }
 
     private static void TestKeyboardLayoutGeometry()    {

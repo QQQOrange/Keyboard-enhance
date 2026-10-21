@@ -49,8 +49,8 @@ public sealed class ActionCatalog
         c.Add("space", "基础", "空格", "发送空格", _ => Send(VK_Space));
         c.Add("backspace", "基础", "退格", "发送退格", _ => Send(VK_Back));
         c.Add("delete", "基础", "删除", "发送 Delete", _ => Send(VK_Delete));
-        c.Add("openSettings", "基础", "打开设置", "打开 CapsLock+ 设置窗口", _ => { ctx.RequestOpenSettings(); return true; });
-        c.Add("toggleEnabled", "基础", "启用/暂停", "临时暂停或恢复所有 CapsLock+ 热键", _ => { ctx.RequestToggleEnabled(); return true; });
+        c.Add("openSettings", "基础", "打开设置", "打开 按键增强 设置窗口", _ => { ctx.RequestOpenSettings(); return true; });
+        c.Add("toggleEnabled", "基础", "启用/暂停", "临时暂停或恢复所有按键增强热键", _ => { ctx.RequestToggleEnabled(); return true; });
 
         // ---------------- 光标 ----------------
         c.Add("moveLeft", "光标移动", "左移", "光标左移一个字符（可长按连续）", a => SendRepeat(0x25, a));
@@ -114,7 +114,7 @@ public sealed class ActionCatalog
         c.Add("cut2", "剪贴板", "剪切到剪贴板 2", "Caps+LAlt+X", _ => ctx.Clipboard.Cut(2));
         c.Add("paste2", "剪贴板", "粘贴剪贴板 2", "Caps+LAlt+V", _ => ctx.Clipboard.Paste(2));
         c.Add("pasteSystem", "剪贴板", "粘贴系统剪贴板", "恢复系统剪贴板后粘贴", _ => ctx.Clipboard.PasteSystem());
-        c.Add("toggleClipboard", "剪贴板", "开关独立剪贴板", "开/关 CapsLock+ 剪贴板功能", _ => ctx.Clipboard.ToggleEnabled());
+        c.Add("toggleClipboard", "剪贴板", "开关独立剪贴板", "开/关 按键增强剪贴板功能", _ => ctx.Clipboard.ToggleEnabled());
         c.Add("clipboardHistory", "剪贴板", "剪贴板历史", "查看并粘贴最近的复制内容", _ => { ctx.RequestOpenClipboardHistory(); return true; });
 
         // ---------------- 面板 / 工具 ----------------

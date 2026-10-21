@@ -246,9 +246,9 @@ public partial class BackupView : UserControl
 
         var dlg = new SaveFileDialog
         {
-            Title = "导出 CapsLock+ 配置（明文）",
-            FileName = $"capslock+配置({DateTime.Now:yyyy-MM-dd HH-mm-ss}){ExportImport.Extension}",
-            Filter = $"CapsLock+ 明文配置|*{ExportImport.Extension}|JSON|*.json",
+            Title = "导出按键增强配置（明文）",
+            FileName = $"按键增强配置({DateTime.Now:yyyy-MM-dd HH-mm-ss}){ExportImport.Extension}",
+            Filter = $"按键增强明文配置|*{ExportImport.Extension}|JSON|*.json",
             InitialDirectory = SyncService.BackupDir,
         };
         if (dlg.ShowDialog() != true) return;
@@ -275,8 +275,8 @@ public partial class BackupView : UserControl
 
         var dlg = new OpenFileDialog
         {
-            Title = "导入 CapsLock+ 配置（明文）",
-            Filter = $"CapsLock+ 明文配置|*{ExportImport.Extension}|JSON|*.json|所有文件|*.*",
+            Title = "导入按键增强配置（明文）",
+            Filter = $"按键增强明文配置|*{ExportImport.Extension}|JSON|*.json|所有文件|*.*",
             InitialDirectory = SyncService.BackupDir,
         };
         if (dlg.ShowDialog() != true) return;

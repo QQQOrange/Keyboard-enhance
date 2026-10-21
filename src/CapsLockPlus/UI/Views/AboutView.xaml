@@ -30,13 +30,13 @@
 
                     <StackPanel Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="CapsLock+" FontSize="26" FontWeight="SemiBold" Foreground="White" />
+                            <TextBlock Text="按键增强" FontSize="26" FontWeight="SemiBold" Foreground="White" />
                             <Border CornerRadius="6" Background="#33FFFFFF" Padding="8,3" Margin="10,0,0,0"
                                     VerticalAlignment="Center">
                                 <TextBlock x:Name="VersionBadge" Text="v1.0.0" FontSize="12" Foreground="White" />
                             </Border>
                         </StackPanel>
-                        <TextBlock Text="让 CapsLock 键成为你最顺手的修饰键" Foreground="#DCE9FF" FontSize="13.5"
+                        <TextBlock Text="Keyboard Enhance · 让每一个按键都能变成你的快捷键" Foreground="#DCE9FF" FontSize="13.5"
                                    Margin="0,7,0,0" />
                         <TextBlock x:Name="BuildInfo" Foreground="#B9D2FF" FontSize="11.5" Margin="0,4,0,0" />
                     </StackPanel>
@@ -166,9 +166,13 @@
             <!-- 致谢 -->
             <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock Text="致谢" Style="{StaticResource Text.H3}" Margin="0,0,0,8" />
+                    <TextBlock Text="关于这个程序" Style="{StaticResource Text.H3}" Margin="0,0,0,8" />
                     <TextBlock Style="{StaticResource Text.Secondary}" TextWrapping="Wrap"
-                               Text="本程序是 Capslock+ 的 Windows 11 重写版。功能语义沿用 Junkai Chen 的 AutoHotkey 版本，界面、引擎与全部设置系统为重新实现。" />
+                               Text="按键增强（Keyboard Enhance）是一个 Windows 键盘增强工具：按住一个触发键进入功能层，就能把任意按键变成快捷键 —— 光标移动、文字选择、窗口切换、打开网页、播放宏，全部可以自己配。" />
+                    <TextBlock Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="支持 10 个独立图层，每层可以有自己的触发键和整套按键绑定。所有配置都在图形界面里完成，也支持 WebDAV 同步与导入导出。" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,12,0,0"
+                               Text="本程序的按键语义源自 Junkai Chen 的 AutoHotkey 版 CapsLock+，界面、引擎与全部设置系统为重新实现。" />
                 </StackPanel>
             </Border>
         </StackPanel>
