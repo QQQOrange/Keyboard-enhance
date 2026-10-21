@@ -796,10 +796,17 @@ public static class DefaultSettings
         B("caps_y", "selectUp", "10"), B("caps_z", "doNothing"),
 
         B("caps_backquote", "doNothing"),
-        B("caps_1", "winbindActivate1"), B("caps_2", "winbindActivate2"), B("caps_3", "winbindActivate3"),
-        B("caps_4", "winbindActivate4"), B("caps_5", "winbindActivate5"), B("caps_6", "winbindActivate6"),
-        B("caps_7", "winbindActivate7"), B("caps_8", "winbindActivate8"), B("caps_9", "winbindActivate9"),
-        B("caps_0", "winbindActivate10"),
+
+        /* 数字键 1~0 的默认绑定。
+         *
+         * 旧版这里是 winbindActivate1~10（固定 10 个窗口槽位），槽位机制已经
+         * 移除，改由「窗口绑定」动作承担。但**默认不能直接填 winBind** ——
+         * 它需要一个程序路径参数，空参数的 winBind 按下去只会弹提示。
+         * 所以默认留空（doNothing），由用户自己去按键映射页绑程序。 */
+        B("caps_1", "doNothing"), B("caps_2", "doNothing"), B("caps_3", "doNothing"),
+        B("caps_4", "doNothing"), B("caps_5", "doNothing"), B("caps_6", "doNothing"),
+        B("caps_7", "doNothing"), B("caps_8", "doNothing"), B("caps_9", "doNothing"),
+        B("caps_0", "doNothing"),
         B("caps_minus", "winSnapLeft"), B("caps_equal", "winSnapRight"),
         B("caps_backspace", "deleteLine"), B("caps_tab", "tabScript"),
         B("caps_leftSquareBracket", "deleteToLineBeginning"), B("caps_rightSquareBracket", "doNothing"),
@@ -825,10 +832,12 @@ public static class DefaultSettings
         B("caps_lalt_x", "cut2"), B("caps_lalt_y", "selectUp", "30"), B("caps_lalt_z", "doNothing"),
 
         B("caps_lalt_backquote", "doNothing"),
-        B("caps_lalt_1", "winbindBind1"), B("caps_lalt_2", "winbindBind2"), B("caps_lalt_3", "winbindBind3"),
-        B("caps_lalt_4", "winbindBind4"), B("caps_lalt_5", "winbindBind5"), B("caps_lalt_6", "winbindBind6"),
-        B("caps_lalt_7", "winbindBind7"), B("caps_lalt_8", "winbindBind8"), B("caps_lalt_9", "winbindBind9"),
-        B("caps_lalt_0", "winbindBind10"),
+        // 旧版是 winbindBind1~10（把当前窗口绑到槽位）；槽位机制已移除，
+        // 绑定改由「窗口绑定」动作在自己的参数里存程序路径。
+        B("caps_lalt_1", "doNothing"), B("caps_lalt_2", "doNothing"), B("caps_lalt_3", "doNothing"),
+        B("caps_lalt_4", "doNothing"), B("caps_lalt_5", "doNothing"), B("caps_lalt_6", "doNothing"),
+        B("caps_lalt_7", "doNothing"), B("caps_lalt_8", "doNothing"), B("caps_lalt_9", "doNothing"),
+        B("caps_lalt_0", "doNothing"),
         B("caps_lalt_minus", "doNothing"), B("caps_lalt_equal", "doNothing"),
         B("caps_lalt_backspace", "deleteAll"), B("caps_lalt_tab", "doNothing"),
         B("caps_lalt_leftSquareBracket", "deleteToPageBeginning"), B("caps_lalt_rightSquareBracket", "doNothing"),
@@ -844,11 +853,11 @@ public static class DefaultSettings
 
         B("caps_lalt_wheelUp", "mouseSpeedUp"), B("caps_lalt_wheelDown", "mouseSpeedDown"),
 
-        // Caps + Win
-        B("caps_win_1", "winbindActivate1"), B("caps_win_2", "winbindActivate2"), B("caps_win_3", "winbindActivate3"),
-        B("caps_win_4", "winbindActivate4"), B("caps_win_5", "winbindActivate5"), B("caps_win_6", "winbindActivate6"),
-        B("caps_win_7", "winbindActivate7"), B("caps_win_8", "winbindActivate8"), B("caps_win_9", "winbindActivate9"),
-        B("caps_win_0", "winbindActivate10"),
+        // Caps + Win（旧版是窗口槽位 1~10，槽位机制已移除）
+        B("caps_win_1", "doNothing"), B("caps_win_2", "doNothing"), B("caps_win_3", "doNothing"),
+        B("caps_win_4", "doNothing"), B("caps_win_5", "doNothing"), B("caps_win_6", "doNothing"),
+        B("caps_win_7", "doNothing"), B("caps_win_8", "doNothing"), B("caps_win_9", "doNothing"),
+        B("caps_win_0", "doNothing"),
     };
 
     /// <summary>经典布局（CapsLock+ 3.0 之前）。</summary>

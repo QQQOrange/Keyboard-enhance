@@ -191,21 +191,46 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
         string? keep = (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        string? keepWin = (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string;
 
+        var cats = _host.Actions.Items.Select(i => i.Category).Distinct().ToList();
+
+        /* 两个分类下拉填同样的内容：
+         *   · CategoryBox        —— 普通模式（分类 + 功能两级）
+         *   · CategoryBoxWinBind —— 窗口绑定模式（分类 + 两个按钮）
+         * 两者必须同步，否则用户在哪个里面选都看不到另一个。 */
         CategoryBox.Items.Clear();
-        foreach (var cat in _host.Actions.Items.Select(i => i.Category).Distinct())
+        CategoryBoxWinBind.Items.Clear();
+        foreach (var cat in cats)
+        {
             CategoryBox.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
+            CategoryBoxWinBind.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
+        }
 
         // 尽量保留用户原来选的分类
         foreach (ComboBoxItem it in CategoryBox.Items)
         {
             if (it.Tag as string == keep) { CategoryBox.SelectedItem = it; break; }
         }
+        foreach (ComboBoxItem it in CategoryBoxWinBind.Items)
+        {
+            if (it.Tag as string == keepWin) { CategoryBoxWinBind.SelectedItem = it; break; }
+        }
+
         if (CategoryBox.SelectedIndex < 0 && CategoryBox.Items.Count > 0)
             CategoryBox.SelectedIndex = 0;
+        if (CategoryBoxWinBind.SelectedIndex < 0 && CategoryBoxWinBind.Items.Count > 0)
+            CategoryBoxWinBind.SelectedIndex = 0;
 
         BuildActionBox();
     }
+
+    /// <summary>「窗口绑定」分类的名字（这个分类不走功能下拉）。</summary>
+    private const string WinBindCategory = "窗口绑定";
+
+    /// <summary>当前分类是不是「窗口绑定」。</summary>
+    private bool IsWinBindCategory =>
+        (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string == WinBindCategory;
 
     /// <summary>填"功能"下拉，只列当前分类下的动作。</summary>
     private void BuildActionBox()
@@ -220,12 +245,95 @@ public partial class KeysView : UserControl
         if (ActionBox.Items.Count > 0) ActionBox.SelectedIndex = 0;
     }
 
+    /// <summary>
+    /// 分类切换。
+    ///
+    /// 「窗口绑定」是特例：它不显示"功能"下拉，而是直接给两个按钮
+    /// （点选窗口 / 选择程序文件）—— 因为绑哪个窗口是**抓来的**，
+    /// 不是从列表里选出来的。
+    /// </summary>
     private void OnCategoryChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_host == null || _suppressEvents) return;
+
         _suppressEvents = true;
-        BuildActionBox();
-        _suppressEvents = false;
+        try
+        {
+            if (IsWinBindCategory)
+            {
+                // 切成"按钮模式"
+                NormalActionPicker.Visibility = Visibility.Collapsed;
+                WinBindPicker.Visibility = Visibility.Visible;
+                SyncWinBindCategoryBoxes(sender);
+                ActionDesc.Text = "选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。";
+                ShowWinBindArea(true);
+            }
+            else
+            {
+                // 切成"下拉模式"
+                NormalActionPicker.Visibility = Visibility.Visible;
+                WinBindPicker.Visibility = Visibility.Collapsed;
+                SyncWinBindCategoryBoxes(sender);
+                ShowWinBindArea(false);
+                BuildActionBox();
+                ApplySelectedAction();       // 让下方参数面板跟着刷新
+            }
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+    }
+
+    /// <summary>
+    /// 两个分类下拉（普通模式 / 窗口绑定模式）互相同步 ——
+    /// 用户从哪个里面选了「窗口绑定」，另一个也跟着切过去。
+    /// </summary>
+    private void SyncWinBindCategoryBoxes(object? source)
+    {
+        string? tag = source == CategoryBoxWinBind
+            ? (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string
+            : (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+
+        var target = source == CategoryBoxWinBind ? CategoryBox : CategoryBoxWinBind;
+        foreach (ComboBoxItem it in target.Items)
+        {
+            if (it.Tag as string == tag) { target.SelectedItem = it; break; }
+        }
+    }
+
+    /// <summary>显示/隐藏窗口绑定的"当前绑定"卡片。</summary>
+    private void ShowWinBindArea(bool show)
+    {
+        if (!show) { WinBindPanel.Visibility = Visibility.Collapsed; return; }
+        WinBindPanel.Visibility = Visibility.Visible;
+        RefreshWinBindPanel();
+    }
+
+    /// <summary>
+    /// 普通模式下：把 ActionBox 里选中的动作应用到当前按键。
+    /// 与 <see cref="OnActionChanged"/> 同样的写入逻辑，但不受 _suppressEvents 影响。
+    /// </summary>
+    private void ApplySelectedAction()
+    {
+        if (_host == null) return;
+        if (ActionBox.SelectedItem is not ComboBoxItem { Tag: string actionId }) return;
+
+        string combo = CurrentCombo();
+        var binding = FindInCurrentLayer(combo);
+        if (binding == null)
+        {
+            binding = new KeyBinding { Combo = combo };
+            CurrentLayerKeys.Add(binding);
+        }
+        binding.Action = actionId;
+        if (actionId == "doNothing") binding.Arg = "";
+        _host.SaveSettings();
+
+        var info = _host.Actions.Get(actionId);
+        ActionDesc.Text = info?.Description ?? "";
+        ShowArgPanelFor(actionId, info?.NeedsArg == true);
+        BuildKeyboard();
     }
 
     // ---------------- 键盘绘制 ----------------
@@ -561,26 +669,48 @@ public partial class KeysView : UserControl
             }
         }
         ArgBox.Text = binding?.Arg ?? "";
+
+        // 同步"窗口绑定模式"的分类下拉
+        foreach (ComboBoxItem it in CategoryBoxWinBind.Items)
+        {
+            if (it.Tag as string == info?.Category) { CategoryBoxWinBind.SelectedItem = it; break; }
+        }
+
+        bool isWinBind = actionId == "winBind" || info?.Category == WinBindCategory;
+
+        /* 模式切换：
+         *   · 窗口绑定 → 隐藏"功能"下拉，露出两个按钮 + 当前绑定卡片
+         *   · 其它     → 恢复两级下拉，隐藏窗口绑定卡片
+         */
+        NormalActionPicker.Visibility = isWinBind ? Visibility.Collapsed : Visibility.Visible;
+        WinBindPicker.Visibility = isWinBind ? Visibility.Visible : Visibility.Collapsed;
+        WinBindPanel.Visibility = isWinBind ? Visibility.Visible : Visibility.Collapsed;
+
         _suppressEvents = false;
 
-        ActionDesc.Text = info?.Description ?? "";
-        bool needsArg = info?.NeedsArg == true || actionId is "moveLeft" or "moveRight" or "moveUp" or "moveDown"
-            or "selectLeft" or "selectRight" or "selectUp" or "selectDown" or "moveWordLeft" or "moveWordRight"
-            or "selectWordLeft" or "selectWordRight" or "pageMoveLineUp" or "pageMoveLineDown";
-        ArgPanel.Visibility = needsArg ? Visibility.Visible : Visibility.Collapsed;
+        ActionDesc.Text = isWinBind
+            ? "选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。"
+            : (info?.Description ?? "");
 
-        /* 「窗口绑定」不走普通参数框，而是换成专用面板。
-         *
-         * 用户原话：「我在分类里面选了窗口绑定，那旁边的功能图标就会自动变成
-         * 一个选择程序的图标」。所以这里直接给出"选程序"这件事本身，
-         * 而不是让他在"参数框"和"另一个动作"之间琢磨。
-         */
-        bool isWinBind = actionId == "winBind";
-        WinBindPanel.Visibility = isWinBind ? Visibility.Visible : Visibility.Collapsed;
-        ArgPanel.Visibility = isWinBind
-            ? Visibility.Collapsed
-            : (needsArg ? Visibility.Visible : Visibility.Collapsed);
         if (isWinBind) RefreshWinBindPanel();
+
+        ShowArgPanelFor(actionId, info?.NeedsArg == true || IsCountArgAction(actionId), isWinBind);
+
+        BuildKeyboard();
+    }
+
+    /// <summary>这些动作的"参数"是次数，界面要提示填数字。</summary>
+    private static bool IsCountArgAction(string actionId) => actionId is
+        "moveLeft" or "moveRight" or "moveUp" or "moveDown"
+        or "selectLeft" or "selectRight" or "selectUp" or "selectDown"
+        or "moveWordLeft" or "moveWordRight"
+        or "selectWordLeft" or "selectWordRight"
+        or "pageMoveLineUp" or "pageMoveLineDown";
+
+    /// <summary>按动作类型决定参数面板的样子。</summary>
+    private void ShowArgPanelFor(string actionId, bool needsArg, bool isWinBind = false)
+    {
+        ArgPanel.Visibility = needsArg && !isWinBind ? Visibility.Visible : Visibility.Collapsed;
 
         ArgLabel.Text = actionId switch
         {
@@ -596,36 +726,23 @@ public partial class KeysView : UserControl
             "wrapSelection" => "例如 ( 会把选中文字变成 (文字)",
             _ => "不填默认 1，填 5 表示一次移动 5 个字符",
         };
-        BuildKeyboard();
     }
 
     // ---------------- 窗口绑定面板 ----------------
 
     /// <summary>
-    /// 仅供渲染：把界面切到「窗口绑定」动作，让面板显示出来，好截一张图确认。
-    /// 返回 true 表示成功切过去了。
+    /// 仅供渲染：切到「窗口绑定」模式，好截一张图确认按钮和卡片都画出来了。
     /// </summary>
     public bool ShowWinBindPanelForRender()
     {
         if (_host == null) return false;
 
-        // 分类切到「窗口绑定」
         foreach (ComboBoxItem it in CategoryBox.Items)
         {
-            if (it.Tag as string == "窗口绑定")
+            if (it.Tag as string == WinBindCategory)
             {
                 CategoryBox.SelectedItem = it;
-                BuildActionBox();
-                break;
-            }
-        }
-        // 功能切到 winBind
-        foreach (ComboBoxItem it in ActionBox.Items)
-        {
-            if (it.Tag as string == "winBind")
-            {
-                ActionBox.SelectedItem = it;
-                return WinBindPanel.Visibility == Visibility.Visible;
+                return WinBindPicker.Visibility == Visibility.Visible;
             }
         }
         return false;
@@ -697,7 +814,7 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>入口一：选程序文件（适合还没运行的程序）。</summary>
-    private void OnPickProgramFile(object sender, RoutedEventArgs e)
+    private void OnPickExeClick(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
@@ -716,7 +833,7 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>入口二：十字准星点选已打开的窗口，取其 exe 路径。</summary>
-    private void OnPickWindow(object sender, RoutedEventArgs e)
+    private void OnPickWindowClick(object sender, RoutedEventArgs e)
     {
         var picker = new UI.Windows.WindowPickerWindow();
         if (Window.GetWindow(this) is { } owner) picker.Owner = owner;

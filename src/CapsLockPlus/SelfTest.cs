@@ -539,6 +539,8 @@ public static class SelfTest
                 "[Keys]",
                 "caps_q=keyFunc_qbar",
                 "caps_a=keyFunc_moveWordLeft(3)",
+                // 这一行是旧的固定窗口槽位：现在会被**跳过**（不迁移），
+                // 所以下面的条目数断言要按"实际能迁移的"来算。
                 "caps_1=keyFunc_winbind_activate(1)",
                 "caps_lalt_z=keyFunc_putWinToBottom",
                 "caps_f3=keyFunc_translate",
@@ -555,10 +557,16 @@ public static class SelfTest
             });
             File.WriteAllText(path, content, new UnicodeEncoding(false, true));
             var result = LegacyIniImporter.Import(path);
-            Check("能识别 UTF-16 的旧设置", result.Keys >= 5);
+            // Keys 统计的是**按键绑定**条数。样本里 5 个按键中，
+            // 旧的窗口槽位（caps_1=keyFunc_winbind_activate(1)）会被跳过，
+            // 所以应当正好迁移 4 个。
+            CheckEqual("能识别 UTF-16 的旧设置", result.Keys, 4);
             CheckEqual("迁移 Qbar 绑定", result.Settings.FindBinding("caps_q")?.Action, "qbar");
             CheckEqual("迁移带参数的动作", result.Settings.FindBinding("caps_a")?.Arg, "3");
-            CheckEqual("迁移窗口绑定动作", result.Settings.FindBinding("caps_1")?.Action, "winbindActivate1");
+            // 旧窗口槽位已移除：导入时这一项被跳过（不再产生 winbindActivateN）
+            Check("旧窗口槽位不再迁移成 winbindActivateN",
+                result.Settings.FindBinding("caps_1")?.Action?.StartsWith("winbindActivate") != true,
+                result.Settings.FindBinding("caps_1")?.Action ?? "(无)");
             CheckEqual("迁移置底动作", result.Settings.FindBinding("caps_lalt_z")?.Action, "winSendToBottom");
             CheckEqual("迁移翻译动作", result.Settings.FindBinding("caps_f3")?.Action, "translate");
             Check("迁移搜索指令", result.Settings.Search.Any(s => s.Key == "bd"));
@@ -608,21 +616,19 @@ public static class SelfTest
     }
 
     /// <summary>
-    /// 窗口绑定：10 个槽位（1~9 + 0）、两种绑定方式、以及激活动画开关。
+    /// 窗口绑定：固定 10 个槽位已移除，改为「窗口绑定」动作（每个按键存自己的程序路径）。
+    ///
+    /// 这里验证：
+    ///   1. 旧槽位动作确实不在动作表里了（用户要求彻底移除）；
+    ///   2. 默认配置里不再有指向旧动作的绑定（否则那些键按下去没反应）；
+    ///   3. 「窗口绑定」分类只有 1 个动作；
+    ///   4. 底层 ActivateExe / BindByExe 的安全性。
     /// </summary>
     private static void TestWindowBindings()
     {
         var settings = DefaultSettings.Create();
         var svc = new WindowBindingService(settings);
-        var notes = new List<string>();
-        svc.Notified += m => notes.Add(m);
 
-        // 默认应当有 10 个槽位，且按键映射到 1~9 与 0
-        CheckEqual("默认提供 10 个槽位", settings.Bindings.Count, 10);
-        var slots = settings.Bindings.Select(b => b.Slot).OrderBy(x => x).ToList();
-        Check("槽位编号为 1..10", slots.SequenceEqual(Enumerable.Range(1, 10)), string.Join(",", slots));
-
-        // 每个槽位都要有对应的按键动作
         var catalog = ActionCatalog.Create(new ActionContext
         {
             Settings = () => settings,
@@ -632,27 +638,32 @@ public static class SelfTest
             Mouse = new MouseService(),
             Notify = _ => { },
         });
-        int activateOk = Enumerable.Range(1, 10)
-            .Count(i => catalog.Get($"winbindActivate{i}") != null);
-        CheckEqual("10 个激活动作齐备", activateOk, 10);
 
-        // 按键绑定：Caps+1..Caps+0 都要指向激活动作
-        int boundOk = 0;
-        for (int i = 1; i <= 10; i++)
-        {
-            string key = i == 10 ? "0" : i.ToString();
-            var b = settings.FindBinding($"caps_{key}");
-            if (b != null && b.Action == $"winbindActivate{i}") boundOk++;
-        }
-        CheckEqual("Caps+1..Caps+0 均已绑定", boundOk, 10);
+        // 1. 旧槽位动作必须彻底消失（用户明确要求移除这一分类）
+        int legacy = Enumerable.Range(1, 10).Count(i =>
+            catalog.Get($"winbindActivate{i}") != null || catalog.Get($"winbindBind{i}") != null);
+        Check("旧槽位动作已全部移除", legacy == 0, legacy.ToString());
+        Check("没有「窗口绑定（旧槽位）」分类",
+            catalog.Items.All(i => i.Category != "窗口绑定（旧槽位）"));
 
-        // 方式一：按 exe 绑定（用一个一定存在的程序文件）
+        // 2. 默认配置不能残留指向旧动作的绑定
+        var stale = settings.Keys
+            .Where(k => k.Action.StartsWith("winbindActivate", StringComparison.OrdinalIgnoreCase)
+                     || k.Action.StartsWith("winbindBind", StringComparison.OrdinalIgnoreCase))
+            .Select(k => k.Combo + "=" + k.Action).ToList();
+        Check("默认配置无残留旧槽位绑定", stale.Count == 0,
+            string.Join(", ", stale.Take(6)));
+
+        // 3. 「窗口绑定」分类下只有 1 个动作
+        var inCat = catalog.Items.Where(i => i.Category == "窗口绑定").ToList();
+        CheckEqual("「窗口绑定」分类只有 1 个动作", inCat.Count, 1);
+        CheckEqual("那个动作是 winBind", inCat.FirstOrDefault()?.Id, "winBind");
+
+        // 4. 底层安全性（不依赖槽位表了）
         string exe = Environment.ProcessPath ?? "";
         if (exe.Length > 0)
         {
-            // 绑定自己应当被拒绝
             Check("拒绝绑定自身", !svc.BindByExe(1, exe));
-            // 始终不存在的路径也应当拒绝
             Check("拒绝不存在的路径", !svc.BindByExe(1, @"C:\__no_such_program__.exe"));
         }
         else
@@ -660,35 +671,7 @@ public static class SelfTest
             Check("取不到自身路径，跳过自身绑定检查", true);
         }
 
-        // 方式二：按窗口句柄绑定（用当前前台窗口）
-        var fg = WindowService.Foreground;
-        if (fg != IntPtr.Zero && WindowService.Exists(fg))
-        {
-            bool ok = svc.BindWindow(2, fg);
-            Check("可按窗口句柄绑定", ok);
-            if (ok)
-            {
-                var b = settings.Bindings.First(x => x.Slot == 2);
-                Check("绑定后记录模式为单窗口", b.Mode == WinBindMode.Single);
-                Check("绑定后记录了窗口句柄", b.WindowIds.Count == 1);
-                Check("描述信息包含窗口数", svc.DescribeSlot(2).Contains("1 个窗口"),
-                    svc.DescribeSlot(2));
-            }
-        }
-        else
-        {
-            Check("取不到前台窗口，跳过句柄绑定检查", true);
-        }
-
-        // 空槽位的描述
-        CheckEqual("空槽位描述为未绑定", svc.DescribeSlot(9), "未绑定");
-
-        // 清除
-        svc.Unbind(2);
-        Check("清除后槽位为空", svc.DescribeSlot(2) == "未绑定");
-
-        // 动画已按用户要求全部删除：确认公开 API 里不再有动画开关，
-        // 免得以后有人又把它加回来而不自知。
+        // 动画已按用户要求全部删除：确认公开 API 里不再有动画开关
         Check("WindowService 不再暴露动画开关",
             typeof(WindowService).GetProperty("AnimationEnabled") == null);
         Check("WindowService 不再有 Genie 动画方法",
@@ -2415,15 +2398,13 @@ public static class SelfTest
             string.Join(",", cat.Items.Where(i => i.Category == "窗口绑定").Select(i => i.Id)));
         Check("winBind 在「窗口绑定」分类", wb?.Category == "窗口绑定", wb?.Category ?? "");
         Check("winBind 需要参数（程序路径）", wb?.NeedsArg == true);
-        Check("winBind 有参数提示", !string.IsNullOrEmpty(wb?.ArgHint), wb?.ArgHint ?? "");
-        // 「窗口绑定」分类下只应有这一个"选择"入口动作（选程序由专用面板承担），
-        // 不允许多余的 winBindPick 之类的动作再占一格。
+        // 「窗口绑定」分类下只应有这一个动作（选程序由界面按钮承担）
         Check("窗口绑定分类下没有多余的 winBindPick 动作",
             !cat.Items.Any(i => i.Id == "winBindPick"));
 
-        // 旧槽位动作保留，老配置不受影响
-        Check("旧槽位 1 仍存在", cat.Items.Any(i => i.Id == "winbindActivate1"));
-        Check("旧槽位 10 仍存在", cat.Items.Any(i => i.Id == "winbindActivate10"));
+        // 旧槽位动作已按用户要求彻底移除
+        Check("旧槽位 1 已移除", !cat.Items.Any(i => i.Id == "winbindActivate1"));
+        Check("旧槽位 10 已移除", !cat.Items.Any(i => i.Id == "winbindActivate10"));
 
         var svc = new Core.Actions.WindowBindingService(settings);
         var notes = new List<string>();
@@ -2526,10 +2507,9 @@ public static class SelfTest
             $"{winBindCount}: " + string.Join(",",
                 cat.Items.Where(i => i.Category == "窗口绑定").Select(i => i.Id)));
 
-        // 旧槽位挪到独立分类，不和新用法混在一起
-        Check("旧槽位在独立分类",
-            cat.Items.Count(i => i.Category == "窗口绑定（旧槽位）") >= 20,
-            cat.Items.Count(i => i.Category == "窗口绑定（旧槽位）").ToString());
+        // 旧槽位分类已彻底移除
+        Check("没有「窗口绑定（旧槽位）」分类",
+            cat.Items.All(i => i.Category != "窗口绑定（旧槽位）"));
     }
 
     private static void TestKeyboardLayoutGeometry()    {

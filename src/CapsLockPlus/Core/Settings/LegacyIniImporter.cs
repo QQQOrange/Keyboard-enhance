@@ -268,11 +268,13 @@ public static class LegacyIniImporter
         string name = m.Groups[1].Value;
         string args = m.Groups[2].Success ? m.Groups[2].Value.Trim() : "";
         if (!ActionMap.TryGetValue(name, out var action)) return (null, "");
-        if (action is "winbindActivate" or "winbindBind")
-        {
-            int slot = int.TryParse(args, out var s) ? Math.Clamp(s, 1, 10) : 1;
-            return (action + slot, "");
-        }
+
+        /* 旧版的窗口槽位（winbindActivate 1~10 / winbindBind 1~10）
+         * 已经移除 —— 槽位机制换成了「窗口绑定」动作（靠程序路径，不靠槽位号）。
+         * 两者语义不同，无法自动转换：旧配置只知道"槽位 3"，
+         * 而槽位 3 到底绑的是哪个程序存在**另一个文件**里，导入时读不到。
+         * 所以这里返回 null（跳过这一项），由用户自己在按键映射页重绑。 */
+        if (action is "winbindActivate" or "winbindBind") return (null, "");
         if (action == "activateSideWin")
         {
             string dir = args.Trim('"', '\'', ' ');
