@@ -167,8 +167,19 @@
                         <StackPanel x:Name="ArgPanel" Margin="0,14,0,0" Visibility="Collapsed">
                             <TextBlock x:Name="ArgLabel" Text="参数" Style="{StaticResource Text.Secondary}"
                                        Margin="0,0,0,7" />
-                            <TextBox x:Name="ArgBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                                     VerticalContentAlignment="Center" TextChanged="OnArgChanged" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="ArgBox" Style="{StaticResource TextBox.Base}"
+                                         MinHeight="36" VerticalContentAlignment="Center"
+                                         TextChanged="OnArgChanged" />
+                                <!-- 绑定窗口时直接挑程序，不用手输路径 -->
+                                <Button Grid.Column="1" x:Name="PickProgramButton" Content="选择程序…"
+                                        Style="{StaticResource Button.Base}" Padding="12,6" Margin="8,0,0,0"
+                                        Visibility="Collapsed" Click="OnPickProgramClick" />
+                            </Grid>
                             <TextBlock x:Name="ArgHint" Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0"
                                        TextWrapping="Wrap" />
                         </StackPanel>

@@ -23,7 +23,8 @@ public static class RenderTools
 
     private static readonly string[] Pages =
     {
-        "guide", "keys", "layers", "macros", "qbar", "bindings",
+        // 「bindings」页已移除：窗口绑定并入按键映射，作为动作处理
+        "guide", "keys", "layers", "macros", "qbar",
         "clipboard", "translate", "backup", "settings", "help", "about",
     };
 

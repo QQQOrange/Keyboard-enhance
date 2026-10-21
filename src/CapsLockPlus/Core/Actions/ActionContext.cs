@@ -36,6 +36,15 @@ public sealed class ActionContext
     public event Action? MacrosRequested;
 
     /// <summary>
+    /// 请求弹出"选择程序"对话框（用于给 winBind 动作填参数）。
+    /// 由界面层接管，核心逻辑不依赖 WPF。
+    /// </summary>
+    public event Action? PickProgramRequested;
+
+    /// <summary>请求跳到「按键映射」页（窗口绑定已并入该页）。</summary>
+    public event Action? KeysPageRequested;
+
+    /// <summary>
     /// 请求打开 Qbar。
     /// </summary>
     /// <param name="engineKey">默认搜索引擎的关键字（如 "zh" = 知乎）；
@@ -47,6 +56,8 @@ public sealed class ActionContext
     public void RequestHelp() => HelpRequested?.Invoke();
     public void RequestOpenBindings() => BindingsRequested?.Invoke();
     public void RequestOpenMacros() => MacrosRequested?.Invoke();
+    public void RequestPickProgram() => PickProgramRequested?.Invoke();
+    public void RequestOpenKeysPage() => KeysPageRequested?.Invoke();
     public void RequestOpenClipboardHistory() => ClipboardHistoryRequested?.Invoke();
     public void RequestTranslate() => TranslateRequested?.Invoke();
     public void RequestReload() => ReloadRequested?.Invoke();

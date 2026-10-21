@@ -295,9 +295,8 @@ public sealed class WindowBindingService
     /// <summary>
     /// 按可执行文件绑定槽位。
     ///
-    /// 与“绑定当前窗口”不同，这里记录的是**程序**而不是某个窗口实例：
+    /// 与"绑定当前窗口"不同，这里记录的是**程序**而不是某个窗口实例：
     /// 只要该程序有窗口存在，按槽位就能切过去；一个都没有时会帮你启动它。
-    /// 适合“这个键永远对应 Photoshop”这类用法。
     /// </summary>
     public bool BindByExe(int slot, string exePath)
     {
@@ -391,5 +390,168 @@ public sealed class WindowBindingService
             var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
             if (b != null) _settings.Bindings.Remove(b);
         }
+    }
+
+    // ================= 任意按键绑定窗口（不占槽位） =================
+    //
+    // 上游 CapsLock+ 只有 10 个固定槽位（Caps+1~0）。这一版让**任意按键**
+    // 都能直接绑一个程序，做法是把程序路径存在 KeyBinding.Arg 里，
+    // 动作 ID 用 "winBind"。这样它就和别的动作完全同构：
+    // 一样出现在「按键映射」的功能下拉里、一样按层独立、一样能导入导出。
+    //
+    // 下面这组方法只认 exe 路径，不碰 Bindings 槽位表 —— 两者互不干扰，
+    // 老用户的 10 个槽位照旧可用。
+
+    /// <summary>
+    /// 激活（或启动）某个程序，用于"任意按键绑定窗口"。
+    ///
+    /// 行为与槽位版一致：
+    ///   * 程序已在运行 → 切到它的窗口；已在前台则最小化（再按一次收起）；
+    ///   * 多窗口 → 反复按循环切换；
+    ///   * 程序没运行 → 启动它，并等窗口出现后再激活。
+    /// </summary>
+    /// <param name="exePath">可执行文件完整路径</param>
+    /// <param name="stateKey">用于记忆"循环到第几个窗口"的键（通常是组合键 ID）</param>
+    public bool ActivateExe(string exePath, string stateKey)
+    {
+        if (string.IsNullOrWhiteSpace(exePath))
+        {
+            Notified?.Invoke("这个按键还没选要绑定的程序");
+            return false;
+        }
+
+        if (!File.Exists(exePath))
+        {
+            Notified?.Invoke($"程序不存在：{exePath}");
+            return false;
+        }
+
+        string name = Path.GetFileNameWithoutExtension(exePath);
+
+        lock (_gate)
+        {
+            // 收集该程序当前所有可见顶层窗口
+            var handles = WindowService.EnumerateTopLevel()
+                .Where(w => string.Equals(w.ExePath, exePath, StringComparison.OrdinalIgnoreCase))
+                .Select(w => w.Handle)
+                .Where(h => h != IntPtr.Zero)
+                .ToList();
+
+            if (handles.Count == 0)
+            {
+                // 没在运行 → 启动并等窗口出现
+                LaunchAndTrackExe(exePath, name);
+                return true;
+            }
+
+            var fg = WindowService.Foreground;
+
+            // 单个窗口：前台就最小化，否则切过去
+            if (handles.Count == 1)
+            {
+                var h = handles[0];
+                if (IsSameWindow(fg, h))
+                {
+                    WindowService.Minimize(h);
+                    Notified?.Invoke($"已最小化 {name}");
+                }
+                else
+                {
+                    WindowService.Activate(h);
+                    Notified?.Invoke($"已切到 {name}");
+                }
+                return true;
+            }
+
+            // 多窗口：循环
+            int idx = _cycleIndex.TryGetValue(StableHash(stateKey), out var ci) ? ci : -1;
+            int fgIdx = handles.FindIndex(h => IsSameWindow(fg, h));
+            if (fgIdx >= 0) idx = fgIdx;
+            idx = (idx + 1) % handles.Count;
+
+            var next = handles[idx];
+            if (IsSameWindow(next, fg))
+            {
+                WindowService.Minimize(next);
+                Notified?.Invoke($"已最小化 {name}");
+            }
+            else
+            {
+                _cycleIndex[StableHash(stateKey)] = idx;
+                WindowService.Activate(next);
+                Notified?.Invoke($"已切到 {name}（{handles.Count} 个窗口循环）");
+            }
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 字符串键的稳定哈希（不能用 string.GetHashCode —— 它每次进程启动都不同，
+    /// 循环索引会莫名其妙复位）。
+    /// </summary>
+    private static int StableHash(string s)
+    {
+        unchecked
+        {
+            int h = 17;
+            foreach (char c in s) h = h * 31 + c;
+            return h;
+        }
+    }
+
+    /// <summary>启动程序并等它的窗口出现后激活（任意按键版）。</summary>
+    private void LaunchAndTrackExe(string exePath, string name)
+    {
+        if (LaunchInterceptForTest != null)
+        {
+            bool ok = LaunchInterceptForTest(exePath);
+            Notified?.Invoke(ok ? $"正在启动 {name}…" : "启动失败：被拦截");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Notified?.Invoke("启动失败：" + ex.Message);
+            CoreLog.Warn($"绑定窗口启动失败 {exePath}: {ex.Message}");
+            return;
+        }
+
+        Notified?.Invoke($"正在启动 {name}…");
+        CoreLog.Info($"按键绑定：启动 {exePath}，等待窗口出现");
+
+        var th = new Thread(() =>
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            IntPtr found = IntPtr.Zero;
+
+            while (DateTime.UtcNow < deadline && found == IntPtr.Zero)
+            {
+                Thread.Sleep(350);
+                var hit = WindowService.EnumerateTopLevel()
+                    .FirstOrDefault(w => string.Equals(w.ExePath, exePath,
+                        StringComparison.OrdinalIgnoreCase));
+                if (hit.Handle != IntPtr.Zero) found = hit.Handle;
+            }
+
+            if (found == IntPtr.Zero)
+            {
+                CoreLog.Warn($"按键绑定：等了 15 秒仍未看到 {name} 的窗口");
+                Notified?.Invoke($"{name} 好像还没启动完成，再按一次试试");
+                return;
+            }
+
+            Thread.Sleep(400);        // 让窗口画完，避免激活到空白框
+            WindowService.Activate(found);
+            CoreLog.Info($"按键绑定：等到窗口 0x{found.ToInt64():X}，已激活");
+        })
+        {
+            IsBackground = true,
+            Name = "winbind-launch",
+        };
+        th.Start();
     }
 }

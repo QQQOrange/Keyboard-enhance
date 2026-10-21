@@ -121,6 +121,7 @@ public static class SelfTest
         TestQbarEngineActions();
         TestTriggerKeyPosition();
         TestKeyboardLayoutGeometry();
+        TestArbitraryWindowBinding();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2384,8 +2385,79 @@ public static class SelfTest
     ///   6. 编辑键簇在 61..72 区间；
     ///   7. 6 行都有内容。
     /// </summary>
-    private static void TestKeyboardLayoutGeometry()
+    /// <summary>
+    /// 窗口绑定并入按键映射：任意按键都能绑一个程序，不再限制 10 个槽位。
+    ///
+    /// 关键点：
+    ///   1. 动作表里有 "winBind"（参数 = 程序路径）；
+    ///   2. 它属于「窗口绑定」分类，与别的动作同构；
+    ///   3. 空路径 / 不存在路径要安全返回 false 并提示；
+    ///   4. 旧的 10 个槽位动作仍然存在（不破坏老配置）；
+    ///   5. 任意组合键都能存 winBind 绑定。
+    /// </summary>
+    private static void TestArbitraryWindowBinding()
     {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        var wb = cat.Items.FirstOrDefault(i => i.Id == "winBind");
+        Check("动作表有 winBind", wb != null,
+            string.Join(",", cat.Items.Where(i => i.Category == "窗口绑定").Select(i => i.Id)));
+        Check("winBind 在「窗口绑定」分类", wb?.Category == "窗口绑定", wb?.Category ?? "");
+        Check("winBind 需要参数（程序路径）", wb?.NeedsArg == true);
+        Check("winBind 有参数提示", !string.IsNullOrEmpty(wb?.ArgHint), wb?.ArgHint ?? "");
+        Check("有「选择程序…」动作", cat.Items.Any(i => i.Id == "winBindPick"));
+
+        // 旧槽位动作保留，老配置不受影响
+        Check("旧槽位 1 仍存在", cat.Items.Any(i => i.Id == "winbindActivate1"));
+        Check("旧槽位 10 仍存在", cat.Items.Any(i => i.Id == "winbindActivate10"));
+
+        var svc = new Core.Actions.WindowBindingService(settings);
+        var notes = new List<string>();
+        svc.Notified += m => { lock (notes) notes.Add(m); };
+
+        WindowBindingService.LaunchInterceptForTest = _ => true;
+        try
+        {
+            Check("空路径返回 false", !svc.ActivateExe("", "k"));
+            lock (notes)
+                Check("空路径给出提示", notes.Any(n => n.Contains("还没")),
+                    string.Join("|", notes));
+
+            lock (notes) notes.Clear();
+            Check("不存在的路径返回 false",
+                !svc.ActivateExe(@"C:\不存在的程序\zz.exe", "k"));
+            lock (notes)
+                Check("不存在路径给出提示", notes.Any(n => n.Contains("不存在")),
+                    string.Join("|", notes));
+        }
+        finally
+        {
+            WindowBindingService.LaunchInterceptForTest = null;
+        }
+
+        // 任意组合键都能存 winBind 绑定（不依赖槽位号）
+        var layer = settings.Layers.First(l => l.Id == 1);
+        foreach (string combo in new[] { "caps_q", "caps_lalt_z", "caps_ctrl_shift_k" })
+        {
+            layer.Keys.RemoveAll(k => k.Combo == combo);
+            layer.Keys.Add(new KeyBinding
+            { Combo = combo, Action = "winBind", Arg = @"C:\Windows\notepad.exe" });
+            Check($"「{combo}」能存 winBind 绑定",
+                layer.Keys.Any(k => k.Combo == combo && k.Action == "winBind"));
+        }
+    }
+
+    private static void TestKeyboardLayoutGeometry()    {
         // 用反射读 KeysView 里的 Layout 定义（private static field）
         var t = typeof(CapsLockPlus.UI.Views.KeysView);
         var f = t.GetField("Layout",

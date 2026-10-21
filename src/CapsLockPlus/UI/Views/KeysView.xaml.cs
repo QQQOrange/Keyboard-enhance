@@ -559,10 +559,16 @@ public partial class KeysView : UserControl
             or "selectLeft" or "selectRight" or "selectUp" or "selectDown" or "moveWordLeft" or "moveWordRight"
             or "selectWordLeft" or "selectWordRight" or "pageMoveLineUp" or "pageMoveLineDown";
         ArgPanel.Visibility = needsArg ? Visibility.Visible : Visibility.Collapsed;
+
+        // 「选择程序…」按钮只在窗口绑定类动作下出现
+        PickProgramButton.Visibility = actionId is "winBind"
+            ? Visibility.Visible : Visibility.Collapsed;
+
         ArgLabel.Text = actionId switch
         {
             "openUrl" => "网址",
             "runProgram" => "程序路径或命令",
+            "winBind" => "要绑定的程序",
             "wrapSelection" => "起始符号",
             _ => "次数 / 参数",
         };
@@ -570,10 +576,30 @@ public partial class KeysView : UserControl
         {
             "openUrl" => "例如 https://github.com",
             "runProgram" => "例如 notepad.exe",
+            "winBind" => "点右边的「选择程序…」挑一个 exe。"
+                       + "之后按这个键：程序没开就自动启动，已开着就切过去，再按一次最小化。",
             "wrapSelection" => "例如 ( 会把选中文字变成 (文字)",
             _ => "不填默认 1，填 5 表示一次移动 5 个字符",
         };
         BuildKeyboard();
+    }
+
+    /// <summary>
+    /// 给「切换窗口（绑定程序）」挑一个 exe，把路径填进参数栏。
+    /// </summary>
+    private void OnPickProgramClick(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择要绑定的程序",
+            Filter = "程序 (*.exe)|*.exe|所有文件|*.*",
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        ArgBox.Text = dlg.FileName;
+        // TextChanged 会触发 OnArgChanged 落盘，这里不用再手动存
+        _host?.Notify($"已选定：{System.IO.Path.GetFileName(dlg.FileName)}");
     }
 
     // ---------------- 事件 ----------------

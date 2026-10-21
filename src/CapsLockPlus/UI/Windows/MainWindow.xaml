@@ -76,15 +76,6 @@
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
-                    <ListBoxItem Tag="bindings">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE737;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                       FontSize="15" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="窗口绑定" Margin="11,0,0,0" VerticalAlignment="Center"
-                                       Style="{StaticResource Text.Body}" />
-                        </StackPanel>
-                    </ListBoxItem>
                     <ListBoxItem Tag="clipboard">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE77F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"

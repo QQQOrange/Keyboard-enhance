@@ -198,6 +198,23 @@ public sealed class ActionCatalog
         c.Add("screenshot", "系统", "截图", "调用系统截图工具", _ => ctx.Screenshot());
 
         // ---------------- 窗口绑定 ----------------
+        //
+        // 现在有两种用法，互不干扰：
+        //   ① 「切换窗口（绑定程序）」—— **任意按键**都能用，程序路径存在
+        //      这个按键自己的 Arg 里，不占固定槽位。这是推荐用法。
+        //   ② 老的 10 个槽位（Caps+1~0）—— 保留给已有配置，照旧可用。
+        c.Add("winBind", "窗口绑定", "切换窗口（绑定程序）",
+            "按一下切到指定程序；再按一次最小化；程序没开就自动启动。"
+            + "在参数栏选择要绑定的程序，或按下面「选择程序…」按钮",
+            a => ctx.WindowBindings.ActivateExe(a, "winBind:" + a),
+            needsArg: true, argHint: @"例如 C:\Program Files\...\Photoshop.exe");
+
+        // 界面用它弹出"选择程序"对话框，把结果写进参数栏
+        c.Add("winBindPick", "窗口绑定", "选择程序…",
+            "弹出文件选择框，挑一个 exe 自动填进参数栏",
+            _ => { ctx.RequestPickProgram(); return true; });
+
+        // 老的槽位动作（保留兼容）
         for (int i = 1; i <= 10; i++)
         {
             int slot = i;
@@ -205,7 +222,11 @@ public sealed class ActionCatalog
             c.Add($"winbindActivate{slot}", "窗口绑定", $"激活窗口槽位 {slot}", $"Caps+{key}：切到绑定的窗口", _ => ctx.WindowBindings.Activate(slot));
             c.Add($"winbindBind{slot}", "窗口绑定", $"绑定到窗口槽位 {slot}", $"把当前窗口绑到槽位 {slot}", _ => ctx.WindowBindings.Bind(slot));
         }
-        c.Add("winbindOpenManager", "窗口绑定", "打开窗口绑定管理", "管理 10 个窗口槽位", _ => { ctx.RequestOpenBindings(); return true; });
+        // 旧入口保留，但改成跳到按键映射页 —— 窗口绑定已经是那里的一个动作了，
+        // 单独的管理页没有存在意义。
+        c.Add("winbindOpenManager", "窗口绑定", "去按键映射页绑定窗口",
+            "窗口绑定现在是按键映射里的一个功能，任意按键都能绑",
+            _ => { ctx.RequestOpenKeysPage(); return true; });
 
         // ---------------- 宏 ----------------
         // 宏动作 ID 形如 macro:<宏ID>，参数可覆盖重复次数。

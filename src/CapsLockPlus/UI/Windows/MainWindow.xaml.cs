@@ -60,20 +60,22 @@ public partial class MainWindow : Window
     public void Navigate(string page)
     {
         _pendingPage = page;
+        /* 导航索引必须和 NavList 里 ListBoxItem 的**顺序**一致。
+         * 「窗口绑定」独立页已移除（改到按键映射里作为动作），
+         * 所以后面的索引整体前移一位。 */
         int index = page switch
         {
             "guide" => 0,
             "keys" => 1,
             "qbar" => 2,
-            "bindings" => 3,
-            "clipboard" => 4,
-            "translate" => 5,
-            "macros" => 6,
-            "layers" => 7,
-            "backup" => 8,
-            "settings" => 9,
-            "help" => 10,
-            "about" => 11,
+            "clipboard" => 3,
+            "translate" => 4,
+            "macros" => 5,
+            "layers" => 6,
+            "backup" => 7,
+            "settings" => 8,
+            "help" => 9,
+            "about" => 10,
             _ => 0,
         };
         if (NavList.SelectedIndex != index) NavList.SelectedIndex = index;
@@ -89,7 +91,6 @@ public partial class MainWindow : Window
         {
             "keys" => new KeysView(),
             "qbar" => new QbarSettingsView(),
-            "bindings" => new BindingsView(),
             "clipboard" => new ClipboardView(),
             "translate" => new TranslateSettingsView(),
             "macros" => new MacrosView(),
@@ -106,7 +107,6 @@ public partial class MainWindow : Window
             case GuideView g: g.Initialize(_host); break;
             case KeysView k: k.Initialize(_host); break;
             case QbarSettingsView q: q.Initialize(_host); break;
-            case BindingsView b: b.Initialize(_host); break;
             case ClipboardView c: c.Initialize(_host); break;
             case TranslateSettingsView t: t.Initialize(_host); break;
             case MacrosView m: m.Initialize(_host); break;
@@ -134,7 +134,6 @@ public partial class MainWindow : Window
             "guide" => ("快速上手", "3 分钟学会"),
             "keys" => ("按键映射", "可视化编辑"),
             "qbar" => ("Qbar 面板", "搜索 · 启动 · 计算"),
-            "bindings" => ("窗口绑定", "10 个槽位"),
             "clipboard" => ("剪贴板", "独立剪贴板"),
             "translate" => ("翻译", "选中即译"),
             "macros" => ("宏", "录制并绑定"),
@@ -150,7 +149,6 @@ public partial class MainWindow : Window
         {
             case GuideView g: g.Refresh(); break;
             case KeysView k: k.Refresh(); break;
-            case BindingsView b: b.Refresh(); break;
             case ClipboardView c: c.Refresh(); break;
             case SettingsView s: s.Refresh(); break;
             case QbarSettingsView q: q.Refresh(); break;
