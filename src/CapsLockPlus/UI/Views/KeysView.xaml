@@ -176,6 +176,12 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="功能" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                <!--
+                                    普通下拉（不设 IsEditable）。
+                                    可编辑模式下 WPF 不会自动把选中项填进显示区，
+                                    会出现"下拉空白"的问题；而且 300 多个引擎
+                                    靠上面的搜索框过滤更好用。
+                                -->
                                 <ComboBox x:Name="ActionBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnActionChanged" MaxDropDownHeight="420" />
                             </StackPanel>
@@ -258,6 +264,27 @@
                                        TextWrapping="Wrap" Margin="0,6,0,0" />
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,4,0,0"
                                        Text="填完网址会自动抓取网页标题作为备注，不满意可以直接改。备注会显示在键帽上，切到这一层就能看到。" />
+                        </StackPanel>
+
+                        <!-- ================= 输入文本 =================
+                             选了「输入文本」分类后，只要一个多行文本框：
+                             填进去的文字会在按键触发时直接打到当前光标处。
+                        -->
+                        <StackPanel x:Name="TypeTextPicker" Visibility="Collapsed">
+                            <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                            <ComboBox x:Name="CategoryBoxType" Style="{StaticResource ComboBox.Base}"
+                                      Width="150" HorizontalAlignment="Left"
+                                      SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
+
+                            <TextBlock Text="要输入的文字" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,14,0,7" />
+                            <TextBox x:Name="TypeTextBox" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="90" MaxHeight="180" AcceptsReturn="True"
+                                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     TextChanged="OnTypeTextChanged"
+                                     ToolTip="触发这个键时，会把这里的内容直接输入到当前光标处" />
+                            <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。" />
                         </StackPanel>
 
                         <TextBlock x:Name="ActionDesc" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"

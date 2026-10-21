@@ -228,6 +228,7 @@ public partial class KeysView : UserControl
         string? keep = SelectedCategory;
         string? keepWin = (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string;
         string? keepWeb = (CategoryBoxWeb.SelectedItem as ComboBoxItem)?.Tag as string;
+        string? keepType = (CategoryBoxType.SelectedItem as ComboBoxItem)?.Tag as string;
 
         var cats = _host.Actions.Items.Select(i => i.Category).Distinct().ToList();
 
@@ -244,11 +245,13 @@ public partial class KeysView : UserControl
             CategoryBox.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
             CategoryBoxWinBind.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
             CategoryBoxWeb.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
+            CategoryBoxType.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
         }
 
         Restore(CategoryBox, keep);
         Restore(CategoryBoxWinBind, keepWin);
         Restore(CategoryBoxWeb, keepWeb);
+        Restore(CategoryBoxType, keepType);
 
         static void Restore(ComboBox box, string? tag)
         {
@@ -267,6 +270,9 @@ public partial class KeysView : UserControl
 
     /// <summary>「直达网页」分类的名字（同样不走功能下拉，只要网址 + 备注）。</summary>
     private const string WebPageCategory = "直达网页";
+
+    /// <summary>「输入文本」分类（只要一个多行文本框）。</summary>
+    private const string TypeTextCategory = "输入文本";
 
     /// <summary>当前分类是不是「窗口绑定」。</summary>
     private bool IsWinBindCategory =>
@@ -296,7 +302,21 @@ public partial class KeysView : UserControl
             });
         }
 
-        if (ActionBox.Items.Count > 0) ActionBox.SelectedIndex = 0;
+        /* 选中第一项，并**同步文本**。
+         *
+         * ActionBox 是 IsEditable 的（为了能打字过滤 300 多个引擎），
+         * 这种下拉在只设 SelectedIndex 时，显示区不会自动填上选中项的文本，
+         * 表现就是"功能下拉是空白的"。必须手动把 Text 设成标题。 */
+        if (ActionBox.Items.Count > 0)
+        {
+            ActionBox.SelectedIndex = 0;
+            if (ActionBox.SelectedItem is ComboBoxItem first)
+                ActionBox.Text = first.Content as string ?? "";
+        }
+        else
+        {
+            ActionBox.Text = "";
+        }
     }
 
     /// <summary>
@@ -344,6 +364,8 @@ public partial class KeysView : UserControl
         WinBind,
         /// <summary>直达网页：分类 + 网址 + 备注。</summary>
         WebPage,
+        /// <summary>输入文本：分类 + 多行文本框。</summary>
+        TypeText,
     }
 
     /// <summary>根据分类名判断该用哪种模式。</summary>
@@ -351,6 +373,7 @@ public partial class KeysView : UserControl
     {
         WinBindCategory => EditorMode.WinBind,
         WebPageCategory => EditorMode.WebPage,
+        TypeTextCategory => EditorMode.TypeText,
         _ => EditorMode.Normal,
     };
 
@@ -371,6 +394,7 @@ public partial class KeysView : UserControl
         NormalActionPicker.Visibility = mode == EditorMode.Normal ? Visibility.Visible : Visibility.Collapsed;
         WinBindPicker.Visibility = mode == EditorMode.WinBind ? Visibility.Visible : Visibility.Collapsed;
         WebPagePicker.Visibility = mode == EditorMode.WebPage ? Visibility.Visible : Visibility.Collapsed;
+        TypeTextPicker.Visibility = mode == EditorMode.TypeText ? Visibility.Visible : Visibility.Collapsed;
 
         WinBindPanel.Visibility = mode == EditorMode.WinBind ? Visibility.Visible : Visibility.Collapsed;
 
@@ -387,6 +411,10 @@ public partial class KeysView : UserControl
                 ActionDesc.Text = "填一个网址：按这个键就用默认浏览器打开它。备注会显示在键帽上。";
                 RefreshWebPageFields();
                 break;
+            case EditorMode.TypeText:
+                ActionDesc.Text = "填一段文字：按这个键就把它直接输入到当前光标处。";
+                RefreshTypeTextField();
+                break;
         }
     }
 
@@ -401,6 +429,16 @@ public partial class KeysView : UserControl
         try
         {
             SyncCategoryBoxes(sender);
+
+            /* 用户**手动**换了分类 → 清掉搜索框。
+             *
+             * 否则会出现"我搜了「删除」，再选「面板」分类，
+             * 功能下拉里还是搜索的结果"这种矛盾状态 ——
+             * 手动选分类是更强的意图，应该覆盖之前的搜索。 */
+            if (ActionSearchBox != null && !string.IsNullOrEmpty(ActionSearchBox.Text))
+            {
+                ActionSearchBox.Text = "";
+            }
 
             var mode = ModeOf(SelectedCategory);
             ApplyEditorMode(mode);
@@ -419,6 +457,10 @@ public partial class KeysView : UserControl
             else if (mode == EditorMode.WebPage)
             {
                 EnsureActionForCategory("webPage");
+            }
+            else if (mode == EditorMode.TypeText)
+            {
+                EnsureActionForCategory("typeText");
             }
         }
         finally
@@ -459,11 +501,12 @@ public partial class KeysView : UserControl
             var s when ReferenceEquals(s, CategoryBox) => (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string,
             var s when ReferenceEquals(s, CategoryBoxWinBind) => (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string,
             var s when ReferenceEquals(s, CategoryBoxWeb) => (CategoryBoxWeb.SelectedItem as ComboBoxItem)?.Tag as string,
+            var s when ReferenceEquals(s, CategoryBoxType) => (CategoryBoxType.SelectedItem as ComboBoxItem)?.Tag as string,
             _ => SelectedCategory,
         };
         if (tag == null) return;
 
-        foreach (var box in new[] { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb })
+        foreach (var box in new[] { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType })
         {
             if (ReferenceEquals(box, source)) continue;
             foreach (ComboBoxItem it in box.Items)
@@ -1183,6 +1226,8 @@ public partial class KeysView : UserControl
             if (item.Tag is string tag && tag.Equals(actionId, StringComparison.OrdinalIgnoreCase))
             {
                 ActionBox.SelectedItem = item;
+                // 可编辑下拉要手动同步显示文本，否则显示区是空白
+                ActionBox.Text = item.Content as string ?? "";
                 break;
             }
         }
@@ -1199,6 +1244,10 @@ public partial class KeysView : UserControl
         {
             if (wb2.Tag as string == info?.Category) { CategoryBoxWeb.SelectedItem = wb2; break; }
         }
+        foreach (ComboBoxItem tb in CategoryBoxType.Items)
+        {
+            if (tb.Tag as string == info?.Category) { CategoryBoxType.SelectedItem = tb; break; }
+        }
 
         _suppressEvents = false;
 
@@ -1210,6 +1259,7 @@ public partial class KeysView : UserControl
         {
             "winBind" => EditorMode.WinBind,
             "webPage" => EditorMode.WebPage,
+            "typeText" => EditorMode.TypeText,
             _ => EditorMode.Normal,
         };
         ApplyEditorMode(mode);
@@ -1375,6 +1425,38 @@ public partial class KeysView : UserControl
     private DispatcherTimer? _statusTimer;
 
     // ---------------- 直达网页面板 ----------------
+
+    // ---------------- 输入文本 ----------------
+
+    /// <summary>把多行文本框刷成当前绑定的内容。</summary>
+    private void RefreshTypeTextField()
+    {
+        var b = FindInCurrentLayer(CurrentCombo());
+        bool isType = b?.Action == "typeText";
+
+        _suppressEvents = true;
+        TypeTextBox.Text = isType ? (b!.Arg ?? "") : "";
+        _suppressEvents = false;
+    }
+
+    /// <summary>文本框内容变化：写进当前按键的绑定。</summary>
+    private void OnTypeTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "typeText") return;
+
+        b.Arg = TypeTextBox.Text ?? "";
+        _host.SaveSettings();
+        BuildKeyboard();
+
+        if (!string.IsNullOrEmpty(b.Arg))
+        {
+            string preview = b.Arg.Length > 12 ? b.Arg[..12] + "…" : b.Arg;
+            ShowBindStatus($"已保存要输入的文字：「{preview}」");
+        }
+    }
 
     /// <summary>把"网址 / 备注"两个输入框刷成当前绑定的内容。</summary>
     private void RefreshWebPageFields()
@@ -1694,6 +1776,54 @@ public partial class KeysView : UserControl
         _host.SaveSettings();
         var info = _host.Actions.Get(actionId);
         ActionDesc.Text = info?.Description ?? "";
+
+        /* 从**搜索结果**里选了一个功能 → 要把分类切到它所属的那一类。
+         *
+         * 否则会出现：搜"删除"选中「删除整行」，但左边的分类还停在
+         * 「面板」，功能下拉里显示的又是搜索结果 —— 用户看不出
+         * 这个功能到底属于哪个分类。
+         *
+         * 切分类之前先清空搜索框（否则 BuildActionBox 仍按搜索过滤）。 */
+        if (info != null && !string.IsNullOrEmpty(ActionSearchBox?.Text))
+        {
+            _suppressEvents = true;
+            try
+            {
+                ActionSearchBox.Text = "";
+
+                foreach (ComboBoxItem it in CategoryBox.Items)
+                {
+                    if (it.Tag as string == info.Category)
+                    {
+                        CategoryBox.SelectedItem = it;
+                        CategoryBoxWinBind.SelectedItem = it;
+                        CategoryBoxWeb.SelectedItem = it;
+                        CategoryBoxType.SelectedItem = it;
+                        break;
+                    }
+                }
+                BuildActionBox();
+
+                // 把刚选的动作重新选上（BuildActionBox 会重置到第一项）
+                foreach (ComboBoxItem it in ActionBox.Items)
+                {
+                    if (it.Tag is string tag && tag.Equals(actionId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ActionBox.SelectedItem = it;
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                _suppressEvents = false;
+            }
+
+            // 不要走 SelectKey（它会重新按分类定位），这里已经同步好了
+            BuildKeyboard();
+            return;
+        }
+
         SelectKey(_selectedKey);
     }
 

@@ -14,15 +14,22 @@ public static class TextActions
     private static readonly object ClipGate = new();
 
     /// <summary>一次“复制”最多等多久（毫秒）。</summary>
-    private const int DefaultTimeoutMs = 260;
+    private const int DefaultTimeoutMs = 420;   // 浏览器复制可能较慢，放宽到 420ms
 
     /// <summary>
     /// 取当前选中的文本；没有选区或取不到时返回空串。
     ///
-    /// 关键点：先用寄存器里的“剪贴板序号”判断这次复制究竟有没有产生新内容。
-    /// 如果只靠“剪贴板里有没有文本”，那么当用户没有选中任何东西时，
-    /// 上一次残留在剪贴板里的内容会被误当成选区，导致 Caps+Tab 之类动作
-    /// 凭空多出一段文字。这里用序号变化来严格判定。
+    /// **网页选区必须能取到** —— 这是最容易翻车的场景：
+    ///   · 浏览器里选中文字后，只有 Ctrl+C 会真正写剪贴板；
+    ///     Ctrl+Insert 在 Chrome/Edge/Firefox 里**不复制**，于是取回空串，
+    ///     表现就是"明明选中了却说没选中"。
+    ///
+    /// 所以这里按 **Ctrl+C → Ctrl+Insert** 的顺序尝试，
+    /// 每次都用剪贴板序号变化来确认"真的复制到了"，
+    /// 只有全部失败才返回空串。
+    ///
+    /// 另一个坑：不能只看"剪贴板里有没有文本"。用户没选任何东西时，
+    /// 上一次残留的内容会被误当成选区 —— 所以用序号变化严格判定。
     /// </summary>
     public static string GetSelectedText(int timeoutMs = DefaultTimeoutMs)
     {
@@ -32,21 +39,20 @@ public static class TextActions
             bool hadText = false;
             try
             {
-                if (Clipboard.ContainsText())
-                {
-                    old = Clipboard.GetText();
-                    hadText = true;
-                }
+                if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
             }
             catch { /* 剪贴板被别的程序占用 */ }
 
             try
             {
-                uint before = GetClipboardSequenceNumber();
-                Clipboard.Clear();
-                InputSender.Ctrl(VK.Insert);   // Ctrl+Insert == 复制
-                if (!WaitForClipboardChange(before, timeoutMs)) return string.Empty;
-                return Clipboard.GetText();
+                // ① 首选 Ctrl+C：浏览器、Office、绝大多数编辑器都认
+                // Ctrl+C（0x43 = C）：浏览器、Office、大多数编辑器都认
+                string text = TryCopyVia(() => InputSender.Ctrl(0x43), timeoutMs);
+                if (!string.IsNullOrEmpty(text)) return text;
+
+                // ② 退回 Ctrl+Insert：终端、部分老程序只认这个
+                text = TryCopyVia(() => InputSender.Ctrl(VK.Insert), timeoutMs);
+                return text;
             }
             catch (Exception ex)
             {
@@ -58,6 +64,38 @@ public static class TextActions
                 RestoreClipboard(old, hadText);
             }
         }
+    }
+
+    /// <summary>
+    /// 发一次复制快捷键，然后等剪贴板序号变化，返回新内容（失败返回空串）。
+    ///
+    /// 每次开始前都清空剪贴板，这样"序号变化 = 这次真的复制到了东西"。
+    /// </summary>
+    private static string TryCopyVia(Action sendCopy, int timeoutMs)
+    {
+        uint before;
+        try
+        {
+            before = GetClipboardSequenceNumber();
+            Clipboard.Clear();
+        }
+        catch { return string.Empty; }
+
+        try { sendCopy(); } catch { return string.Empty; }
+
+        // 剪贴板序号是全局的：Clear() 本身也会让它变化，
+        // 所以这里改用"清空后再读一次序号"作为基准。
+        uint baseline;
+        try { baseline = GetClipboardSequenceNumber(); }
+        catch { return string.Empty; }
+
+        if (!WaitForClipboardChange(baseline, timeoutMs)) return string.Empty;
+
+        try
+        {
+            return Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
+        }
+        catch { return string.Empty; }
     }
 
     /// <summary>等待剪贴板序号发生变化（= 前台程序确实写入了新内容）。</summary>

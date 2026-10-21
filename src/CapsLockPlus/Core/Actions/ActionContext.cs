@@ -125,6 +125,30 @@ public sealed class ActionContext
         return true;
     }
 
+    /// <summary>
+    /// 把一段文字直接输入到当前焦点处。
+    ///
+    /// 走 InputSender.Text（逐字符 Unicode 发送），不用剪贴板 ——
+    /// 既不会破坏用户剪贴板内容，也能正常走 IME。
+    /// </summary>
+    public bool TypeText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return true;
+
+        try
+        {
+            // 太长会有明显延迟（逐字符发送），限制一下避免误操作
+            const int maxLen = 2000;
+            string payload = text.Length > maxLen ? text[..maxLen] : text;
+            InputSender.Text(payload);
+        }
+        catch (Exception ex)
+        {
+            Notify("输入文字失败：" + ex.Message);
+            CoreLog.Warn("输入文字失败：" + ex.Message);
+        }
+        return true;
+    }
     /// <summary>Caps+Tab：把光标前的算式算出结果 / 展开热字串。</summary>
     public bool RunTabScript()    {
         var settings = Settings();

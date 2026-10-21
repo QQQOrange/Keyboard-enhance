@@ -135,6 +135,8 @@ public static class SelfTest
         TestTriggerBadgeFollowsLayer();
         TestSubLayers();
         TestDirectSearch();
+        TestTypeTextAction();
+        TestDirectSearchCoversAllEngines();
 
         Section("审计修复");
         TestAuditFindings();
@@ -3099,9 +3101,9 @@ public static class SelfTest
             cat.Items.Count(i => i.Category == "直接搜索") >= 5,
             cat.Items.Count(i => i.Category == "直接搜索").ToString());
 
-        // ② 不够被塞爆下拉
-        Check("直接搜索动作数量受控",
-            cat.Items.Count(i => i.Category == "直接搜索") <= 30,
+        // ② v2.8 起直接搜索覆盖**全部**引擎（下拉支持输入过滤，不怕多）
+        Check("直接搜索覆盖全部引擎",
+            cat.Items.Count(i => i.Category == "直接搜索") >= 50,
             cat.Items.Count(i => i.Category == "直接搜索").ToString());
 
         // ③ 执行时把选中文本编码进 URL 并交给浏览器
@@ -3140,6 +3142,75 @@ public static class SelfTest
 
         // ⑤ 未知引擎安全返回且不崩
         Check("未知引擎不抛异常", ctx.SearchSelection("no_such_engine", "abc"));
+    }
+
+    /// <summary>
+    /// 「输入文本」分类：把多行文本直接打到当前光标处。
+    /// </summary>
+    private static void TestTypeTextAction()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        var item = cat.Items.FirstOrDefault(i => i.Id == "typeText");
+        Check("动作表有 typeText", item != null,
+            string.Join(",", cat.Items.Where(i => i.Category == "输入文本").Select(i => i.Id)));
+        CheckEqual("typeText 在「输入文本」分类", item?.Category, "输入文本");
+        Check("typeText 需要参数", item?.NeedsArg == true);
+
+        // 空文本安全返回（不崩、不发按键）
+        Check("空文本安全返回", ctx.TypeText(""));
+
+        // 多行文本允许（文本框 AcceptsReturn）
+        Check("多行文本不抛异常", ctx.TypeText("第一行\n第二行"));
+
+        // 超长文本被截断而不是拒发（2000 上限）
+        string longText = new string('a', 5000);
+        Check("超长文本不抛异常", ctx.TypeText(longText));
+    }
+
+    /// <summary>
+    /// 「直接搜索」应覆盖 Qbar 面板里的**全部**搜索引擎，而不只是常用的几个。
+    /// </summary>
+    private static void TestDirectSearchCoversAllEngines()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        // 设置里有多少可用引擎，就应该有多少 search: 动作
+        int engineCount = settings.Search.Count(x =>
+            !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(x.Value));
+
+        int actionCount = cat.Items.Count(i => i.Category == "直接搜索");
+
+        Check("直接搜索动作数 = 全部引擎数",
+            actionCount == engineCount, $"{actionCount} vs {engineCount}");
+        Check("引擎数量足够多（>50）", engineCount > 50, engineCount.ToString());
+
+        // 抽查几个非常用引擎也在
+        foreach (string key in new[] { "bd", "zh", "go" })
+        {
+            Check($"常用引擎 {key} 有动作", cat.Items.Any(i => i.Id == "search:" + key));
+        }
     }
 
     private static void TestKeyboardLayoutGeometry()    {

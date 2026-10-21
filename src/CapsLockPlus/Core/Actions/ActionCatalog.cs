@@ -177,11 +177,14 @@ public sealed class ActionCatalog
         // 和「Qbar 搜索」分类的区别：
         //   · Qbar 搜索 = 打开面板，预先选好引擎，用户再输入关键词
         //   · 直接搜索 = 拿**当前选中的文本**直接去搜索，不弹面板
-        //
-        // 同样只注册常用引擎 —— 300 多个塞进下拉没法用。
+        /* 注册**全部**搜索引擎（不只是常用那几个）。
+         *
+         * 「直接搜索」下拉里有搜索框可以过滤，所以即使有 300 多项也能快速找到 ——
+         * 不像「Qbar 搜索」那样受下拉长度限制。用户要求"把 Qbar 面板里
+         * 所有引擎都搬过来"。 */
         foreach (var e in ctx.Settings().Search.Where(x =>
                      !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
-                     quickEngines.Contains(x.Key, StringComparer.OrdinalIgnoreCase)))
+                     !string.IsNullOrWhiteSpace(x.Value)))
         {
             string key = e.Key;
             string name = string.IsNullOrWhiteSpace(e.Comment) ? key : e.Comment;
@@ -251,6 +254,20 @@ public sealed class ActionCatalog
         c.Add("webPage", "直达网页", "打开网页",
             "用默认浏览器打开这个网址；可以加备注，备注会显示在键帽上",
             a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; },
+            needsArg: true);
+
+        // ---------------- 输入文本 ----------------
+        //
+        // 把一段预设文字直接打到**当前焦点所在的输入框**里。
+        // 适合邮箱、地址、常用签名这类反复要敲的内容。
+        //
+        // 逐字符用 Unicode 方式发送（不碰剪贴板），所以：
+        //   · 中文、emoji 都能发
+        //   · 不会覆盖用户剪贴板里的内容
+        //   · 走 IME 路径，输入法正常
+        c.Add("typeText", "输入文本", "输入一段文字",
+            "把这段文字直接输入到当前光标处（支持中文与 emoji）",
+            a => { if (!string.IsNullOrEmpty(a)) ctx.TypeText(a); return true; },
             needsArg: true);
 
         // ---------------- 窗口绑定 ----------------
