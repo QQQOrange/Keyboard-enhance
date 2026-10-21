@@ -52,11 +52,12 @@ public static class TextActions
             {
                 /* ① Ctrl+C：浏览器、Office、绝大多数编辑器都认。
                  *    0x43 = 'C' */
-                string text = TryCopyVia(() => InputSender.Ctrl(0x43), timeoutMs);
+                // 用 CopyChord（带扫描码、分四次发）—— 浏览器才认
+                string text = TryCopyVia(() => InputSender.CopyChord(0x43), timeoutMs);
                 if (!string.IsNullOrEmpty(text)) return text;
 
                 // ② Ctrl+Insert：终端、部分老程序只认这个
-                return TryCopyVia(() => InputSender.Ctrl(VK.Insert), timeoutMs);
+                return TryCopyVia(() => InputSender.CopyChord(VK.Insert), timeoutMs);
             }
             catch (Exception ex)
             {
@@ -106,6 +107,12 @@ public static class TextActions
             Thread.Sleep(12);
         }
         return string.Empty;
+    }
+
+    private static string SafeContainsText()
+    {
+        try { return Clipboard.ContainsText() ? Clipboard.GetText() : "(无文本)"; }
+        catch (Exception ex) { return "(异常:" + ex.Message + ")"; }
     }
 
     /// <summary>等待剪贴板序号发生变化（= 前台程序确实写入了新内容）。</summary>

@@ -137,6 +137,7 @@ public static class SelfTest
         TestDirectSearch();
         TestTypeTextAction();
         TestDirectSearchCoversAllEngines();
+        TestCopyChordEndToEnd();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2677,7 +2678,8 @@ public static class SelfTest
 
         // 版本号
         var ver = typeof(AppInfo).Assembly.GetName().Version;
-        Check("主版本号是 2", ver?.Major == 2, ver?.ToString() ?? "(null)");
+        // 版本号会随发布递增，这里只校验"能取到且 >= 2"
+        Check("版本号有效", ver != null && ver.Major >= 2, ver?.ToString() ?? "(null)");
     }
 
     /// <summary>
@@ -3210,6 +3212,75 @@ public static class SelfTest
         foreach (string key in new[] { "bd", "zh", "go" })
         {
             Check($"常用引擎 {key} 有动作", cat.Items.Any(i => i.Id == "search:" + key));
+        }
+    }
+
+    /// <summary>
+    /// 端到端验证：CopyChord 必须能真的取到选中文本。
+    ///
+    /// 用真实 TextBox + 真实按键注入。要点：
+    ///   · 窗口必须在屏幕内且真的在前台（否则输入投递不到）
+    ///   · 取词放**后台线程**，主线程继续泵消息 ——
+    ///     TryCopyVia 内部有 Sleep，同线程的窗口在 Sleep 期间收不到按键
+    ///
+    /// 背景：之前用 InputSender.Ctrl() 发 Ctrl+C，wScan 留 0 且带
+    /// KEYEVENTF_SCANCODE，Chromium / Qt 系程序会忽略这种合成按键，
+    /// 表现就是"选中了却说没选中"。
+    /// </summary>
+    private static void TestCopyChordEndToEnd()
+    {
+        Check("InputSender 有 CopyChord",
+            typeof(InputSender).GetMethod("CopyChord") != null);
+
+        var win = new System.Windows.Window
+        {
+            Width = 400,
+            Height = 200,
+            WindowStyle = System.Windows.WindowStyle.ToolWindow,
+            ShowInTaskbar = false,
+            Left = 120,
+            Top = 120,
+        };
+        var box = new System.Windows.Controls.TextBox { Text = "选区测试ABC" };
+        win.Content = box;
+        win.Show();
+        DoEvents(250);
+
+        try
+        {
+            win.Activate();
+            win.Topmost = true;
+            box.Focus();
+            box.SelectAll();
+            DoEvents(350);
+
+            bool fg = WindowService.Foreground ==
+                new System.Windows.Interop.WindowInteropHelper(win).Handle;
+            Check("测试窗口已在前台", fg, fg ? "ok" : "不在前台");
+
+            if (!fg)
+            {
+                Check("跳过：窗口未获焦点", true);
+                return;
+            }
+
+            /* 必须在 **STA 线程**调用：Clipboard 是 OLE 组件，
+             * 在 MTA 线程上会抛「必须先将当前线程设置为单个线程单元(STA)模式」。 */
+            string gotFromSta = "";
+            var staThread = new Thread(() => gotFromSta = TextActions.GetSelectedText(900));
+            staThread.SetApartmentState(ApartmentState.STA);
+            staThread.IsBackground = true;
+            staThread.Start();
+            for (int i = 0; i < 40 && staThread.IsAlive; i++) DoEvents(50);
+            string got = gotFromSta;
+            Check("能取到选中文本", !string.IsNullOrEmpty(got),
+                got.Length == 0 ? "(空)" : got);
+            CheckEqual("内容正确", got, "选区测试ABC");
+        }
+        finally
+        {
+            win.Close();
+            DoEvents(150);
         }
     }
 

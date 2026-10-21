@@ -27,16 +27,19 @@ public static class InputSender
         uint flags = 0;
         if (up) flags |= KEYEVENTF_KEYUP;
         if (unicode) flags |= KEYEVENTF_UNICODE;
-        else if (scan != 0) flags |= KEYEVENTF_SCANCODE;
 
-        /* 扩展键必须带 KEYEVENTF_EXTENDEDKEY。
+        /* ⚠ 这里**不能**加 KEYEVENTF_SCANCODE。
          *
-         * 不带的话，系统按**非扩展扫描码**投递 —— 方向键、Home/End、
-         * Insert/Delete、小键盘这些键会被"按扫描码识别按键"的程序
-         * （游戏 / DirectInput / 部分终端 / RDP 会话）当成小键盘变体，
-         * 行为错乱。普通窗口不受影响，所以平时看不出来，进游戏就现形。
+         * 一旦指定 KEYEVENTF_SCANCODE，系统就只按 wScan 投递、忽略 wVk，
+         * 目标程序拿到的按键信息不完整 —— Chromium / Qt 系程序
+         * （Chrome、Edge、微信）会判定"这不是一次正常快捷键"而不复制。
          *
-         * NativeMethods 里这个常量早就定义了却全工程无人用。 */
+         * 正确做法：**同时**填 wVk 和 wScan，但**不带** SCANCODE 标志。
+         * 系统按虚拟键走正常投递路径，wScan 作为附带信息一并送达，
+         * 需要看扫描码的程序同样能认出来。
+         *
+         * 扩展键必须带 KEYEVENTF_EXTENDEDKEY，否则方向键、Home/End、
+         * Ins/Del、小键盘会被"按扫描码识别按键"的程序当成小键盘变体。 */
         if (IsExtendedKey(vk)) flags |= KEYEVENTF_EXTENDEDKEY;
 
         return new INPUT
@@ -132,6 +135,50 @@ public static class InputSender
         KeyUp(VK.Shift);
         KeyUp(VK.Control);
     }
+
+    /// <summary>
+    /// 发一次 Ctrl+&lt;vk&gt;，但**带扫描码、分四次发送、每次间隔 8ms**。
+    ///
+    /// 为什么不能直接用 <see cref="Ctrl"/>：那条路径的 <c>wScan</c> 是 0，
+    /// 而 Chromium（Chrome / Edge）与 Qt（微信 4.x）这类程序在处理快捷键时
+    /// 会看扫描码 —— 留 0 的合成按键有被忽略的风险，表现就是
+    /// "在浏览器里选中文字后按复制，程序收不到"。
+    ///
+    /// 另外四个按键必须分开发：塞在同一次 SendInput 里，
+    /// 部分程序的按键队列会漏掉后半截（Ctrl 按下但 C 没到）。
+    /// </summary>
+    /// <param name="vk">与 Ctrl 组合的主键</param>
+    /// <param name="gapMs">每次发送之间的间隔（毫秒）</param>
+    public static void CopyChord(int vk, int gapMs = 8)
+    {
+        ushort ctrlScan = ScanOf(VK.Control);
+        ushort keyScan = ScanOf(vk);
+
+        void Send(int k, ushort scan, bool up)
+        {
+            var input = KeyInput(k, up, unicode: false, scan: scan);
+            SendInput(1, new[] { input }, InputSize);
+            if (gapMs > 0) Thread.Sleep(gapMs);
+        }
+
+        Send(VK.Control, ctrlScan, up: false);
+        Send(vk, keyScan, up: false);
+        Send(vk, keyScan, up: true);
+        Send(VK.Control, ctrlScan, up: true);
+    }
+
+    /// <summary>取虚拟键对应的扫描码（取不到则返回 0，退回不带扫描码的行为）。</summary>
+    private static ushort ScanOf(int vk)
+    {
+        try
+        {
+            ushort scan = MapVirtualKey((uint)vk, MAPVK_VK_TO_VSC);
+            return (ushort)(scan & 0xFF);
+        }
+        catch { return 0; }
+    }
+
+    private const uint MAPVK_VK_TO_VSC = 0;
 
     /// <summary>输入任意文本（走 Unicode 注入，不经过键盘布局）。</summary>
     public static void Text(string text)
