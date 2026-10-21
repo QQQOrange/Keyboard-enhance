@@ -279,44 +279,17 @@ public partial class KeysView : UserControl
         (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string == WinBindCategory;
 
     /// <summary>填"功能"下拉。有搜索词时跨分类搜索，否则只列当前分类。</summary>
+        /// <summary>填"功能"下拉：只列当前分类下的动作。</summary>
     private void BuildActionBox()
     {
         if (_host == null) return;
         string? cat = (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
-        string filter = ActionSearchBox?.Text?.Trim() ?? "";
 
         ActionBox.Items.Clear();
+        foreach (var item in _host.Actions.Items.Where(i => i.Category == cat))
+            ActionBox.Items.Add(new ComboBoxItem { Content = item.Title, Tag = item.Id });
 
-        /* 有搜索词时**跨分类**搜索：用户搜"宏"不该先猜它属于哪个分类。 */
-        var candidates = filter.Length > 0
-            ? _host.Actions.Items.Where(i => MatchesAction(i, filter))
-            : _host.Actions.Items.Where(i => i.Category == cat);
-
-        foreach (var item in candidates)
-        {
-            ActionBox.Items.Add(new ComboBoxItem
-            {
-                // 跨分类搜索时把分类标在标题后，避免同名混淆
-                Content = filter.Length > 0 ? $"{item.Title}　·　{item.Category}" : item.Title,
-                Tag = item.Id,
-            });
-        }
-
-        /* 选中第一项，并**同步文本**。
-         *
-         * ActionBox 是 IsEditable 的（为了能打字过滤 300 多个引擎），
-         * 这种下拉在只设 SelectedIndex 时，显示区不会自动填上选中项的文本，
-         * 表现就是"功能下拉是空白的"。必须手动把 Text 设成标题。 */
-        if (ActionBox.Items.Count > 0)
-        {
-            ActionBox.SelectedIndex = 0;
-            if (ActionBox.SelectedItem is ComboBoxItem first)
-                ActionBox.Text = first.Content as string ?? "";
-        }
-        else
-        {
-            ActionBox.Text = "";
-        }
+        if (ActionBox.Items.Count > 0) ActionBox.SelectedIndex = 0;
     }
 
     /// <summary>
@@ -347,12 +320,101 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>搜索框内容变化：重建功能下拉。</summary>
+        // ---------------- 搜索结果 ----------------
+
+    /// <summary>一条搜索结果：点它会跳到对应的分类 + 功能。</summary>
+    private sealed record SearchHit(string ActionId, string Category, string Title)
+    {
+        public string Subtitle => Category;
+    }
+
+    /// <summary>
+    /// 搜索框内容变化：构建结果列表并弹出浮层。
+    ///
+    /// 搜索是**独立的结果下拉**，不干扰下面的分类/功能下拉 ——
+    /// 用户点中一条之后，才把三项一起切过去。
+    /// </summary>
     private void OnActionSearchChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppressEvents) return;
+
+        string filter = ActionSearchBox.Text?.Trim() ?? "";
+        if (filter.Length == 0)
+        {
+            SearchPopup.IsOpen = false;
+            SearchResultList.ItemsSource = null;
+            return;
+        }
+
+        var hits = _host.Actions.Items
+            .Where(i => MatchesAction(i, filter))
+            .OrderBy(i => i.Category)
+            .ThenBy(i => i.Title)
+            .Take(60)
+            .Select(i => new SearchHit(i.Id, i.Category, i.Title))
+            .ToList();
+
+        SearchResultList.ItemsSource = hits;
+        SearchPopup.IsOpen = hits.Count > 0;
+    }
+
+    /// <summary>
+    /// 点了某条搜索结果 → 分类、功能、参数面板一起跳过去。
+    /// </summary>
+    private void OnSearchResultSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        if (SearchResultList.SelectedItem is not SearchHit hit) return;
+
         _suppressEvents = true;
-        try { BuildActionBox(); }
-        finally { _suppressEvents = false; }
+        try
+        {
+            // ① 切分类（四个分类下拉都要同步）
+            var info = _host.Actions.Get(hit.ActionId);
+            if (info != null)
+            {
+                foreach (var box in new[] { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType })
+                {
+                    foreach (ComboBoxItem it in box.Items)
+                    {
+                        if (it.Tag as string == info.Category) { box.SelectedItem = it; break; }
+                    }
+                }
+            }
+
+            // ② 按分类决定用哪种编辑模式
+            var mode = ModeOf(info?.Category);
+            ApplyEditorMode(mode);
+
+            // ③ 普通模式下把功能下拉选中到目标项
+            if (mode == EditorMode.Normal)
+            {
+                BuildActionBox();
+                foreach (ComboBoxItem it in ActionBox.Items)
+                {
+                    if (it.Tag is string tag && tag.Equals(hit.ActionId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ActionBox.SelectedItem = it;
+                        break;
+                    }
+                }
+                ApplySelectedAction();
+            }
+            else
+            {
+                // 窗口绑定 / 直达网页 / 输入文本：把当前键的动作设过去
+                EnsureActionForCategory(hit.ActionId);
+            }
+
+            // ④ 收起搜索
+            ActionSearchBox.Text = "";
+            SearchPopup.IsOpen = false;
+            SearchResultList.ItemsSource = null;
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
     }
 
     /// <summary>界面当前处于哪种编辑模式。</summary>

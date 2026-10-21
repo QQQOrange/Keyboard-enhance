@@ -137,11 +137,51 @@
                             <TextBlock Text="编辑绑定" Style="{StaticResource Text.H2}" VerticalAlignment="Center" />
                         </StackPanel>
 
-                        <!-- 快速搜索功能：可以按功能名、分类、宏名、网址、备注搜索 -->
-                        <TextBox x:Name="ActionSearchBox" Style="{StaticResource TextBox.Base}"
-                                 MinHeight="34" Margin="0,10,0,0" VerticalContentAlignment="Center"
-                                 TextChanged="OnActionSearchChanged"
-                                 ToolTip="搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github" />
+                        <!--
+                            快速搜索：输入后弹出**独立的结果列表**，
+                            点一条就把「分类」「功能」「参数」三项一起跳过去。
+                            不是把结果塞进功能下拉 —— 那样看不出分类，也没法直接跳。
+                        -->
+                        <Grid Margin="0,10,0,0">
+                            <TextBox x:Name="ActionSearchBox" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="34" VerticalContentAlignment="Center"
+                                     TextChanged="OnActionSearchChanged"
+                                     ToolTip="搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github" />
+
+                            <!-- 搜索结果浮层：贴在搜索框下方 -->
+                            <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=ActionSearchBox}"
+                                   Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                                   PopupAnimation="Fade" IsOpen="False">
+                                <Border Margin="0,4,0,0" CornerRadius="10" Padding="4"
+                                        MaxHeight="320"
+                                        Background="{DynamicResource Brush.Surface}"
+                                        BorderBrush="{DynamicResource Brush.BorderStrong}"
+                                        BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.18" />
+                                    </Border.Effect>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="312">
+                                        <ListBox x:Name="SearchResultList" Background="Transparent"
+                                                 BorderThickness="0" Width="360"
+                                                 ItemContainerStyle="{StaticResource RowItem}"
+                                                 SelectionChanged="OnSearchResultSelected">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Margin="2,3">
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   Foreground="{DynamicResource Brush.TextPrimary}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Subtitle}"
+                                                                   Style="{StaticResource Text.Tertiary}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
 
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <Border Style="{StaticResource Keycap}" Padding="12,7">

@@ -273,6 +273,8 @@ public sealed class AppHost : IDisposable
     {
         Settings = SettingsStore.Load();
         ThemeManager.Apply(ThemeManager.Parse(Settings.Global.Theme));
+        // 主题一变就作废 Qbar 的样式缓存，否则已打开的面板还留着旧配色
+        _qbar?.InvalidateStyle();
         Context.Clipboard.ClipboardFeatureOn = Settings.Global.AllowClipboard;
         Context.Mouse.Speed = Settings.Global.MouseSpeed;
         Context.Mouse.Step = Settings.Global.MouseMoveStep;

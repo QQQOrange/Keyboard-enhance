@@ -314,6 +314,14 @@ public static class SettingsStore
         s.Macros ??= new List<Macro>();
         s.Global.MouseSpeed = Math.Clamp(s.Global.MouseSpeed, 1, 20);
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
+
+        /* Qbar 面板底色：老配置里是写死的深色值（#1C1F27），
+         * 导致浅色主题下"白字白底"看不见。
+         *
+         * 这里把**旧版的默认深色值**迁移成 auto（跟随主题）——
+         * 只迁移这一个已知的旧默认值，用户自己选的颜色不动。 */
+        if (string.Equals(s.Qbar.PanelColor, "#1C1F27", StringComparison.OrdinalIgnoreCase))
+            s.Qbar.PanelColor = "auto";
         /* 布局方案固定为新版（Capslox），不再允许切换。
          *
          * 旧的「经典 CapsLock+ 3.0」方案只是历史兼容产物：两套布局的差别

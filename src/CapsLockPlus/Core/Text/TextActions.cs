@@ -19,40 +19,44 @@ public static class TextActions
     /// <summary>
     /// 取当前选中的文本；没有选区或取不到时返回空串。
     ///
-    /// **网页选区必须能取到** —— 这是最容易翻车的场景：
-    ///   · 浏览器里选中文字后，只有 Ctrl+C 会真正写剪贴板；
-    ///     Ctrl+Insert 在 Chrome/Edge/Firefox 里**不复制**，于是取回空串，
-    ///     表现就是"明明选中了却说没选中"。
+    /// **浏览器里选中网页文字也必须能取到** —— 这是最容易翻车的场景。
     ///
-    /// 所以这里按 **Ctrl+C → Ctrl+Insert** 的顺序尝试，
-    /// 每次都用剪贴板序号变化来确认"真的复制到了"，
-    /// 只有全部失败才返回空串。
+    /// 三个曾经踩过的坑：
+    ///   1. 先 <c>Clipboard.Clear()</c> 再发 Ctrl+C，中间没有间隔：
+    ///      浏览器还没处理完剪贴板占用，复制请求就被丢弃了。
+    ///   2. 等待时要求"序号变了**且立刻能读到文本**"：
+    ///      浏览器写剪贴板是异步的（序号先变、内容后到），
+    ///      那几毫秒里读不到文本就判成失败。
+    ///   3. Ctrl+Insert 在 Chrome/Edge/Firefox 里**不是复制**。
     ///
-    /// 另一个坑：不能只看"剪贴板里有没有文本"。用户没选任何东西时，
-    /// 上一次残留的内容会被误当成选区 —— 所以用序号变化严格判定。
+    /// 现在的做法：
+    ///   · **不清空剪贴板**，只靠序号变化判断这次复制有没有发生
+    ///   · 发按键后先等一小段，再开始轮询
+    ///   · 序号变化后再给内容一点落地时间
+    ///   · 先 Ctrl+C（浏览器都认），失败再试 Ctrl+Insert（终端）
     /// </summary>
     public static string GetSelectedText(int timeoutMs = DefaultTimeoutMs)
     {
         lock (ClipGate)
         {
+            // 备份用户剪贴板，结束后恢复
             string old = string.Empty;
             bool hadText = false;
             try
             {
                 if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
             }
-            catch { /* 剪贴板被别的程序占用 */ }
+            catch { }
 
             try
             {
-                // ① 首选 Ctrl+C：浏览器、Office、绝大多数编辑器都认
-                // Ctrl+C（0x43 = C）：浏览器、Office、大多数编辑器都认
+                /* ① Ctrl+C：浏览器、Office、绝大多数编辑器都认。
+                 *    0x43 = 'C' */
                 string text = TryCopyVia(() => InputSender.Ctrl(0x43), timeoutMs);
                 if (!string.IsNullOrEmpty(text)) return text;
 
-                // ② 退回 Ctrl+Insert：终端、部分老程序只认这个
-                text = TryCopyVia(() => InputSender.Ctrl(VK.Insert), timeoutMs);
-                return text;
+                // ② Ctrl+Insert：终端、部分老程序只认这个
+                return TryCopyVia(() => InputSender.Ctrl(VK.Insert), timeoutMs);
             }
             catch (Exception ex)
             {
@@ -67,35 +71,41 @@ public static class TextActions
     }
 
     /// <summary>
-    /// 发一次复制快捷键，然后等剪贴板序号变化，返回新内容（失败返回空串）。
+    /// 发一次复制快捷键，等剪贴板序号变化，返回新内容（失败返回空串）。
     ///
-    /// 每次开始前都清空剪贴板，这样"序号变化 = 这次真的复制到了东西"。
+    /// **不预先清空剪贴板** —— 清空会让前台程序收到"剪贴板被占用"的干扰，
+    /// 浏览器尤其容易因此丢弃复制请求。改用"序号是否变化"来判断，
+    /// 只要变了就说明这次复制确实发生了。
     /// </summary>
     private static string TryCopyVia(Action sendCopy, int timeoutMs)
     {
         uint before;
-        try
-        {
-            before = GetClipboardSequenceNumber();
-            Clipboard.Clear();
-        }
+        try { before = GetClipboardSequenceNumber(); }
         catch { return string.Empty; }
 
         try { sendCopy(); } catch { return string.Empty; }
 
-        // 剪贴板序号是全局的：Clear() 本身也会让它变化，
-        // 所以这里改用"清空后再读一次序号"作为基准。
-        uint baseline;
-        try { baseline = GetClipboardSequenceNumber(); }
-        catch { return string.Empty; }
+        // 给前台程序一点时间处理按键（浏览器可能要跑一小段 JS/渲染）
+        Thread.Sleep(35);
 
-        if (!WaitForClipboardChange(baseline, timeoutMs)) return string.Empty;
+        if (!WaitForClipboardChange(before, timeoutMs)) return string.Empty;
 
-        try
+        /* 序号变了 = 复制确实发生。但内容可能还在路上：
+         * 再等一小段，并重试读取，避免"序号变了但读不到文本"。 */
+        for (int i = 0; i < 12; i++)
         {
-            return Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
+            try
+            {
+                if (Clipboard.ContainsText())
+                {
+                    string s = Clipboard.GetText();
+                    if (!string.IsNullOrEmpty(s)) return s;
+                }
+            }
+            catch { }
+            Thread.Sleep(12);
         }
-        catch { return string.Empty; }
+        return string.Empty;
     }
 
     /// <summary>等待剪贴板序号发生变化（= 前台程序确实写入了新内容）。</summary>
