@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-API = "https://api.github.com/repos/QQQOrange/capslock-plus-QQQOrange-"
+API = "https://api.github.com/repos/QQQOrange/Keyboard-enhance"
 TAG = os.environ.get("CLP_TAG", "v1.0.1")
 NAME = os.environ.get("CLP_NAME", "CapsLock+ 图形版 " + TAG)
 

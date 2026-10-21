@@ -169,6 +169,30 @@ public sealed class ActionCatalog
         c.Add("openDocs", "面板", "使用帮助", "打开内置帮助", _ => { ctx.RequestHelp(); return true; });
         c.Add("reload", "面板", "重新加载配置", "重新读取设置并重装钩子", _ => { ctx.RequestReload(); return true; }, shortTitle: "重载");
 
+        // ---------------- 直接搜索 ----------------
+        //
+        // 用途：在任意程序里选中一段文字，按这个键 → 直接用指定引擎
+        // 在**默认浏览器**里搜索那段文字，不经过 Qbar 面板。
+        //
+        // 和「Qbar 搜索」分类的区别：
+        //   · Qbar 搜索 = 打开面板，预先选好引擎，用户再输入关键词
+        //   · 直接搜索 = 拿**当前选中的文本**直接去搜索，不弹面板
+        //
+        // 同样只注册常用引擎 —— 300 多个塞进下拉没法用。
+        foreach (var e in ctx.Settings().Search.Where(x =>
+                     !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+                     quickEngines.Contains(x.Key, StringComparer.OrdinalIgnoreCase)))
+        {
+            string key = e.Key;
+            string name = string.IsNullOrWhiteSpace(e.Comment) ? key : e.Comment;
+            c.Add("search:" + key, "直接搜索",
+                $"搜索：{name}",
+                $"在默认浏览器里用「{name}」搜索当前选中的文字",
+                a => ctx.SearchSelection(key, a),
+                needsArg: false, argHint: "",
+                shortTitle: name.Length <= 4 ? name : name[..4]);
+        }
+
         // ---------------- 窗口 ----------------
         c.Add("winPin", "窗口", "窗口置顶 / 取消", "让当前窗口永远在最前面", _ => ctx.Windows.ToggleTopmost(), shortTitle: "置顶");
         c.Add("winTransparent", "窗口", "窗口透明度切换", "在几档透明度之间循环", _ => ctx.Windows.CycleOpacity(), shortTitle: "透明");

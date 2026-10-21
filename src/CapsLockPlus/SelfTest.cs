@@ -134,6 +134,7 @@ public static class SelfTest
         TestComplexTriggerKey();
         TestTriggerBadgeFollowsLayer();
         TestSubLayers();
+        TestDirectSearch();
 
         Section("审计修复");
         TestAuditFindings();
@@ -3069,6 +3070,76 @@ public static class SelfTest
             back?.Layers[1].EffectiveSubLayers.Count.ToString() ?? "(null)");
         CheckEqual("自定义名字也保留",
             back?.Layers[1].EffectiveSubLayers[0].Name, "我的子层");
+    }
+
+    /// <summary>
+    /// 「直接搜索」：用选中文本 + 指定引擎，在默认浏览器里搜索。
+    /// </summary>
+    private static void TestDirectSearch()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        // ① 动作存在且分类正确
+        var bdAction = cat.Items.FirstOrDefault(i => i.Id == "search:bd");
+        Check("动作表有 search:bd", bdAction != null,
+            string.Join(",", cat.Items.Where(i => i.Category == "直接搜索").Select(i => i.Id)));
+        CheckEqual("search:bd 在「直接搜索」分类", bdAction?.Category, "直接搜索");
+        Check("有「直接搜索」分类的多个动作",
+            cat.Items.Count(i => i.Category == "直接搜索") >= 5,
+            cat.Items.Count(i => i.Category == "直接搜索").ToString());
+
+        // ② 不够被塞爆下拉
+        Check("直接搜索动作数量受控",
+            cat.Items.Count(i => i.Category == "直接搜索") <= 30,
+            cat.Items.Count(i => i.Category == "直接搜索").ToString());
+
+        // ③ 执行时把选中文本编码进 URL 并交给浏览器
+        string? opened = null;
+        Core.Actions.ActionContext.OpenUrlInterceptForTest = u => opened = u;
+        try
+        {
+            // 用 overrideText 绕开真实的剪贴板读取
+            ctx.SearchSelection("bd", "测试 关键词");
+            Check("搜索打开了网址", opened != null, opened ?? "(null)");
+            if (opened != null)
+            {
+                Check("用的是百度的引擎", opened.Contains("baidu.com", StringComparison.OrdinalIgnoreCase), opened);
+                Check("关键词被正确编码",
+                    opened.Contains(Uri.EscapeDataString("测试 关键词"), StringComparison.Ordinal),
+                    opened);
+            }
+        }
+        finally
+        {
+            Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
+        }
+
+        // ④ 空文本不打开浏览器
+        opened = null;
+        Core.Actions.ActionContext.OpenUrlInterceptForTest = u => opened = u;
+        try
+        {
+            ctx.SearchSelection("bd", "   ");
+            Check("空选中文本不搜索", opened == null, opened ?? "(null)");
+        }
+        finally
+        {
+            Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
+        }
+
+        // ⑤ 未知引擎安全返回且不崩
+        Check("未知引擎不抛异常", ctx.SearchSelection("no_such_engine", "abc"));
     }
 
     private static void TestKeyboardLayoutGeometry()    {

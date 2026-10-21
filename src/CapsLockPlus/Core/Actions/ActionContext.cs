@@ -78,9 +78,55 @@ public sealed class ActionContext
         return true;
     }
 
-    /// <summary>Caps+Tab：把光标前的算式算出结果 / 展开热字串。</summary>
-    public bool RunTabScript()
+    /// <summary>
+    /// 用指定搜索引擎在默认浏览器里搜索**当前选中的文字**。
+    ///
+    /// 与「Qbar 搜索」的区别：不弹面板，直接拿选区去搜。
+    /// 适合"看到一段文字，按一下就查"这种高频动作。
+    /// </summary>
+    /// <param name="engineKey">搜索引擎关键字（bd / zh / go…）</param>
+    /// <param name="overrideText">自检用：直接指定要搜索的文字</param>
+    public bool SearchSelection(string engineKey, string? overrideText = null)
     {
+        var entry = Settings().Search.FirstOrDefault(x =>
+            x.Key.Equals(engineKey, StringComparison.OrdinalIgnoreCase));
+
+        if (entry == null || string.IsNullOrWhiteSpace(entry.Value))
+        {
+            Notify("这个搜索引擎还没配置");
+            return true;
+        }
+
+        /* 取选中文字。
+         *
+         * GetSelectedText 的实现是"模拟 Ctrl+C 读剪贴板"，
+         * 需要几十毫秒；它在引擎的动作队列里跑（不在钩子回调里），
+         * 所以阻塞这一下不会触发 Windows 的钩子超时。 */
+        string text = overrideText ?? Text.TextActions.GetSelectedText();
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Notify("没有选中的文字 —— 先选中要搜索的内容再按这个键");
+            return true;
+        }
+
+        text = text.Trim();
+
+        // 太长的话不截断会撑爆 GET 请求长度，也会让搜索页体验很差
+        const int maxLen = 1000;
+        if (text.Length > maxLen) text = text[..maxLen];
+
+        string url = entry.Value.Replace("{q}", Uri.EscapeDataString(text));
+        if (!url.Contains("://", StringComparison.Ordinal))
+            url = "https://" + url;
+
+        Notify(overrideText == null ? "正在搜索选中的文字…" : "正在搜索…");
+        OpenUrlRaw(url);   // 已编码，跳过规范化避免搜索词被解码/截断
+        return true;
+    }
+
+    /// <summary>Caps+Tab：把光标前的算式算出结果 / 展开热字串。</summary>
+    public bool RunTabScript()    {
         var settings = Settings();
         string selected = Text.TextActions.GetSelectedText();
         if (!string.IsNullOrEmpty(selected))
@@ -133,11 +179,22 @@ public sealed class ActionContext
     /// </summary>
     public static Action<string>? OpenUrlInterceptForTest { get; set; }
 
-    public void OpenUrl(string url)
+    public void OpenUrl(string url) => OpenUrlCore(url, normalize: true);
+
+    /// <summary>
+    /// 打开一个**已经构造好**的网址，不再做规范化。
+    ///
+    /// 「直接搜索」拼出来的 URL 里，关键词已经过 <see cref="Uri.EscapeDataString"/>
+    /// 编码（<c>%E6%B5%8B</c> 这类）。如果再过一遍
+    /// <see cref="UrlUtil"/> 的规范化，<c>Uri.ToString()</c> 会把百分号转义
+    /// 重新解码成可读字符，长关键词还可能被截断 —— 搜索词就丢了。
+    /// 所以这条路径要跳过规范化。
+    /// </summary>
+    public void OpenUrlRaw(string url) => OpenUrlCore(url, normalize: false);
+
+    private void OpenUrlCore(string url, bool normalize)
     {
-        /* 用户可能只填了 "github.com" —— 补成 https://github.com 再开，
-         * 否则 ShellExecute 会当成"找这个文件"而失败。 */
-        string target = UrlUtil.Normalize(url) ?? url;
+        string target = normalize ? (UrlUtil.Normalize(url) ?? url) : url;
 
         if (OpenUrlInterceptForTest != null)
         {

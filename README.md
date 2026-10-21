@@ -31,7 +31,7 @@
 
 两种方式任选：
 
-- **直接下载**：到本仓库的 [Releases](https://github.com/QQQOrange/capslock-plus-QQQOrange-/releases)
+- **直接下载**：到本仓库的 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases)
   页面，下载最新版本的 `CapsLockPlus.exe`。
 - **自己编译**：见文末「开发与构建」。
 

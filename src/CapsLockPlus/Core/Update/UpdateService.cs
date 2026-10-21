@@ -39,7 +39,7 @@ public sealed record UpdateCheckResult(bool Success, UpdateInfo? Update, string 
 public sealed class UpdateService
 {
     public const string Owner = "QQQOrange";
-    public const string Repo = "capslock-plus-QQQOrange-";
+    public const string Repo = "Keyboard-enhance";
     public static string GitHubUrl => $"https://github.com/{Owner}/{Repo}";
     public static string ReleasesUrl => $"{GitHubUrl}/releases";
     public static string LatestReleaseApi => $"https://api.github.com/repos/{Owner}/{Repo}/releases/latest";
