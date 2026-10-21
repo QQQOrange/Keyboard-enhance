@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using CapsLockPlus.Core.Input;
 
 namespace CapsLockPlus.Core.Settings;
 
@@ -318,6 +319,45 @@ public sealed class LayerOptions
 
     /// <summary>该层的按键绑定列表。</summary>
     public List<KeyBinding> Keys { get; set; } = new();
+
+    /// <summary>
+    /// 该层可用的**层内修饰键**（子层）。
+    ///
+    /// 每个层最多 10 个子层：进入本层后再按住某组修饰键，
+    /// 就能用到另一套独立绑定。例如基础层按住 Ctrl 时，
+    /// 可以配一套完全不同的按键。
+    ///
+    /// 元素是修饰键组合的位标记（见 <see cref="KeyModifiers"/>），
+    /// 允许 Ctrl、Shift、Alt、Win 的任意组合，因此可以配出
+    /// Ctrl、Ctrl+Shift、Alt+Win 这类复杂子层。
+    ///
+    /// 为空时回退到默认的 4 个（Ctrl / Shift / Alt / Win），
+    /// 保证老配置行为不变。
+    /// </summary>
+    public List<int> SubLayerModifiers { get; set; } = new();
+
+    /// <summary>每个层允许的最大子层数。</summary>
+    public const int MaxSubLayers = 10;
+
+    /// <summary>默认的层内修饰键（与旧版行为一致）。</summary>
+    public static List<int> DefaultSubLayerModifiers() => new()
+    {
+        (int)KeyModifiers.Ctrl,
+        (int)KeyModifiers.Shift,
+        (int)KeyModifiers.Alt,
+        (int)KeyModifiers.Win,
+    };
+
+    /// <summary>
+    /// 实际生效的子层修饰键列表。
+    ///
+    /// 未配置时返回默认的四个；配置过就以配置为准（最多 10 个）。
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<int> EffectiveSubLayers =>
+        SubLayerModifiers.Count > 0
+            ? SubLayerModifiers.Take(MaxSubLayers).ToList()
+            : DefaultSubLayerModifiers();
 }
 
 /// <summary>

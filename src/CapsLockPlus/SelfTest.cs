@@ -133,6 +133,7 @@ public static class SelfTest
         TestQbarThemeContrast();
         TestComplexTriggerKey();
         TestTriggerBadgeFollowsLayer();
+        TestSubLayers();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2856,14 +2857,17 @@ public static class SelfTest
     }
 
     /// <summary>
-    /// 复杂触发键：组合键也能触发切层。
+    /// 触发键只允许单一按键。
     ///
-    /// 之前引擎只按单个 VK 码匹配触发键，`KeyName.VkOf("caps_ctrl_k")`
-    /// 返回 0，组合触发键被静默忽略 —— 用户配了却没反应。
+    /// v2.5 起明确：组合键不能当触发键 —— 那会和"层内修饰键子层"语义冲突
+    /// （同样是 Ctrl+K，到底算触发还是算子层绑定？）。
+    /// 组合键保留给**层内绑定**：进层后按住 Ctrl 再按 K。
+    ///
+    /// 老配置里若写了组合键，会退化成"取主键当单键触发"，不会彻底失效。
     /// </summary>
     private static void TestComplexTriggerKey()
     {
-        // ① 组合键 ID 能被解析成 (VK, 修饰键)
+        // ① 组合键 ID 仍能被解析（用于层内绑定，不再用于触发）
         var parsed = KeyName.ParseCombo("caps_ctrl_shift_k");
         Check("组合键 ID 可解析", parsed != null);
         if (parsed != null)
@@ -2874,14 +2878,11 @@ public static class SelfTest
             Check("含 Shift", mods.HasFlag(KeyModifiers.Shift));
         }
 
-        // ② 单键走另一条解析路径：ParseCombo 只认 caps_ 前缀的组合键 ID，
-        //    纯键名（f13 / capslock）由 VkOf 直接解析。
-        Check("单键 f13 能取到 VK", KeyName.VkOf("f13") != null,
-            KeyName.VkOf("f13")?.ToString() ?? "(null)");
+        // ② 单键走 VkOf 路径
+        Check("单键 f13 能取到 VK", KeyName.VkOf("f13") != null);
         Check("单键 capslock 能取到 VK", KeyName.VkOf("capslock") != null);
-        CheckEqual("纯键名不被组合键解析器误认", KeyName.ParseCombo("f13"), null);
 
-        // ③ 真实引擎：组合触发键能进层
+        // ③ 组合触发键退化为单键触发：只按 K（不按 Ctrl）也能进层
         var s = DefaultSettings.Create();
         s.Triggers.Clear();
         s.Triggers.Add(new TriggerKey
@@ -2893,37 +2894,34 @@ public static class SelfTest
         var queue = new ActionQueue();
         var engine = new HotkeyEngine(queue, () => s, (_, _) => true);
         engine.StartHoldTimer();
-
-        // 先按住 Ctrl，再按 K → 应进入第 3 层
-        // （EnterLayerImmediatelyForTest 必须在按键**之前**置位，
-        //   它影响的是"按下时刻是否立即进层"的判定）
         engine.EnterLayerImmediatelyForTest = true;
-        engine.SimulateKey(0x11, true);       // 左 Ctrl
-        engine.SimulateKey(0x4B, true);       // K
+
+        // 不按 Ctrl，直接按 K
+        engine.SimulateKey(0x4B, true);
         Thread.Sleep(60);
 
-        CheckEqual("组合触发键进入正确的层", engine.ActiveLayer, 3);
+        CheckEqual("组合触发键退化为单键（只按 K 也进层）", engine.ActiveLayer, 3);
         engine.SimulateKey(0x4B, false);
-        engine.SimulateKey(0x11, false);
         DoEvents(150);
         engine.Dispose();
         queue.Dispose();
 
-        // ④ 没按修饰键时，同一个主键不应触发
+        // ④ 纯单键触发仍然正常
         var s2 = DefaultSettings.Create();
         s2.Triggers.Clear();
         s2.Triggers.Add(new TriggerKey
         {
-            Key = "caps_ctrl_k", LayerId = 3, HoldMs = 3000,
+            Key = "f13", LayerId = 5, HoldMs = 200,
             TapAction = "keepKey", Enabled = true,
         });
         var q2 = new ActionQueue();
         var e2 = new HotkeyEngine(q2, () => s2, (_, _) => true);
         e2.StartHoldTimer();
-        e2.SimulateKey(0x4B, true);           // 只按 K，不按 Ctrl
+        e2.EnterLayerImmediatelyForTest = true;
+        e2.SimulateKey(0x7C, true);          // F13 = 0x7C
         Thread.Sleep(60);
-        Check("缺少修饰键时不进层", e2.ActiveLayer == -1);
-        e2.SimulateKey(0x4B, false);
+        CheckEqual("纯单键触发进层正确", e2.ActiveLayer, 5);
+        e2.SimulateKey(0x7C, false);
         DoEvents(120);
         e2.Dispose();
         q2.Dispose();
@@ -2974,6 +2972,81 @@ public static class SelfTest
             $"{d1} / {d2} / {d3}");
         CheckEqual("第1层描述为 CapsLock", d1, "CapsLock");
         CheckEqual("第2层描述为 F13", d2, "F13");
+    }
+
+    /// <summary>
+    /// 层内修饰键（子层）：每层可配 0~10 个，各自独立绑定。
+    /// </summary>
+    private static void TestSubLayers()
+    {
+        // ① 未配置时回退到默认 4 个（保证老配置行为不变）
+        var plain = new LayerOptions { Id = 1, Name = "基础层" };
+        CheckEqual("未配置时默认 4 个子层", plain.EffectiveSubLayers.Count, 4);
+        Check("默认含 Ctrl", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Ctrl));
+        Check("默认含 Shift", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Shift));
+        Check("默认含 Alt", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Alt));
+        Check("默认含 Win", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Win));
+
+        // ② 配置后以配置为准
+        var custom = new LayerOptions
+        {
+            Id = 2,
+            SubLayerModifiers = new List<int>
+            {
+                (int)KeyModifiers.Ctrl,
+                (int)(KeyModifiers.Ctrl | KeyModifiers.Shift),
+            },
+        };
+        CheckEqual("配置了 2 个就有 2 个", custom.EffectiveSubLayers.Count, 2);
+        Check("含 Ctrl", custom.EffectiveSubLayers.Contains((int)KeyModifiers.Ctrl));
+        Check("含 Ctrl+Shift",
+            custom.EffectiveSubLayers.Contains((int)(KeyModifiers.Ctrl | KeyModifiers.Shift)));
+
+        // ③ 上限 10 个
+        var tooMany = new LayerOptions
+        {
+            Id = 3,
+            SubLayerModifiers = Enumerable.Range(1, 15).ToList(),
+        };
+        Check("超过 10 个会被截断",
+            tooMany.EffectiveSubLayers.Count == LayerOptions.MaxSubLayers,
+            tooMany.EffectiveSubLayers.Count.ToString());
+        CheckEqual("上限常量是 10", LayerOptions.MaxSubLayers, 10);
+
+        // ④ 每个子层有独立绑定（不同 combo 前缀，互不干扰）
+        var layer = new LayerOptions { Id = 4 };
+        layer.Keys.Add(new KeyBinding { Combo = "caps_q", Action = "qbar" });
+        layer.Keys.Add(new KeyBinding
+        {
+            Combo = KeyName.BuildComboEx(KeyModifiers.Ctrl, "q"),
+            Action = "deleteWord",
+        });
+        layer.Keys.Add(new KeyBinding
+        {
+            Combo = KeyName.BuildComboEx(KeyModifiers.Ctrl | KeyModifiers.Shift, "q"),
+            Action = "copy1",
+        });
+
+        var direct = layer.Keys.FirstOrDefault(k => k.Combo == "caps_q");
+        var ctrl = layer.Keys.FirstOrDefault(k =>
+            k.Combo == KeyName.BuildComboEx(KeyModifiers.Ctrl, "q"));
+        var ctrlShift = layer.Keys.FirstOrDefault(k =>
+            k.Combo == KeyName.BuildComboEx(KeyModifiers.Ctrl | KeyModifiers.Shift, "q"));
+
+        Check("直接按的绑定独立", direct?.Action == "qbar", direct?.Action ?? "(无)");
+        Check("Ctrl 子层绑定独立", ctrl?.Action == "deleteWord", ctrl?.Action ?? "(无)");
+        Check("Ctrl+Shift 子层绑定独立", ctrlShift?.Action == "copy1", ctrlShift?.Action ?? "(无)");
+        Check("三个绑定互不相同",
+            direct?.Combo != ctrl?.Combo && ctrl?.Combo != ctrlShift?.Combo);
+
+        // ⑤ 子层配置能存进 JSON 并读回
+        var s = DefaultSettings.Create();
+        s.Layers[1].SubLayerModifiers = new List<int> { (int)KeyModifiers.Alt };
+        string json = System.Text.Json.JsonSerializer.Serialize(s);
+        var back = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json);
+        Check("子层配置能序列化往返",
+            back?.Layers[1].SubLayerModifiers.Count == 1,
+            back?.Layers[1].SubLayerModifiers.Count.ToString() ?? "(null)");
     }
 
     private static void TestKeyboardLayoutGeometry()    {

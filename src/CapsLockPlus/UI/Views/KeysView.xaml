@@ -85,24 +85,19 @@
                             <ComboBox x:Name="LayerBox" Style="{StaticResource ComboBox.Base}" Width="260"
                                       SelectionChanged="OnLayerChanged" />
                         </StackPanel>
+                        <!--
+                            层内修饰键（子层）按钮。
+                            这里**动态生成** —— 每层可以配 0~10 个修饰键组合，
+                            所以不能再写死 5 个固定按钮。
+                        -->
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="层内修饰键" Style="{StaticResource Text.Tertiary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Content="直接按" x:Name="LayerBase" Style="{StaticResource Button.Base}"
-                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerBase"
-                                    ToolTip="进入层后直接按的键（Caps + 键）" />
-                            <Button Content="+ Ctrl" x:Name="LayerCtrl" Style="{StaticResource Button.Base}"
-                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerCtrl"
-                                    ToolTip="进入层后再按住 Ctrl 按的键（Caps + Ctrl + 键）" />
-                            <Button Content="+ Shift" x:Name="LayerShift" Style="{StaticResource Button.Base}"
-                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerShift"
-                                    ToolTip="进入层后再按住 Shift 按的键（Caps + Shift + 键）" />
-                            <Button Content="+ LAlt" x:Name="LayerAlt" Style="{StaticResource Button.Base}"
-                                    Padding="10,5" Margin="0,0,5,0" Click="OnLayerAlt"
-                                    ToolTip="进入层后再按住左 Alt 按的键" />
-                            <Button Content="+ Win" x:Name="LayerWin" Style="{StaticResource Button.Base}"
-                                    Padding="10,5" Click="OnLayerWin"
-                                    ToolTip="进入层后再按住 Win 按的键" />
+                            <StackPanel x:Name="SubLayerPanel" Orientation="Horizontal" />
+                            <Button Content="设置子层…" x:Name="EditSubLayersButton"
+                                    Style="{StaticResource Button.Ghost}" Padding="10,5" Margin="6,0,0,0"
+                                    Click="OnEditSubLayers"
+                                    ToolTip="配置这一层要用哪些修饰键作为子层（最多 10 个）" />
                         </StackPanel>
                         <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}"
                                    Margin="0,10,0,0" TextWrapping="Wrap" />
@@ -138,8 +133,17 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
-                        <TextBlock Text="编辑绑定" Style="{StaticResource Text.H2}" />
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="编辑绑定" Style="{StaticResource Text.H2}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <!-- 快速搜索功能：可以按功能名、分类、宏名、网址、备注搜索 -->
+                        <TextBox x:Name="ActionSearchBox" Style="{StaticResource TextBox.Base}"
+                                 MinHeight="34" Margin="0,10,0,0" VerticalContentAlignment="Center"
+                                 TextChanged="OnActionSearchChanged"
+                                 ToolTip="搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <Border Style="{StaticResource Keycap}" Padding="12,7">
                                 <TextBlock Text="Caps" FontSize="12.5" FontWeight="SemiBold"
                                            Foreground="{DynamicResource Brush.TextSecondary}" />

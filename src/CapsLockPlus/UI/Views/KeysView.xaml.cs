@@ -263,17 +263,67 @@ public partial class KeysView : UserControl
     private bool IsWinBindCategory =>
         (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string == WinBindCategory;
 
-    /// <summary>填"功能"下拉，只列当前分类下的动作。</summary>
+    /// <summary>填"功能"下拉。有搜索词时跨分类搜索，否则只列当前分类。</summary>
     private void BuildActionBox()
     {
         if (_host == null) return;
         string? cat = (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        string filter = ActionSearchBox?.Text?.Trim() ?? "";
 
         ActionBox.Items.Clear();
-        foreach (var item in _host.Actions.Items.Where(i => i.Category == cat))
-            ActionBox.Items.Add(new ComboBoxItem { Content = item.Title, Tag = item.Id });
+
+        /* 有搜索词时**跨分类**搜索：用户搜"宏"不该先猜它属于哪个分类。 */
+        var candidates = filter.Length > 0
+            ? _host.Actions.Items.Where(i => MatchesAction(i, filter))
+            : _host.Actions.Items.Where(i => i.Category == cat);
+
+        foreach (var item in candidates)
+        {
+            ActionBox.Items.Add(new ComboBoxItem
+            {
+                // 跨分类搜索时把分类标在标题后，避免同名混淆
+                Content = filter.Length > 0 ? $"{item.Title}　·　{item.Category}" : item.Title,
+                Tag = item.Id,
+            });
+        }
 
         if (ActionBox.Items.Count > 0) ActionBox.SelectedIndex = 0;
+    }
+
+    /// <summary>
+    /// 一个功能是否匹配搜索词。
+    ///
+    /// 匹配标题、短名、分类、描述、宏名 —— 用户可能记得
+    /// "我绑过一个 github 的网址"或"那个宏叫什么"。
+    /// </summary>
+    private bool MatchesAction(CapsLockPlus.Core.Actions.ActionInfo item, string filter)
+    {
+        if (item.Title.Contains(filter, StringComparison.OrdinalIgnoreCase)) return true;
+        if (item.ShortTitle.Contains(filter, StringComparison.OrdinalIgnoreCase)) return true;
+        if (item.Category.Contains(filter, StringComparison.OrdinalIgnoreCase)) return true;
+        if (item.Description.Contains(filter, StringComparison.OrdinalIgnoreCase)) return true;
+
+        // 宏：再用宏名兜一次，防止名字只存在于宏对象里
+        if (item.Id.StartsWith("macro:", StringComparison.OrdinalIgnoreCase) && _host != null)
+        {
+            foreach (var macro in _host.Settings.Macros)
+            {
+                if (item.Id.EndsWith(macro.Id, StringComparison.OrdinalIgnoreCase) &&
+                    macro.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>搜索框内容变化：重建功能下拉。</summary>
+    private void OnActionSearchChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        _suppressEvents = true;
+        try { BuildActionBox(); }
+        finally { _suppressEvents = false; }
     }
 
     /// <summary>界面当前处于哪种编辑模式。</summary>
@@ -865,20 +915,118 @@ public partial class KeysView : UserControl
         return text.Length <= max ? text : text[..max];
     }
 
+    /// <summary>
+    /// 重建"层内修饰键"按钮组。
+    ///
+    /// 每层可以配 0~10 个修饰键组合，所以按钮是**动态生成**的：
+    /// 第一个永远是"直接按"（无修饰键），后面按配置逐个加。
+    ///
+    /// 性能与内存：只在内容真的变化时重建。这个方法是每次 BuildKeyboard
+    /// 都会调的（层切换、按键编辑都触发），无脑重建会反复分配 Button 对象
+    /// 并悬挂事件处理器。这里用一个"结构指纹"判断是否需要重建，
+    /// 只需要更新选中态时走轻量路径。
+    /// </summary>
     private void UpdateLayerButtons()
     {
-        void Apply(Button b, bool active)
+        if (_host == null) return;
+
+        var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
+        var subs = layer?.EffectiveSubLayers ?? LayerOptions.DefaultSubLayerModifiers();
+
+        // 结构指纹：层 ID + 子层列表。相同则只刷新选中态，不重建控件。
+        string signature = _layerId + "|" + string.Join(",", subs);
+        if (signature == _subLayerSignature && SubLayerPanel.Children.Count > 0)
         {
+            RefreshSubLayerSelection();
+            return;
+        }
+        _subLayerSignature = signature;
+
+        SubLayerPanel.Children.Clear();
+
+        void AddButton(string text, KeyModifiers mods, string tip)
+        {
+            var b = new Button
+            {
+                Content = text,
+                Style = (Style)FindResource("Button.Base"),
+                Padding = new Thickness(10, 5, 10, 5),
+                Margin = new Thickness(0, 0, 5, 0),
+                ToolTip = tip,
+                // 用 Tag 记住这个按钮代表哪个修饰键，选中态刷新时读它
+                Tag = (int)mods,
+            };
+            b.Click += OnSubLayerButtonClick;
+            SubLayerPanel.Children.Add(b);
+        }
+
+        // 第一项：直接按（无修饰键），始终存在
+        AddButton("直接按", KeyModifiers.None, "进入层后直接按的键");
+
+        foreach (int raw in subs)
+        {
+            var mods = (KeyModifiers)raw;
+            if (mods == KeyModifiers.None) continue;      // 无修饰键已单独处理
+            AddButton("+ " + ModifierText(mods), mods,
+                $"进入层后再按住 {ModifierText(mods)} 按的键");
+        }
+
+        RefreshSubLayerSelection();
+    }
+
+    /// <summary>只刷新子层按钮的选中态（不重建控件，开销极小）。</summary>
+    private void RefreshSubLayerSelection()
+    {
+        foreach (var child in SubLayerPanel.Children)
+        {
+            if (child is not Button b || b.Tag is not int raw) continue;
+            bool active = _layer == (KeyModifiers)raw;
+
             b.Background = (Brush)FindResource(active ? "Brush.AccentSoft" : "Brush.Surface");
             b.BorderBrush = (Brush)FindResource(active ? "Brush.AccentSoftBorder" : "Brush.BorderStrong");
             b.Foreground = (Brush)FindResource(active ? "Brush.Accent" : "Brush.TextSecondary");
             b.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
         }
-        Apply(LayerBase, _layer == KeyModifiers.None);
-        Apply(LayerCtrl, _layer == KeyModifiers.Ctrl);
-        Apply(LayerShift, _layer == KeyModifiers.Shift);
-        Apply(LayerAlt, _layer == KeyModifiers.Alt);
-        Apply(LayerWin, _layer == KeyModifiers.Win);
+    }
+
+    /// <summary>
+    /// 子层按钮点击。
+    ///
+    /// 用共享处理器 + Tag 取修饰键，而不是每个按钮一个闭包 ——
+    /// 闭包会捕获 this 并在按钮被移除后仍然存活一段时间，属于隐性泄漏。
+    /// </summary>
+    private void OnSubLayerButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: int raw }) SelectModifierLayer((KeyModifiers)raw);
+    }
+
+    private string? _subLayerSignature;
+
+    /// <summary>配置当前层要用哪些修饰键作为子层（最多 10 个）。</summary>
+    private void OnEditSubLayers(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
+        if (layer == null) return;
+
+        var dlg = new UI.Windows.SubLayerEditorWindow(
+            layer.Name, layer.EffectiveSubLayers.Select(x => (KeyModifiers)x).ToList())
+        {
+            Owner = Window.GetWindow(this),
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        layer.SubLayerModifiers = dlg.SelectedModifiers.Select(m => (int)m).ToList();
+        _host.SaveSettings();
+
+        // 如果当前停在某个已被删除的子层，回到"直接按"
+        if (_layer != KeyModifiers.None && !layer.EffectiveSubLayers.Contains((int)_layer))
+            _layer = KeyModifiers.None;
+
+        UpdateLayerButtons();
+        SelectKey(_selectedKey);
+        ShowBindStatus($"「{layer.Name}」现有 {layer.EffectiveSubLayers.Count} 个子层");
     }
 
     private void RefreshBoundList()
@@ -1437,11 +1585,7 @@ public partial class KeysView : UserControl
     }
 
     // ---------------- 事件 ----------------
-    private void OnLayerBase(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.None);
-    private void OnLayerCtrl(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Ctrl);
-    private void OnLayerShift(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Shift);
-    private void OnLayerAlt(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Alt);
-    private void OnLayerWin(object sender, RoutedEventArgs e) => SelectModifierLayer(KeyModifiers.Win);
+
 
     /// <summary>层内修饰键切换后要刷新（键盘上的绑定标记会变）。</summary>
     private void SelectModifierLayer(KeyModifiers mods)

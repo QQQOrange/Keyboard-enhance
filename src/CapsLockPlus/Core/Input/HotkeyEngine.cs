@@ -386,16 +386,16 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>
     /// 一个触发键的匹配条件。
     ///
-    /// 支持**单键**（CapsLock / F13 / 右 Alt）和**组合键**（Ctrl+Shift+K）。
+    /// 触发键**只允许单一按键**：一个物理键按下即进层。
+    /// 组合键（Ctrl+K 之类）不能当触发键 —— 那会和"层内修饰键子层"
+    /// 语义冲突：同样是 Ctrl+K，到底算触发还是算子层绑定？
     ///
-    /// 之前只存 VK 码，组合键完全无法用作触发键 ——
-    /// `KeyName.VkOf("caps_ctrl_k")` 返回 0，那个触发键就被静默忽略了。
+    /// 组合键保留给**层内绑定**（进层后按住 Ctrl 再按 K），
+    /// 两套机制职责清晰。
     /// </summary>
-    private readonly record struct TriggerMatch(int Vk, KeyModifiers Mods)
+    private readonly record struct TriggerMatch(int Vk)
     {
-        /// <summary>是否满足"主键对、且要求的修饰键都按住"。</summary>
-        public bool Matches(int vk, KeyModifiers held) =>
-            vk == Vk && (Mods == KeyModifiers.None || (held & Mods) == Mods);
+        public bool Matches(int vk) => vk == Vk;
     }
 
     private List<TriggerMatch> TriggerMatchList(AppSettings s)
@@ -420,22 +420,24 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>
     /// 把触发键字符串解析成匹配条件。
     ///
-    /// 先用组合键解析器（能处理 <c>caps_ctrl_k</c> 这种 ID），
-    /// 失败再退回纯键名（如 <c>capslock</c>、<c>f13</c>）。
+    /// **只接受单一按键**：如果配置里写了组合键（如 <c>caps_ctrl_k</c>），
+    /// 这里会取出主键 K 并当作单键触发 —— 这样老配置不会彻底失效，
+    /// 但也明确表达"组合触发已不再支持"。
     /// </summary>
     private static TriggerMatch? ParseTrigger(string? key)
     {
         if (string.IsNullOrWhiteSpace(key)) return null;
 
+        // 组合键 ID 形式：取主键，忽略修饰部分
         var parsed = KeyName.ParseCombo(key);
         if (parsed != null)
         {
-            var (mods, k) = parsed.Value;
-            if (KeyName.VkOf(k) is int vk && vk != 0) return new TriggerMatch(vk, mods);
+            var (_, k) = parsed.Value;
+            if (KeyName.VkOf(k) is int vk && vk != 0) return new TriggerMatch(vk);
         }
 
         if (KeyName.VkOf(key) is int single && single != 0)
-            return new TriggerMatch(single, KeyModifiers.None);
+            return new TriggerMatch(single);
 
         return null;
     }
@@ -486,14 +488,13 @@ public sealed class HotkeyEngine : IDisposable
 
     private bool IsTrigger(AppSettings s, int vk)
     {
-        var held = HeldModifiers();
-        return TriggerMatchList(s).Any(m => m.Matches(vk, held));
+        return TriggerMatchList(s).Any(m => m.Matches(vk));
     }
 
     /// <summary>找出这个 VK 对应的触发键配置（组合键也认）。</summary>
-    private static TriggerKey? FindTrigger(AppSettings s, int vk, KeyModifiers held)
+    private static TriggerKey? FindTrigger(AppSettings s, int vk)
         => s.Triggers.FirstOrDefault(t =>
-            t.Enabled && ParseTrigger(t.Key) is { } m && m.Matches(vk, held));
+            t.Enabled && ParseTrigger(t.Key) is { } m && m.Matches(vk));
 
     private void OnTriggerDown(AppSettings s, int vk)
     {
@@ -503,7 +504,7 @@ public sealed class HotkeyEngine : IDisposable
          *
          * 组合键触发（Ctrl+Shift+K）依赖"当前按住哪些修饰键"来判断，
          * 一旦先清零就永远匹配不上 —— 组合触发键会彻底失效。 */
-        var trigger = FindTrigger(s, vk, HeldModifiers());
+        var trigger = FindTrigger(s, vk);
 
         _triggerHeld = true;
         _triggerDownTime = DateTime.Now;
