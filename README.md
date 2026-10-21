@@ -4,7 +4,7 @@
 > 重写成**原生 Windows 11 桌面程序**：功能一个不少，但所有设置都能在图形界面里点点点完成，
 > 再也不用去手改 `CapsLock+settings.ini`。
 
-**版本 v1.3.1** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 2.39 MB**
+**版本 v3.5.0** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 3.47 MB**
 
 ![快速上手](docs/screenshots/guide.png)
 
@@ -32,12 +32,12 @@
 两种方式任选：
 
 - **直接下载**：到本仓库的 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases)
-  页面，下载最新版本的 `CapsLockPlus.exe`。
+  页面，下载最新版本的 `KeyboardEnhance.exe`。
 - **自己编译**：见文末「开发与构建」。
 
 ### 3. 运行
 
-双击 `CapsLockPlus.exe`：
+双击 `KeyboardEnhance.exe`：
 
 1. 首次运行会请求管理员权限 —— 这是为了能操作那些“以管理员身份运行”的程序（任务管理器、部分游戏等）。
    如果你不想给，点“否”也能用，只是管不了提权窗口。
@@ -363,10 +363,10 @@ dotnet build src\CapsLockPlus\CapsLockPlus.csproj
 dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self-contained false -o dist
 
 # 自检（109 项，覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机）
-dist\CapsLockPlus.exe --selftest
+dist\KeyboardEnhance.exe --selftest
 
 # 离屏渲染所有界面（文档/回归用，不受桌面遮挡与 DPI 影响）
-dist\CapsLockPlus.exe --render docs\screenshots
+dist\KeyboardEnhance.exe --render docs\screenshots
 ```
 
 **代码结构**
