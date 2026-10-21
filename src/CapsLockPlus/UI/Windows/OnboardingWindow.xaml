@@ -1,7 +1,7 @@
 <Window x:Class="CapsLockPlus.UI.Windows.OnboardingWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="欢迎使用 CapsLock+" Width="820" Height="560"
+        Title="欢迎使用按键增强" Width="820" Height="560"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize" ShowInTaskbar="False"
         FontFamily="{StaticResource Font.Ui}" UseLayoutRounding="True">
@@ -32,7 +32,7 @@
                                            FontSize="30" Foreground="White" HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                             </Border>
-                            <TextBlock Text="CapsLock+" FontSize="30" FontWeight="SemiBold" Foreground="White"
+                            <TextBlock Text="按键增强" FontSize="30" FontWeight="SemiBold" Foreground="White"
                                        Margin="0,22,0,0" />
                             <TextBlock Text="让 Caps 键成为你最顺手的修饰键" Foreground="#DCE9FF" FontSize="13.5"
                                        TextWrapping="Wrap" Margin="0,10,0,0" />
@@ -90,7 +90,7 @@
                             </RadioButton>
                             <RadioButton x:Name="SchemeClassic" GroupName="scheme" Checked="OnSchemeChecked">
                                 <StackPanel>
-                                    <TextBlock Text="经典 CapsLock+ 3.0 之前" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Text="经典布局（旧版）" Style="{StaticResource Text.Body}" />
                                     <TextBlock Text="Caps+LAlt+方向 切窗口，Caps+Z 撤销重做"
                                                Style="{StaticResource Text.Tertiary}" />
                                 </StackPanel>

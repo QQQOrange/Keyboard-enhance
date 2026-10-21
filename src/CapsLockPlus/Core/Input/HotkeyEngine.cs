@@ -306,6 +306,17 @@ public sealed class HotkeyEngine : IDisposable
 
         var settings = _settings();
 
+        /* ---- 0.5 在判定触发键之前，先记录修饰键的按下状态 ----
+         *
+         * 组合触发键（Ctrl+Shift+K）需要知道"此刻按住了哪些修饰键"。
+         * 之前 `_ctrlDown` 等字段只在**进层之后**（OnKeyDownInLayer）才维护，
+         * 于是触发前按住 Ctrl 时状态仍是 false，组合触发键永远匹配不上。
+         *
+         * 这里在**每个按键事件**上同步修饰键状态，
+         * 保证判定触发键时读到的是最新状态。
+         * 抬起时也要清，否则松开 Ctrl 后状态会残留。 */
+        UpdateModifierState(vk, down);
+
         // ---- 1. 这个键是不是触发键？ ----
         if (IsTrigger(settings, vk))
         {
@@ -358,7 +369,7 @@ public sealed class HotkeyEngine : IDisposable
     /// 用户在界面上改触发键的 Key 时列表实例和条数都不变，
     /// 只看那两项会导致"改了触发键不生效"。指纹里带上每个键名和启用状态。
     /// </summary>
-    private HashSet<int>? _triggerVkCache;
+    private List<TriggerMatch>? _triggerMatchCache;
     private string _triggerVkCacheStamp = "";
 
     private static string TriggerStamp(List<TriggerKey> list)
@@ -372,30 +383,128 @@ public sealed class HotkeyEngine : IDisposable
         return sb.ToString();
     }
 
-    private HashSet<int> TriggerVkSet(AppSettings s)
+    /// <summary>
+    /// 一个触发键的匹配条件。
+    ///
+    /// 支持**单键**（CapsLock / F13 / 右 Alt）和**组合键**（Ctrl+Shift+K）。
+    ///
+    /// 之前只存 VK 码，组合键完全无法用作触发键 ——
+    /// `KeyName.VkOf("caps_ctrl_k")` 返回 0，那个触发键就被静默忽略了。
+    /// </summary>
+    private readonly record struct TriggerMatch(int Vk, KeyModifiers Mods)
+    {
+        /// <summary>是否满足"主键对、且要求的修饰键都按住"。</summary>
+        public bool Matches(int vk, KeyModifiers held) =>
+            vk == Vk && (Mods == KeyModifiers.None || (held & Mods) == Mods);
+    }
+
+    private List<TriggerMatch> TriggerMatchList(AppSettings s)
     {
         var list = s.Triggers;
         string stamp = TriggerStamp(list);
-        if (_triggerVkCache != null && _triggerVkCacheStamp == stamp)
-            return _triggerVkCache;
+        if (_triggerMatchCache != null && _triggerVkCacheStamp == stamp)
+            return _triggerMatchCache;
 
-        var set = new HashSet<int>();
+        var matches = new List<TriggerMatch>();
         foreach (var t in list)
         {
             if (!t.Enabled) continue;
-            if (KeyName.VkOf(t.Key) is int vk) set.Add(vk);
+            if (ParseTrigger(t.Key) is { } m) matches.Add(m);
         }
 
-        _triggerVkCache = set;
+        _triggerMatchCache = matches;
         _triggerVkCacheStamp = stamp;
-        return set;
+        return matches;
     }
 
-    private bool IsTrigger(AppSettings s, int vk) => TriggerVkSet(s).Contains(vk);
+    /// <summary>
+    /// 把触发键字符串解析成匹配条件。
+    ///
+    /// 先用组合键解析器（能处理 <c>caps_ctrl_k</c> 这种 ID），
+    /// 失败再退回纯键名（如 <c>capslock</c>、<c>f13</c>）。
+    /// </summary>
+    private static TriggerMatch? ParseTrigger(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+
+        var parsed = KeyName.ParseCombo(key);
+        if (parsed != null)
+        {
+            var (mods, k) = parsed.Value;
+            if (KeyName.VkOf(k) is int vk && vk != 0) return new TriggerMatch(vk, mods);
+        }
+
+        if (KeyName.VkOf(key) is int single && single != 0)
+            return new TriggerMatch(single, KeyModifiers.None);
+
+        return null;
+    }
+
+    /// <summary>
+    /// 同步修饰键的按下/抬起状态。
+    ///
+    /// 必须对**左右两个键码和通用码**都认：有些键盘/驱动只发 0x11/0x10/0x12，
+    /// 完全不发 LControl/RControl 这些具体码。
+    /// </summary>
+    private void UpdateModifierState(int vk, bool down)
+    {
+        switch (vk)
+        {
+            case VK.LControl or VK.RControl or 0x11:
+                _ctrlDown = down;
+                break;
+            case VK.LShift or VK.RShift or 0x10:
+                _shiftDown = down;
+                break;
+            case VK.LMenu or VK.RMenu or 0x12:
+                _laltDown = down;
+                break;
+            case VK.LWin:
+                _lwinDown = down;
+                break;
+            case VK.RWin:
+                _rwinDown = down;
+                break;
+            default:
+                return;      // 不是修饰键，什么都不做
+        }
+
+        // 抬起的修饰键也从吞掉集合里移除，避免残留
+        if (!down) _swallowedUp.Remove(vk);
+    }
+
+    /// <summary>当前按住的修饰键集合（引擎自己维护的状态）。</summary>
+    private KeyModifiers HeldModifiers()
+    {
+        var m = KeyModifiers.None;
+        if (_ctrlDown) m |= KeyModifiers.Ctrl;
+        if (_shiftDown) m |= KeyModifiers.Shift;
+        if (_laltDown) m |= KeyModifiers.Alt;
+        if (_lwinDown || _rwinDown) m |= KeyModifiers.Win;
+        return m;
+    }
+
+    private bool IsTrigger(AppSettings s, int vk)
+    {
+        var held = HeldModifiers();
+        return TriggerMatchList(s).Any(m => m.Matches(vk, held));
+    }
+
+    /// <summary>找出这个 VK 对应的触发键配置（组合键也认）。</summary>
+    private static TriggerKey? FindTrigger(AppSettings s, int vk, KeyModifiers held)
+        => s.Triggers.FirstOrDefault(t =>
+            t.Enabled && ParseTrigger(t.Key) is { } m && m.Matches(vk, held));
 
     private void OnTriggerDown(AppSettings s, int vk)
     {
         if (_triggerHeld) return;              // 自动重复
+
+        /* ⚠ 先确定是哪个触发键，**再**清零修饰键状态。
+         *
+         * 组合键触发（Ctrl+Shift+K）依赖"当前按住哪些修饰键"来判断，
+         * 一旦先清零就永远匹配不上 —— 组合触发键会彻底失效。 */
+        var trigger = FindTrigger(s, vk, HeldModifiers());
+
         _triggerHeld = true;
         _triggerDownTime = DateTime.Now;
         _usedCombo = false;
@@ -405,7 +514,6 @@ public sealed class HotkeyEngine : IDisposable
         _swallowedDown.Clear();
         _swallowedUp.Clear();
 
-        var trigger = s.Triggers.FirstOrDefault(t => t.Enabled && KeyName.VkOf(t.Key) == vk);
         _activeTriggerVk = vk;
         _activeTrigger = trigger;
         _activeLayer = trigger?.LayerId ?? 1;

@@ -545,6 +545,12 @@ public partial class KeysView : UserControl
         };
         LayerHint.Text = $"当前：第 {_layerId} 层「{layerName}」{modText}（{bound} 个绑定）　·　{triggerText}";
 
+        /* 顶部提示里的触发键必须**跟着当前层变**。
+         *
+         * 之前这里写死"按住 CapsLock"，即便第 2 层配的是 F13，
+         * 切过去仍提示按住大写键 —— 与实际触发方式完全对不上。 */
+        UpdateTriggerBadge(trigger);
+
         CountText.Text = _layerId == 1
             ? $"短按触发键：{tapTitle}　·　点键盘上任意键即可修改它的功能，修改立刻生效。"
             : $"这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。";
@@ -605,6 +611,51 @@ public partial class KeysView : UserControl
 
         return MakeKeycap(label, keyId, isBound, keycapTitle, actionCategory, triggerKey);
     }
+
+    /// <summary>
+    /// 更新顶部「按住 XX + 下面的键」里的触发键名。
+    ///
+    /// 触发键可以是**复杂按键**（组合键），例如 Ctrl+Shift+K。
+    /// 这种时候提示要写成「按住 Ctrl+Shift+K」，而不是只显示最后一个键。
+    /// </summary>
+    private void UpdateTriggerBadge(TriggerKey? trigger)
+    {
+        if (trigger == null)
+        {
+            TriggerKeyBadge.Text = "没有触发键";
+            TriggerKeySuffix.Text = "这一层还没分配触发键，去「触发键与层」页设置";
+            return;
+        }
+
+        string display = DescribeTriggerKey(trigger.Key);
+        TriggerKeyBadge.Text = "按住 " + display;
+        TriggerKeySuffix.Text = "+ 下面的键";
+    }
+
+    /// <summary>
+    /// 把触发键的键名转成人类可读的形式。
+    ///
+    /// 设置里存的是组合键 ID（如 <c>caps_ctrl_shift_k</c>），
+    /// 直接显示会是一串看不懂的编码 —— 这里还原成 "Ctrl+Shift+K"。
+    /// </summary>
+    private static string DescribeTriggerKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return "（未设置）";
+
+        // 单键（capslock / f13 / ralt…）直接查键名表
+        var parsed = KeyName.ParseCombo(key);
+        if (parsed != null)
+        {
+            var (mods, k) = parsed.Value;
+            string name = KeyName.Display(k);
+            return mods == KeyModifiers.None ? name : $"{ModifierText(mods)}+{name}";
+        }
+
+        // 不是组合键 ID，可能是纯键名
+        int vk = KeyName.VkOf(key) ?? 0;
+        return vk != 0 ? KeyName.Display(key) : key;
+    }
+
 
     /// <summary>把层下拉框填上（10 个层，标注各自的触发键）。</summary>
     private void BuildLayerBox()

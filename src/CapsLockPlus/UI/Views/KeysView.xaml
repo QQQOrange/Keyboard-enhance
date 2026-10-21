@@ -47,12 +47,19 @@
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,14">
                         <StackPanel Orientation="Horizontal">
+                            <!--
+                                这里是**当前层的触发键**，不是写死的 CapsLock。
+                                不同层可以配不同的触发键（F13、右 Alt、甚至可以组合），
+                                写死大写键会让切到第 2 层后提示与实际完全对不上。
+                            -->
                             <Border Style="{StaticResource Badge}" Background="{DynamicResource Brush.SurfaceAlt}"
                                     BorderBrush="{DynamicResource Brush.Border}">
-                                <TextBlock Text="按住 CapsLock" Style="{StaticResource Badge.Text}"
+                                <TextBlock x:Name="TriggerKeyBadge" Text="按住 CapsLock"
+                                           Style="{StaticResource Badge.Text}"
                                            Foreground="{DynamicResource Brush.TextSecondary}" />
                             </Border>
-                            <TextBlock Text="+ 下面的键" Style="{StaticResource Text.Secondary}"
+                            <TextBlock x:Name="TriggerKeySuffix" Text="+ 下面的键"
+                                       Style="{StaticResource Text.Secondary}"
                                        VerticalAlignment="Center" Margin="7,0,0,0" />
                             <TextBlock x:Name="LayerHint" Text="当前：基础层" Style="{StaticResource Text.Tertiary}"
                                        VerticalAlignment="Center" Margin="16,0,0,0" />

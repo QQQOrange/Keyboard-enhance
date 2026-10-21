@@ -20,9 +20,9 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="CapsLock 键，可以更好用一点" FontSize="24" FontWeight="SemiBold"
+                        <TextBlock Text="让每一个按键，都能变成你的快捷键" FontSize="24" FontWeight="SemiBold"
                                    Foreground="White" />
-                        <TextBlock Text="按住 CapsLock 就是功能键：字母键移动 / 选择光标，数字键切换窗口，Q 打开搜索面板。"
+                        <TextBlock Text="按住触发键就是功能键：字母键移动 / 选择光标，数字键切换窗口，Q 打开搜索面板。"
                                    Foreground="#E4EDFF" FontSize="13.5" Margin="0,9,0,0" TextWrapping="Wrap"
                                    MaxWidth="620" />
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
@@ -66,7 +66,7 @@
                                        VerticalAlignment="Center" />
                         </StackPanel>
                         <TextBlock x:Name="RunStateText" Text="已启用" Style="{StaticResource Text.H2}" Margin="0,12,0,0" />
-                        <TextBlock x:Name="RunStateHint" Text="按住 CapsLock 即可使用全部功能"
+                        <TextBlock x:Name="RunStateHint" Text="按住触发键即可使用全部功能"
                                    Style="{StaticResource Text.Tertiary}" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
@@ -130,7 +130,7 @@
                                 <TextBlock Text="试一下组合键" Style="{StaticResource Text.H3}" Margin="9,0,0,0"
                                            VerticalAlignment="Center" />
                             </StackPanel>
-                            <TextBlock Text="按住 CapsLock 再按 S / D / E / F，光标会按字符移动；配合 H / J / K / L 是选择。"
+                            <TextBlock Text="按住触发键再按 S / D / E / F，光标会按字符移动；配合 H / J / K / L 是选择。"
                                        Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,9,0,0" />
                         </StackPanel>
 

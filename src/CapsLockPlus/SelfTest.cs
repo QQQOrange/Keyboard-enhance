@@ -131,6 +131,8 @@ public static class SelfTest
         TestKeycapShortTitles();
         TestWinBindCustomName();
         TestQbarThemeContrast();
+        TestComplexTriggerKey();
+        TestTriggerBadgeFollowsLayer();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2851,6 +2853,127 @@ public static class SelfTest
         Check("深色判为非浅色", !IsLight("#1C1F27"));
         Check("纯黑判为非浅色", !IsLight("#000000"));
         Check("中蓝判为非浅色", !IsLight("#2B6CF6"));
+    }
+
+    /// <summary>
+    /// 复杂触发键：组合键也能触发切层。
+    ///
+    /// 之前引擎只按单个 VK 码匹配触发键，`KeyName.VkOf("caps_ctrl_k")`
+    /// 返回 0，组合触发键被静默忽略 —— 用户配了却没反应。
+    /// </summary>
+    private static void TestComplexTriggerKey()
+    {
+        // ① 组合键 ID 能被解析成 (VK, 修饰键)
+        var parsed = KeyName.ParseCombo("caps_ctrl_shift_k");
+        Check("组合键 ID 可解析", parsed != null);
+        if (parsed != null)
+        {
+            var (mods, key) = parsed.Value;
+            CheckEqual("主键是 k", key, "k");
+            Check("含 Ctrl", mods.HasFlag(KeyModifiers.Ctrl));
+            Check("含 Shift", mods.HasFlag(KeyModifiers.Shift));
+        }
+
+        // ② 单键走另一条解析路径：ParseCombo 只认 caps_ 前缀的组合键 ID，
+        //    纯键名（f13 / capslock）由 VkOf 直接解析。
+        Check("单键 f13 能取到 VK", KeyName.VkOf("f13") != null,
+            KeyName.VkOf("f13")?.ToString() ?? "(null)");
+        Check("单键 capslock 能取到 VK", KeyName.VkOf("capslock") != null);
+        CheckEqual("纯键名不被组合键解析器误认", KeyName.ParseCombo("f13"), null);
+
+        // ③ 真实引擎：组合触发键能进层
+        var s = DefaultSettings.Create();
+        s.Triggers.Clear();
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "caps_ctrl_k", LayerId = 3, HoldMs = 200,
+            TapAction = "keepKey", Enabled = true,
+        });
+
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (_, _) => true);
+        engine.StartHoldTimer();
+
+        // 先按住 Ctrl，再按 K → 应进入第 3 层
+        // （EnterLayerImmediatelyForTest 必须在按键**之前**置位，
+        //   它影响的是"按下时刻是否立即进层"的判定）
+        engine.EnterLayerImmediatelyForTest = true;
+        engine.SimulateKey(0x11, true);       // 左 Ctrl
+        engine.SimulateKey(0x4B, true);       // K
+        Thread.Sleep(60);
+
+        CheckEqual("组合触发键进入正确的层", engine.ActiveLayer, 3);
+        engine.SimulateKey(0x4B, false);
+        engine.SimulateKey(0x11, false);
+        DoEvents(150);
+        engine.Dispose();
+        queue.Dispose();
+
+        // ④ 没按修饰键时，同一个主键不应触发
+        var s2 = DefaultSettings.Create();
+        s2.Triggers.Clear();
+        s2.Triggers.Add(new TriggerKey
+        {
+            Key = "caps_ctrl_k", LayerId = 3, HoldMs = 3000,
+            TapAction = "keepKey", Enabled = true,
+        });
+        var q2 = new ActionQueue();
+        var e2 = new HotkeyEngine(q2, () => s2, (_, _) => true);
+        e2.StartHoldTimer();
+        e2.SimulateKey(0x4B, true);           // 只按 K，不按 Ctrl
+        Thread.Sleep(60);
+        Check("缺少修饰键时不进层", e2.ActiveLayer == -1);
+        e2.SimulateKey(0x4B, false);
+        DoEvents(120);
+        e2.Dispose();
+        q2.Dispose();
+    }
+
+    /// <summary>
+    /// 顶部「按住 XX + 下面的键」的文字必须跟着**当前层**的触发键变。
+    ///
+    /// 之前这里写死了 "按住 CapsLock"：第 2 层配的是 F13，切过去
+    /// 仍然提示按住大写键，与实际触发方式完全对不上。
+    /// 这里验证 DescribeTriggerKey 能把各种触发键转成可读文字。
+    /// </summary>
+    private static void TestTriggerBadgeFollowsLayer()
+    {
+        var t = typeof(CapsLockPlus.UI.Views.KeysView);
+        var m = t.GetMethod("DescribeTriggerKey",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Check("KeysView 有触发键描述方法", m != null);
+        if (m == null) return;
+
+        string Describe(string key) => (string)m.Invoke(null, new object[] { key })!;
+
+        // 单键
+        CheckEqual("CapsLock 触发键", Describe("capslock"), "CapsLock");
+        CheckEqual("F13 触发键", Describe("f13"), "F13");
+
+        // 组合键：要展开成 Ctrl+Shift+K，而不是一串编码
+        string combo = Describe("caps_ctrl_shift_k");
+        Check("组合触发键展开为可读文字",
+            combo.Contains("Ctrl") && combo.Contains("Shift") && combo.Contains("K"),
+            combo);
+
+        // 空值有兜底，不能显示空白
+        Check("空触发键有兜底", !string.IsNullOrWhiteSpace(Describe("")), Describe(""));
+
+        // 不同层的触发键应当描述出不同结果
+        var settings = DefaultSettings.Create();
+        settings.Triggers.Clear();
+        settings.Triggers.Add(new TriggerKey { Key = "capslock", LayerId = 1, Enabled = true });
+        settings.Triggers.Add(new TriggerKey { Key = "f13", LayerId = 2, Enabled = true });
+        settings.Triggers.Add(new TriggerKey { Key = "caps_ctrl_shift_k", LayerId = 3, Enabled = true });
+
+        string d1 = Describe(settings.Triggers.First(x => x.LayerId == 1).Key);
+        string d2 = Describe(settings.Triggers.First(x => x.LayerId == 2).Key);
+        string d3 = Describe(settings.Triggers.First(x => x.LayerId == 3).Key);
+
+        Check("三层触发键描述各不相同", d1 != d2 && d2 != d3 && d1 != d3,
+            $"{d1} / {d2} / {d3}");
+        CheckEqual("第1层描述为 CapsLock", d1, "CapsLock");
+        CheckEqual("第2层描述为 F13", d2, "F13");
     }
 
     private static void TestKeyboardLayoutGeometry()    {
