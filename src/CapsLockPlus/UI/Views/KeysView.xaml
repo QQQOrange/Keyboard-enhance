@@ -12,27 +12,20 @@
         <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16,13" Margin="0,0,0,14">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="布局方案" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center"
-                               Margin="0,0,9,0" />
-                    <ComboBox x:Name="SchemeBox" Style="{StaticResource ComboBox.Base}" Width="212"
-                              SelectionChanged="OnSchemeChanged">
-                        <ComboBoxItem Content="Capslox（3.0 之后，推荐）" Tag="capslox" />
-                        <ComboBoxItem Content="经典 CapsLock+ 3.0 之前" Tag="capslock_plus" />
-                    </ComboBox>
-                </StackPanel>
+                <!-- 布局方案固定为新版（Capslox），不再提供切换 —— 旧方案
+                     只是历史兼容，留着下拉只会让人误以为要选一个。
+                     旁边那个搜索框也移除了：它原本用于过滤按键，
+                     但实际使用中几乎没人用，反而占掉一行空间。 -->
+                <TextBlock Grid.Column="0" VerticalAlignment="Center"
+                           Style="{StaticResource Text.Secondary}" TextTrimming="CharacterEllipsis"
+                           Text="点击键盘上任意键即可编辑它的功能，修改立即生效" />
 
-                <TextBox Grid.Column="1" x:Name="SearchBox" Style="{StaticResource TextBox.Base}"
-                         Margin="16,0,16,0" MinHeight="36" VerticalContentAlignment="Center"
-                         TextChanged="OnSearchChanged" ToolTip="搜索按键或功能，例如 q、F2、剪贴板" />
-
-                <Button Grid.Column="2" Content="恢复默认" Style="{StaticResource Button.Base}"
-                        Click="OnResetClick" />
+                <Button Grid.Column="1" Content="恢复默认" Style="{StaticResource Button.Base}"
+                        Margin="16,0,0,0" Click="OnResetClick" />
             </Grid>
         </Border>
 

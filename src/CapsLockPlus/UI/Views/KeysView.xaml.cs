@@ -201,7 +201,6 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
         _suppressEvents = true;
-        SchemeBox.SelectedIndex = _host.Settings.Global.HotkeyScheme == "capslock_plus" ? 1 : 0;
 
         BuildCategoryBox();
         _suppressEvents = false;
@@ -459,7 +458,8 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
         KeyboardPanel.Children.Clear();
-        string filter = SearchBox.Text?.Trim() ?? "";
+        // 搜索框已移除：不再按关键字过滤，整把键盘始终完整显示
+        string filter = "";
         int bound = 0;
 
         /* 触发键在键盘上的**真实位置**高亮。
@@ -1399,7 +1399,7 @@ public partial class KeysView : UserControl
         SelectKey(_selectedKey);
     }
 
-    private void OnSearchChanged(object sender, TextChangedEventArgs e) => BuildKeyboard();
+
 
     private void OnBoundSelected(object sender, SelectionChangedEventArgs e)
     {
@@ -1412,25 +1412,6 @@ public partial class KeysView : UserControl
         }
     }
 
-    private void OnSchemeChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_host == null || _suppressEvents) return;
-        if (SchemeBox.SelectedItem is not ComboBoxItem item || item.Tag is not string scheme) return;
-        if (_host.Settings.Global.HotkeyScheme == scheme) return;
-        var result = MessageBox.Show(Window.GetWindow(this),
-            "切换布局会把当前按键映射替换成该方案的默认值。\n你自己新增的组合键会保留。\n\n继续吗？",
-            "切换按键方案", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (result != MessageBoxResult.OK)
-        {
-            _suppressEvents = true;
-            SchemeBox.SelectedIndex = _host.Settings.Global.HotkeyScheme == "capslock_plus" ? 1 : 0;
-            _suppressEvents = false;
-            return;
-        }
-        _host.ApplyHotkeyScheme(scheme);
-        _host.Notify("已切换按键方案");
-        Refresh();
-    }
 
     private void OnActionChanged(object sender, SelectionChangedEventArgs e)
     {

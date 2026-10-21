@@ -306,10 +306,53 @@ public partial class QbarSettingsView : UserControl
 
     private sealed class EntryVm
     {
-        public EntryVm(QEntry entry) => Entry = entry;
+        public EntryVm(QEntry entry)
+        {
+            Entry = entry;
+
+            /* 图标：内置引擎有品牌图标（随程序打包），
+             * 程序条目会取 exe 图标，都没有则退回首字母色块。
+             * IconCache.ForEntry 已封装这套优先级，直接用。 */
+            try { Icon = IconCache.ForEntry(entry); } catch { Icon = null; }
+
+            LetterBrush = new SolidColorBrush(ColorFor(entry.Key));
+            Initial = string.IsNullOrWhiteSpace(entry.Key) ? "?"
+                : entry.Key[..1].ToUpperInvariant();
+        }
+
         public QEntry Entry { get; }
         public string Key => Entry.Key;
         public string Value => Entry.Value;
         public string Comment => Entry.Comment;
+
+        /// <summary>图标（可能为 null）。</summary>
+        public System.Windows.Media.ImageSource? Icon { get; }
+
+        /// <summary>没有图标时显示的首字母。</summary>
+        public string Initial { get; }
+
+        /// <summary>首字母色块的背景色（按关键字取稳定颜色）。</summary>
+        public System.Windows.Media.Brush LetterBrush { get; }
+
+        /// <summary>有图标时隐藏色块。</summary>
+        public System.Windows.Visibility NoIconVisibility =>
+            Icon == null ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+        private static Color ColorFor(string text)
+        {
+            // 稳定配色：同一关键字永远同一个颜色，不随列表顺序变
+            unchecked
+            {
+                int h = 17;
+                foreach (char c in text) h = h * 31 + c;
+                var palette = new[]
+                {
+                    Color.FromRgb(0x2B, 0x6C, 0xF6), Color.FromRgb(0x7C, 0x5C, 0xE0),
+                    Color.FromRgb(0x1F, 0xA8, 0x9C), Color.FromRgb(0x2E, 0xA0, 0x4F),
+                    Color.FromRgb(0xD9, 0x8A, 0x1F), Color.FromRgb(0xD4, 0x4A, 0x5B),
+                };
+                return palette[Math.Abs(h) % palette.Length];
+            }
+        }
     }
 }

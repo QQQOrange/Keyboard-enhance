@@ -314,7 +314,15 @@ public static class SettingsStore
         s.Macros ??= new List<Macro>();
         s.Global.MouseSpeed = Math.Clamp(s.Global.MouseSpeed, 1, 20);
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
-        if (string.IsNullOrWhiteSpace(s.Global.HotkeyScheme)) s.Global.HotkeyScheme = "capslox";
+        /* 布局方案固定为新版（Capslox），不再允许切换。
+         *
+         * 旧的「经典 CapsLock+ 3.0」方案只是历史兼容产物：两套布局的差别
+         * 仅在于默认绑定表，而用户真正需要的是"改哪个键做什么"，
+         * 不需要先理解自己属于哪一代方案。留着切换只会制造困惑。
+         *
+         * 这里强制归一化：老配置即使写着 capslock_plus，读进来也会变成
+         * capslox。字段本身保留，避免旧配置文件解析失败。 */
+        s.Global.HotkeyScheme = "capslox";
 
         NormalizeLayers(s);
 

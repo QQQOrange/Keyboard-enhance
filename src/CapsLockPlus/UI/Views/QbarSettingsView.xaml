@@ -117,17 +117,34 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.ColumnDefinitions>
+                                    <!-- 图标列：搜索引擎品牌图标 / 程序图标 -->
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="120" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Key}" FontWeight="SemiBold"
+
+                                <!-- 有图标显示图标，没有则显示首字母色块 -->
+                                <Grid Grid.Column="0" Width="20" Height="20" Margin="0,0,8,0"
+                                      VerticalAlignment="Center">
+                                    <Image Source="{Binding Icon}" Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                    <Border Background="{Binding LetterBrush}" CornerRadius="5"
+                                            Visibility="{Binding NoIconVisibility}">
+                                        <TextBlock Text="{Binding Initial}" FontSize="10"
+                                                   FontWeight="SemiBold" Foreground="White"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </Grid>
+
+                                <TextBlock Grid.Column="1" Text="{Binding Key}" FontWeight="SemiBold"
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource Brush.Accent}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Value}" VerticalAlignment="Center"
+                                <TextBlock Grid.Column="2" Text="{Binding Value}" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis" Margin="8,0,8,0"
                                            Foreground="{DynamicResource Brush.TextSecondary}" />
-                                <TextBlock Grid.Column="2" Text="{Binding Comment}" VerticalAlignment="Center"
+                                <TextBlock Grid.Column="3" Text="{Binding Comment}" VerticalAlignment="Center"
                                            Style="{StaticResource Text.Tertiary}" />
                             </Grid>
                         </DataTemplate>
