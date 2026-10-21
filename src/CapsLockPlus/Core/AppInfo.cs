@@ -15,15 +15,8 @@ public static class AppInfo
     /// <summary>出品方标识。</summary>
     public const string Author = "QQQOrange";
 
-    /// <summary>
-    /// 可执行文件名。
-    ///
-    /// ⚠ 刻意保持 CapsLockPlus.exe 不变：
-    /// 改了会让已注册的开机自启、桌面快捷方式、用户手建的计划任务
-    /// 全部指向一个不存在的文件，升级后表现为"打不开了"。
-    /// 产品显示名与进程文件名本来就可以不同（例如很多软件都这样）。
-    /// </summary>
-    public const string ExeName = "CapsLockPlus.exe";
+    /// <summary>可执行文件名（发布产物与进程名）。</summary>
+    public const string ExeName = "KeyboardEnhance.exe";
 
     /// <summary>完整标题：名称 + 英文名，用于关于页首行。</summary>
     public const string TitleWithEnglish = ProductName + " · " + EnglishName;

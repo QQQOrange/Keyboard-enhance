@@ -16,7 +16,7 @@ namespace CapsLockPlus;
 
 /// <summary>
 /// 自检：不依赖界面，验证核心逻辑。
-/// 用 `CapsLockPlus.exe --selftest` 运行，退出码 0 表示全部通过。
+/// 用 `KeyboardEnhance.exe --selftest` 运行，退出码 0 表示全部通过。
 /// </summary>
 public static class SelfTest
 {
@@ -2665,9 +2665,9 @@ public static class SelfTest
             && AppInfo.TitleWithEnglish.Contains("Keyboard Enhance"),
             AppInfo.TitleWithEnglish);
 
-        // 可执行文件名**刻意**保持 CapsLockPlus.exe：
+        // 可执行文件名**刻意**保持 KeyboardEnhance.exe：
         // 改了会让已注册的开机自启、快捷方式全部失效。
-        CheckEqual("可执行文件名保持不变", AppInfo.ExeName, "CapsLockPlus.exe");
+        CheckEqual("可执行文件名保持不变", AppInfo.ExeName, "KeyboardEnhance.exe");
 
         // 版本号
         var ver = typeof(AppInfo).Assembly.GetName().Version;

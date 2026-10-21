@@ -8,13 +8,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>CapsLockPlus</AssemblyName>
+    <AssemblyName>KeyboardEnhance</AssemblyName>
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>2.1.0</Version>
-    <FileVersion>2.1.0.0</FileVersion>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+    <Version>2.2.0</Version>
+    <FileVersion>2.2.0.0</FileVersion>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
     <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
     <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达网页、独立剪贴板、宏与多图层</Description>

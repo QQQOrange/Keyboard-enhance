@@ -100,7 +100,7 @@ public static class WindowService
             var info = Describe(h);
             if (info == null) return true;
             if (IgnoredClasses.Contains(info.ClassName)) return true;
-            if (string.Equals(info.ExeName, "CapsLockPlus.exe", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(info.ExeName, Core.AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)) return true;
             var ex = GetWindowLong(h, GWL_EXSTYLE);
             if ((ex & WS_EX_TOOLWINDOW) != 0) return true;
             list.Add(info);

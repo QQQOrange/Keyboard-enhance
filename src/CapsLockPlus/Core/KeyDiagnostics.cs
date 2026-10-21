@@ -7,7 +7,7 @@ namespace CapsLockPlus.Core;
 /// <summary>
 /// 按键诊断：检查本机环境是否允许按键增强正常工作。
 ///
-/// 用 `CapsLockPlus.exe --diag` 运行，会输出一份人类可读的报告，
+/// 用 `KeyboardEnhance.exe --diag` 运行，会输出一份人类可读的报告，
 /// 说明：钩子能否安装、前台会话状态、以及最可能的失败原因与解决办法。
 /// </summary>
 public static class KeyDiagnostics

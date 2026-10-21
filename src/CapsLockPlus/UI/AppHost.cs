@@ -181,6 +181,13 @@ public sealed class AppHost : IDisposable
 
     private void ApplyStartupSetting()
     {
+        /* 先清理改名前的旧自启项。
+         *
+         * 软件从 CapsLock+ 改名后，老用户的机器上可能还留着一条指向
+         * CapsLockPlus.exe 的自启项 —— 那个文件已经不存在了，开机会弹错误。
+         * 这一步必须在"判断是否需要同步自启"之前做。 */
+        StartupManager.MigrateLegacyValue();
+
         if (Settings.Global.StartWithWindows != StartupManager.IsEnabled())
             StartupManager.SetEnabled(Settings.Global.StartWithWindows);
     }

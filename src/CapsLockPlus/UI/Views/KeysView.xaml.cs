@@ -143,6 +143,18 @@ public partial class KeysView : UserControl
     private const int TotalCols = 92;
 
     /// <summary>
+    /// 键帽统一高度。
+    ///
+    /// 所有键必须等高，否则同行内已绑定键会把行撑高、
+    /// 未绑定键上下留白，看起来"按键间距不一致"。
+    /// 52px 是能放下"分类 + 功能名（两行）+ 键名"三行内容的最小值。
+    /// </summary>
+    private const double KeycapHeight = 52;
+
+    /// <summary>键帽之间的水平/垂直间距（单侧），总间距是它的两倍。</summary>
+    private const double KeycapGap = 3;
+
+    /// <summary>
     /// 需要**纵向合并**的键：小键盘的 + 与回车各跨两行。
     ///
     /// ⚠ 这些键**不能**同时出现在 <see cref="Layout"/> 里 ——
@@ -548,7 +560,17 @@ public partial class KeysView : UserControl
     {
         string combo = KeyName.BuildComboEx(_layer, keyId);
         var binding = FindInCurrentLayer(combo);
-        bool isBound = binding is { IsBound: true };
+
+        /* 只有"动作真实存在"才算已绑定。
+         *
+         * 这一条很关键：老配置文件里可能残留已删除的动作
+         * （如 winbindActivate1、旧版的覆盖动作），
+         * 如果只判断 Action != "doNothing"，这些键会被显示成"已绑定"、
+         * 键帽上还会冒出一个原始动作 ID，用户看到的就是"明明没绑却显示绑了"。
+         *
+         * 现在的判定：动作非空 + 不是 doNothing + **能在动作表里找到**。 */
+        bool isBound = binding is { IsBound: true }
+                       && _host?.Actions.Get(binding.Action) != null;
         if (isBound) bound++;
 
         string actionTitle = "";
@@ -654,10 +676,18 @@ public partial class KeysView : UserControl
 
         var border = new Border
         {
-            /* 已绑定的键要高一些：功能名要占主要位置，
-             * 而且要比键名更醒目（用户要求"附上的功能字体要比按键本身大"）。 */
-            Height = isBound ? 52 : 44,
-            Margin = new Thickness(1, 1, 1, 1),
+            /* **所有键帽等高**，间距才一致。
+             *
+             * 之前已绑定的键 52px、未绑定的 44px：同一行里只要有一个已绑定的键，
+             * 行高就被撑到 52，行内未绑定的键顶部/底部留出 8px 空隙 ——
+             * 看起来就是"有的键间距大、有的小"。
+             *
+             * 现在统一 52px：即使这一行全是未绑定键，多出来的空间也被
+             * VerticalAlignment=Center 均分到上下，视觉间距仍然均匀。
+             * 高度一致也让整个键盘的行距天然对齐。 */
+            Height = KeycapHeight,
+            Margin = new Thickness(KeycapGap / 2),
+            VerticalAlignment = VerticalAlignment.Center,
             CornerRadius = new CornerRadius(7),
             BorderThickness = new Thickness(1),
             Cursor = Cursors.Hand,
@@ -808,6 +838,10 @@ public partial class KeysView : UserControl
         {
             var parsed = KeyName.ParseCombo(binding.Combo);
             if (parsed == null) continue;
+
+            // 动作已不在动作表里（旧配置残留）→ 不列出来，避免误导
+            if (_host?.Actions.Get(binding.Action) == null) continue;
+
             var (mods, key) = parsed.Value;
             if (key == "capslock") continue;
             // 不再按修饰键过滤：这一层里所有绑定都要列出来，

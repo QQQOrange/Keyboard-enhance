@@ -11,7 +11,7 @@ namespace CapsLockPlus.UI;
 /// <summary>
 /// 离屏渲染工具（诊断 / 文档用）。
 ///
-/// 用法：CapsLockPlus.exe --render &lt;输出目录&gt;
+/// 用法：KeyboardEnhance.exe --render &lt;输出目录&gt;
 /// 会把每个页面和 Qbar 面板渲染成 PNG。
 /// 相比截屏，它不受桌面遮挡、DPI 缩放和焦点动画的影响，结果稳定可复现，
 /// 也方便以后做界面回归对比。

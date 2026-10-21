@@ -70,7 +70,7 @@ public sealed class WindowBindingService
     {
         var info = WindowService.ForegroundInfo();
         if (info == null) { Notified?.Invoke("没有可绑定的窗口"); return false; }
-        if (info.ExeName.Equals("CapsLockPlus.exe", StringComparison.OrdinalIgnoreCase))
+        if (info.ExeName.Equals(Core.AppInfo.ExeName, StringComparison.OrdinalIgnoreCase))
         {
             Notified?.Invoke("不能绑定按键增强自己的窗口");
             return false;
@@ -349,7 +349,7 @@ public sealed class WindowBindingService
             Notified?.Invoke("选中的不是有效窗口");
             return false;
         }
-        if (info.ExeName.Equals("CapsLockPlus.exe", StringComparison.OrdinalIgnoreCase))
+        if (info.ExeName.Equals(Core.AppInfo.ExeName, StringComparison.OrdinalIgnoreCase))
         {
             Notified?.Invoke("不能绑定按键增强自己的窗口");
             return false;

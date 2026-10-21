@@ -6,7 +6,7 @@ namespace CapsLockPlus.Core.Sync;
 /// <summary>
 /// WebDAV 真实往返测试（诊断用）。
 ///
-/// 用法：<c>CapsLockPlus.exe --webdav-test &lt;地址&gt; [用户名] [密码]</c>
+/// 用法：<c>KeyboardEnhance.exe --webdav-test &lt;地址&gt; [用户名] [密码]</c>
 ///
 /// 依次验证：列目录 → 上传 → 下载 → 内容一致 → 取修改时间 → 再上传覆盖。
 /// 这条链路是自检覆盖不到的（自检没有网络），但又是同步功能的全部核心，
@@ -19,7 +19,7 @@ public static class WebDavSelfTest
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         if (string.IsNullOrWhiteSpace(url))
         {
-            Console.WriteLine("用法：CapsLockPlus.exe --webdav-test <地址> [用户名] [密码]");
+            Console.WriteLine("用法：KeyboardEnhance.exe --webdav-test <地址> [用户名] [密码]");
             return 2;
         }
 
