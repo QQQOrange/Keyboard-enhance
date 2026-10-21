@@ -86,6 +86,29 @@ public static class RenderTools
                 Pump(120);
             }
 
+            /* 宏页额外截一张"正在录制"的样子。
+             *
+             * 实时列表只在录制时出现，平时截不到 —— 而它恰恰是这次改动的重点，
+             * 必须能被截图回归确认（按钮变红、状态点呼吸、按键一行行往下滚）。 */
+            if (page == "macros" &&
+                main.GetPage("macros") is CapsLockPlus.UI.Views.MacrosView mv)
+            {
+                try
+                {
+                    if (mv.ShowRecordingForRender())
+                    {
+                        Pump(200);
+                        Save(main, Path.Combine(outDir, "macros-recording.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染录制状态失败：" + ex.Message);
+                }
+                mv.ResetRenderState();
+                Pump(120);
+            }
+
             // 诊断文件只在显式要求时输出（--render-diag <目录>），
             // 免得把一堆中间产物混进 docs/screenshots。
             if (DiagnosticsRequested)

@@ -171,6 +171,7 @@ public static class SelfTest
 
         Section("宏");
         TestMacroRecorder();
+        TestMacroLiveRecording();
         TestComboCapture();
         TestExtendedCombos();
         TestMacroStepEditing();
@@ -1505,6 +1506,7 @@ public static class SelfTest
         var macro = rec.Stop("测试宏");
         Check("停止后退出录制", !rec.IsRecording);
         Check("生成 >= 4 步", macro.Steps.Count >= 4, macro.Steps.Count.ToString());
+        Check("停止后时长仍然保留", rec.ElapsedMs > 0, rec.ElapsedMs + "ms");
 
         bool hasDown = macro.Steps.Any(s => s.Kind == "keyDown" && s.Key == "h");
         bool hasUp = macro.Steps.Any(s => s.Kind == "keyUp" && s.Key == "i");
@@ -1523,6 +1525,101 @@ public static class SelfTest
         while (player.IsPlaying && DateTime.UtcNow < deadline) Thread.Sleep(50);
         Check("播放后结束", !player.IsPlaying);
         player.Dispose();
+    }
+
+    /// <summary>
+    /// 录制时的实时反馈：每按一个键都要立刻出现在列表里。
+    ///
+    /// 这是"录完才知道录了什么"的回归测试 —— 用户抱怨的正是这个体验。
+    /// 走的是真实链路：引擎 SimulateKey → MacroRecorder.Record → Recorded 事件
+    /// → 界面线程 → 实时列表；中途任何一环断了，实时列表就不会长。
+    /// </summary>
+    private static void TestMacroLiveRecording()
+    {
+        // ---- 纯录制器：事件、快照、阈值 ----
+        var rec = new Core.Macro.MacroRecorder();
+        var seen = new List<(int Vk, bool Down, long Ms)>();
+        rec.Recorded += (vk, down, ms) => seen.Add((vk, down, ms));
+
+        CheckEqual("抖动阈值是 15ms", Core.Macro.MacroRecorder.MinDelayMs, 15);
+        rec.Start();
+        rec.Record(0x41, true);     // A 按下
+        rec.Record(0x41, false);    // A 抬起
+        CheckEqual("每录一个键就抛一次事件", seen.Count, 2);
+        Check("事件带正确的键码与方向", seen.Count == 2 && seen[0].Vk == 0x41 && seen[0].Down
+                                        && seen[1].Vk == 0x41 && !seen[1].Down);
+        Check("事件带时间戳", seen.Count == 2 && seen[1].Ms >= seen[0].Ms,
+            seen.Count == 2 ? $"{seen[0].Ms}→{seen[1].Ms}" : "");
+        CheckEqual("快照能还原已录事件", rec.Snapshot().Count, 2);
+
+        rec.Abort();
+        CheckEqual("取消后快照为空", rec.Snapshot().Count, 0);
+        Check("取消后不再抛事件", seen.Count == 2);
+
+        // ---- 真实链路：钩子回调 → 引擎 → 录制器 → 事件 ----
+        //
+        // 只测录制器本身是不够的：引擎那一句 MacroRecorder?.Record 要是掉了，
+        // 界面上就永远是"录完才知道"的样子。
+        var engineSettings = DefaultSettings.Create();
+        var engine = new HotkeyEngine(new ActionQueue(), () => engineSettings, (_, _) => true);
+        var rec2 = new Core.Macro.MacroRecorder();
+        int events = 0;
+        string lastKey = "";
+        rec2.Recorded += (vk, _, _) => { events++; lastKey = KeyName.NameOf(vk) ?? ""; };
+
+        engine.MacroRecorder = rec2;                 // 挂上录制器（同时挂起层逻辑）
+        rec2.Start();
+        engine.SimulateKey(0x41, true);              // A
+        engine.SimulateKey(0x41, false);             // A 抬起
+        CheckEqual("引擎把每个按键都喂给录制器", events, 2);
+        CheckEqual("录制到的是 A", lastKey, "a");
+        Check("录制期间引擎处于挂起（不触发原功能）", engine.Suspended);
+
+        engine.MacroRecorder = null;
+        rec2.Abort();
+        Check("停止录制后引擎恢复", !engine.Suspended);
+        engine.Dispose();
+
+        // ---- 界面：实时行的内容与计数 ----
+        //
+        // 这里不构造 AppHost（自检阶段它还没创建），所以只验"喂进来的事件怎么变成行"：
+        // 按键成一行、间隔够大就插一行"等待"，和最终生成的宏完全对应。
+        try
+        {
+            var view = new UI.Views.MacrosView();
+            CheckEqual("初始实时列表是空的", view.LiveRowCountForTest, 0);
+            Check("初始不在录制态", !view.IsRecordingUiForTest);
+
+            view.FeedLiveForTest(0x41, true, 0);      // A 按下
+            view.FeedLiveForTest(0x41, false, 30);    // 30ms 后抬起 —— 够大，要插一行等待
+            view.FeedLiveForTest(0x42, true, 35);     // 5ms 后 B 按下 —— 太小，不插
+
+            CheckEqual("三个按键 = 三行 + 一行等待", view.LiveRowCountForTest, 4);
+
+            view.ToggleRecordingUiForTest(true);
+            Check("录制态下步骤卡片让位给实时监视器", view.IsRecordingUiForTest);
+            view.ToggleRecordingUiForTest(false);
+            Check("退出录制后步骤卡片回来", !view.IsRecordingUiForTest);
+        }
+        catch (Exception ex)
+        {
+            Check("实时列表能构建", false, ex.Message);
+        }
+
+        // ---- 悬浮条：切到别的程序里录的时候，屏幕上只剩它 ----
+        try
+        {
+            UI.Windows.RecordingHudWindow.ShowHud();
+            UI.Windows.RecordingHudWindow.UpdateHud(1400, 12, "A ↓");
+            Check("录制悬浮条能显示并刷新", true);
+            UI.Windows.RecordingHudWindow.HideHud();
+            DoEvents(60);          // 等窗口真正关掉，别让它以 Topmost 留在屏幕上影响后面的焦点测试
+            Check("录制悬浮条能关闭", true);
+        }
+        catch (Exception ex)
+        {
+            Check("录制悬浮条能显示", false, ex.Message);
+        }
     }
 
     /// <summary>

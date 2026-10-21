@@ -21,11 +21,24 @@ namespace CapsLockPlus.Core.Macro;
 public sealed class MacroRecorder
 {
     private readonly object _gate = new();
-    private readonly List<RawEvent> _events = new();
+    private readonly List<KeyLog> _events = new();
     private readonly Stopwatch _clock = new();
     private bool _recording;
 
-    private sealed record RawEvent(int Vk, bool Down, long Ms);
+    /// <summary>两次按键之间小于这个毫秒数就不生成延迟步骤（抖动滤除）。</summary>
+    public const int MinDelayMs = 15;
+
+    /// <summary>录到一个按键。<see cref="Vk"/> 是虚拟键码，<see cref="Down"/> 按下还是抬起，
+    /// <see cref="Ms"/> 是距录制开始的毫秒。</summary>
+    public readonly record struct KeyLog(int Vk, bool Down, long Ms);
+
+    /// <summary>
+    /// 每录到一个按键就触发一次 —— **在键盘钩子线程上同步触发**。
+    ///
+    /// 订阅方必须立刻返回（界面侧只做 <c>Dispatcher.BeginInvoke</c>），
+    /// 否则会拖慢钩子回调；钩子回调超过 ~300ms 系统会静默把钩子摘掉。
+    /// </summary>
+    public event Action<int, bool, long>? Recorded;
 
     /// <summary>是否正在录制。</summary>
     public bool IsRecording
@@ -39,10 +52,16 @@ public sealed class MacroRecorder
         get { lock (_gate) { return _events.Count; } }
     }
 
-    /// <summary>已录制的毫秒数。</summary>
+    /// <summary>已录制的毫秒数。停止后保留最终值（界面要用它显示总时长）。</summary>
     public long ElapsedMs
     {
-        get { lock (_gate) { return _recording ? _clock.ElapsedMilliseconds : 0; } }
+        get { lock (_gate) { return _clock.ElapsedMilliseconds; } }
+    }
+
+    /// <summary>已录事件的一份快照（页面被重建 / 重新进入时用来还原实时列表）。</summary>
+    public IReadOnlyList<KeyLog> Snapshot()
+    {
+        lock (_gate) { return _events.ToArray(); }
     }
 
     public void Start()
@@ -58,15 +77,22 @@ public sealed class MacroRecorder
     /// <summary>喂一个真实按键给录制器（由钩子回调调用，必须极快）。</summary>
     public void Record(int vk, bool down)
     {
-        bool shouldLog = false;
+        long ms;
+        int count;
         lock (_gate)
         {
             if (!_recording) return;
-            _events.Add(new RawEvent(vk, down, _clock.ElapsedMilliseconds));
-            shouldLog = _events.Count <= 3;      // 前几个事件打日志，确认真的在录
+            ms = _clock.ElapsedMilliseconds;
+            _events.Add(new KeyLog(vk, down, ms));
+            count = _events.Count;
         }
-        if (shouldLog)
+
+        if (count <= 3)
             CoreLog.Info($"宏录制：vk=0x{vk:X2} down={down}");
+
+        // 事件在锁外抛：订阅方可能要抢别的锁，锁里回调容易互相等死
+        try { Recorded?.Invoke(vk, down, ms); }
+        catch (Exception ex) { CoreLog.Warn("宏录制事件回调出错：" + ex.Message); }
     }
 
     /// <summary>
@@ -79,6 +105,7 @@ public sealed class MacroRecorder
         lock (_gate)
         {
             _recording = false;
+            _clock.Stop();
             var sw = _clock.ElapsedMilliseconds;
             var events = _events.ToList();
 
@@ -90,7 +117,7 @@ public sealed class MacroRecorder
                 if (i > 0)
                 {
                     int gap = (int)(e.Ms - events[i - 1].Ms);
-                    if (gap >= minDelayMs)
+                    if (gap >= MinDelayMs)
                     {
                         macro.Steps.Add(new MacroStep { Kind = "delay", DelayMs = gap });
                     }
@@ -119,9 +146,8 @@ public sealed class MacroRecorder
         lock (_gate)
         {
             _recording = false;
+            _clock.Stop();
             _events.Clear();
         }
     }
-
-    private const int minDelayMs = 15;
 }

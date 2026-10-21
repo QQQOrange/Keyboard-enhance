@@ -2,14 +2,23 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource Font.Ui}">
+    <!--
+        版面取舍：宏列表只是"选一个"，录制与步骤编辑才是主要工作，
+        所以列表固定 300，剩下的全部给右侧 —— 之前列表吃掉大半屏幕、
+        右侧被挤成 420 的一小条，编辑长宏时列表只有 240 高，非常难用。
+
+        右侧两态：
+          空闲  → 录制条（上）+ 步骤卡片（下，占满）
+          录制中 → 录制条（上）+ 实时监视器（下，占满）顶替步骤卡片
+    -->
     <Grid Margin="24,4,20,20">
         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="420" />
         </Grid.ColumnDefinitions>
 
-        <!-- 左：宏列表 -->
-        <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0" Padding="18,16">
+        <!-- ================= 左：宏列表 ================= -->
+        <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0" Padding="14,14">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -17,130 +26,269 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="宏" Style="{StaticResource Text.H2}" />
-                <TextBlock Grid.Row="0" Style="{StaticResource Text.Tertiary}" Margin="0,4,0,12"
-                           Text="录一段操作，绑到任意按键上。支持在字符之间插入固定或随机延迟。" />
+                <StackPanel Grid.Row="0" Margin="4,0,4,10">
+                    <TextBlock Text="宏" Style="{StaticResource Text.H2}" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" Margin="0,4,0,0"
+                               TextWrapping="Wrap"
+                               Text="录一段操作，绑到任意按键上。" />
+                </StackPanel>
 
-                <ListBox Grid.Row="1" x:Name="MacroList" Background="Transparent" BorderThickness="0"
-                         ItemContainerStyle="{StaticResource RowItem}"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         SelectionChanged="OnMacroSelected">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Width="30" Height="30" CornerRadius="9"
-                                        Background="{DynamicResource Brush.AccentSoft}"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="&#xE945;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                               FontSize="13" Foreground="{DynamicResource Brush.Accent}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel Grid.Column="1" Margin="10,0,10,0" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Brush.TextPrimary}"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Summary}" Style="{StaticResource Text.Tertiary}"
-                                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="2" Text="{Binding DurationText}"
-                                           Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center" />
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <Grid Grid.Row="1">
+                    <ListBox x:Name="MacroList" Background="Transparent" BorderThickness="0"
+                             ItemContainerStyle="{StaticResource RowItem}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="OnMacroSelected">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="9"
+                                            Background="{DynamicResource Brush.AccentSoft}"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="&#xE945;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                   FontSize="13" Foreground="{DynamicResource Brush.Accent}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Brush.TextPrimary}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Summary}" Style="{StaticResource Text.Tertiary}"
+                                                   Margin="0,2,0,0" FontSize="11.5"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding DurationText}"
+                                               Style="{StaticResource Text.Tertiary}" FontSize="11.5"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
 
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
-                    <Button Content="＋ 新建" Style="{StaticResource Button.Primary}" Click="OnNewClick" />
-                    <Button Content="删除" Style="{StaticResource Button.Danger}" Margin="8,0,0,0"
-                            Click="OnDeleteClick" />
-                    <Button Content="测试播放" Style="{StaticResource Button.Base}" Margin="8,0,0,0"
-                            Click="OnTestClick" />
-                    <!-- 停止按钮只在播放中显示（Esc 之外的第二入口） -->
-                    <Button x:Name="StopPlayButton" Content="■ 停止" Style="{StaticResource Button.Ghost}"
-                            Margin="8,0,0,0" Click="OnStopPlayClick" Visibility="Collapsed"
-                            ToolTip="停止正在播放的宏（按 Esc 也可以）" />
-                    <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
-                               Margin="14,0,0,0" />
+                    <!-- 空状态：列表空的时候别让用户对着一片空白猜 -->
+                    <TextBlock x:Name="EmptyHint" Visibility="Collapsed"
+                               Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextAlignment="Center" Margin="12,0"
+                               Text="还没有宏&#x0a;点「开始录制」，或点下面「＋ 新建」" />
+                </Grid>
+
+                <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                    <WrapPanel x:Name="ListActions">
+                        <Button Content="＋ 新建" Style="{StaticResource Button.Primary}" Margin="0,0,8,6"
+                                Click="OnNewClick" />
+                        <Button Content="删除" Style="{StaticResource Button.Danger}" Margin="0,0,8,6"
+                                Click="OnDeleteClick" />
+                        <Button Content="测试播放" Style="{StaticResource Button.Base}" Margin="0,0,8,6"
+                                Click="OnTestClick" />
+                        <!-- 停止按钮只在播放中显示（Esc 之外的第二入口） -->
+                        <Button x:Name="StopPlayButton" Content="■ 停止" Style="{StaticResource Button.Ghost}"
+                                Margin="0,0,8,6" Click="OnStopPlayClick" Visibility="Collapsed"
+                                ToolTip="停止正在播放的宏（按 Esc 也可以）" />
+                    </WrapPanel>
+                    <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}"
+                               TextWrapping="Wrap" Margin="2,2,0,0" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="2,8,0,0"
+                               Opacity="0.8"
+                               Text="绑定：按键映射 → 功能 → 宏 → 播放宏：xxx。参数栏填数字可临时覆盖重复次数。" />
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- 右：录制 + 步骤编辑 -->
-        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <!-- 录制 -->
-                <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,0,0,14">
-                    <StackPanel>
-                        <TextBlock Text="录制" Style="{StaticResource Text.H3}" />
-                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,12"
-                                   Text="点「开始录制」后照常操作键盘，按键之间的间隔会被自动记下来。&#x0a;再点「停止录制」生成宏。录制期间不影响正常输入。" />
+        <!-- ================= 右：录制 + 步骤 ================= -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="RecordButton" Content="开始录制" Style="{StaticResource Button.Primary}"
-                                    Click="OnRecordClick" />
-                            <TextBlock x:Name="RecordStatus" Style="{StaticResource Text.Tertiary}"
-                                       VerticalAlignment="Center" Margin="12,0,0,0" />
+            <!-- ===== 录制条 ===== -->
+            <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16,13" Margin="0,0,0,12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 标题行：状态点 + 标题/说明 + 状态徽标 -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0" Width="14" VerticalAlignment="Top" Margin="0,4,0,0">
+                            <!-- 空闲：灰点；录制中：红点并呼吸闪烁（两个元素切换，主题色跟着走） -->
+                            <Ellipse x:Name="RecDotIdle" Width="10" Height="10" HorizontalAlignment="Left"
+                                     Fill="{DynamicResource Brush.BorderStrong}" />
+                            <Ellipse x:Name="RecDotRec" Width="10" Height="10" HorizontalAlignment="Left"
+                                     Fill="{DynamicResource Brush.Danger}" Visibility="Collapsed" />
+                        </Grid>
+
+                        <StackPanel Grid.Column="1" Margin="10,0,12,0">
+                            <TextBlock x:Name="RecTitle" Text="录制宏" Style="{StaticResource Text.H3}" />
+                            <TextBlock x:Name="RecHint" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" Margin="0,3,0,0"
+                                       Text="点「开始录制」后照常操作键盘，按键会立刻出现在下面。录制期间不影响正常输入。" />
                         </StackPanel>
+
+                        <Grid Grid.Column="2" VerticalAlignment="Top">
+                            <Border x:Name="RecBadgeIdle" Style="{StaticResource Badge}">
+                                <TextBlock Text="未开始" Style="{StaticResource Badge.Text}" />
+                            </Border>
+                            <Border x:Name="RecBadgeRec" Visibility="Collapsed"
+                                    Background="#2EFF5F5F" BorderBrush="#66FF5F5F" BorderThickness="1"
+                                    CornerRadius="6" Padding="7,2" VerticalAlignment="Center">
+                                <TextBlock Text="● 录制中" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Danger}" />
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <!-- 按钮行 -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,11,0,0">
+                        <Button x:Name="RecordButton" Content="● 开始录制"
+                                Style="{StaticResource Button.Primary}" Click="OnRecordClick" />
+                        <Button x:Name="CancelRecordButton" Content="取消录制"
+                                Style="{StaticResource Button.Ghost}" Margin="8,0,0,0"
+                                Visibility="Collapsed" Click="OnCancelRecordClick"
+                                ToolTip="丢掉这次录制，不生成宏" />
+                        <TextBlock x:Name="RecordStatus" Style="{StaticResource Text.Tertiary}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
-                </Border>
+                </Grid>
+            </Border>
 
-                <!-- 步骤编辑 -->
-                <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,0,0,14">
-                    <StackPanel>
+            <!-- ===== 步骤卡片（空闲时） ===== -->
+            <Border x:Name="StepsCard" Grid.Row="1" Style="{StaticResource Card}" Padding="16,13">
+                <Grid x:Name="StepsHost">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="110" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="步骤" Style="{StaticResource Text.H3}" />
+                        <TextBlock x:Name="StepCount" Grid.Column="2" Style="{StaticResource Text.Tertiary}"
+                                   VerticalAlignment="Center" />
+                    </Grid>
 
-                        <TextBlock Text="名称" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
-                        <TextBox x:Name="NameBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                                 VerticalContentAlignment="Center" TextChanged="OnNameChanged" />
+                    <!-- 名称 + 重复（同一行，省下来的高度全给步骤列表） -->
+                    <Grid Grid.Row="1" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0" Margin="0,0,12,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="名称" Style="{StaticResource Text.Secondary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBox x:Name="NameBox" Grid.Column="1" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="34" VerticalContentAlignment="Center"
+                                     TextChanged="OnNameChanged" />
+                        </Grid>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <TextBlock Text="重复" Style="{StaticResource Text.Secondary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBox x:Name="RepeatBox" Width="58" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="34" VerticalContentAlignment="Center"
+                                     TextChanged="OnRepeatChanged"
+                                     ToolTip="播放几次。0 = 一直循环，直到按 Esc" />
+                            <TextBlock Text="次" Style="{StaticResource Text.Secondary}"
+                                       VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </Grid>
 
-                        <TextBlock Text="重复次数（0 = 一直循环）" Style="{StaticResource Text.Secondary}"
-                                   Margin="0,12,0,6" />
-                        <TextBox x:Name="RepeatBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                                 VerticalContentAlignment="Center" TextChanged="OnRepeatChanged" />
-
-                        <TextBlock Text="步骤列表" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
-                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,0,0,6"
-                                   Text="点一行选中它，下面的插入会插到它后面。延迟可以随时改数值。" />
-                        <ListBox x:Name="StepList" Background="Transparent" BorderThickness="0" MaxHeight="240"
+                    <!-- 步骤列表 -->
+                    <Grid Grid.Row="2" Margin="0,10,0,0">
+                        <ListBox x:Name="StepList" Background="Transparent" BorderThickness="0"
                                  ItemContainerStyle="{StaticResource RowItem}"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 SelectionChanged="OnStepSelected">
+                                 SelectionChanged="OnStepSelected"
+                                 VirtualizingPanel.IsVirtualizing="False">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding Order}" Width="26"
-                                                   Style="{StaticResource Text.Tertiary}"
+                                        <!-- 播放中的当前步：左侧亮条 -->
+                                        <Border x:Name="NowBar" Grid.Column="0" Width="3" Height="15"
+                                                CornerRadius="2" Margin="0,0,7,0"
+                                                Background="{DynamicResource Brush.Accent}"
+                                                Visibility="Collapsed" />
+                                        <TextBlock x:Name="OrderText" Grid.Column="1" Text="{Binding Order}"
+                                                   Width="24" Style="{StaticResource Text.Tertiary}"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Label}"
+                                        <TextBlock x:Name="LabelText" Grid.Column="2" Text="{Binding Label}"
                                                    Foreground="{DynamicResource Brush.TextPrimary}"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                        <Button Grid.Column="2" Content="&#xE711;"
+                                        <Button Grid.Column="3" Content="&#xE711;"
                                                 FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                 FontSize="9" Style="{StaticResource Button.Ghost}"
-                                                Padding="8,4" Tag="{Binding Index}" Click="OnRemoveStep" />
+                                                Padding="8,4" Tag="{Binding Index}" Click="OnRemoveStep"
+                                                ToolTip="删除这一步" />
                                     </Grid>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                            <Setter TargetName="NowBar" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="LabelText" Property="FontWeight" Value="SemiBold" />
+                                            <Setter TargetName="LabelText" Property="Foreground"
+                                                    Value="{DynamicResource Brush.Accent}" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <!-- 选中步骤的编辑区 -->
-                        <Border x:Name="StepEditor" Margin="0,10,0,0" Padding="12,10" CornerRadius="10"
+                        <TextBlock x:Name="StepEmpty" Visibility="Collapsed"
+                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" Margin="16,0"
+                                   Text="还没有步骤&#x0a;点上面「开始录制」，或用下面的按钮手动插入" />
+                    </Grid>
+
+                    <!-- 选中步骤的编辑 + 插入 -->
+                    <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                        <Border x:Name="StepEditor" Padding="12,9" CornerRadius="10"
                                 Background="{DynamicResource Brush.SurfaceAlt}"
                                 BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
                                 Visibility="Collapsed">
                             <StackPanel>
-                                <TextBlock x:Name="StepEditorTitle" Style="{StaticResource Text.Secondary}"
-                                           Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="StepEditorTitle" Style="{StaticResource Text.Secondary}"
+                                               VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button Content="↑" Style="{StaticResource Button.Ghost}" Padding="9,3"
+                                                FontSize="12" Click="OnMoveStepUp" ToolTip="和上一步交换" />
+                                        <Button Content="↓" Style="{StaticResource Button.Ghost}" Padding="9,3"
+                                                FontSize="12" Margin="2,0,0,0" Click="OnMoveStepDown"
+                                                ToolTip="和下一步交换" />
+                                    </StackPanel>
+                                </Grid>
 
                                 <!-- 固定延迟 -->
                                 <StackPanel x:Name="DelayEditPanel" Orientation="Horizontal"
@@ -148,7 +296,7 @@
                                     <TextBlock Text="等待" VerticalAlignment="Center"
                                                Style="{StaticResource Text.Secondary}" />
                                     <TextBox x:Name="DelayEditBox" Width="90" Margin="8,0,8,0"
-                                             Style="{StaticResource TextBox.Base}" MinHeight="32"
+                                             Style="{StaticResource TextBox.Base}" MinHeight="30"
                                              VerticalContentAlignment="Center"
                                              TextChanged="OnDelayEditChanged" />
                                     <TextBlock Text="毫秒" VerticalAlignment="Center"
@@ -156,76 +304,152 @@
                                 </StackPanel>
 
                                 <!-- 随机延迟 -->
-                                <StackPanel x:Name="RandomEditPanel" Orientation="Horizontal"
-                                            Visibility="Collapsed">
+                                <WrapPanel x:Name="RandomEditPanel" Visibility="Collapsed">
                                     <TextBlock Text="随机" VerticalAlignment="Center"
                                                Style="{StaticResource Text.Secondary}" />
-                                    <TextBox x:Name="MinEditBox" Width="72" Margin="8,0,6,0"
-                                             Style="{StaticResource TextBox.Base}" MinHeight="32"
+                                    <TextBox x:Name="MinEditBox" Width="70" Margin="8,0,6,0"
+                                             Style="{StaticResource TextBox.Base}" MinHeight="30"
                                              VerticalContentAlignment="Center"
                                              TextChanged="OnRandomEditChanged" />
                                     <TextBlock Text="~" VerticalAlignment="Center"
                                                Style="{StaticResource Text.Secondary}" />
-                                    <TextBox x:Name="MaxEditBox" Width="72" Margin="6,0,8,0"
-                                             Style="{StaticResource TextBox.Base}" MinHeight="32"
+                                    <TextBox x:Name="MaxEditBox" Width="70" Margin="6,0,8,0"
+                                             Style="{StaticResource TextBox.Base}" MinHeight="30"
                                              VerticalContentAlignment="Center"
                                              TextChanged="OnRandomEditChanged" />
                                     <TextBlock Text="毫秒（每次播放随机取）" VerticalAlignment="Center"
                                                Style="{StaticResource Text.Secondary}" />
-                                </StackPanel>
+                                </WrapPanel>
 
                                 <!-- 文本 -->
                                 <StackPanel x:Name="TextEditPanel" Visibility="Collapsed">
                                     <TextBox x:Name="TextEditBox" Style="{StaticResource TextBox.Base}"
-                                             MinHeight="34" VerticalContentAlignment="Center"
+                                             MinHeight="32" VerticalContentAlignment="Center"
                                              TextChanged="OnTextEditChanged" />
                                 </StackPanel>
 
                                 <!-- 按键：允许换成别的键 -->
                                 <StackPanel x:Name="KeyEditPanel" Orientation="Horizontal"
                                             Visibility="Collapsed">
-                                    <Border Style="{StaticResource Keycap}" Padding="10,6">
+                                    <Border Style="{StaticResource Keycap}" Padding="10,5">
                                         <TextBlock x:Name="KeyEditLabel" FontSize="12.5"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Brush.Accent}" />
                                     </Border>
                                     <Button Content="换成别的键…" Style="{StaticResource Button.Base}"
-                                            Padding="12,6" Margin="10,0,0,0" Click="OnChangeStepKey" />
+                                            Padding="12,5" Margin="10,0,0,0" Click="OnChangeStepKey" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
 
-                        <!-- 插入步骤 -->
-                        <TextBlock x:Name="InsertHint" Text="插入（追加到末尾）"
-                                   Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
+                        <Grid Margin="0,10,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="InsertHint" Text="插入（追加到末尾）"
+                                       Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource Text.Tertiary}" FontSize="11"
+                                       VerticalAlignment="Center"
+                                       Text="点一行选中它，插入会插到它后面" />
+                        </Grid>
+
                         <WrapPanel>
-                            <Button Content="延迟(毫秒)" Style="{StaticResource Button.Base}" Padding="12,6"
-                                    Margin="0,0,8,8" Click="OnInsertDelay" />
-                            <Button Content="随机延迟" Style="{StaticResource Button.Base}" Padding="12,6"
-                                    Margin="0,0,8,8" Click="OnInsertRandom" />
-                            <Button Content="文本" Style="{StaticResource Button.Base}" Padding="12,6"
-                                    Margin="0,0,8,8" Click="OnInsertText" />
-                            <Button Content="按键 按下" Style="{StaticResource Button.Base}" Padding="12,6"
-                                    Margin="0,0,8,8" Click="OnInsertKeyDown" />
-                            <Button Content="按键 抬起" Style="{StaticResource Button.Base}" Padding="12,6"
-                                    Margin="0,0,8,8" Click="OnInsertKeyUp" />
+                            <Button Content="延迟(毫秒)" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertDelay" />
+                            <Button Content="随机延迟" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertRandom" />
+                            <Button Content="文本" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertText" />
+                            <Button Content="按键 按下" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertKeyDown" />
+                            <Button Content="按键 抬起" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertKeyUp" />
                         </WrapPanel>
-
-                        <TextBlock Text="提示：想在某两个字之间加停顿，就先选中它前面那一步，再点「延迟」。"
-                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
-                                   Margin="0,4,0,0" />
                     </StackPanel>
-                </Border>
+                </Grid>
+            </Border>
 
-                <!-- 绑定说明 -->
-                <Border Style="{StaticResource Card}" Padding="18,16">
-                    <StackPanel>
-                        <TextBlock Text="怎么用" Style="{StaticResource Text.H3}" />
-                        <TextBlock Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,8,0,0"
-                                   Text="到「按键映射」页选一个按键，在“功能”下拉里选「宏」分类下的「播放宏：xxx」即可绑定。&#x0a;参数栏填数字可以临时覆盖重复次数。" />
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+            <!-- ===== 录制监视器（录制中顶替步骤卡片） ===== -->
+            <Border x:Name="LivePanel" Grid.Row="1" Visibility="Collapsed"
+                    Style="{StaticResource Card}" Padding="16,13">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="实时记录" Style="{StaticResource Text.H3}" />
+                            <TextBlock x:Name="LiveStats" Text="等待第一个按键…"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" FontSize="11.5" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="停止后这些会变成可编辑的步骤"
+                                   Style="{StaticResource Text.Tertiary}" FontSize="11"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+
+                    <ScrollViewer x:Name="LiveScroll" Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="LiveList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="58" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Time}"
+                                                   Style="{StaticResource Text.Mono}" FontSize="10.5"
+                                                   Foreground="{DynamicResource Brush.TextTertiary}"
+                                                   VerticalAlignment="Center" />
+                                        <Border x:Name="Cap" Grid.Column="1" Style="{StaticResource Keycap}"
+                                                Padding="7,2" Margin="0" HorizontalAlignment="Left"
+                                                VerticalAlignment="Center">
+                                            <TextBlock x:Name="Label" Text="{Binding Text}" FontSize="11.5"
+                                                       Foreground="{DynamicResource Brush.Accent}" />
+                                        </Border>
+                                        <TextBlock x:Name="Tag" Grid.Column="2" Text="{Binding Tag}"
+                                                   FontSize="11" Margin="8,0,2,0"
+                                                   Foreground="{DynamicResource Brush.TextSecondary}"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <!-- 抬起：弱化，让"按下"更醒目 -->
+                                        <DataTrigger Binding="{Binding IsUp}" Value="True">
+                                            <Setter TargetName="Label" Property="Foreground"
+                                                    Value="{DynamicResource Brush.TextSecondary}" />
+                                        </DataTrigger>
+                                        <!-- 延迟：不是按键，用普通文字 + 灰 -->
+                                        <DataTrigger Binding="{Binding IsDelay}" Value="True">
+                                            <Setter TargetName="Cap" Property="Background" Value="Transparent" />
+                                            <Setter TargetName="Cap" Property="BorderThickness" Value="0" />
+                                            <Setter TargetName="Cap" Property="Padding" Value="0" />
+                                            <Setter TargetName="Label" Property="FontSize" Value="11" />
+                                            <Setter TargetName="Label" Property="Foreground"
+                                                    Value="{DynamicResource Brush.TextTertiary}" />
+                                            <Setter TargetName="Tag" Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <TextBlock Grid.Row="2" Margin="0,8,0,0" Style="{StaticResource Text.Tertiary}"
+                               FontSize="11" TextWrapping="Wrap"
+                               Text="提示：录制期间按键照常传给当前程序，不会吞键；间隔超过 15ms 会记成一次等待。" />
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>
