@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
@@ -6,94 +8,158 @@ using CapsLockPlus.Core.Settings;
 namespace CapsLockPlus.UI.Windows;
 
 /// <summary>
-/// 层内修饰键（子层）编辑器。
+/// 层内子层编辑器。
 ///
-/// 每层最多 <see cref="LayerOptions.MaxSubLayers"/> 个子层，
-/// 覆盖 Ctrl / Shift / Alt / Win 的所有非空组合（共 15 种）。
-/// 用户自由勾选这一层要用哪几套 —— 每个子层都有独立的按键绑定。
+/// 每一行是一个子层：
+///   · 左边的按钮点一下可以**捕获任意键**（Ctrl、Tab、CapsLock、F13…）
+///   · 中间的输入框可以给这个子层起**自定义名字**
+///   · 右边可以删除
+///
+/// 每层最多 10 个子层。
 /// </summary>
 public partial class SubLayerEditorWindow : Window
 {
-    /// <summary>一个可选的修饰键组合。</summary>
-    public sealed class Option
+    /// <summary>一行的视图模型。</summary>
+    public sealed class Row : INotifyPropertyChanged
     {
-        public KeyModifiers Mods { get; init; }
-        public string Label { get; set; } = "";
-        public bool IsChecked { get; set; }
+        private string _key = "";
+        private string? _name;
+
+        public string Key
+        {
+            get => _key;
+            set
+            {
+                _key = value ?? "";
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(KeyLabel));
+            }
+        }
+
+        public string? Name
+        {
+            get => _name;
+            set { _name = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>按钮上显示的文字（键名或"点击设置"）。</summary>
+        public string KeyLabel =>
+            string.IsNullOrWhiteSpace(Key) ? "点击设置…" : KeyName.Display(Key);
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged([CallerMemberName] string? name = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
-    private readonly ObservableCollection<Option> _options = new();
+    private readonly ObservableCollection<Row> _rows = new();
 
-    public SubLayerEditorWindow() : this("", new List<KeyModifiers>()) { }
+    public SubLayerEditorWindow() : this("", new List<SubLayerDef>()) { }
 
-    public SubLayerEditorWindow(string layerName, List<KeyModifiers> selected)
+    public SubLayerEditorWindow(string layerName, List<SubLayerDef> current)
     {
         InitializeComponent();
 
         TitleText.Text = string.IsNullOrWhiteSpace(layerName)
-            ? "层内修饰键（子层）"
-            : $"「{layerName}」的层内修饰键（子层）";
+            ? "层内子层设置"
+            : $"「{layerName}」的层内子层";
 
-        // 15 种非空组合（1..15 的位组合）
-        for (int i = 1; i < 16; i++)
-        {
-            var mods = (KeyModifiers)i;
-            _options.Add(new Option
-            {
-                Mods = mods,
-                Label = Describe(mods),
-                IsChecked = selected.Contains(mods),
-            });
-        }
+        foreach (var s in current)
+            _rows.Add(new Row { Key = s.Key, Name = s.Name });
 
-        ModifierList.ItemsSource = _options;
+        if (_rows.Count == 0)
+            foreach (var s in LayerOptions.DefaultSubLayers())
+                _rows.Add(new Row { Key = s.Key, Name = s.Name });
+
+        SubList.ItemsSource = _rows;
         UpdateCount();
-    }
-
-    private static string Describe(KeyModifiers m)
-    {
-        var parts = new List<string>();
-        if (m.HasFlag(KeyModifiers.Ctrl)) parts.Add("Ctrl");
-        if (m.HasFlag(KeyModifiers.Shift)) parts.Add("Shift");
-        if (m.HasFlag(KeyModifiers.Alt)) parts.Add("Alt");
-        if (m.HasFlag(KeyModifiers.Win)) parts.Add("Win");
-        return parts.Count == 0 ? "（无）" : "+" + string.Join(" + ", parts);
     }
 
     private void UpdateCount()
     {
-        int n = _options.Count(o => o.IsChecked);
         int max = LayerOptions.MaxSubLayers;
-        CountText.Text = $"已选 {n} 个（最多 {max} 个）";
-        CountText.Foreground = n > max
+        CountText.Text = $"{_rows.Count} / {max} 个子层";
+        CountText.Foreground = _rows.Count > max
             ? (System.Windows.Media.Brush)FindResource("Brush.Accent")
             : (System.Windows.Media.Brush)FindResource("Brush.TextTertiary");
     }
 
-    /// <summary>当前勾选的修饰键组合。</summary>
-    public List<KeyModifiers> SelectedModifiers =>
-        _options.Where(o => o.IsChecked).Select(o => o.Mods).ToList();
+    /// <summary>用户确认后的子层定义。</summary>
+    public List<SubLayerDef> SelectedSubLayers =>
+        _rows.Where(r => !string.IsNullOrWhiteSpace(r.Key))
+             .Select(r => new SubLayerDef { Key = r.Key, Name = r.Name })
+             .Take(LayerOptions.MaxSubLayers)
+             .ToList();
+
+    /// <summary>点"键"按钮：打开按键捕获，支持任意键。</summary>
+    private void OnPickKeyClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Row row }) return;
+
+        var capture = new KeyCaptureWindow
+        {
+            Owner = this,
+            Title = "按下要作为子层触发键的按键",
+        };
+        if (capture.ShowDialog() != true) return;
+
+        string combo = capture.CapturedCombo;
+        if (string.IsNullOrWhiteSpace(combo)) return;
+
+        // 捕获到的是 combo ID（caps_ctrl_k），取其中的键名部分
+        var parsed = KeyName.ParseCombo(combo);
+        if (parsed is { } p)
+        {
+            var mods = p.Mods;
+            var parts = new List<string>();
+            if (mods.HasFlag(KeyModifiers.Ctrl)) parts.Add("ctrl");
+            if (mods.HasFlag(KeyModifiers.Shift)) parts.Add("shift");
+            if (mods.HasFlag(KeyModifiers.Alt)) parts.Add("alt");
+            if (mods.HasFlag(KeyModifiers.Win)) parts.Add("win");
+            parts.Add(p.Key);
+            row.Key = string.Join("_", parts);
+        }
+        else
+        {
+            row.Key = combo;
+        }
+    }
+
+    private void OnAddClick(object sender, RoutedEventArgs e)
+    {
+        if (_rows.Count >= LayerOptions.MaxSubLayers)
+        {
+            MessageBox.Show(this, $"最多 {LayerOptions.MaxSubLayers} 个子层。",
+                "已达到上限", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        _rows.Add(new Row());
+        UpdateCount();
+    }
+
+    private void OnRemoveClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Row row }) _rows.Remove(row);
+        UpdateCount();
+    }
 
     private void OnResetDefaults(object sender, RoutedEventArgs e)
     {
-        var defaults = LayerOptions.DefaultSubLayerModifiers()
-            .Select(x => (KeyModifiers)x).ToList();
-        foreach (var o in _options) o.IsChecked = defaults.Contains(o.Mods);
-        ModifierList.Items.Refresh();
+        _rows.Clear();
+        foreach (var s in LayerOptions.DefaultSubLayers())
+            _rows.Add(new Row { Key = s.Key, Name = s.Name });
         UpdateCount();
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
-        var sel = SelectedModifiers;
-        if (sel.Count > LayerOptions.MaxSubLayers)
+        if (_rows.Count > LayerOptions.MaxSubLayers)
         {
             MessageBox.Show(this,
-                $"最多只能选 {LayerOptions.MaxSubLayers} 个修饰键组合。\n当前选了 {sel.Count} 个，请取消一些。",
+                $"最多 {LayerOptions.MaxSubLayers} 个子层，请先删掉一些。",
                 "子层太多", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-
         DialogResult = true;
     }
 

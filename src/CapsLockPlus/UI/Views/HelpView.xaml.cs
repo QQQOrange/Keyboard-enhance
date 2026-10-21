@@ -16,12 +16,37 @@ public partial class HelpView : UserControl
 {
     private AppHost? _host;
 
-    public HelpView() => InitializeComponent();
+    public HelpView()
+    {
+        InitializeComponent();
+        // 离开可视树时退订，避免宿主长期持有旧页面（隐性泄漏）
+        Unloaded += OnUnloaded;
+    }
 
     public void Initialize(AppHost host)
     {
         _host = host;
+
+        /* 订阅配置变更：在按键映射页改完绑定，这里立刻跟着更新。
+         *
+         * 之前只在"切到帮助页"时刷新 —— 若帮助页一直开着（分屏），
+         * 另一页改了配置，速查表还是旧内容。 */
+        _host.SettingsChanged -= OnSettingsChanged;
+        _host.SettingsChanged += OnSettingsChanged;
+
         Refresh();
+    }
+
+    /// <summary>宿主配置变化：重建速查表与指南。</summary>
+    private void OnSettingsChanged()
+    {
+        if (_host == null || !IsVisible) return;
+        Refresh();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_host != null) _host.SettingsChanged -= OnSettingsChanged;
     }
 
     public void Refresh()

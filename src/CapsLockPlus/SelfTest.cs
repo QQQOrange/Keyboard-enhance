@@ -2975,46 +2975,65 @@ public static class SelfTest
     }
 
     /// <summary>
-    /// 层内修饰键（子层）：每层可配 0~10 个，各自独立绑定。
+    /// 层内子层：每层可配 0~10 个，子层键可用任意物理键，也能自定义名字。
     /// </summary>
     private static void TestSubLayers()
     {
-        // ① 未配置时回退到默认 4 个（保证老配置行为不变）
+        // ① 未配置时回退到默认 4 个（老配置行为不变）
         var plain = new LayerOptions { Id = 1, Name = "基础层" };
         CheckEqual("未配置时默认 4 个子层", plain.EffectiveSubLayers.Count, 4);
-        Check("默认含 Ctrl", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Ctrl));
-        Check("默认含 Shift", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Shift));
-        Check("默认含 Alt", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Alt));
-        Check("默认含 Win", plain.EffectiveSubLayers.Contains((int)KeyModifiers.Win));
 
-        // ② 配置后以配置为准
+        var keys = plain.EffectiveSubLayers.Select(s => s.Key).ToList();
+        Check("默认含 ctrl", keys.Contains("ctrl"), string.Join(",", keys));
+        Check("默认含 shift", keys.Contains("shift"));
+        Check("默认含 alt", keys.Contains("alt"));
+        Check("默认含 win", keys.Contains("win"));
+
+        // ② 子层键可以是任意物理键（不限于修饰键）
         var custom = new LayerOptions
         {
             Id = 2,
-            SubLayerModifiers = new List<int>
+            SubLayers = new List<SubLayerDef>
             {
-                (int)KeyModifiers.Ctrl,
-                (int)(KeyModifiers.Ctrl | KeyModifiers.Shift),
+                new() { Key = "ctrl", Name = "左侧功能" },
+                new() { Key = "tab" },
+                new() { Key = "capslock" },
             },
         };
-        CheckEqual("配置了 2 个就有 2 个", custom.EffectiveSubLayers.Count, 2);
-        Check("含 Ctrl", custom.EffectiveSubLayers.Contains((int)KeyModifiers.Ctrl));
-        Check("含 Ctrl+Shift",
-            custom.EffectiveSubLayers.Contains((int)(KeyModifiers.Ctrl | KeyModifiers.Shift)));
+        CheckEqual("配置了 3 个就有 3 个", custom.EffectiveSubLayers.Count, 3);
+        Check("Tab 可当子层键", custom.EffectiveSubLayers.Any(s => s.Key == "tab"));
+        Check("CapsLock 可当子层键", custom.EffectiveSubLayers.Any(s => s.Key == "capslock"));
 
-        // ③ 上限 10 个
+        // ③ 自定义名字生效；没名字时退回键名
+        var named = custom.EffectiveSubLayers.First(s => s.Key == "ctrl");
+        CheckEqual("自定义名字生效", named.Display, "左侧功能");
+
+        var unnamed = custom.EffectiveSubLayers.First(s => s.Key == "tab");
+        Check("无名字时显示键名", !string.IsNullOrWhiteSpace(unnamed.Display), unnamed.Display);
+
+        // ④ 上限 10 个
         var tooMany = new LayerOptions
         {
             Id = 3,
-            SubLayerModifiers = Enumerable.Range(1, 15).ToList(),
+            SubLayers = Enumerable.Range(1, 15)
+                .Select(i => new SubLayerDef { Key = "f" + i }).ToList(),
         };
         Check("超过 10 个会被截断",
             tooMany.EffectiveSubLayers.Count == LayerOptions.MaxSubLayers,
             tooMany.EffectiveSubLayers.Count.ToString());
         CheckEqual("上限常量是 10", LayerOptions.MaxSubLayers, 10);
 
-        // ④ 每个子层有独立绑定（不同 combo 前缀，互不干扰）
-        var layer = new LayerOptions { Id = 4 };
+        // ⑤ 旧字段兼容：位标记仍能转换成子层定义
+        var legacy = new LayerOptions
+        {
+            Id = 4,
+            SubLayerModifiers = new List<int> { (int)KeyModifiers.Ctrl },
+        };
+        CheckEqual("旧位标记仍可用", legacy.EffectiveSubLayers.Count, 1);
+        CheckEqual("旧位标记转成 ctrl 键", legacy.EffectiveSubLayers[0].Key, "ctrl");
+
+        // ⑥ 每个子层有独立绑定
+        var layer = new LayerOptions { Id = 5 };
         layer.Keys.Add(new KeyBinding { Combo = "caps_q", Action = "qbar" });
         layer.Keys.Add(new KeyBinding
         {
@@ -3036,17 +3055,20 @@ public static class SelfTest
         Check("直接按的绑定独立", direct?.Action == "qbar", direct?.Action ?? "(无)");
         Check("Ctrl 子层绑定独立", ctrl?.Action == "deleteWord", ctrl?.Action ?? "(无)");
         Check("Ctrl+Shift 子层绑定独立", ctrlShift?.Action == "copy1", ctrlShift?.Action ?? "(无)");
-        Check("三个绑定互不相同",
-            direct?.Combo != ctrl?.Combo && ctrl?.Combo != ctrlShift?.Combo);
 
-        // ⑤ 子层配置能存进 JSON 并读回
+        // ⑦ 子层配置能存进 JSON 并读回
         var s = DefaultSettings.Create();
-        s.Layers[1].SubLayerModifiers = new List<int> { (int)KeyModifiers.Alt };
+        s.Layers[1].SubLayers = new List<SubLayerDef>
+        {
+            new() { Key = "alt", Name = "我的子层" },
+        };
         string json = System.Text.Json.JsonSerializer.Serialize(s);
         var back = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json);
         Check("子层配置能序列化往返",
-            back?.Layers[1].SubLayerModifiers.Count == 1,
-            back?.Layers[1].SubLayerModifiers.Count.ToString() ?? "(null)");
+            back?.Layers[1].EffectiveSubLayers.Count == 1,
+            back?.Layers[1].EffectiveSubLayers.Count.ToString() ?? "(null)");
+        CheckEqual("自定义名字也保留",
+            back?.Layers[1].EffectiveSubLayers[0].Name, "我的子层");
     }
 
     private static void TestKeyboardLayoutGeometry()    {

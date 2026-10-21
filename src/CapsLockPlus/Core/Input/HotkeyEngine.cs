@@ -49,6 +49,9 @@ public sealed class HotkeyEngine : IDisposable
     private bool _hasLastTap;
 
     private bool _laltDown;
+
+    /// <summary>当前按住的"非修饰键子层键"的键名（空 = 没有）。</summary>
+    private string _subLayerKeyDown = "";
     private bool _lwinDown;
     private bool _rwinDown;
     private bool _ctrlDown;
@@ -475,6 +478,33 @@ public sealed class HotkeyEngine : IDisposable
         if (!down) _swallowedUp.Remove(vk);
     }
 
+    /// <summary>
+    /// 这个键是不是当前层配置的子层键（且不是修饰键）。
+    ///
+    /// 只处理"非修饰键"的子层键；Ctrl/Shift/Alt/Win 由上面的分支单独记录，
+    /// 它们通过位标记参与 combo 前缀。
+    /// </summary>
+    private bool IsSubLayerKey(AppSettings s, string keyName)
+    {
+        var layer = s.Layers.FirstOrDefault(l => l.Id == _activeLayer);
+        if (layer == null) return false;
+
+        foreach (var sub in layer.EffectiveSubLayers)
+        {
+            if (string.IsNullOrWhiteSpace(sub.Key)) continue;
+
+            // 只取单键形式（多段的是 ctrl_shift 这类修饰组合，不在这里处理）
+            if (sub.Key.Contains('_')) continue;
+
+            if (string.Equals(sub.Key, keyName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>拼"子层键 + 修饰键 + 键"的 combo ID。</summary>
+    private static string ComboForSubLayer(string subKey, KeyModifiers mods, string keyName)
+        => KeyName.BuildComboEx(mods, subKey + "_" + keyName);
     /// <summary>当前按住的修饰键集合（引擎自己维护的状态）。</summary>
     private KeyModifiers HeldModifiers()
     {
@@ -673,16 +703,37 @@ public sealed class HotkeyEngine : IDisposable
         string? keyName = KeyName.NameOf(vk);
         if (keyName == null) return false;   // 不认识的功能键，放行
 
+        var settings = _settings();
+
+        /* ---- 子层键：可以是任意物理键（Tab / CapsLock / F13…） ----
+         *
+         * 早期的"层内修饰键"只认 Ctrl/Shift/Alt/Win 四个修饰键；
+         * 现在子层键允许任意键，所以要先检查这个键是不是当前层配置的子层键。
+         *
+         * 命中就**吞掉并记住**，接下来的按键会带上这个前缀去查绑定
+         * （例如 Tab 子层 + Q → caps_tab_q）。 */
+        if (string.IsNullOrEmpty(_subLayerKeyDown) && IsSubLayerKey(settings, keyName))
+        {
+            _subLayerKeyDown = keyName;
+            _swallowedUp.Add(vk);
+            return true;
+        }
+
         var mods = KeyModifiers.None;
         if (_laltDown) mods |= KeyModifiers.Alt;
         if (_lwinDown || _rwinDown) mods |= KeyModifiers.Win;
         if (_ctrlDown) mods |= KeyModifiers.Ctrl;
         if (_shiftDown) mods |= KeyModifiers.Shift;
 
-        var settings = _settings();
         string comboId = KeyName.BuildComboEx(mods, keyName);
 
-        var binding = FindInLayer(settings, _activeLayer, comboId);
+        /* 有非修饰键子层按住时，优先查"子层前缀 + 键"的绑定；
+         * 没有绑定再退回普通查法。 */
+        KeyBinding? binding = null;
+        if (!string.IsNullOrEmpty(_subLayerKeyDown))
+            binding = FindInLayer(settings, _activeLayer, ComboForSubLayer(_subLayerKeyDown, mods, keyName));
+        binding ??= FindInLayer(settings, _activeLayer, comboId);
+
         if (binding == null || !binding.IsBound)
         {
             // 没有绑定：放行，让按键正常输入
@@ -725,6 +776,16 @@ public sealed class HotkeyEngine : IDisposable
     {
         bool swallow = _swallowedUp.Remove(vk);
         _swallowedDown.Remove(vk);
+
+        /* 非修饰键的子层键松开 → 清掉前缀状态。
+         *
+         * 不清的话，用户按了 Tab 子层再松开，之后按任何键都会被拼成
+         * caps_tab_xxx，看起来就是"Tab 子层粘住了"。 */
+        if (!string.IsNullOrEmpty(_subLayerKeyDown) &&
+            string.Equals(KeyName.NameOf(vk), _subLayerKeyDown, StringComparison.OrdinalIgnoreCase))
+        {
+            _subLayerKeyDown = "";
+        }
 
         /* ⚠ 左右修饰键和通用码都要清。
          *

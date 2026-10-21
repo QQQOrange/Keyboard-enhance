@@ -1,39 +1,77 @@
 <Window x:Class="CapsLockPlus.UI.Windows.SubLayerEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="层内修饰键（子层）" Width="440" SizeToContent="Height"
-        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Title="层内子层设置" Width="560" Height="620"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
         Background="{DynamicResource Brush.Surface}"
         Foreground="{DynamicResource Brush.TextPrimary}">
-    <StackPanel Margin="22,18">
-        <TextBlock x:Name="TitleText" Text="层内修饰键" FontSize="17" FontWeight="SemiBold"
+    <Grid Margin="22,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="TitleText" Text="层内子层" FontSize="17" FontWeight="SemiBold"
                    Foreground="{DynamicResource Brush.TextPrimary}" />
-        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                   Text="勾选这一层要用的修饰键组合。进入本层后再按住这些键，就能用到另一套独立绑定。最多 10 个。" />
 
-        <ItemsControl x:Name="ModifierList" Margin="0,14,0,0">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Border Margin="0,0,0,6" Padding="12,9" CornerRadius="9"
-                            Background="{DynamicResource Brush.SurfaceAlt}"
-                            BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
-                        <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked, Mode=TwoWay}"
-                                  VerticalAlignment="Center"
-                                  Foreground="{DynamicResource Brush.TextPrimary}" />
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <TextBlock Grid.Row="1" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                   Text="进入本层后再按住下面配置的键，就能用到另一套独立绑定。子层键可以是任意物理键（Ctrl、Tab、CapsLock…），也能给它起个名字。最多 10 个。" />
 
-        <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}" Margin="0,8,0,0" />
+        <!-- 子层列表 -->
+        <Border Grid.Row="2" Margin="0,14,0,0" CornerRadius="10"
+                Background="{DynamicResource Brush.SurfaceAlt}"
+                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
+                <ItemsControl x:Name="SubList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,8" Padding="10,9" CornerRadius="9"
+                                    Background="{DynamicResource Brush.Surface}"
+                                    BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                                    <!-- 子层键：点击可捕获任意键 -->
+                                    <Button Grid.Column="0" Content="{Binding KeyLabel}"
+                                            Style="{StaticResource Button.Base}" Padding="10,6"
+                                            Click="OnPickKeyClick" Tag="{Binding}" />
+
+                                    <!-- 自定义名字 -->
+                                    <TextBox Grid.Column="1" Style="{StaticResource TextBox.Base}"
+                                             Height="34" VerticalContentAlignment="Center"
+                                             Margin="8,0,8,0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="留空则用键名自身" />
+
+                                    <Button Grid.Column="2" Content="删除" Style="{StaticResource Button.Ghost}"
+                                            Padding="10,6" Click="OnRemoveClick" Tag="{Binding}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button Content="+ 添加子层" Style="{StaticResource Button.Base}" Padding="14,7"
+                    Click="OnAddClick" />
             <Button Content="恢复默认" Style="{StaticResource Button.Ghost}" Padding="12,7"
-                    Click="OnResetDefaults" />
-            <Button Content="取消" Style="{StaticResource Button.Base}" Padding="16,7" Margin="10,0,0,0"
-                    Click="OnCancel" />
+                    Margin="8,0,0,0" Click="OnResetDefaults" />
+            <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}"
+                       VerticalAlignment="Center" Margin="12,0,0,0" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="取消" Style="{StaticResource Button.Base}" Padding="16,7" Click="OnCancel" />
             <Button Content="保存" Style="{StaticResource Button.Primary}" Padding="16,7"
                     Margin="10,0,0,0" Click="OnSave" />
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

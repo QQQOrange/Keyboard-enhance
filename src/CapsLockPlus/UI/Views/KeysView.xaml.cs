@@ -21,6 +21,15 @@ public partial class KeysView : UserControl
     /// <summary>层内的修饰键子层：直接按 / LAlt / Win。</summary>
     private KeyModifiers _layer = KeyModifiers.None;
 
+    /// <summary>
+    /// 当前选中的**子层键名**（空字符串 = "直接按"子层）。
+    ///
+    /// 与 <see cref="_layer"/> 的区别：_layer 是修饰键位（Ctrl/Shift/…），
+    /// 用于拼 combo 前缀；子层键还可以是任意物理键（Tab、CapsLock），
+    /// 那种情况下 _layer 为 None、_subLayerKey 有值。
+    /// </summary>
+    private string _subLayerKey = "";
+
     private string _selectedKey = "q";
     private bool _suppressEvents;
 
@@ -931,10 +940,11 @@ public partial class KeysView : UserControl
         if (_host == null) return;
 
         var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
-        var subs = layer?.EffectiveSubLayers ?? LayerOptions.DefaultSubLayerModifiers();
+        var subs = layer?.EffectiveSubLayers ?? LayerOptions.DefaultSubLayers();
 
-        // 结构指纹：层 ID + 子层列表。相同则只刷新选中态，不重建控件。
-        string signature = _layerId + "|" + string.Join(",", subs);
+        // 结构指纹：层 ID + 每个子层的键与名字。相同则只刷新选中态。
+        string signature = _layerId + "|" +
+            string.Join(",", subs.Select(s => s.Key + ":" + s.Display));
         if (signature == _subLayerSignature && SubLayerPanel.Children.Count > 0)
         {
             RefreshSubLayerSelection();
@@ -944,7 +954,7 @@ public partial class KeysView : UserControl
 
         SubLayerPanel.Children.Clear();
 
-        void AddButton(string text, KeyModifiers mods, string tip)
+        void AddButton(string text, string subKey, string tip)
         {
             var b = new Button
             {
@@ -953,22 +963,25 @@ public partial class KeysView : UserControl
                 Padding = new Thickness(10, 5, 10, 5),
                 Margin = new Thickness(0, 0, 5, 0),
                 ToolTip = tip,
-                // 用 Tag 记住这个按钮代表哪个修饰键，选中态刷新时读它
-                Tag = (int)mods,
+                // Tag 记住这个按钮对应的子层键名，选中态刷新时读它
+                Tag = subKey ?? "",
             };
             b.Click += OnSubLayerButtonClick;
             SubLayerPanel.Children.Add(b);
         }
 
-        // 第一项：直接按（无修饰键），始终存在
-        AddButton("直接按", KeyModifiers.None, "进入层后直接按的键");
+        // 第一项：直接按（无子层），始终存在
+        AddButton("直接按", "", "进入层后直接按的键");
 
-        foreach (int raw in subs)
+        /* 后面按该层配置的子层逐个生成。
+         *
+         * 子层键可以是任意物理键（ctrl / tab / capslock…），
+         * 也可以起自定义名字 —— 按钮上优先显示名字。 */
+        foreach (var sub in subs)
         {
-            var mods = (KeyModifiers)raw;
-            if (mods == KeyModifiers.None) continue;      // 无修饰键已单独处理
-            AddButton("+ " + ModifierText(mods), mods,
-                $"进入层后再按住 {ModifierText(mods)} 按的键");
+            if (string.IsNullOrWhiteSpace(sub.Key)) continue;
+            AddButton("+ " + sub.Display, sub.Key,
+                $"进入层后再按住 {sub.Display} 按的键");
         }
 
         RefreshSubLayerSelection();
@@ -979,8 +992,8 @@ public partial class KeysView : UserControl
     {
         foreach (var child in SubLayerPanel.Children)
         {
-            if (child is not Button b || b.Tag is not int raw) continue;
-            bool active = _layer == (KeyModifiers)raw;
+            if (child is not Button b || b.Tag is not string key) continue;
+            bool active = string.Equals(_subLayerKey, key, StringComparison.OrdinalIgnoreCase);
 
             b.Background = (Brush)FindResource(active ? "Brush.AccentSoft" : "Brush.Surface");
             b.BorderBrush = (Brush)FindResource(active ? "Brush.AccentSoftBorder" : "Brush.BorderStrong");
@@ -997,12 +1010,55 @@ public partial class KeysView : UserControl
     /// </summary>
     private void OnSubLayerButtonClick(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: int raw }) SelectModifierLayer((KeyModifiers)raw);
+        if (sender is Button { Tag: string key }) SelectSubLayer(key);
+    }
+
+    /// <summary>切到指定子层（键名，空字符串 = 直接按）。</summary>
+    private void SelectSubLayer(string subKey)
+    {
+        _subLayerKey = subKey ?? "";
+        _layer = KeyModifiersOf(subKey);
+        SelectKey(_selectedKey);
+    }
+
+    /// <summary>
+    /// 子层键名 → 修饰位标记。
+    ///
+    /// ctrl/shift/alt/win 这类修饰键返回对应位；其它键（tab、capslock）
+    /// 返回 None —— 它们的 combo 用不带修饰前缀的形式。
+    /// </summary>
+    private static KeyModifiers KeyModifiersOf(string? subKey)
+    {
+        if (string.IsNullOrWhiteSpace(subKey)) return KeyModifiers.None;
+        var m = KeyModifiers.None;
+        foreach (string part in subKey.Split('_', StringSplitOptions.RemoveEmptyEntries))
+        {
+            m |= part.ToLowerInvariant() switch
+            {
+                "ctrl" => KeyModifiers.Ctrl,
+                "shift" => KeyModifiers.Shift,
+                "alt" => KeyModifiers.Alt,
+                "win" => KeyModifiers.Win,
+                _ => KeyModifiers.None,
+            };
+        }
+        return m;
+    }
+
+    /// <summary>修饰位标记 → 子层键名（从旧接口切换时用）。</summary>
+    private static string LayerKeyOf(KeyModifiers mods)
+    {
+        var parts = new List<string>();
+        if (mods.HasFlag(KeyModifiers.Ctrl)) parts.Add("ctrl");
+        if (mods.HasFlag(KeyModifiers.Shift)) parts.Add("shift");
+        if (mods.HasFlag(KeyModifiers.Alt)) parts.Add("alt");
+        if (mods.HasFlag(KeyModifiers.Win)) parts.Add("win");
+        return string.Join("_", parts);
     }
 
     private string? _subLayerSignature;
 
-    /// <summary>配置当前层要用哪些修饰键作为子层（最多 10 个）。</summary>
+    /// <summary>配置当前层的子层（最多 10 个，可用任意键 + 自定义名字）。</summary>
     private void OnEditSubLayers(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
@@ -1010,19 +1066,30 @@ public partial class KeysView : UserControl
         var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
         if (layer == null) return;
 
-        var dlg = new UI.Windows.SubLayerEditorWindow(
-            layer.Name, layer.EffectiveSubLayers.Select(x => (KeyModifiers)x).ToList())
+        // 传当前子层定义（深拷贝，取消时不污染原配置）
+        var current = layer.EffectiveSubLayers
+            .Select(s => new SubLayerDef { Key = s.Key, Name = s.Name })
+            .ToList();
+
+        var dlg = new UI.Windows.SubLayerEditorWindow(layer.Name, current)
         {
             Owner = Window.GetWindow(this),
         };
         if (dlg.ShowDialog() != true) return;
 
-        layer.SubLayerModifiers = dlg.SelectedModifiers.Select(m => (int)m).ToList();
+        layer.SubLayers = dlg.SelectedSubLayers;
+        // 新字段生效后清掉旧字段，避免"改过又用回旧值"
+        layer.SubLayerModifiers.Clear();
         _host.SaveSettings();
 
-        // 如果当前停在某个已被删除的子层，回到"直接按"
-        if (_layer != KeyModifiers.None && !layer.EffectiveSubLayers.Contains((int)_layer))
+        // 如果当前停留的子层已被删除，回到"直接按"
+        if (!string.IsNullOrEmpty(_subLayerKey) &&
+            !layer.EffectiveSubLayers.Any(s =>
+                string.Equals(s.Key, _subLayerKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            _subLayerKey = "";
             _layer = KeyModifiers.None;
+        }
 
         UpdateLayerButtons();
         SelectKey(_selectedKey);
@@ -1590,6 +1657,7 @@ public partial class KeysView : UserControl
     /// <summary>层内修饰键切换后要刷新（键盘上的绑定标记会变）。</summary>
     private void SelectModifierLayer(KeyModifiers mods)
     {
+        _subLayerKey = LayerKeyOf(mods);
         _layer = mods;
         SelectKey(_selectedKey);
     }

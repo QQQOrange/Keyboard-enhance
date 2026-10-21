@@ -222,7 +222,38 @@ public sealed class AppHost : IDisposable
     }
 
     // ---------------- 设置 ----------------
-    public void SaveSettings() => SettingsStore.Save(Settings);
+    /// <summary>
+    /// 保存设置并**广播变更**。
+    ///
+    /// 之前只写文件、不通知任何人，导致"按键映射页改完绑定，
+    /// 已经打开的快捷键速查页、触发键页还显示旧内容"。
+    ///
+    /// 现在每次保存都触发 <see cref="SettingsChanged"/>，
+    /// 各页面自行决定要不要刷新 —— 速查表因此能即时更新。
+    /// </summary>
+    public void SaveSettings()
+    {
+        SettingsStore.Save(Settings);
+
+        /* 防抖动：打字时每次按键都会调 SaveSettings（参数框的 TextChanged），
+         * 直接同步通知会让所有页面跟着重绘，卡顿明显。
+         * 这里延迟到下一轮消息循环的空闲时刻再通知，
+         * 一轮连续编辑只会刷新一次。 */
+        _settingsNotifyPending = true;
+        if (_settingsNotifyQueued) return;
+        _settingsNotifyQueued = true;
+
+        _dispatcher.BeginInvoke(new Action(() =>
+        {
+            _settingsNotifyQueued = false;
+            if (!_settingsNotifyPending) return;
+            _settingsNotifyPending = false;
+            SettingsChanged?.Invoke();
+        }), System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private bool _settingsNotifyPending;
+    private bool _settingsNotifyQueued;
 
     public void ApplyHotkeyScheme(string scheme)
     {

@@ -321,25 +321,41 @@ public sealed class LayerOptions
     public List<KeyBinding> Keys { get; set; } = new();
 
     /// <summary>
-    /// 该层可用的**层内修饰键**（子层）。
+    /// 该层的**层内修饰键 / 子层**定义。
     ///
-    /// 每个层最多 10 个子层：进入本层后再按住某组修饰键，
-    /// 就能用到另一套独立绑定。例如基础层按住 Ctrl 时，
-    /// 可以配一套完全不同的按键。
+    /// 每个层最多 10 个子层：进入本层后再按住某个键，
+    /// 就能用到另一套独立绑定。
     ///
-    /// 元素是修饰键组合的位标记（见 <see cref="KeyModifiers"/>），
-    /// 允许 Ctrl、Shift、Alt、Win 的任意组合，因此可以配出
-    /// Ctrl、Ctrl+Shift、Alt+Win 这类复杂子层。
+    /// 子层键可以是**任意物理键**（Ctrl、Shift、Tab、CapsLock…），
+    /// 也可以给每个子层起**自定义名字**（键帽和图例上显示这个名字）。
     ///
-    /// 为空时回退到默认的 4 个（Ctrl / Shift / Alt / Win），
+    /// 为空时回退到默认 4 个（Ctrl / Shift / Alt / Win），
     /// 保证老配置行为不变。
+    /// </summary>
+    public List<SubLayerDef> SubLayers { get; set; } = new();
+
+    /// <summary>
+    /// 旧版字段：只存修饰键位标记。
+    ///
+    /// 保留用于向后兼容 —— 老配置文件里是 <c>[1, 2, 4, 8]</c> 这样的整数数组。
+    /// 读进来后由 <see cref="Normalize"/> 转成 <see cref="SubLayers"/>。
+    /// 写入时若 <see cref="SubLayers"/> 为空则继续用这个字段，避免版本回退丢配置。
     /// </summary>
     public List<int> SubLayerModifiers { get; set; } = new();
 
     /// <summary>每个层允许的最大子层数。</summary>
     public const int MaxSubLayers = 10;
 
-    /// <summary>默认的层内修饰键（与旧版行为一致）。</summary>
+    /// <summary>默认的子层定义（与旧版行为一致：Ctrl / Shift / Alt / Win）。</summary>
+    public static List<SubLayerDef> DefaultSubLayers() => new()
+    {
+        new SubLayerDef { Key = "ctrl", Name = "Ctrl" },
+        new SubLayerDef { Key = "shift", Name = "Shift" },
+        new SubLayerDef { Key = "alt", Name = "Alt" },
+        new SubLayerDef { Key = "win", Name = "Win" },
+    };
+
+    /// <summary>默认的层内修饰键位标记（旧接口，保留兼容）。</summary>
     public static List<int> DefaultSubLayerModifiers() => new()
     {
         (int)KeyModifiers.Ctrl,
@@ -349,15 +365,72 @@ public sealed class LayerOptions
     };
 
     /// <summary>
-    /// 实际生效的子层修饰键列表。
+    /// 实际生效的子层列表。
     ///
-    /// 未配置时返回默认的四个；配置过就以配置为准（最多 10 个）。
+    /// 优先级：SubLayers（新） > SubLayerModifiers（旧） > 默认四个。
     /// </summary>
     [JsonIgnore]
-    public IReadOnlyList<int> EffectiveSubLayers =>
-        SubLayerModifiers.Count > 0
-            ? SubLayerModifiers.Take(MaxSubLayers).ToList()
-            : DefaultSubLayerModifiers();
+    public IReadOnlyList<SubLayerDef> EffectiveSubLayers
+    {
+        get
+        {
+            if (SubLayers.Count > 0) return SubLayers.Take(MaxSubLayers).ToList();
+
+            // 老配置：把位标记还原成子层定义
+            if (SubLayerModifiers.Count > 0)
+            {
+                return SubLayerModifiers
+                    .Take(MaxSubLayers)
+                    .Select(m => SubLayerDef.FromModifierBits(m))
+                    .ToList();
+            }
+
+            return DefaultSubLayers();
+        }
+    }
+}
+
+/// <summary>
+/// 一个子层（层内修饰键）的定义。
+///
+/// <see cref="Key"/> 是任意键名（ctrl / shift / tab / capslock / f13…），
+/// <see cref="Name"/> 是显示名（留空则自动用键名）。
+/// </summary>
+public sealed class SubLayerDef
+{
+    /// <summary>子层触发键的键名（与 KeyName 的命名一致）。</summary>
+    public string Key { get; set; } = "";
+
+    /// <summary>显示名。留空时自动取键名。</summary>
+    public string? Name { get; set; }
+
+    /// <summary>该子层的按键绑定（combo 里带修饰前缀）。</summary>
+    public List<KeyBinding> Keys { get; set; } = new();
+
+    /// <summary>界面上显示的文字。</summary>
+    [JsonIgnore]
+    public string Display =>
+        !string.IsNullOrWhiteSpace(Name) ? Name!.Trim() : KeyName.Display(Key);
+
+    /// <summary>把位标记转成子层定义（用于迁移旧配置）。</summary>
+    public static SubLayerDef FromModifierBits(int bits)
+    {
+        var mods = (KeyModifiers)bits;
+        var parts = new List<string>();
+        if (mods.HasFlag(KeyModifiers.Ctrl)) parts.Add("ctrl");
+        if (mods.HasFlag(KeyModifiers.Shift)) parts.Add("shift");
+        if (mods.HasFlag(KeyModifiers.Alt)) parts.Add("alt");
+        if (mods.HasFlag(KeyModifiers.Win)) parts.Add("win");
+
+        string key = parts.Count switch
+        {
+            0 => "",
+            1 => parts[0],
+            _ => string.Join("_", parts),      // 复合位标记暂时存成 ctrl_shift
+        };
+
+        return new SubLayerDef { Key = key };
+    }
 }
 
 /// <summary>

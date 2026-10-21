@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Input;
 using CapsLockPlus.UI.Theme;
 using Application = System.Windows.Application;
 using MenuItem = System.Windows.Forms.ToolStripMenuItem;
@@ -71,8 +72,48 @@ public sealed class TrayIcon : IDisposable
         };
         _icon.DoubleClick += (_, _) => host.ShowMainWindow();
         _icon.BalloonTipClicked += (_, _) => host.ShowMainWindow();
-        _icon.ShowBalloonTip(1200, AppInfo.ShortName + " 已启动", "按住 CapsLock 试试 A / S / D / F，或按 Caps+Q 打开搜索面板。",
+
+        /* 启动气泡的正文要跟着**实际配置**走。
+         *
+         * 之前写死"按住 CapsLock 试试 A/S/D/F，或按 Caps+Q 打开搜索面板"——
+         * 一是还在用旧名 CapsLock，二是用户可能已经把触发键改成 F13、
+         * 把打开面板的键从 Q 换掉了，那这句提示就是错的。 */
+        _icon.ShowBalloonTip(1800, AppInfo.ShortName + " 已启动", StartupTip(host),
             ToolTipIcon.Info);
+    }
+
+    /// <summary>根据当前配置生成一句真实的启动提示。</summary>
+    private static string StartupTip(AppHost host)
+    {
+        try
+        {
+            // 第一个启用的触发键
+            var trigger = host.Settings.Triggers
+                .Where(t => t.Enabled)
+                .OrderBy(t => t.LayerId)
+                .FirstOrDefault();
+
+            string keyName = trigger != null ? KeyName.Display(trigger.Key) : "触发键";
+
+            /* 找一个"打开面板"类的按键作为示例。
+             * 去第 1 层里找动作是 qbar 的绑定，没找到就退回通用说法。 */
+            string example = "";
+            var layer1 = host.Settings.Layers.FirstOrDefault(l => l.Id == 1);
+            var qbarBinding = layer1?.Keys.FirstOrDefault(k =>
+                k.Action == "qbar" && k.IsBound);
+            if (qbarBinding != null)
+            {
+                var parsed = KeyName.ParseCombo(qbarBinding.Combo);
+                if (parsed is { } p && p.Mods == KeyModifiers.None)
+                    example = $"，或按 {keyName}+{KeyName.Display(p.Key)} 打开搜索面板";
+            }
+
+            return $"按住 {keyName} 试试 A / S / D / F{example}。";
+        }
+        catch
+        {
+            return "按住触发键即可使用全部功能。";
+        }
     }
 
     private static void ToggleCaps()

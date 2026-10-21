@@ -126,12 +126,12 @@ public sealed class ActionCatalog
         c.Add("titleCase", "编辑", "首字母大写", "把选中文本转成词首大写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Title); return true; });
 
         // ---------------- 剪贴板 ----------------
-        c.Add("copy1", "剪贴板", "复制到剪贴板 1", "Caps+C：复制到独立剪贴板 1", _ => ctx.Clipboard.Copy(1), shortTitle: "复制1");
-        c.Add("cut1", "剪贴板", "剪切到剪贴板 1", "Caps+X", _ => ctx.Clipboard.Cut(1), shortTitle: "剪到1");
-        c.Add("paste1", "剪贴板", "粘贴剪贴板 1", "Caps+V", _ => ctx.Clipboard.Paste(1), shortTitle: "粘1");
-        c.Add("copy2", "剪贴板", "复制到剪贴板 2", "Caps+LAlt+C：复制到独立剪贴板 2", _ => ctx.Clipboard.Copy(2), shortTitle: "复制2");
-        c.Add("cut2", "剪贴板", "剪切到剪贴板 2", "Caps+LAlt+X", _ => ctx.Clipboard.Cut(2), shortTitle: "剪到2");
-        c.Add("paste2", "剪贴板", "粘贴剪贴板 2", "Caps+LAlt+V", _ => ctx.Clipboard.Paste(2), shortTitle: "粘2");
+        c.Add("copy1", "剪贴板", "复制到剪贴板 1", "按下触发键 + C：复制到独立剪贴板 1", _ => ctx.Clipboard.Copy(1), shortTitle: "复制1");
+        c.Add("cut1", "剪贴板", "剪切到剪贴板 1", "按下触发键 + X", _ => ctx.Clipboard.Cut(1), shortTitle: "剪到1");
+        c.Add("paste1", "剪贴板", "粘贴剪贴板 1", "按下触发键 + V", _ => ctx.Clipboard.Paste(1), shortTitle: "粘1");
+        c.Add("copy2", "剪贴板", "复制到剪贴板 2", "按下触发键 + LAlt + C：复制到独立剪贴板 2", _ => ctx.Clipboard.Copy(2), shortTitle: "复制2");
+        c.Add("cut2", "剪贴板", "剪切到剪贴板 2", "按下触发键 + LAlt + X", _ => ctx.Clipboard.Cut(2), shortTitle: "剪到2");
+        c.Add("paste2", "剪贴板", "粘贴剪贴板 2", "按下触发键 + LAlt + V", _ => ctx.Clipboard.Paste(2), shortTitle: "粘2");
         c.Add("pasteSystem", "剪贴板", "粘贴系统剪贴板", "恢复系统剪贴板后粘贴", _ => ctx.Clipboard.PasteSystem(), shortTitle: "粘系统");
         c.Add("toggleClipboard", "剪贴板", "开关独立剪贴板", "开/关 按键增强剪贴板功能", _ => ctx.Clipboard.ToggleEnabled(), shortTitle: "剪贴板");
         c.Add("clipboardHistory", "剪贴板", "剪贴板历史", "查看并粘贴最近的复制内容", _ => { ctx.RequestOpenClipboardHistory(); return true; });
@@ -201,7 +201,7 @@ public sealed class ActionCatalog
         c.Add("clickRight", "鼠标", "鼠标右键", "点击右键", _ => { InputSender.Click(true); return true; });
         c.Add("wheelUp", "鼠标", "滚轮上滚", "向上滚动", a => { InputSender.Wheel(ParseInt(a, 3)); return true; });
         c.Add("wheelDown", "鼠标", "滚轮下滚", "向下滚动", a => { InputSender.Wheel(-ParseInt(a, 3)); return true; });
-        c.Add("mouseSpeedUp", "鼠标", "鼠标速度 +", "Caps+LAlt 时的鼠标速度加一", _ => ctx.ChangeMouseSpeed(1), shortTitle: "鼠速+");
+        c.Add("mouseSpeedUp", "鼠标", "鼠标速度 +", "进入层并按住 LAlt 时的鼠标速度加一", _ => ctx.ChangeMouseSpeed(1), shortTitle: "鼠速+");
         c.Add("mouseSpeedDown", "鼠标", "鼠标速度 -", "鼠标速度减一", _ => ctx.ChangeMouseSpeed(-1), shortTitle: "鼠速-");
 
         // ---------------- 媒体 / 系统 ----------------
