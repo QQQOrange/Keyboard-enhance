@@ -74,8 +74,9 @@ public partial class MainWindow : Window
             "layers" => 6,
             "backup" => 7,
             "settings" => 8,
-            "help" => 9,
-            "about" => 10,
+            "test" => 9,
+            "help" => 10,
+            "about" => 11,
             _ => 0,
         };
         if (NavList.SelectedIndex != index) NavList.SelectedIndex = index;
@@ -97,6 +98,7 @@ public partial class MainWindow : Window
             "layers" => new LayersView(),
             "backup" => new BackupView(),
             "settings" => new SettingsView(),
+            "test" => new KeyTestView(),
             "help" => new HelpView(),
             "about" => new AboutView(),
             _ => new GuideView(),
@@ -113,6 +115,7 @@ public partial class MainWindow : Window
             case LayersView lv: lv.Initialize(_host); break;
             case BackupView bv: bv.Initialize(_host); break;
             case SettingsView s: s.Initialize(_host); break;
+            case KeyTestView kt: kt.Initialize(_host); break;
             case HelpView h: h.Initialize(_host); break;
             case AboutView a: a.Initialize(_host); break;
         }
@@ -140,6 +143,7 @@ public partial class MainWindow : Window
             "layers" => ("触发键与层", "多触发键 · 10 层"),
             "backup" => ("同步与备份", "WebDAV · 导入导出"),
             "settings" => ("设置", "全局选项"),
+            "test" => ("测试", "按键 · 切层 · 诊断"),
             "help" => ("快捷键速查", "随时查看"),
             "about" => ("关于", "版本与更新"),
             _ => ("CapsLock+", ""),
@@ -151,6 +155,7 @@ public partial class MainWindow : Window
             case KeysView k: k.Refresh(); break;
             case ClipboardView c: c.Refresh(); break;
             case SettingsView s: s.Refresh(); break;
+            case KeyTestView kt: kt.Refresh(); break;
             case QbarSettingsView q: q.Refresh(); break;
             case TranslateSettingsView t: t.Refresh(); break;
             case MacrosView mv: mv.Reload(); break;

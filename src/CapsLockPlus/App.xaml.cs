@@ -130,6 +130,14 @@ public partial class App : Application
          * 现在只有用户明确在「设置」里勾了"以管理员身份运行"才提权。
          * 默认普通权限运行，取词、窗口绑定等全都正常；
          * 确实需要操作提权窗口时再手动开。 */
+        /* 本地数据加密：先解锁再读设置。
+         *
+         * 日常路径走 Windows DPAPI 缓存的密钥，**不会**弹密码框；
+         * 只有缓存失效（换机器 / 换账户 / 删了 vault.cache）才问一次。
+         * 用户选择不解锁时 SettingsStore 进入只读保护，
+         * 不会用空白配置覆盖掉那份还等着解锁的数据。 */
+        EnsureVaultUnlocked();
+
         bool relaunched = false;
         try
         {
@@ -152,6 +160,15 @@ public partial class App : Application
         }
 
         var settings = SettingsStore.Load();
+
+        /* 老用户迁移：已经设过备份密码、但本地数据还是明文 → 立刻加密。
+         *
+         * 升级前"备份密码"只管云端备份文件，本地 settings.json 一直是明文 JSON。
+         * 用户既然设过密码，就说明他期望"这些数据是加密的" ——
+         * 这里补上这一步，不需要他再跑一遍设置页去重新输入。
+         * 密码为空（用户主动关掉加密）时不启用，保持明文。 */
+        MigrateVaultIfPasswordSet(settings);
+
         ThemeManager.Apply(ThemeManager.Parse(settings.Global.Theme));
 
         Host = new AppHost(settings, Dispatcher);
@@ -238,6 +255,63 @@ public partial class App : Application
                 return a["--page=".Length..].Trim().ToLowerInvariant();
         }
         return null;
+    }
+
+    /// <summary>
+    /// 已经设过备份密码、但本地还没加密 → 自动迁移成密文。
+    ///
+    /// 只做一次：迁移后 vault.json 存在，<see cref="DataVault.IsEnabled"/> 为 true，
+    /// 后续启动直接跳过。
+    /// </summary>
+    private static void MigrateVaultIfPasswordSet(AppSettings settings)
+    {
+        try
+        {
+            if (DataVault.IsEnabled) return;
+
+            string pass = settings.Sync.BackupPassword ?? "";
+            if (string.IsNullOrWhiteSpace(pass)) return;
+
+            DataVault.Enable(pass);
+            SettingsStore.Save(settings);
+            CoreLog.Info("[加密] 检测到已有备份密码，已自动把本地数据转为密文");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("自动启用本地加密失败", ex);
+        }
+    }
+
+    /// <summary>
+    /// 确保加密的本地数据已解锁（只在启用加密时有意义）。
+    ///
+    /// 顺序：DPAPI 缓存 → 密码输入框 → 放弃（只读保护）。
+    /// 自检模式不走弹窗，否则跑 `--selftest` 会卡在对话框上。
+    /// </summary>
+    private static void EnsureVaultUnlocked()
+    {
+        if (!DataVault.IsEnabled || DataVault.IsUnlocked) return;
+
+        // 日常路径：Windows 凭据缓存的密钥，不用输密码
+        if (DataVault.TryUnlockCached()) return;
+
+        if (Environment.GetCommandLineArgs()
+            .Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase)))
+        {
+            CoreLog.Warn("自检模式：跳过密码输入，设置以默认值运行");
+            return;
+        }
+
+        try
+        {
+            var dlg = new UI.Windows.PasswordPromptWindow();
+            if (dlg.ShowDialog() == true) return;
+            CoreLog.Warn("用户未解锁本地数据 —— 进入只读保护，不会覆盖原文件");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("解锁窗口打开失败", ex);
+        }
     }
 
     private void OnUnhandled(object? sender, DispatcherUnhandledExceptionEventArgs e)

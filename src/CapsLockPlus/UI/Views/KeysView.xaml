@@ -316,15 +316,23 @@
                                       Width="150" HorizontalAlignment="Left"
                                       SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
 
-                            <TextBlock Text="要输入的文字" Style="{StaticResource Text.Secondary}"
+                            <TextBlock x:Name="TypeTextBoxLabel" Text="要输入的文字" Style="{StaticResource Text.Secondary}"
                                        Margin="0,14,0,7" />
                             <TextBox x:Name="TypeTextBox" Style="{StaticResource TextBox.Base}"
                                      MinHeight="90" MaxHeight="180" AcceptsReturn="True"
                                      TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                      TextChanged="OnTypeTextChanged"
                                      ToolTip="触发这个键时，会把这里的内容直接输入到当前光标处" />
+
+                            <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,12,0,7" />
+                            <TextBox x:Name="TypeNoteBox" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="36" VerticalContentAlignment="Center"
+                                     TextChanged="OnTypeNoteChanged"
+                                     ToolTip="给这段文字起个好记的名字，会显示在键帽和已绑定列表里" />
+
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       Text="支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。" />
+                                       Text="支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。填了备注就显示备注，否则显示文字开头几个字。" />
                         </StackPanel>
 
                         <TextBlock x:Name="ActionDesc" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"

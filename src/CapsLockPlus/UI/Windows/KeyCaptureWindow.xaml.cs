@@ -67,6 +67,28 @@ public partial class KeyCaptureWindow : Window
     /// <summary>捕获到的组合键（KeyName 形式，如 "ctrl+shift+k"）；取消时为空。</summary>
     public string? CapturedCombo { get; private set; }
 
+    /// <summary>
+    /// 触发键（层前缀键）的虚拟键码集合。
+    ///
+    /// 为什么需要它：用户日常用的键**全都是"触发键 + 某键"**（默认 CapsLock + J）。
+    /// 但 CapsLock 本身不是修饰键，捕获窗口会把它当成"目标键"立刻定格成
+    /// capslock —— 于是按 Caps+J 录到的永远是 CapsLock，怎么都绑不到
+    /// 那个已有的 J。这正是"自定义按键绑不了已有按键"的根本原因。
+    ///
+    /// 现在：按到前缀键 ⇒ 只当作"开始录组合"，继续等真正的目标键；
+    /// 单独按一下前缀键就松手 ⇒ 仍允许把它自己当目标（绑短按用）。
+    /// </summary>
+    public HashSet<int> PrefixKeys { get; init; } = new();
+
+    /// <summary>当前按住的触发键（0 = 没有）。</summary>
+    private int _prefixVk;
+
+    /// <summary>按住触发键期间是否又按了别的键。</summary>
+    private bool _prefixUsed;
+
+    /// <summary>可当前缀用的触发键（已排除修饰键）。</summary>
+    private HashSet<int> _prefixEligible = new();
+
     /// <summary>捕获到的主键名（不含修饰键）。</summary>
     public string? CapturedKey => CapturedCombo?.Contains('+') == true
         ? CapturedCombo[(CapturedCombo.LastIndexOf('+') + 1)..]
@@ -84,6 +106,11 @@ public partial class KeyCaptureWindow : Window
         _proc = HookCallback;
         Loaded += (_, _) =>
         {
+            /* PrefixKeys 是 init 属性，对象初始化器在构造函数**之后**才赋值，
+             * 所以不能写在构造函数里 —— 到这里才读得到。
+             * 修饰键要排除：右 Alt 之类被设成触发键时仍按修饰键语义处理。 */
+            _prefixEligible = PrefixKeys.Where(v => v != 0 && !IsModifier(v)).ToHashSet();
+
             _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
             if (_hook == IntPtr.Zero)
             {
@@ -190,8 +217,60 @@ public partial class KeyCaptureWindow : Window
             return (IntPtr)1;
         }
 
+        /* 触发键（层前缀）必须在这里拦下来。
+         *
+         * 默认触发键是 CapsLock —— 它**不是修饰键**，如果不拦，
+         * 流程会直接落到下面"非修饰键按下 = 定格组合"，把用户按下的
+         * 前缀键录成目标键本身。于是「Caps + J」永远录成 capslock，
+         * 用户想改的那个已有按键（J）怎么都选不中 —— 这就是
+         * "自定义按键绑不了已有按键"的真正原因。
+         *
+         * 只对**非修饰键**做前缀处理：右 Alt 这类既可能被设成触发键、
+         * 本身又是修饰键的键，仍走原来的修饰键语义，
+         * 否则"按住右 Alt 再按 K"会被误判成普通按键。
+         */
+        if (_prefixEligible.Contains(vk))
+        {
+            if (down)
+            {
+                _prefixVk = vk;
+                _prefixUsed = false;
+                string? pName = KeyName.NameOf(vk);
+                Dispatcher.BeginInvoke(() =>
+                {
+                    PromptText.Text = $"{KeyName.Display(pName ?? "")} + ?";
+                    DetailText.Text = "触发键只作组合前缀，不会占用它　·　再按一个键";
+                });
+            }
+            else
+            {
+                if (!_prefixUsed && _prefixVk == vk)
+                {
+                    // 单独按了一下触发键就松手：允许把它自己当目标（改短按行为用）
+                    string? modName = KeyName.NameOf(vk);
+                    if (modName != null)
+                    {
+                        Dispatcher.BeginInvoke(() =>
+                        {
+                            CapturedMods = KeyModifiers.None;
+                            CapturedCombo = modName;
+                            PromptText.Text = KeyName.Display(modName);
+                            DetailText.Text = "单独绑定这个触发键　·　按「确定绑定」生效";
+                            ConfirmButton.IsEnabled = true;
+                        });
+                    }
+                }
+                _prefixVk = 0;
+                _prefixUsed = false;
+            }
+            return (IntPtr)1;
+        }
+
         if (down)
         {
+            // 有前缀键按着 → 这个键才是真正的目标键
+            if (_prefixVk != 0) _prefixUsed = true;
+
             // 非修饰键按下 = 定格组合
             string? name = KeyName.NameOf(vk);
             var mods = ReadModifiers();

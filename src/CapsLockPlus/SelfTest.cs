@@ -197,6 +197,9 @@ public static class SelfTest
         Section("输入注入");
         TestInput();
 
+        Section("输入文本标签与本地加密");
+        TestTypeTextAndVault();
+
         Section("单实例");
         TestSingleInstance();
 
@@ -629,6 +632,26 @@ public static class SelfTest
 
         // 每个预设动作都被默认绑定或可选
         Check("不绑定动作存在", catalog.Get("doNothing") != null);
+
+        /* 「系统功能」分类：媒体键、音量、亮度、计算器归到一起。
+         * 之前这些散在「系统」里，和"打开网址/运行程序"混着，不好找。 */
+        var sysFn = catalog.Items.Where(i => i.Category == "系统功能").ToList();
+        Check("系统功能分类至少有 10 项", sysFn.Count >= 10, sysFn.Count.ToString());
+
+        foreach (var id in new[]
+                 {
+                     "mediaPlayPause", "mediaPrev", "mediaNext", "volumeUp", "volumeDown",
+                     "volumeMute", "openCalculator", "brightnessUp", "brightnessDown",
+                     "lockScreen", "screenshot",
+                 })
+        {
+            Check($"系统功能含 {id}", catalog.Get(id) != null);
+        }
+
+        Check("「系统」分类只剩打开网址/运行程序",
+            catalog.Items.Where(i => i.Category == "系统").All(i => i.Id is "openUrl" or "runProgram"),
+            string.Join(",", catalog.Items.Where(i => i.Category == "系统").Select(i => i.Id)));
+
         queue.Dispose();
     }
 
@@ -4015,6 +4038,100 @@ public static class SelfTest
         Check("注入文本不抛异常", true);
         Check("物理按键状态可读", InputSender.IsPhysicallyDown(VK.Shift) == false ||
                                  InputSender.IsPhysicallyDown(VK.Shift));
+    }
+
+    /// <summary>
+    /// 输入文本的键帽标签 + 本地数据加密。
+    ///
+    /// 两处都是容易"看起来没问题、实际很糟"的地方：
+    ///   · 输入文本没有备注时键帽上必须还能认出内容（不能空白）；
+    ///   · 一旦启用加密，磁盘上不允许再出现明文用户数据。
+    /// </summary>
+    private static void TestTypeTextAndVault()
+    {
+        /* ---- Unicode 输入不能被打上"扩展键"标记 ----
+         *
+         * 这是"输入邮箱少了点和 o"的真凶：Unicode 模式下 vk 是字符码，
+         * '.'(0x2E) 撞上 Delete、'o'(0x6F) 撞上小键盘斜杠，
+         * 一旦带上 KEYEVENTF_EXTENDEDKEY，目标程序收到的就不是那个字符。
+         *
+         * 覆盖全部会撞上的可打印 ASCII —— 不只是邮箱那几个字符。 */
+        {
+            var wrong = new List<string>();
+            for (char ch = ' '; ch <= '~'; ch++)
+            {
+                uint flags = InputSender.FlagsForUnicodeForTest(ch);
+                if ((flags & NativeMethods.KEYEVENTF_EXTENDEDKEY) != 0)
+                    wrong.Add($"'{ch}'(0x{(int)ch:X2})");
+            }
+            Check("所有可打印 ASCII 的 Unicode 输入都不带扩展键标志",
+                wrong.Count == 0, string.Join(" ", wrong));
+        }
+
+        // 邮箱这个具体案例单独钉住（用户实际报的）
+        Check("邮箱字符逐个都不会被误标",
+            "someone@qq.com".All(ch => (InputSender.FlagsForUnicodeForTest(ch)
+                                        & NativeMethods.KEYEVENTF_EXTENDEDKEY) == 0));
+
+        // ---- 输入文本的显示标签 ----
+        Check("输入文本：有备注就用备注",
+            UI.Views.KeysView.TypeTextLabelOf("工作邮箱", "someone@qq.com") == "工作邮箱");
+        Check("输入文本：无备注显示文字开头",
+            UI.Views.KeysView.TypeTextLabelOf(null, "someone@qq.com") == "someon…");
+
+        Check("输入文本：短文本不截断",
+            UI.Views.KeysView.TypeTextLabelOf("", "abc") == "abc");
+
+        Check("输入文本：换行压成空格",
+            UI.Views.KeysView.TypeTextLabelOf(null, "第一行\n第二行") == "第一行 第二…");
+
+        Check("输入文本：空内容用兜底名",
+            UI.Views.KeysView.TypeTextLabelOf(null, "   ") == "输入文本");
+
+        Check("输入文本：纯空白备注不算备注",
+            UI.Views.KeysView.TypeTextLabelOf("   ", "abc") == "abc");
+
+        // ---- 本地加密（复用备份加密的算法，但换成了免输密码的密钥通道）----
+        /* 真实数据已加密且已解锁时**跳过**注入测试：
+         * SetKeyForTest 会替换内存里的密钥，之后一旦有 Save
+         * 就会用错误的密钥写出解不开的文件。宁可不测也不能冒这个险。 */
+        if (Core.Settings.DataVault.IsEnabled && Core.Settings.DataVault.IsUnlocked)
+        {
+            Check("本地已启用加密，跳过内存密钥注入（保护真实数据）", true);
+            return;
+        }
+
+        byte[] key = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        Core.Settings.DataVault.SetKeyForTest(key);
+        try
+        {
+            const string plain = "{\"搜索记录\":\"someone@qq.com\",\"宏\":[1,2,3]}";
+            string enc = Core.Settings.DataVault.Encrypt(plain);
+
+            Check("加密后不再含明文", !enc.Contains("someone@qq.com"));
+            Check("加密结果被识别为信封", Core.Settings.DataVault.LooksEncrypted(enc));
+            Check("未加密的 JSON 不被当成密文", !Core.Settings.DataVault.LooksEncrypted("{\"Global\":{}}"));
+            Check("解密能还原原文", Core.Settings.DataVault.Decrypt(enc) == plain);
+
+            // 两次加密同样的内容必须得到不同密文（随机 nonce）
+            Check("同一内容两次加密结果不同", Core.Settings.DataVault.Encrypt(plain) != enc);
+
+            // 篡改密文 → AES-GCM 认证标签必须拦住
+            var node = System.Text.Json.Nodes.JsonNode.Parse(enc)!;
+            string data = node["data"]!.GetValue<string>();
+            char[] chars = data.ToCharArray();
+            chars[0] = chars[0] == 'A' ? 'B' : 'A';
+            node["data"] = new string(chars);
+            Check("被篡改的密文解不开", Core.Settings.DataVault.Decrypt(node.ToJsonString()) == null);
+
+            // 换错密钥也必须解不开
+            Core.Settings.DataVault.SetKeyForTest(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            Check("换错密钥解不开", Core.Settings.DataVault.Decrypt(enc) == null);
+        }
+        finally
+        {
+            Core.Settings.DataVault.ForgetKeyForTest();
+        }
     }
 
     /// <summary>

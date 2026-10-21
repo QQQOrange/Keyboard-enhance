@@ -80,11 +80,38 @@ public static class SettingsStore
                     Save(fresh);
                     return fresh;
                 }
-                var json = File.ReadAllText(AppPaths.SettingsFile);
-                var s = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? DefaultSettings.Create();
+
+                string raw = File.ReadAllText(AppPaths.SettingsFile);
+
+                /* 加密过的设置：先解锁再解密。
+                 *
+                 * 解不开时**绝不能**返回默认值然后让它覆盖原文件 ——
+                 * 那等于把用户所有配置一次性抹掉（而且不可逆）。
+                 * 这里进入"只读保护"：返默认值给界面先用着，
+                 * 但 Save 全部跳过，等上层拿到密码解锁后再正常读写。 */
+                if (DataVault.LooksEncrypted(raw))
+                {
+                    if (!DataVault.IsUnlocked) DataVault.TryUnlockCached();
+                    string? plain = DataVault.Decrypt(raw);
+                    if (plain == null)
+                    {
+                        _dataLocked = true;
+                        CoreLog.Error("设置已加密但当前无法解密（密钥缓存失效）—— 进入只读保护，不会覆盖原文件");
+                        return DefaultSettings.Create();
+                    }
+                    raw = plain;
+                }
+
+                var s = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions) ?? DefaultSettings.Create();
                 Normalize(s);
                 bool migrated = MigrateBuiltinEngines(s);
-                if (migrated) Save(s);
+
+                /* 已经设了备份密码、但这份文件还是明文的旧数据 → 立刻以加密形式重存，
+                 * 让"设了密码就不再留明文"当场生效，而不是等下一次改设置。 */
+                bool needsEncrypt = DataVault.IsEnabled && DataVault.IsUnlocked
+                                    && !DataVault.LooksEncrypted(File.ReadAllText(AppPaths.SettingsFile));
+
+                if (migrated || needsEncrypt) Save(s);
                 return s;
             }
             catch (Exception ex)
@@ -102,14 +129,59 @@ public static class SettingsStore
         }
     }
 
+    /// <summary>
+    /// 数据因为"加密但解不开"而处于只读保护状态。
+    ///
+    /// 界面必须据此拦住"保存"，否则会用空配置覆盖掉用户那份还等着解锁的数据。
+    /// </summary>
+    public static bool IsDataLocked { get { lock (Gate) return _dataLocked; } }
+
+    private static bool _dataLocked;
+
+    /// <summary>
+    /// 用密码解锁并重新读一遍设置（上层弹完密码框后调用）。
+    /// 返回 false = 密码不对。
+    /// </summary>
+    public static bool UnlockAndReload(string password, out AppSettings settings)
+    {
+        lock (Gate)
+        {
+            settings = DefaultSettings.Create();
+            if (!DataVault.UnlockWithPassword(password)) return false;
+
+            _dataLocked = false;
+            settings = Load();
+            return true;
+        }
+    }
+
     public static void Save(AppSettings settings)
     {
         lock (Gate)
         {
+            // 只读保护期间一律不落盘 —— 这份内存里的对象是默认值，写下去就是灾难
+            if (_dataLocked)
+            {
+                CoreLog.Warn("设置处于只读保护状态，本次保存已跳过");
+                return;
+            }
+
             try
             {
                 Directory.CreateDirectory(AppPaths.DataDir);
                 var json = JsonSerializer.Serialize(settings, JsonOptions);
+
+                // 启用了加密就写密文；没解锁时宁可保留旧文件也不写半成品
+                if (DataVault.IsEnabled)
+                {
+                    if (!DataVault.IsUnlocked)
+                    {
+                        CoreLog.Warn("加密已启用但尚未解锁，本次保存已跳过");
+                        return;
+                    }
+                    json = DataVault.Encrypt(json);
+                }
+
                 var tmp = AppPaths.SettingsFile + ".tmp";
                 File.WriteAllText(tmp, json);
                 if (File.Exists(AppPaths.SettingsFile))

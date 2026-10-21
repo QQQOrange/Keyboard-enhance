@@ -45,6 +45,14 @@
                                    Text="没设备份密码 —— 备份将以明文上传到网盘，任何能访问该目录的人都能读到你的翻译密钥和同步密码。" />
                     </Border>
 
+                    <!-- 本地加密状态：设了密码之后磁盘上就不再留明文用户数据 -->
+                    <Border x:Name="VaultStatusBar" Margin="0,8,0,0" Padding="10,7" CornerRadius="8"
+                            Background="#221D9E75" BorderBrush="#551D9E75" BorderThickness="1"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="VaultStatusText" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="#0F6E56" />
+                    </Border>
+
                     <Border Style="{StaticResource Divider}" Margin="0,16,0,12" />
 
                     <Grid>

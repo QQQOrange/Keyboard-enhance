@@ -25,7 +25,7 @@ public static class RenderTools
     {
         // 「bindings」页已移除：窗口绑定并入按键映射，作为动作处理
         "guide", "keys", "layers", "macros", "qbar",
-        "clipboard", "translate", "backup", "settings", "help", "about",
+        "clipboard", "translate", "backup", "settings", "test", "help", "about",
     };
 
     public static int Run(AppHost host, string outDir)

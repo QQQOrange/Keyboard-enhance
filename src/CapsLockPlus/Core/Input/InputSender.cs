@@ -40,7 +40,18 @@ public static class InputSender
          *
          * 扩展键必须带 KEYEVENTF_EXTENDEDKEY，否则方向键、Home/End、
          * Ins/Del、小键盘会被"按扫描码识别按键"的程序当成小键盘变体。 */
-        if (IsExtendedKey(vk)) flags |= KEYEVENTF_EXTENDEDKEY;
+        /* ⚠ Unicode 模式下 vk 参数其实是**字符码**，不是虚拟键码，
+         * 绝不能按虚拟键的规则判断"是不是扩展键"。
+         *
+         * 否则会踩一串隐蔽的坑（IsExtendedKey 的判定值域和 ASCII 完全重叠）：
+         *   '.' = 0x2E → 被当成 Delete
+         *   'o' = 0x6F → 被当成小键盘 /
+         *   ',' = 0x2C → 被当成 PrintScreen
+         *   '!' = 0x21 → 被当成 PgUp ……
+         * 加了 EXTENDEDKEY 之后目标程序收到的就不是这个字符，
+         * 表现是**凭空少字**：输入邮箱 `@qq.com` 会变成 `@qqcm`。
+         * 这正是"邮箱输不全"的根因。 */
+        if (!unicode && IsExtendedKey(vk)) flags |= KEYEVENTF_EXTENDEDKEY;
 
         return new INPUT
         {
@@ -184,14 +195,46 @@ public static class InputSender
     public static void Text(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
-        var arr = new List<INPUT>(text.Length * 2);
-        foreach (var ch in text)
+
+        /* 分批发送。
+         *
+         * 一次 SendInput 塞进几百上千个 INPUT，慢程序（Electron / 远程桌面 /
+         * 老式编辑框）的消息队列消化不完，后半截会被丢掉 —— 用户看到的就是
+         * "长文本只打出来一半"。
+         * 每批 32 字符（64 个 INPUT），批次之间让出几毫秒。
+         */
+        const int Batch = 32;
+        for (int start = 0; start < text.Length; start += Batch)
         {
-            arr.Add(KeyInput(ch, false, unicode: true));
-            arr.Add(KeyInput(ch, true, unicode: true));
+            int len = Math.Min(Batch, text.Length - start);
+
+            // 别把代理对（emoji）劈在两批之间：末尾是高位代理就留到下一批
+            if (start + len < text.Length && len > 1 && char.IsHighSurrogate(text[start + len - 1]))
+                len--;
+
+            var arr = new List<INPUT>(len * 2);
+            for (int i = start; i < start + len; i++)
+            {
+                char ch = text[i];
+                arr.Add(KeyInput(ch, false, unicode: true));
+                arr.Add(KeyInput(ch, true, unicode: true));
+            }
+            Send(arr.ToArray());
+
+            if (start + len < text.Length) Thread.Sleep(6);
         }
-        Send(arr.ToArray());
     }
+
+    /// <summary>
+    /// 仅供自检：返回"用 Unicode 方式输入这个字符"时实际带上的 KEYEVENTF_* 标志。
+    ///
+    /// 存在的意义是守住一个很隐蔽的回归：Unicode 模式下 <c>vk</c> 参数是字符码，
+    /// 一旦被当成虚拟键去判"扩展键"，'.'(0x2E)、'o'(0x6F)、','(0x2C) 这些
+    /// 就会被打上 EXTENDEDKEY，目标程序收到的就不是原字符 ——
+    /// 表现是输入邮箱少了字符。
+    /// </summary>
+    internal static uint FlagsForUnicodeForTest(char ch)
+        => KeyInput(ch, false, unicode: true).U.ki.dwFlags;
 
     // ---------------- 鼠标 ----------------
 

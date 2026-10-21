@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Sync;
 using Microsoft.Win32;
 
@@ -41,6 +43,7 @@ public partial class BackupView : UserControl
         _suppress = false;
 
         UpdatePasswordWarning();
+        UpdateVaultStatus();
         BackupDirText.Text = $"备份目录：{SyncService.BackupDir}";
         SyncStatus.Text = s.LastSyncAt == DateTime.MinValue
             ? "还没同步过"
@@ -97,12 +100,115 @@ public partial class BackupView : UserControl
         _host.SaveSettings();
     }
 
+    /// <summary>
+    /// 备份密码变化。
+    ///
+    /// 这个密码不只是"给云端备份加密"—— 一旦设置，**本地数据也立刻转为密文**：
+    /// settings.json 里的搜索记录、宏、窗口绑定路径、常用邮箱这些
+    /// 都不再以明文躺在磁盘上。
+    ///
+    /// 注意：PasswordChanged 每敲一个字符就触发一次，而应用加密要跑
+    /// 60 万次 PBKDF2（约 0.3~0.6 秒）。直接执行会让打字一顿一顿的，
+    /// 所以先防抖 700ms，停手后再真正应用。
+    /// </summary>
     private void OnBackupPassChanged(object sender, RoutedEventArgs e)
     {
         if (_host == null || _suppress) return;
         _host.Settings.Sync.BackupPassword = BackupPassBox.Password;
-        _host.SaveSettings();
         UpdatePasswordWarning();
+
+        _passTimer?.Stop();
+        _passTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        _passTimer.Tick += (_, _) =>
+        {
+            _passTimer?.Stop();
+            _passTimer = null;
+            ApplyVaultPassword();
+        };
+        _passTimer.Start();
+    }
+
+    private DispatcherTimer? _passTimer;
+
+    /// <summary>把密码变更真正落到加密层：启用 / 换密钥 / 关闭。</summary>
+    private void ApplyVaultPassword()
+    {
+        if (_host == null) return;
+        string pass = _host.Settings.Sync.BackupPassword ?? "";
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(pass))
+            {
+                if (!DataVault.IsEnabled) return;
+                DataVault.Disable();
+                SettingsStore.Save(_host.Settings);       // 写回明文
+                RemovePlaintextBackups();
+                ShowVaultStatus("已关闭本地加密：数据恢复为明文存储。", ok: false);
+                return;
+            }
+
+            bool firstTime = !DataVault.IsEnabled;
+            DataVault.Enable(pass);
+
+            /* 必须**立刻**落盘：AppHost 的 SaveSettings 有防抖，
+             * 万一用户此时关掉窗口，明文就留在磁盘上了。 */
+            SettingsStore.Save(_host.Settings);
+            RemovePlaintextBackups();
+
+            ShowVaultStatus(firstTime
+                ? "已启用本地加密：设置、宏、按键绑定、窗口绑定全部改为 AES-256-GCM 密文存储，"
+                  + "文件拷到别的电脑也打不开。日常启动不需要输密码（密钥用 Windows DPAPI 缓存）。"
+                : "密码已更新，本地数据已用新密钥重新加密。", ok: true);
+        }
+        catch (Exception ex)
+        {
+            ShowVaultStatus("加密失败：" + ex.Message, ok: false);
+            CoreLog.Warn("[加密] 应用密码失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 清掉可能残留的明文副本。
+    ///
+    /// settings.json.bak 是"上一次保存前的副本"，启用加密之前写下的那些
+    /// 就是明文 —— 留着等于把加密白做了。
+    /// </summary>
+    private static void RemovePlaintextBackups()
+    {
+        foreach (var suffix in new[] { ".bak", ".broken", ".tmp" })
+        {
+            try
+            {
+                string p = AppPaths.SettingsFile + suffix;
+                if (!File.Exists(p)) continue;
+                string text = File.ReadAllText(p);
+                if (!DataVault.LooksEncrypted(text) && text.TrimStart().StartsWith('{'))
+                    File.Delete(p);
+            }
+            catch { }
+        }
+    }
+
+    private void ShowVaultStatus(string text, bool ok)
+    {
+        VaultStatusText.Text = text;
+        VaultStatusBar.Background = new SolidColorBrush(
+            (Color)ColorConverter.ConvertFromString(ok ? "#221D9E75" : "#22E5484D"));
+        VaultStatusBar.BorderBrush = new SolidColorBrush(
+            (Color)ColorConverter.ConvertFromString(ok ? "#551D9E75" : "#55E5484D"));
+        VaultStatusText.Foreground = new SolidColorBrush(
+            (Color)ColorConverter.ConvertFromString(ok ? "#0F6E56" : "#E5484D"));
+        VaultStatusBar.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>刷新时同步加密状态（老用户可能早就设过密码，但那时还没加密本地数据）。</summary>
+    private void UpdateVaultStatus()
+    {
+        if (DataVault.IsEnabled)
+            ShowVaultStatus("本地数据已加密（AES-256-GCM）：设置、宏、按键绑定、窗口绑定都以密文存储。", ok: true);
+        else
+            VaultStatusBar.Visibility = Visibility.Collapsed;
     }
 
     private void OnOnStartChanged(object sender, RoutedEventArgs e)

@@ -231,17 +231,41 @@ public sealed class ActionCatalog
         c.Add("mouseSpeedUp", "鼠标", "鼠标速度 +", "进入层并按住 LAlt 时的鼠标速度加一", _ => ctx.ChangeMouseSpeed(1), shortTitle: "鼠速+");
         c.Add("mouseSpeedDown", "鼠标", "鼠标速度 -", "鼠标速度减一", _ => ctx.ChangeMouseSpeed(-1), shortTitle: "鼠速-");
 
-        // ---------------- 媒体 / 系统 ----------------
-        c.Add("mediaPrev", "系统", "上一首", "媒体键", _ => Send(0xB1));
-        c.Add("mediaNext", "系统", "下一首", "媒体键", _ => Send(0xB0));
-        c.Add("mediaPlayPause", "系统", "播放 / 暂停", "媒体键", _ => Send(0xB3), shortTitle: "播放");
-        c.Add("volumeUp", "系统", "音量 +", "音量加", _ => Send(0xAF));
-        c.Add("volumeDown", "系统", "音量 -", "音量减", _ => Send(0xAE));
-        c.Add("volumeMute", "系统", "静音", "静音切换", _ => Send(0xAD));
+        // ---------------- 系统功能 ----------------
+        //
+        // 一整组"按一下就生效"的系统级操作：媒体控制、音量、亮度、
+        // 常用系统工具。集中在一个分类里，用户不必在「系统」里翻。
+        c.Add("mediaPrev", "系统功能", "上一首", "媒体键：跳到上一首", _ => Send(0xB1));
+        c.Add("mediaNext", "系统功能", "下一首", "媒体键：跳到下一首", _ => Send(0xB0));
+        c.Add("mediaPlayPause", "系统功能", "播放 / 暂停", "媒体键：播放或暂停", _ => Send(0xB3), shortTitle: "播放");
+        c.Add("mediaStop", "系统功能", "停止播放", "媒体键：停止", _ => Send(0xB2));
+        c.Add("volumeUp", "系统功能", "音量 +", "音量加一档", a => SendRepeat(0xAF, a), shortTitle: "音量+");
+        c.Add("volumeDown", "系统功能", "音量 -", "音量减一档", a => SendRepeat(0xAE, a), shortTitle: "音量-");
+        c.Add("volumeMute", "系统功能", "静音", "静音开关切换", _ => Send(0xAD));
+
+        c.Add("openCalculator", "系统功能", "打开计算器",
+            "打开 Windows 自带的计算器",
+            _ => { ctx.RunProgram("calc.exe"); return true; }, shortTitle: "计算器");
+
+        /* 亮度：走 WMI。台式机外接屏大多不支持，这时给明确提示 ——
+         * 用户按了没反应会以为按键坏了。 */
+        c.Add("brightnessUp", "系统功能", "亮度 +",
+            "屏幕亮度提高 10%（需要设备支持）",
+            a => ctx.ChangeBrightness(10 * ParseInt(a, 1)), shortTitle: "亮+");
+        c.Add("brightnessDown", "系统功能", "亮度 -",
+            "屏幕亮度降低 10%（需要设备支持）",
+            a => ctx.ChangeBrightness(-10 * ParseInt(a, 1)), shortTitle: "亮-");
+
+        c.Add("openExplorer", "系统功能", "打开文件资源管理器",
+            "打开「此电脑」", _ => { ctx.RunProgram("explorer.exe"); return true; }, shortTitle: "资源");
+        c.Add("openTaskManager", "系统功能", "打开任务管理器",
+            "打开任务管理器", _ => { ctx.RunProgram("taskmgr.exe"); return true; }, shortTitle: "任务");
+        c.Add("lockScreen", "系统功能", "锁定屏幕", "Win+L", _ => { InputSender.Chord(0x5B, 0x4C); return true; });
+        c.Add("screenshot", "系统功能", "截图", "调用系统截图工具", _ => ctx.Screenshot());
+
+        // ---------------- 系统 ----------------
         c.Add("openUrl", "系统", "打开网址", "打开参数里的网址", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; });
         c.Add("runProgram", "系统", "运行程序", "运行参数里的程序或命令", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.RunProgram(a); return true; });
-        c.Add("lockScreen", "系统", "锁定屏幕", "Win+L", _ => { InputSender.Chord(0x5B, 0x4C); return true; });
-        c.Add("screenshot", "系统", "截图", "调用系统截图工具", _ => ctx.Screenshot());
 
         // ---------------- 直达网页 ----------------
         //

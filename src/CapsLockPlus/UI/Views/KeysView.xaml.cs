@@ -759,7 +759,7 @@ public partial class KeysView : UserControl
         {
             var info = _host?.Actions.Get(binding.Action);
             if (info != null && !string.IsNullOrWhiteSpace(info.ShortTitle)
-                && binding.Action is not ("winBind" or "webPage")
+                && binding.Action is not ("winBind" or "webPage" or "typeText")
                 && !binding.Action.StartsWith("macro:", StringComparison.OrdinalIgnoreCase))
             {
                 keycapTitle = info.ShortTitle;
@@ -1432,6 +1432,10 @@ public partial class KeysView : UserControl
         if (id == "webPage")
             return Core.Actions.UrlUtil.LabelOf(binding.Note, binding.Arg);
 
+        // 输入文本：备注优先，否则显示文字开头几个字
+        if (id == "typeText")
+            return TypeTextLabelOf(binding.Note, binding.Arg);
+
         if (id.StartsWith("macro:", StringComparison.OrdinalIgnoreCase))
         {
             string t = _host?.Actions.Get(id)?.Title ?? id;
@@ -1441,6 +1445,28 @@ public partial class KeysView : UserControl
         }
 
         return _host?.Actions.Get(id)?.Title ?? id;
+    }
+
+    /// <summary>
+    /// 输入文本在界面上的标签：有备注用备注，否则取第一行开头几个字。
+    ///
+    /// 为什么要截断：一段文字可能有几百字，直接放进键帽会把整个键盘撑变形；
+    /// 而"输入文本"这四个字又完全看不出绑的是什么内容。
+    ///
+    /// 静态是为了让自检能直接验，不必驱动界面。
+    /// </summary>
+    internal static string TypeTextLabelOf(string? note, string? text)
+    {
+        if (!string.IsNullOrWhiteSpace(note)) return note.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return "输入文本";
+
+        // 只取第一行，把换行/制表压成空格 —— 键帽里不能出现多行
+        string first = text.Replace("\r", " ").Replace("\n", " ").Replace("\t", " ").Trim();
+        // 连续空格压成一个，避免显示成 "a    b"
+        while (first.Contains("  ", StringComparison.Ordinal)) first = first.Replace("  ", " ");
+
+        if (first.Length == 0) return "输入文本";
+        return first.Length <= 6 ? first : first[..6] + "…";
     }
 
     /// <summary>
@@ -1490,7 +1516,7 @@ public partial class KeysView : UserControl
 
     // ---------------- 输入文本 ----------------
 
-    /// <summary>把多行文本框刷成当前绑定的内容。</summary>
+    /// <summary>把多行文本框与备注框刷成当前绑定的内容。</summary>
     private void RefreshTypeTextField()
     {
         var b = FindInCurrentLayer(CurrentCombo());
@@ -1498,6 +1524,7 @@ public partial class KeysView : UserControl
 
         _suppressEvents = true;
         TypeTextBox.Text = isType ? (b!.Arg ?? "") : "";
+        TypeNoteBox.Text = isType ? (b.Note ?? "") : "";
         _suppressEvents = false;
     }
 
@@ -1516,8 +1543,32 @@ public partial class KeysView : UserControl
         if (!string.IsNullOrEmpty(b.Arg))
         {
             string preview = b.Arg.Length > 12 ? b.Arg[..12] + "…" : b.Arg;
-            ShowBindStatus($"已保存要输入的文字：「{preview}」");
+            ShowBindStatus($"已保存要输入的文字：「{preview.Replace("\r", " ").Replace("\n", " ")}」");
         }
+    }
+
+    /// <summary>
+    /// 备注变化：写进 <see cref="KeyBinding.Note"/>。
+    ///
+    /// 备注只影响**显示**（键帽 + 已绑定列表），不参与输入 ——
+    /// 用户要把一长串邮箱/地址起个短名字，键帽上才看得清。
+    /// 留空即删除备注，键帽回退显示文字开头。
+    /// </summary>
+    private void OnTypeNoteChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "typeText") return;
+
+        string note = (TypeNoteBox.Text ?? "").Trim();
+        b.Note = string.IsNullOrEmpty(note) ? null : note;
+        _host.SaveSettings();
+        BuildKeyboard();
+
+        ShowBindStatus(string.IsNullOrEmpty(note)
+            ? "备注已清空，键帽改显示文字开头"
+            : $"备注已保存：「{note}」—— 键帽上会显示这个名字");
     }
 
     /// <summary>把"网址 / 备注"两个输入框刷成当前绑定的内容。</summary>
@@ -1953,9 +2004,27 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
 
+        /* 把当前配置的触发键交给捕获窗口。
+         *
+         * 触发键（默认 CapsLock）不是修饰键，如果不告诉捕获窗口，
+         * 按 Caps+J 时会被录成 capslock 本身 —— 用户就永远绑不到 J，
+         * 表现正是"自定义按键绑不了已有的按键"。
+         *
+         * 兜底把 CapsLock 也加进去：万一用户把触发键删了，
+         * 键盘上那个键依旧是大家习惯的"前缀"。
+         */
+        var prefixes = new HashSet<int>();
+        foreach (var t in _host.Settings.Triggers)
+        {
+            if (string.IsNullOrWhiteSpace(t.Key)) continue;
+            if (KeyName.VkOf(t.Key) is int vk && vk != 0) prefixes.Add(vk);
+        }
+        if (KeyName.VkOf("capslock") is int caps && caps != 0) prefixes.Add(caps);
+
         var dlg = new UI.Windows.KeyCaptureWindow
         {
             Owner = Window.GetWindow(this),
+            PrefixKeys = prefixes,
         };
         if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
 
@@ -1965,6 +2034,19 @@ public partial class KeysView : UserControl
         _layer = dlg.CapturedMods;
 
         SelectKey(key);
+
+        /* 这个键原来绑过东西 → 说清楚"同名会改绑"，
+         * 而不是让用户以为"这个键被占用了所以绑不上"。 */
+        var existing = FindInCurrentLayer(CurrentCombo());
+        if (existing is { IsBound: true })
+        {
+            string was = DescribeActionOf(existing);
+            ShowBindStatus($"「{KeyName.Display(key)}」原来绑的是「{was}」—— 在右边选新功能就会改绑它");
+            ActionDesc.Text = $"已选中「{KeyName.Display(key)}」{ModifierText(_layer)}" +
+                              $"（{CurrentCombo()}）。这个键已有绑定，选新功能即可改绑。";
+            return;
+        }
+
         ActionDesc.Text = $"已选中「{KeyName.Display(key)}」{ModifierText(_layer)}" +
                           $"（{CurrentCombo()}），在右边选一个功能即可绑定。";
     }

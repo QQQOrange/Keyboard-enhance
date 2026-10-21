@@ -139,6 +139,14 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>状态变化（按住/松开触发键）。</summary>
     public event Action<bool>? TriggerHeldChanged;
 
+    /// <summary>
+    /// 每一个**真实**按键事件：(虚拟键码, 是否按下, 当时激活的层 -1 = 未进层)。
+    ///
+    /// 专供「测试」页：用户想确认"我按的键到底有没有被收到""切层成不成功"。
+    /// 注入的按键不抛（否则测试页会被自己的动作刷屏）。
+    /// </summary>
+    public event Action<int, bool, int>? KeySeen;
+
     /// <summary>兼容旧名称：按住/松开 CapsLock。</summary>
     public event Action<bool>? CapsHeldChanged
     {
@@ -288,6 +296,19 @@ public sealed class HotkeyEngine : IDisposable
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
         if (injected && !AcceptInjectedForTest) return false;   // 自己注入的按键放行
+
+        /* 测试页专用：把真实按键抛出去。
+         *
+         * 放在最前面（暂停判断、触发键判断之前）——
+         * 用户要排查"按了没反应"时，第一条要确认的就是
+         * "钩子到底收到这个键没有"。放后面的话，
+         * 暂停状态或提前 return 的按键就看不见了。
+         *
+         * 界面异常绝不能影响键盘钩子，所以吞掉所有异常。 */
+        if (!injected && KeySeen != null)
+        {
+            try { KeySeen(vk, down, ActiveLayer); } catch { }
+        }
 
         // 录制中：照常放行（不影响用户正常操作），只记录事件
         MacroRecorder?.Record(vk, down);

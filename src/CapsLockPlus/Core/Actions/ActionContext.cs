@@ -384,6 +384,24 @@ public sealed class ActionContext
         }
     }
 
+    /// <summary>
+    /// 调整屏幕亮度（WMI）。<paramref name="delta"/> 为正=调亮，为负=调暗。
+    ///
+    /// 台式机外接屏一般没有这条 WMI 接口 —— 那种情况下必须**明确告诉用户**
+    /// "这台设备不支持"，否则按了没反应会被当成按键坏了。
+    /// </summary>
+    public bool ChangeBrightness(int delta)
+    {
+        int? now = BrightnessService.Step(delta);
+        if (now == null)
+        {
+            Notify("这台设备不支持用软件调亮度（常见于台式机外接显示器）");
+            return true;
+        }
+        Notify($"屏幕亮度 {now}%");
+        return true;
+    }
+
     public bool ChangeMouseSpeed(int delta)
     {
         var s = Settings();

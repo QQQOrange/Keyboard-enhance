@@ -12,9 +12,9 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>3.5.0</Version>
-    <FileVersion>3.5.0.0</FileVersion>
-    <AssemblyVersion>3.5.0.0</AssemblyVersion>
+    <Version>3.6.0</Version>
+    <FileVersion>3.6.0.0</FileVersion>
+    <AssemblyVersion>3.6.0.0</AssemblyVersion>
     <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
     <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达网页、独立剪贴板、宏与多图层</Description>
@@ -50,6 +50,9 @@
   <ItemGroup>
     <!-- UI Automation：直接读取选区，不受 UIPI 限制 -->
     <PackageReference Include="Interop.UIAutomationClient" Version="10.16299.0" />
+    <!-- WMI：调屏幕亮度（root\wmi） -->
+    <PackageReference Include="System.Management" Version="10.0.13" />
+    <!-- DPAPI（ProtectedData）在 net10.0-windows 目标框架里已自带，无需额外引用 -->
   </ItemGroup>
 
 </Project>
