@@ -15,7 +15,7 @@
                 <StackPanel>
                     <TextBlock Text="WebDAV 同步" Style="{StaticResource Text.H2}" />
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="把配置备份到网盘（坚果云等）。开启后启动和关闭软件时各自动同步一次。&#x0a;每次备份都会用下面的密码加密。" />
+                               Text="把配置备份到网盘（坚果云等）。启动同步、退出同步、自动备份是三个独立开关，可以同时打开。" />
 
                     <TextBlock Text="服务器地址" Style="{StaticResource Text.Secondary}" Margin="0,16,0,6" />
                     <TextBox x:Name="UrlBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
@@ -23,13 +23,26 @@
                     <TextBlock Text="例：https://dav.jianguoyun.com/dav/　（只填到 dav/ 即可，子目录会自动创建）"
                                Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0" />
 
-                    <TextBlock Text="用户名" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
-                    <TextBox x:Name="UserBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                             VerticalContentAlignment="Center" TextChanged="OnUserChanged" />
-
-                    <TextBlock Text="密码" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
-                    <PasswordBox x:Name="PassBox" Style="{StaticResource PasswordBox.Base}"
-                                 PasswordChanged="OnPassChanged" />
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="用户名" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,0,0,6" />
+                            <TextBox x:Name="UserBox" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="36" VerticalContentAlignment="Center"
+                                     TextChanged="OnUserChanged" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="密码" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,0,0,6" />
+                            <PasswordBox x:Name="PassBox" Style="{StaticResource PasswordBox.Base}"
+                                         PasswordChanged="OnPassChanged" />
+                        </StackPanel>
+                    </Grid>
                     <TextBlock Text="坚果云要用「应用密码」，不是登录密码"
                                Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0" />
 
@@ -40,9 +53,9 @@
                     <Border x:Name="NoPasswordWarning" Margin="0,8,0,0" Padding="10,7" CornerRadius="8"
                             Background="#22E5484D" BorderBrush="#55E5484D" BorderThickness="1"
                             Visibility="Collapsed">
-                        <TextBlock x:Name="NoPasswordText" TextWrapping="Wrap" FontSize="12"
+                        <TextBlock TextWrapping="Wrap" FontSize="12"
                                    Foreground="#E5484D"
-                                   Text="没设备份密码 —— 备份将以明文上传到网盘，任何能访问该目录的人都能读到你的翻译密钥和同步密码。" />
+                                   Text="没设备份密码 —— 现在不能备份。备份和本地数据都必须加密，设一个密码就能用。" />
                     </Border>
 
                     <!-- 本地加密状态：设了密码之后磁盘上就不再留明文用户数据 -->
@@ -61,7 +74,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="启动时自动同步" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="启动时同步" Style="{StaticResource Text.Body}" />
                             <TextBlock Text="比云端与本机哪份新，谁新用谁"
                                        Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
                         </StackPanel>
@@ -77,7 +90,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="关闭时自动同步" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="退出时同步" Style="{StaticResource Text.Body}" />
                             <TextBlock Text="退出前把当前配置推上去（最多等 8 秒）"
                                        Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
                         </StackPanel>
@@ -85,13 +98,15 @@
                                   VerticalAlignment="Center" Click="OnOnExitChanged" />
                     </Grid>
 
-                    <WrapPanel Margin="0,16,0,0">
+                    <Border Style="{StaticResource Divider}" Margin="0,16,0,12" />
+
+                    <WrapPanel>
                         <Button Content="测连接" Style="{StaticResource Button.Base}" Padding="14,7"
                                 Margin="0,0,8,8" Click="OnTestClick" />
-                        <Button Content="立即上传" Style="{StaticResource Button.Primary}" Padding="14,7"
+                        <Button Content="立即备份并上传" Style="{StaticResource Button.Primary}" Padding="14,7"
                                 Margin="0,0,8,8" Click="OnUploadClick" />
-                        <Button Content="从云端恢复" Style="{StaticResource Button.Base}" Padding="14,7"
-                                Margin="0,0,8,8" Click="OnDownloadClick" />
+                        <Button Content="从备份恢复…" Style="{StaticResource Button.Base}" Padding="14,7"
+                                Margin="0,0,8,8" Click="OnRestoreClick" />
                     </WrapPanel>
 
                     <TextBlock x:Name="SyncStatus" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
@@ -99,13 +114,107 @@
                 </StackPanel>
             </Border>
 
-            <!-- 右：导入导出 -->
+            <!-- 右：本地备份 / 导出 / 导入 -->
             <StackPanel Grid.Column="1" Margin="7,0,0,0">
                 <Border Style="{StaticResource Card}" Padding="18,16" VerticalAlignment="Top">
                     <StackPanel>
+                        <TextBlock Text="本地备份" Style="{StaticResource Text.H2}" />
+                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="备份就放在软件旁边的「KeyboardEnhance 备份」文件夹里，拷走整个文件夹就带走了软件和全部备份。" />
+
+                        <Border Margin="0,12,0,0" Padding="12,10" CornerRadius="10"
+                                Background="{DynamicResource Brush.SurfaceAlt}"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock x:Name="BackupDirText" Style="{StaticResource Text.Mono}"
+                                           FontSize="11.5" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Brush.TextSecondary}" />
+                                <TextBlock x:Name="FallbackHint" Style="{StaticResource Text.Tertiary}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#E5484D"
+                                           Visibility="Collapsed"
+                                           Text="软件目录不可写，备份已改放到数据目录。" />
+                            </StackPanel>
+                        </Border>
+
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Content="打开备份目录" Style="{StaticResource Button.Base}" Padding="12,6"
+                                    Margin="0,0,8,8" Click="OnOpenBackupDir" />
+                            <Button Content="打开配置目录" Style="{StaticResource Button.Base}" Padding="12,6"
+                                    Margin="0,0,8,8" Click="OnOpenDataDir" />
+                            <Button Content="现在就备份一次" Style="{StaticResource Button.Ghost}" Padding="12,6"
+                                    Margin="0,0,8,8" Click="OnLocalBackupClick" />
+                        </WrapPanel>
+
+                        <TextBlock x:Name="LocalSummary" Style="{StaticResource Text.Tertiary}"
+                                   TextWrapping="Wrap" Margin="0,4,0,0" />
+
+                        <Border Style="{StaticResource Divider}" Margin="0,12,0,10" />
+
+                        <TextBlock Text="保留策略" Style="{StaticResource Text.Secondary}" />
+                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="本地和云端用同一套规则；最新那份永远保留，不会因为超期被删光。" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <TextBlock Text="只保留最近" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" />
+                            <TextBox x:Name="KeepBox" Style="{StaticResource TextBox.Base}"
+                                     Width="60" MinHeight="30" Margin="8,0,0,0" Padding="8,0"
+                                     VerticalContentAlignment="Center" LostFocus="OnKeepChanged" />
+                            <TextBlock Text="份" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="6,0,0,0" />
+
+                            <TextBlock Text="清掉" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="18,0,0,0" />
+                            <TextBox x:Name="DaysBox" Style="{StaticResource TextBox.Base}"
+                                     Width="60" MinHeight="30" Margin="8,0,0,0" Padding="8,0"
+                                     VerticalContentAlignment="Center" LostFocus="OnDaysChanged" />
+                            <TextBlock Text="天前的（0 = 不按天数清）" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+
+                        <Border Style="{StaticResource Divider}" Margin="0,12,0,10" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="自动备份" Style="{StaticResource Text.Body}" />
+                                <TextBlock Text="按间隔自动打包一份；配置没变化就跳过"
+                                           Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1" x:Name="AutoBackupBox"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      VerticalAlignment="Center" Click="OnAutoBackupChanged" />
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <TextBlock Text="间隔" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" />
+                            <TextBox x:Name="AutoMinutesBox" Style="{StaticResource TextBox.Base}"
+                                     Width="60" MinHeight="30" Margin="8,0,0,0" Padding="8,0"
+                                     VerticalContentAlignment="Center" LostFocus="OnAutoMinutesChanged" />
+                            <TextBlock Text="分钟" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,14,0,0"
+                        VerticalAlignment="Top">
+                    <StackPanel>
                         <TextBlock Text="导出配置" Style="{StaticResource Text.H2}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="导出的是**明文**文件，可以直接发给别人导入。&#x0a;默认只勾非隐私内容；带红色标记的项涉及凭据，请谨慎勾选。" />
+                                   Text="导出的是**明文**文件（方便发给别人导入），所以不加密；也正因为是明文，凭据类内容一律不导出。" />
+
+                        <!-- 硬性脱敏说明：红色 -->
+                        <Border Margin="0,10,0,0" Padding="10,8" CornerRadius="8"
+                                Background="#22E5484D" BorderBrush="#55E5484D" BorderThickness="1">
+                            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#E5484D"
+                                       Text="永远不会导出的内容：WebDAV 密码、备份密码、本地加密密钥。即使勾了「同步与备份设置」也只带地址和用户名。" />
+                        </Border>
 
                         <ItemsControl x:Name="GroupList" Margin="0,14,0,0">
                             <ItemsControl.ItemTemplate>
@@ -126,11 +235,12 @@
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
                                                                Foreground="{DynamicResource Brush.TextPrimary}" />
                                                     <!-- 隐私标记：红色 -->
-                                                    <Border x:Name="PrivateBadge" Margin="8,0,0,0" Padding="6,1"
+                                                    <Border Margin="8,0,0,0" Padding="6,1"
                                                             CornerRadius="5" Background="#22E5484D"
                                                             BorderBrush="#55E5484D" BorderThickness="1"
                                                             Visibility="{Binding PrivateVisibility}">
-                                                        <TextBlock Text="隐私" FontSize="10.5" FontWeight="SemiBold"
+                                                        <TextBlock Text="隐私 · 默认不导出" FontSize="10.5"
+                                                                   FontWeight="SemiBold"
                                                                    Foreground="#E5484D" />
                                                     </Border>
                                                 </StackPanel>
@@ -163,7 +273,7 @@
                     <StackPanel>
                         <TextBlock Text="导入配置" Style="{StaticResource Text.H2}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="只能导入**明文**导出文件；加密备份请用上面的「从云端恢复」。&#x0a;导入是合并式的：只覆盖导出文件里包含的那些项。" />
+                                   Text="只能导入**明文**导出文件；加密备份请用上面的「从备份恢复…」。&#x0a;导入是合并式的：只覆盖导出文件里包含的那些项。" />
 
                         <Button Content="选择文件导入…" Style="{StaticResource Button.Base}" Padding="16,8"
                                 Margin="0,14,0,0" HorizontalAlignment="Left" Click="OnImportClick" />
@@ -175,16 +285,6 @@
                             <TextBlock x:Name="ImportResultText" TextWrapping="Wrap" FontSize="12.5"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
                         </Border>
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,14,0,0">
-                    <StackPanel>
-                        <TextBlock Text="本地备份" Style="{StaticResource Text.H3}" />
-                        <TextBlock x:Name="BackupDirText" Style="{StaticResource Text.Tertiary}"
-                                   TextWrapping="Wrap" Margin="0,6,0,0" />
-                        <Button Content="现在备份一次" Style="{StaticResource Button.Base}" Padding="14,7"
-                                Margin="0,10,0,0" HorizontalAlignment="Left" Click="OnLocalBackupClick" />
                     </StackPanel>
                 </Border>
             </StackPanel>

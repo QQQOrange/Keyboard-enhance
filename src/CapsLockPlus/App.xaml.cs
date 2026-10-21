@@ -22,6 +22,25 @@ public partial class App : Application
         bool isSelfTest = e.Args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase));
         bool isDiag = e.Args.Any(a => a.Equals("--diag", StringComparison.OrdinalIgnoreCase));
 
+        /* 测试类模式一律"干跑"：只走逻辑，不真的往系统里发按键。
+         *
+         * 这些流程会经过「输入文本」「播放宏」「复制」这些真实动作 ——
+         * 一旦真发出去，就等于往用户当时的前台窗口里打字。
+         * 曾经在 `--selftest` 里漏过一次：屏幕上突然刷出两千个 a，
+         * 最后还跟了一句 hi（宏播放测试干的）。
+         *
+         * 放在最前面，任何模式分支之前，避免以后新加开关又忘。 */
+        if (e.Args.Any(a =>
+                a.Equals("--selftest", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("--render", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("--render-diag", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("--diag", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("--webdav-test", StringComparison.OrdinalIgnoreCase)))
+        {
+            Core.Input.InputSender.DryRun = true;
+            CoreLog.Info("测试模式：注入干跑（不会真的发送按键）");
+        }
+
         // 诊断模式：不走 WPF 的消息循环，直接跑完用 Environment.Exit 硬退出。
         // 用 Shutdown() 依赖消息循环正常运转，一旦中途抛异常就会永远等下去
         // （之前 %TEMP% 不可写时就出现过命令行挂死）。
@@ -244,6 +263,9 @@ public partial class App : Application
         // 启动同步：延后 4 秒，等界面和钩子都就绪再联网。
         // 同步本身在后台线程跑，不阻塞界面。
         Host.ScheduleStartupSync();
+
+        // 自动备份：与"启动/退出同步"独立，两个开关可以同时开着互不干扰。
+        Host.RestartAutoBackupTimer();
     }
 
     /// <summary>支持 --page=keys 这样的参数，直接打开某个页面（也方便做截图验收）。</summary>

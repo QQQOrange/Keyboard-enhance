@@ -221,10 +221,27 @@ public sealed class SyncOptions
     public bool SyncOnExit { get; set; }
 
     /// <summary>
-    /// 备份密码。非空时每次上传的备份都会加密；
-    /// 留空则备份是明文（界面上会明确提示）。
+    /// 备份密码。
+    ///
+    /// 它有两个作用，别当成一回事：
+    ///   * 给**备份文件**加密（本地 + 云端都算）；
+    ///   * 给**本地用户数据**加密（settings.json 整份变密文）。
+    /// 所以设了它之后，磁盘上不会再有明文用户数据；
+    /// 备份也一律是密文，没有"没密码就明文"的退路。
     /// </summary>
     public string BackupPassword { get; set; } = "";
+
+    /// <summary>本地 / 云端各保留最近几份备份。默认 10。</summary>
+    public int KeepLocalBackups { get; set; } = 10;
+
+    /// <summary>自动清掉多少天之前的备份（0 = 不按天数清）。默认 7。</summary>
+    public int CleanupDays { get; set; } = 7;
+
+    /// <summary>按间隔自动备份（本地必写，配了网盘就一起上传）。</summary>
+    public bool AutoBackup { get; set; }
+
+    /// <summary>自动备份间隔（分钟）。</summary>
+    public int AutoBackupMinutes { get; set; } = 60;
 
     /// <summary>上次同步时间。</summary>
     public DateTime LastSyncAt { get; set; } = DateTime.MinValue;

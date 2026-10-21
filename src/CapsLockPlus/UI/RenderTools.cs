@@ -109,6 +109,43 @@ public static class RenderTools
                 Pump(120);
             }
 
+            /* 备份页额外截一张恢复对话框。
+             *
+             * 它是本次新增的交互（先拉清单、再选覆盖/合并），
+             * 平时只有点「从备份恢复…」才出现，必须能被截图回归。 */
+            if (page == "backup")
+            {
+                try
+                {
+                    var rw = new RestoreWindow(host)
+                    {
+                        WindowStartupLocation = WindowStartupLocation.Manual,
+                        Left = -32000,
+                        Top = -32000,
+                        ShowInTaskbar = false,
+                        /* 截图时去掉标题栏：带标题栏的窗口里，
+                         * 内容相对窗口有一个"标题栏高度"的视觉偏移，
+                         * 直接对内容做 RenderTargetBitmap 会整体下移、
+                         * 右下角被切掉一截（截出来顶部还有一条黑边）。 */
+                        WindowStyle = WindowStyle.None,
+                        ResizeMode = ResizeMode.NoResize,
+                    };
+                    rw.Show();
+                    Pump(320);
+                    CoreLog.Info($"[渲染] 恢复对话框 Window={rw.Width}x{rw.Height} "
+                                 + $"Actual={rw.ActualWidth}x{rw.ActualHeight} "
+                                 + $"Content={((FrameworkElement)rw.Content).ActualWidth}"
+                                 + $"x{((FrameworkElement)rw.Content).ActualHeight}");
+                    Save(rw, Path.Combine(outDir, "restore.png"));
+                    rw.Close();
+                    Pump(80);
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染恢复对话框失败：" + ex.Message);
+                }
+            }
+
             // 诊断文件只在显式要求时输出（--render-diag <目录>），
             // 免得把一堆中间产物混进 docs/screenshots。
             if (DiagnosticsRequested)

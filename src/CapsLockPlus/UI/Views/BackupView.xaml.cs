@@ -40,14 +40,38 @@ public partial class BackupView : UserControl
         BackupPassBox.Password = s.BackupPassword;
         OnStartBox.IsChecked = s.SyncOnStart;
         OnExitBox.IsChecked = s.SyncOnExit;
+        AutoBackupBox.IsChecked = s.AutoBackup;
+        AutoMinutesBox.Text = s.AutoBackupMinutes.ToString();
+        KeepBox.Text = s.KeepLocalBackups.ToString();
+        DaysBox.Text = s.CleanupDays.ToString();
         _suppress = false;
 
         UpdatePasswordWarning();
         UpdateVaultStatus();
-        BackupDirText.Text = $"备份目录：{SyncService.BackupDir}";
+        BackupDirText.Text = SyncService.BackupDir;
+        FallbackHint.Visibility = SyncService.BackupDirIsFallback
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RefreshLocalSummary();
+
         SyncStatus.Text = s.LastSyncAt == DateTime.MinValue
             ? "还没同步过"
             : $"上次同步：{s.LastSyncAt:yyyy-MM-dd HH:mm}　{s.LastSyncInfo}";
+    }
+
+    /// <summary>本地备份的一句话概况。</summary>
+    private void RefreshLocalSummary()
+    {
+        var list = SyncService.ListLocal();
+        if (list.Count == 0)
+        {
+            LocalSummary.Text = $"还没有本地备份。点「现在就备份一次」会生成一份 {SyncService.Extension} 文件。";
+            return;
+        }
+        long total = list.Sum(x => x.Size);
+        int enc = list.Count(x => x.Encrypted);
+        LocalSummary.Text = $"本地 {list.Count} 份（{enc} 份已加密，共 {total / 1024.0:0.#} KB）"
+                            + $"，最近一份 {list[0].Time:MM-dd HH:mm}。";
     }
 
     private void BuildGroups()
@@ -225,6 +249,100 @@ public partial class BackupView : UserControl
         _host.SaveSettings();
     }
 
+    // ---------------- 自动备份 / 保留策略 ----------------
+
+    private void OnAutoBackupChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+
+        bool on = AutoBackupBox.IsChecked == true;
+        _host.Settings.Sync.AutoBackup = on;
+
+        if (on && string.IsNullOrWhiteSpace(_host.Settings.Sync.BackupPassword))
+        {
+            /* 没密码就没法加密，自动备份起来也只能失败 ——
+             * 与其每 60 分钟静默失败一次，不如把开关退回去并说清楚。 */
+            _suppress = true;
+            AutoBackupBox.IsChecked = false;
+            _suppress = false;
+            _host.Settings.Sync.AutoBackup = false;
+            SyncStatus.Text = "✗ 自动备份需要先设「备份密码」—— 备份必须是密文。";
+            return;
+        }
+
+        _host.SaveSettings();
+        _host.RestartAutoBackupTimer();
+        SyncStatus.Text = on
+            ? $"✓ 已开启自动备份：每 {_host.Settings.Sync.AutoBackupMinutes} 分钟一次（配置没变化会跳过）"
+            : "已关闭自动备份。";
+    }
+
+    private void OnAutoMinutesChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        int before = _host.Settings.Sync.AutoBackupMinutes;
+        int minutes = ParseInt(AutoMinutesBox.Text, 60, 5, 1440);
+        AutoMinutesBox.Text = minutes.ToString();
+        if (minutes == before) return;
+
+        _host.Settings.Sync.AutoBackupMinutes = minutes;
+        _host.SaveSettings();
+        if (_host.Settings.Sync.AutoBackup) _host.RestartAutoBackupTimer();
+    }
+
+    private void OnKeepChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        int before = _host.Settings.Sync.KeepLocalBackups;
+        int keep = ParseInt(KeepBox.Text, SyncService.DefaultKeep, 1, 200);
+        KeepBox.Text = keep.ToString();
+        if (keep == before) return;
+
+        _host.Settings.Sync.KeepLocalBackups = keep;
+        _host.SaveSettings();
+
+        int removed = SyncService.PruneLocal(keep, _host.Settings.Sync.CleanupDays);
+        RefreshLocalSummary();
+        SyncStatus.Text = removed > 0
+            ? $"✓ 已只保留最近 {keep} 份，清掉 {removed} 份旧备份"
+            : $"✓ 保留份数改为 {keep}，暂时没有需要清理的";
+    }
+
+    private void OnDaysChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        int before = _host.Settings.Sync.CleanupDays;
+        int days = ParseInt(DaysBox.Text, 0, 0, 3650);
+        DaysBox.Text = days.ToString();
+        if (days == before) return;
+
+        _host.Settings.Sync.CleanupDays = days;
+        _host.SaveSettings();
+
+        int removed = SyncService.PruneLocal(_host.Settings.Sync.KeepLocalBackups, days);
+        RefreshLocalSummary();
+        SyncStatus.Text = days == 0
+            ? "✓ 已关闭按天数清理，只按份数保留"
+            : removed > 0
+                ? $"✓ 已清掉 {removed} 份 {days} 天前的备份（最新一份永远保留）"
+                : $"✓ 清理天数改为 {days} 天，暂时没有超期的备份";
+    }
+
+    /// <summary>解析整数并夹到范围内；解析不出来就用兜底值。</summary>
+    private static int ParseInt(string text, int fallback, int min, int max)
+    {
+        if (!int.TryParse((text ?? "").Trim(), out int v)) return fallback;
+        return Math.Clamp(v, min, max);
+    }
+
+    // ---------------- 目录 ----------------
+
+    private void OnOpenBackupDir(object sender, RoutedEventArgs e) =>
+        SyncService.OpenFolder(SyncService.BackupDir);
+
+    private void OnOpenDataDir(object sender, RoutedEventArgs e) =>
+        SyncService.OpenFolder(AppPaths.DataDir);
+
     // ---------------- 同步操作 ----------------
 
     private void OnSyncCompleted(SyncResult r)
@@ -258,25 +376,20 @@ public partial class BackupView : UserControl
         Refresh();
     }
 
-    private async void OnDownloadClick(object sender, RoutedEventArgs e)
+    private void OnRestoreClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        if (string.IsNullOrWhiteSpace(_host.Settings.Sync.WebDavUrl))
-        {
-            SyncStatus.Text = "✗ 请先填 WebDAV 地址";
-            return;
-        }
 
-        var confirm = MessageBox.Show(Window.GetWindow(this),
-            "会用云端备份覆盖当前配置。\n恢复前会自动把当前配置另存一份到本地备份目录，\n万一恢复错了还能退回去。\n\n继续吗？",
-            "从云端恢复", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (confirm != MessageBoxResult.OK) return;
-
-        SyncStatus.Text = "正在下载…";
-        var r = await _host.RunSyncNowAsync(upload: false);
-        SyncStatus.Text = (r.Ok ? "✓ " : "✗ ") + r.Message;
+        /* 恢复不再是"点一下就拿最新那份覆盖"：
+         * 先拉清单让用户挑，再让他选覆盖还是合并。 */
+        var dlg = new UI.Windows.RestoreWindow(_host) { Owner = Window.GetWindow(this) };
+        bool? ok = dlg.ShowDialog();
         Refresh();
-        _host.Notify(r.Ok ? "已从云端恢复配置" : "恢复失败：" + r.Message);
+        if (ok == true)
+        {
+            SyncStatus.Text = "✓ " + (dlg.Result?.Summary ?? "已恢复");
+            _host.Notify("已从备份恢复配置");
+        }
     }
 
     private void OnLocalBackupClick(object sender, RoutedEventArgs e)
@@ -284,9 +397,10 @@ public partial class BackupView : UserControl
         if (_host == null) return;
         try
         {
-            string payload = _host.Sync.BuildBackupPayload(out bool encrypted);
+            string payload = _host.Sync.BuildBackupPayload(out _);
             string path = _host.Sync.WriteLocalBackup(payload);
-            SyncStatus.Text = $"✓ 已备份到 {path}" + (encrypted ? "（已加密）" : "（未加密）");
+            SyncStatus.Text = $"✓ 已备份到 {System.IO.Path.GetFileName(path)}（已加密）";
+            RefreshLocalSummary();
         }
         catch (Exception ex)
         {

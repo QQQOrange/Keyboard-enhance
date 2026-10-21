@@ -16,9 +16,21 @@ public static class InputSender
 
     private static readonly int InputSize = System.Runtime.InteropServices.Marshal.SizeOf<INPUT>();
 
+    /// <summary>
+    /// 干跑：只跑逻辑，不真的把按键发到系统里。
+    ///
+    /// 自检 / 离屏渲染时必须打开。这些流程会走「输入文本」「播放宏」
+    /// 之类的真实动作 —— 一旦真发出去，就等于往用户当时的前台窗口里
+    /// 打字（曾经在 `--selftest` 里打过两千个 a，还顺手打了一句 hi）。
+    ///
+    /// 放在这里而不是在每个调用点判断：注入只有这一个出口，
+    /// 关掉出口就不可能漏，将来新增的测试也不会重犯。
+    /// </summary>
+    public static bool DryRun { get; set; }
+
     private static void Send(params INPUT[] inputs)
     {
-        if (inputs.Length == 0) return;
+        if (inputs.Length == 0 || DryRun) return;
         SendInput((uint)inputs.Length, inputs, InputSize);
     }
 
@@ -168,7 +180,7 @@ public static class InputSender
         void Send(int k, ushort scan, bool up)
         {
             var input = KeyInput(k, up, unicode: false, scan: scan);
-            SendInput(1, new[] { input }, InputSize);
+            if (!DryRun) SendInput(1, new[] { input }, InputSize);
             if (gapMs > 0) Thread.Sleep(gapMs);
         }
 

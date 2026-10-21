@@ -515,6 +515,75 @@ public sealed class AppHost : IDisposable
     /// <summary>同步完成事件（界面刷新用）。</summary>
     public event Action<Core.Sync.SyncResult>? SyncCompleted;
 
+    // ---------------- 自动备份 ----------------
+
+    private System.Windows.Threading.DispatcherTimer? _autoBackupTimer;
+    private bool _autoBackupBusy;
+
+    /// <summary>
+    /// 重建自动备份定时器。
+    ///
+    /// 由设置页在开关/间隔改动后调用，也在启动时调一次。
+    /// 间隔很短时（最短 5 分钟）不会真的每 5 分钟写一份 ——
+    /// 写之前会比对配置文件的写入时间，没变化就跳过，
+    /// 否则用户开着软件不用，一天也能堆出几百份一模一样的备份。
+    /// </summary>
+    public void RestartAutoBackupTimer()
+    {
+        _autoBackupTimer?.Stop();
+        _autoBackupTimer = null;
+
+        var s = Settings.Sync;
+        if (!s.AutoBackup)
+        {
+            CoreLog.Info("自动备份：未开启");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(s.BackupPassword))
+        {
+            CoreLog.Warn("自动备份：没设备份密码，无法加密，已跳过");
+            return;
+        }
+
+        int minutes = Math.Clamp(s.AutoBackupMinutes, 5, 1440);
+        _autoBackupTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMinutes(minutes),
+        };
+        _autoBackupTimer.Tick += async (_, _) => await RunAutoBackupAsync().ConfigureAwait(true);
+        _autoBackupTimer.Start();
+        CoreLog.Info($"自动备份：每 {minutes} 分钟一次");
+    }
+
+    private async Task RunAutoBackupAsync()
+    {
+        if (_autoBackupBusy) return;
+        _autoBackupBusy = true;
+        try
+        {
+            var r = await Task.Run(() => Sync.AutoBackupAsync()).ConfigureAwait(true);
+            LastSyncMessage = r.Message;
+            if (r.Ok)
+            {
+                CoreLog.Info("自动备份：" + r.Message);
+                SaveSettings();
+                SyncCompleted?.Invoke(r);
+            }
+            else
+            {
+                CoreLog.Warn("自动备份：" + r.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("自动备份异常：" + ex.Message);
+        }
+        finally
+        {
+            _autoBackupBusy = false;
+        }
+    }
+
     /// <summary>动作表重建后触发（界面需要刷新功能下拉）。</summary>
     public event Action? ActionsChanged;
 

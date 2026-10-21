@@ -387,6 +387,19 @@ public static class SettingsStore
         s.Global.MouseSpeed = Math.Clamp(s.Global.MouseSpeed, 1, 20);
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
 
+        /* 备份保留策略：老配置里没有这两个字段，反序列化后是 0。
+         *
+         * 0 在业务上是"不限制"，跟默认值 10 完全相反 ——
+         * 不在这里补默认值，老用户一升级就会变成"永远不清"，备份越堆越多；
+         * 而 0 份保留又会把刚写的备份自己删掉。两头都不能要，必须夹住。 */
+        if (s.Sync.KeepLocalBackups <= 0) s.Sync.KeepLocalBackups = 10;
+        s.Sync.KeepLocalBackups = Math.Clamp(s.Sync.KeepLocalBackups, 1, 200);
+        if (s.Sync.CleanupDays < 0) s.Sync.CleanupDays = 0;
+        s.Sync.CleanupDays = Math.Clamp(s.Sync.CleanupDays, 0, 3650);
+
+        if (s.Sync.AutoBackupMinutes <= 0) s.Sync.AutoBackupMinutes = 60;
+        s.Sync.AutoBackupMinutes = Math.Clamp(s.Sync.AutoBackupMinutes, 5, 1440);
+
         /* Qbar 面板底色：老配置里是写死的深色值（#1C1F27），
          * 导致浅色主题下"白字白底"看不见。
          *

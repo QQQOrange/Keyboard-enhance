@@ -189,6 +189,9 @@ public static class SelfTest
         Section("同步载荷");
         TestSyncPayload();
 
+        Section("备份策略");
+        TestBackupPolicy();
+
         Section("翻译引擎");
         TestTranslateProviders();
 
@@ -1209,46 +1212,172 @@ public static class SelfTest
 
         // 备份文件名格式
         string name = Core.Sync.SyncService.BackupName(new DateTime(2026, 10, 20, 13, 45, 9));
-        CheckEqual("备份文件名格式", name, "capslock+(2026-10-20 13-45-09).clpbak");
+        CheckEqual("备份文件名格式", name, "KeyboardEnhance(2026-10-20 13-45-09).keyboardenhance");
     }
 
     /// <summary>
-    /// 同步服务的备份载荷：设了密码必须加密，没设必须明文。
+    /// 备份的命名、保留策略、合并恢复、导出脱敏。
+    ///
+    /// 这几条都是"看起来能用、但会悄悄毁掉用户数据"的地方：
+    ///   * 保留策略算错 → 把唯一一份备份删了；
+    ///   * 合并当成覆盖 → 丢掉本机独有的键位；
+    ///   * 导出忘了脱敏 → 明文把网盘密码发给别人。
+    /// </summary>
+    private static void TestBackupPolicy()
+    {
+        var ext = Core.Sync.SyncService.Extension;
+        CheckEqual("备份后缀是 .keyboardenhance", ext, ".keyboardenhance");
+        Check("认得自己的备份名",
+            Core.Sync.SyncService.IsBackupName("KeyboardEnhance(2026-10-20 13-45-09)" + ext));
+        Check("也认得旧版 .clpbak",
+            Core.Sync.SyncService.IsBackupName("capslock+(2026-10-20 13-45-09).clpbak"));
+        Check("别的文件不算备份", !Core.Sync.SyncService.IsBackupName("settings.json"));
+
+        // ---- 保留策略：份数上限 ----
+        string dir = Path.Combine(AppPaths.DataDir, "selftest-prune");
+        try
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            Directory.CreateDirectory(dir);
+
+            var baseTime = new DateTime(2026, 10, 20, 12, 0, 0);
+            for (int i = 0; i < 12; i++)
+            {
+                string n = Core.Sync.SyncService.BackupName(baseTime.AddMinutes(i));
+                string p = Path.Combine(dir, n);
+                File.WriteAllText(p, "x");
+                File.SetLastWriteTime(p, baseTime.AddMinutes(i));
+            }
+            int removed = Core.Sync.SyncService.PruneFolder(dir, keep: 10, days: 0);
+            var left = Core.Sync.SyncService.ListLocal(dir);
+            CheckEqual("保留 10 份：清掉 2 份", removed, 2);
+            CheckEqual("保留 10 份：剩 10 份", left.Count, 10);
+            Check("保留的是最新的那批",
+                left[0].Name.Contains("12-11-00"), left[0].Name);
+
+            // ---- 保留策略：按天数清，但永远留最新 ----
+            foreach (var f in Directory.GetFiles(dir)) File.Delete(f);
+            var old = baseTime.AddDays(-30);
+            string oldFile = Path.Combine(dir, Core.Sync.SyncService.BackupName(old));
+            File.WriteAllText(oldFile, "x");
+            File.SetLastWriteTime(oldFile, old);
+
+            int removed2 = Core.Sync.SyncService.PruneFolder(dir, keep: 10, days: 7);
+            CheckEqual("只有一份超期备份时不会被删空", removed2, 0);
+            Check("超期但那唯一一份还在", File.Exists(oldFile));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+
+        // ---- 合并恢复：远端覆盖同项、本地独有保留、单值设置保留本机 ----
+        var local = DefaultSettings.Create();
+        local.Sync.WebDavPass = "本机网盘密码";
+        local.Sync.BackupPassword = "本机备份密码";
+        var layer1 = local.Layers.First(l => l.Id == 1);
+        layer1.Keys.Clear();
+        layer1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_q", Action = "qbar" });
+        layer1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_w", Action = "qbar" });
+
+        var remote = DefaultSettings.Create();
+        remote.Sync.WebDavPass = "别人的网盘密码";
+        remote.Sync.BackupPassword = "别人的备份密码";
+        var rl1 = remote.Layers.First(l => l.Id == 1);
+        rl1.Keys.Clear();
+        rl1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_q", Action = "translate" });
+        rl1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_e", Action = "qbar" });
+
+        var (merged, added, replaced) =
+            Core.Sync.BackupMerge.Merge(local, remote);
+        var ml1 = merged.Layers.First(l => l.Id == 1);
+        var q = ml1.Keys.FirstOrDefault(k => k.Combo == "caps_q");
+
+        Check("合并后同名组合键被远端覆盖", q?.Action == "translate", q?.Action ?? "缺失");
+        Check("合并后远端独有的键被加进来", ml1.Keys.Any(k => k.Combo == "caps_e"));
+        Check("合并后本地独有的键仍在", ml1.Keys.Any(k => k.Combo == "caps_w"));
+        Check("合并计数：新增 1 项", added == 1, added.ToString());
+        Check("合并计数：覆盖 1 项", replaced == 1, replaced.ToString());
+        CheckEqual("合并不会把别人的网盘密码带进来",
+            merged.Sync.WebDavPass, "本机网盘密码");
+        CheckEqual("合并不会覆盖本机的备份密码",
+            merged.Sync.BackupPassword, "本机备份密码");
+
+        // ---- 导出脱敏：勾了"同步与备份设置"也不许带密码 ----
+        var s = DefaultSettings.Create();
+        s.Sync.WebDavUrl = "https://dav.example.com/dav/";
+        s.Sync.WebDavUser = "me@example.com";
+        s.Sync.WebDavPass = "SuperSecretDavPass";
+        s.Sync.BackupPassword = "SuperSecretBackupPass";
+
+        var (text, _) = Core.Sync.ExportImport.Build(s,
+            Core.Sync.ExportImport.Groups.Select(g => g.Id));
+        Check("导出里保留网盘地址", text.Contains("dav.example.com"));
+        Check("导出里保留网盘用户名", text.Contains("me@example.com"));
+        Check("导出绝不包含网盘密码", !text.Contains("SuperSecretDavPass"));
+        Check("导出绝不包含备份密码", !text.Contains("SuperSecretBackupPass"));
+
+        // 未勾选同步组时也顺手确认一下：没有 Sync 字段
+        var (onlyMacros, _) = Core.Sync.ExportImport.Build(s, new[] { "macros" });
+        Check("只导宏时不带同步设置", !onlyMacros.Contains("WebDavUrl"));
+    }
+
+    /// <summary>
+    /// 备份一律加密：没设备份密码时必须拒绝，而不是偷偷明文落盘。
     /// </summary>
     private static void TestSyncPayload()
     {
         var s = DefaultSettings.Create();
         var svc = new Core.Sync.SyncService(() => s);
 
-        // 没设密码 → 明文
+        // 没设密码 → 必须拒绝
         s.Sync.BackupPassword = "";
-        string plainPayload = svc.BuildBackupPayload(out bool enc1);
-        Check("没设置密码时备份是明文", !enc1);
-        Check("明文备份不会被误认为密文", !Core.Sync.CryptoBox.LooksEncrypted(plainPayload));
+        bool refused = false;
+        string why = "";
+        try { svc.BuildBackupPayload(out _); }
+        catch (InvalidOperationException e) { refused = true; why = e.Message; }
+        Check("没设备份密码时拒绝备份", refused);
+        Check("拒绝时说明了原因", why.Contains("备份密码"), why);
 
         // 设了密码 → 必须加密
         s.Sync.BackupPassword = "我的备份密码";
+        s.Sync.WebDavPass = "本机网盘密码";
         string encPayload = svc.BuildBackupPayload(out bool enc2);
         Check("设置密码后备份被加密", enc2);
         Check("加密备份确实是密文", Core.Sync.CryptoBox.LooksEncrypted(encPayload));
         Check("密文里不含明文密钥", !encPayload.Contains("我的备份密码"));
 
-        // 往返恢复
+        // 往返恢复（覆盖）
         var target = DefaultSettings.Create();
         target.Sync.BackupPassword = "我的备份密码";
+        target.Sync.WebDavPass = "目标机器自己的密码";
         var svc2 = new Core.Sync.SyncService(() => target);
-        svc2.RestoreFromText(encPayload);
+        var outcome = svc2.RestoreFromText(encPayload);
         Check("恢复后层结构完整", target.Layers.Count == 10);
         Check("恢复后触发键完整", target.Triggers.Count >= 1);
+        CheckEqual("恢复方式记录为覆盖", outcome.Summary.Contains("覆盖") ? "覆盖" : "", "覆盖");
 
-        // 恢复时密码不对必须失败
+        /* 备份里带着"另一台机器"的网盘密码时，覆盖恢复也不能把它灌进来：
+         * 那等于把同步目标换成别人的网盘，下次同步就把配置传过去了。 */
+        CheckEqual("覆盖恢复不会带走备份里的网盘密码",
+            target.Sync.WebDavPass, "目标机器自己的密码");
+        CheckEqual("覆盖恢复不会覆盖本机的备份密码",
+            target.Sync.BackupPassword, "我的备份密码");
+
+        // 恢复时密码不对必须失败（而且是可识别的备份密码异常）
         var wrong = DefaultSettings.Create();
         wrong.Sync.BackupPassword = "错的密码";
         var svc3 = new Core.Sync.SyncService(() => wrong);
         bool failed = false;
         try { svc3.RestoreFromText(encPayload); }
-        catch (InvalidOperationException) { failed = true; }
+        catch (Core.Sync.BackupPasswordException) { failed = true; }
         Check("密码不对时恢复失败", failed);
+
+        // 旧密码加密的备份：换密码后仍能用当时的密码解开
+        Check("用当时的密码能认出这份备份",
+            Core.Sync.SyncService.CanDecrypt(encPayload, "我的备份密码"));
+        Check("用错的密码认不出来",
+            !Core.Sync.SyncService.CanDecrypt(encPayload, "错的密码"));
     }
 
     /// <summary>
@@ -1320,8 +1449,17 @@ public static class SelfTest
         Check("备份载荷已加密", enc);
         string path = svc.WriteLocalBackup(payload);
         Check("本地备份文件已写出", File.Exists(path));
-        Check("备份文件扩展名正确", path.EndsWith(".clpbak"), path);
+        Check("备份文件扩展名正确",
+            path.EndsWith(Core.Sync.SyncService.Extension, StringComparison.OrdinalIgnoreCase), path);
         Check("备份目录存在", Directory.Exists(Core.Sync.SyncService.BackupDir));
+        Check("备份放在软件目录下的专属文件夹里",
+            Path.GetFileName(Core.Sync.SyncService.BackupDir)
+                .Contains("KeyboardEnhance", StringComparison.OrdinalIgnoreCase)
+            || Core.Sync.SyncService.BackupDirIsFallback,
+            Core.Sync.SyncService.BackupDir);
+
+        // 别把自检产物留在用户的备份目录里
+        try { File.Delete(path); } catch { }
     }
 
     /// <summary>
@@ -4137,6 +4275,10 @@ public static class SelfTest
         Check("INPUT 结构体大小正确（x64 为 40）",
             Marshal.SizeOf<NativeMethods.INPUT>() == 40,
             Marshal.SizeOf<NativeMethods.INPUT>().ToString());
+        /* 自检必须"干跑"：这些调用会经过 SendInput，
+         * 不拦的话就是往用户当时的前台窗口里打字
+         * （真发生过：屏幕上刷出两千个 a，末尾还有一句 hi）。 */
+        Check("自检模式下注入是干跑", InputSender.DryRun);
         InputSender.Tap(VK.Escape);   // 不会抛异常即可
         Check("注入 Esc 不抛异常", true);
         InputSender.Text("a");

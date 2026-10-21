@@ -83,10 +83,36 @@ public static class ExportImport
             new[] { nameof(AppSettings.Translate) },
             Private: true, DefaultChecked: false),
 
-        new("syncSettings", "同步与备份设置", "WebDAV 地址、用户名、密码、备份密码。泄露后别人能读写你的网盘备份",
+        new("syncSettings", "同步与备份设置", "WebDAV 地址、用户名，以及备份保留策略。密码类字段永远不导出",
             new[] { nameof(AppSettings.Sync) },
             Private: true, DefaultChecked: false),
     };
+
+    /// <summary>
+    /// **永远不导出**的字段（`属性.子属性`）。
+    ///
+    /// 导出是明文、且默认设计成"可以直接发给别人"，
+    /// 那么凭据类字段就不能靠"用户别勾"来保证安全 ——
+    /// 总有人会点「全选」。这里做成硬约束：
+    /// 即便勾了「同步与备份设置」，也只带地址和用户名。
+    /// </summary>
+    public static readonly string[] NeverExport =
+    {
+        "Sync.WebDavPass",
+        "Sync.BackupPassword",
+    };
+
+    /// <summary>把不该出门的字段从导出数据里摘掉。</summary>
+    internal static void Sanitize(JsonObject data)
+    {
+        foreach (string path in NeverExport)
+        {
+            int dot = path.IndexOf('.');
+            if (dot <= 0) continue;
+            string root = path[..dot], child = path[(dot + 1)..];
+            if (data[root] is JsonObject obj) obj.Remove(child);
+        }
+    }
 
     public static ExportGroup? FindGroup(string id) =>
         Groups.FirstOrDefault(g => g.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -130,6 +156,9 @@ public static class ExportImport
             ["version"] = typeof(ExportImport).Assembly.GetName().Version?.ToString(3) ?? "",
             ["data"] = data,
         };
+
+        // 明文文件 + 可能发给别人 = 凭据类字段一律摘掉
+        Sanitize(data);
 
         return (file.ToJsonString(WriteOpts), data.Count);
     }

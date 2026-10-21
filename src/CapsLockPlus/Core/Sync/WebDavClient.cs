@@ -39,7 +39,10 @@ public sealed class WebDavClient
     public const string DefaultSubdir = "CapsLockPlus";
 
     /// <summary>稳定文件名：永远指向最新一份备份，方便下载时不必列目录。</summary>
-    public const string LatestFile = "capslock-backup.json";
+    public const string LatestFile = "keyboardenhance-latest.keyboardenhance";
+
+    /// <summary>老版本的稳定文件名。只用于读，不再写。</summary>
+    public const string LegacyLatestFile = "capslock-backup.json";
 
     /// <summary>已知网盘根地址，用来判断用户是不是只填了半截。</summary>
     private static readonly string[] KnownRoots =
@@ -223,6 +226,24 @@ public sealed class WebDavClient
             string text = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             CoreLog.Info($"WebDAV：已下载 {fileName}（{text.Length} 字符）");
             return text;
+        }
+        catch (Exception e) when (e is not InvalidOperationException)
+        {
+            throw new InvalidOperationException(Describe(e), e);
+        }
+    }
+
+    /// <summary>删掉云端的一个文件（清理旧备份用）。不存在视为成功。</summary>
+    public async Task DeleteAsync(string fileName, CancellationToken ct = default)
+    {
+        try
+        {
+            var uri = TargetOf(fileName);
+            using var resp = await _client.DeleteAsync(uri, ct).ConfigureAwait(false);
+            if (resp.StatusCode == HttpStatusCode.NotFound) return;
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException(DescribeStatus(resp.StatusCode, "删除"));
+            CoreLog.Info($"WebDAV：已删除 {fileName}");
         }
         catch (Exception e) when (e is not InvalidOperationException)
         {
