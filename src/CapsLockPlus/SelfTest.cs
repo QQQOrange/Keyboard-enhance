@@ -128,6 +128,9 @@ public static class SelfTest
         TestProductIdentity();
         TestWebTitleExtract();
         TestNoDuplicateKeycaps();
+        TestKeycapShortTitles();
+        TestWinBindCustomName();
+        TestQbarThemeContrast();
 
         Section("审计修复");
         TestAuditFindings();
@@ -2758,6 +2761,96 @@ public static class SelfTest
         // 小键盘加号只能出现一次
         Check("小键盘 + 只出现一次", ids.Count(x => x == "numAdd") == 1,
             ids.Count(x => x == "numAdd").ToString());
+    }
+
+    /// <summary>
+    /// 键帽短名：长标题在 26px 宽的键帽里显示不全，需要 2~4 字短名。
+    /// </summary>
+    private static void TestKeycapShortTitles()
+    {
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        // 键帽上实际显示的文字永远不超过 5 字（有短名用短名，没有就截断）
+        foreach (var item in cat.Items)
+        {
+            Check($"「{item.Title}」键帽文字够短",
+                item.KeycapTitle.Length is > 0 and <= 5,
+                $"{item.Title} → {item.KeycapTitle}");
+        }
+
+        // 常用长标题要有真正的短名（比截断更可读）
+        foreach (string id in new[] { "deleteWord", "selectHome", "qbar", "deleteToLineBeginning" })
+        {
+            var it = cat.Get(id);
+            Check($"「{id}」有短名", !string.IsNullOrWhiteSpace(it?.ShortTitle),
+                it?.ShortTitle ?? "(无)");
+        }
+
+        // KeycapTitle 逻辑：有短名用短名，没有退回全名
+        var withShort = cat.Get("deleteWord");
+        Check("deleteWord 有短名", withShort != null,
+            string.Join(",", cat.Items.Where(i => i.Category == "编辑").Select(i => i.Id)));
+        CheckEqual("deleteWord 短名", withShort?.ShortTitle, "删词");
+        CheckEqual("deleteWord 全名保留", withShort?.Title, "删除前一个单词");
+    }
+
+    /// <summary>
+    /// 窗口绑定的自定义显示名（exe 名不一定是软件名）。
+    /// </summary>
+    private static void TestWinBindCustomName()
+    {
+        var settings = DefaultSettings.Create();
+        var layer = settings.Layers.First(l => l.Id == 1);
+        layer.Keys.RemoveAll(k => k.Combo == "caps_w");
+        var b = new KeyBinding
+        {
+            Combo = "caps_w", Action = "winBind",
+            Arg = @"C:\Apps\idea64.exe", Note = "IDEA",
+        };
+        layer.Keys.Add(b);
+
+        // 自定义名要能存
+        CheckEqual("自定义名已保存", b.Note, "IDEA");
+
+        // 序列化：有名字要写进 JSON，没名字不写
+        string jsonWith = System.Text.Json.JsonSerializer.Serialize(b);
+        Check("自定义名写进 JSON", jsonWith.Contains("\"Note\""), jsonWith);
+
+        var noName = new KeyBinding { Combo = "caps_e", Action = "winBind", Arg = @"C:\a\b.exe" };
+        string jsonNo = System.Text.Json.JsonSerializer.Serialize(noName);
+        Check("无自定义名不写 JSON", !jsonNo.Contains("\"Note\""), jsonNo);
+    }
+
+    /// <summary>
+    /// Qbar 面板配色要按底色亮度推导，浅色主题下不能"白字白底"。
+    /// </summary>
+    private static void TestQbarThemeContrast()
+    {
+        var t = typeof(CapsLockPlus.UI.Windows.QbarWindow);
+        var m = t.GetMethod("IsLightColor",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Check("QbarWindow 有亮度判定", m != null);
+        if (m == null) return;
+
+        bool IsLight(string hex) =>
+            (bool)m.Invoke(null, new object[]
+                { (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex) })!;
+
+        Check("白色判为浅色", IsLight("#FFFFFF"));
+        Check("浅灰判为浅色", IsLight("#F0F0F0"));
+        Check("深色判为非浅色", !IsLight("#1C1F27"));
+        Check("纯黑判为非浅色", !IsLight("#000000"));
+        Check("中蓝判为非浅色", !IsLight("#2B6CF6"));
     }
 
     private static void TestKeyboardLayoutGeometry()    {

@@ -147,7 +147,10 @@ public partial class KeysView : UserControl
     ///
     /// ⚠ 这些键**不能**同时出现在 <see cref="Layout"/> 里 ——
     /// 那样会被画两次（上一版小键盘就出现了两个加号）。
-    /// (行号, 键名, 跨行数, 起始列, 跨列数)
+    ///
+    /// 尺寸按标准 108 键：+ 是**宽键**（高 2 单位、宽 1 单位），
+    /// 回车是高 2 单位、宽 1 单位。它们比普通键高，视觉上自然有分量。
+    /// (行号, 键名, 跨行数, 起始列, 跨列数, 标签)
     /// </summary>
     private static readonly (int Row, string KeyId, int RowSpan, int Col, int ColSpan, string Label)[] RowMerges =
     {
@@ -492,6 +495,15 @@ public partial class KeysView : UserControl
         {
             var cap = BuildKeycapEntry(label, keyId, filter, ref bound, triggerKey);
             if (cap == null) continue;
+
+            /* 跨行键必须**拉伸填满**两行的高度。
+             * 它的 Height 被 MakeKeycap 固定成 44/52，直接放进 RowSpan 会在
+             * 两行之间留白，看起来"加号只有普通键那么大"、
+             * 而不是标准 108 键那种高键。 */
+            cap.Height = double.NaN;
+            cap.VerticalAlignment = VerticalAlignment.Stretch;
+            cap.Margin = new Thickness(1, 1, 1, 1);
+
             Grid.SetRow(cap, row);
             Grid.SetRowSpan(cap, rowSpan);
             Grid.SetColumn(cap, col);
@@ -540,19 +552,36 @@ public partial class KeysView : UserControl
         if (isBound) bound++;
 
         string actionTitle = "";
+        string actionCategory = "";
         if (isBound && binding != null)
         {
             // 统一走 DescribeActionOf，键帽与"本层已绑定"列表的文字保证一致
             actionTitle = DescribeActionOf(binding);
+            // 分类标识：用户要求"单看按键就知道绑的功能属于哪个分类"
+            actionCategory = _host?.Actions.Get(binding.Action)?.Category ?? "";
+        }
+
+        // 键帽上优先用短名（长标题在 26px 宽的键帽里显示不全）
+        string keycapTitle = actionTitle;
+        if (isBound && binding != null)
+        {
+            var info = _host?.Actions.Get(binding.Action);
+            if (info != null && !string.IsNullOrWhiteSpace(info.ShortTitle)
+                && binding.Action is not ("winBind" or "webPage")
+                && !binding.Action.StartsWith("macro:", StringComparison.OrdinalIgnoreCase))
+            {
+                keycapTitle = info.ShortTitle;
+            }
         }
 
         bool match = filter.Length == 0 ||
                      label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
                      keyId.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                     actionTitle.Contains(filter, StringComparison.OrdinalIgnoreCase);
+                     actionTitle.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                     actionCategory.Contains(filter, StringComparison.OrdinalIgnoreCase);
         if (!match && filter.Length > 0) return null;
 
-        return MakeKeycap(label, keyId, isBound, actionTitle, triggerKey);
+        return MakeKeycap(label, keyId, isBound, keycapTitle, actionCategory, triggerKey);
     }
 
     /// <summary>把层下拉框填上（10 个层，标注各自的触发键）。</summary>
@@ -592,21 +621,21 @@ public partial class KeysView : UserControl
     /// <param name="triggerKey">当前层的触发键名（非 null 时该键会额外高亮 +
     /// 加"触发键"角标，用户一眼看到"我按哪个键进这一层"）。</param>
     private Border MakeKeycap(string label, string keyId, bool isBound,
-        string actionTitle, string? triggerKey)
+        string actionTitle, string actionCategory, string? triggerKey)
     {
         // 触发键在键盘**真实位置**高亮（不再写死在左上角）
         bool isTrigger = triggerKey != null
                          && string.Equals(triggerKey, keyId, StringComparison.OrdinalIgnoreCase);
         bool isSelected = string.Equals(keyId, _selectedKey, StringComparison.OrdinalIgnoreCase);
 
-        /* 三种视觉状态，一眼可分：
+        /* 三种视觉状态，一眼可分但**对比不过分**：
          *
-         *   触发键（本层）  → 深蓝实心 + 白字 + ★     （它是"入口"，最该显眼）
-         *   已绑定功能      → 深蓝实心 + 白字          （用户要的：深蓝色一眼看出有东西）
-         *   未绑定          → 浅色键帽 + 次要色文字    （安静，不抢注意力）
+         *   触发键（本层）  → 深蓝实心 + 白字 + ★
+         *   已绑定功能      → 深蓝实心 + 白字
+         *   未绑定          → 浅蓝底 + 灰蓝字
          *
-         * 之前"已绑定"只是浅蓝底 + 蓝字，对比度低，扫一眼看不出哪些键有功能。
-         */
+         * 未绑定用浅蓝而不是纯白：纯白键帽和深蓝键帽并排时对比太硬，
+         * 满屏键帽看着刺眼。浅蓝能"退到背景里"，深蓝才自然跳出来。 */
         Brush background, borderBrush, textBrush, subTextBrush;
         if (isTrigger || isBound)
         {
@@ -617,16 +646,17 @@ public partial class KeysView : UserControl
         }
         else
         {
-            background = (Brush)FindResource("Brush.Keycap");
-            borderBrush = (Brush)FindResource("Brush.KeycapBorder");
+            background = (Brush)FindResource("Brush.AccentSoft");      // 浅蓝（柔和）
+            borderBrush = (Brush)FindResource("Brush.AccentSoftBorder");
             textBrush = (Brush)FindResource("Brush.TextSecondary");
             subTextBrush = (Brush)FindResource("Brush.TextTertiary");
         }
 
         var border = new Border
         {
-            // 92 列坐标系下一个单位键只有 4 列；高度要放下"键名 + 功能名"两行
-            Height = isBound ? 46 : 44,
+            /* 已绑定的键要高一些：功能名要占主要位置，
+             * 而且要比键名更醒目（用户要求"附上的功能字体要比按键本身大"）。 */
+            Height = isBound ? 52 : 44,
             Margin = new Thickness(1, 1, 1, 1),
             CornerRadius = new CornerRadius(7),
             BorderThickness = new Thickness(1),
@@ -655,49 +685,77 @@ public partial class KeysView : UserControl
             Margin = new Thickness(1, 0, 1, 0),
         };
 
-        /* 第一行永远是**按键名**（F5 / Q / Space…）。
-         *
-         * 这一行不能省：深蓝底色只说明"有绑定"，但用户还得知道
-         * "这是哪个键"，否则一眼扫过去全是功能名，容易搞混。 */
-        stack.Children.Add(new TextBlock
+        if (isBound)
         {
-            Text = isTrigger ? "★" + label : label,
-            FontSize = label.Length switch
-            {
-                <= 1 => 12,
-                2 => 10.5,
-                3 => 9,
-                _ => 8,
-            },
-            FontWeight = FontWeights.SemiBold,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            TextAlignment = TextAlignment.Center,
-            TextWrapping = TextWrapping.NoWrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = textBrush,
-        });
+            /* ===== 已绑定：功能名当主角，键名退成小字 =====
+             *
+             * 用户要求：「原来的功能要缩小，而它附上的功能就要把字体
+             * 显示尽可能的全，字体的大小也要比按键本身功能要大一点，
+             * 占的位置也要比现在的要大」。
+             *
+             * 所以顺序反过来：先功能名（大字、占两行），再键名（小字）。
+             * 键帽加高到 52px 才装得下。 */
 
-        /* 第二行是**功能名**（已绑定时才显示）。
-         *
-         * 键帽实际可用宽度很窄：92 列铺满这张卡片，单位键只有约 26px。
-         * 7px 字号下中文一个字约 7px，所以窄键只能放 3 个字
-         * （"下一行""粘贴""github" 这样），宽键放到 8 个。
-         *
-         * 完整名字在悬停 tooltip 和右侧「本层已绑定」列表里都有，
-         * 键帽上只需要"认得出是哪个功能"就够了。 */
-        if (isBound && !string.IsNullOrWhiteSpace(actionTitle))
-        {
-            bool wide = IsWideKey(keyId);
+            // ① 分类标识（小字，最上面，告诉用户"这是哪一类功能"）
             stack.Children.Add(new TextBlock
             {
-                Text = Shorten(actionTitle, wide ? 8 : 3),
-                FontSize = wide ? 8 : 6.5,
+                Text = Shorten(actionCategory, 4),
+                FontSize = 6.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.NoWrap,
-                Margin = new Thickness(0, 0, 0, 0),
                 Foreground = subTextBrush,
-                Opacity = 0.85,
+                Opacity = 0.62,
+                Margin = new Thickness(0, 0, 0, 1),
+            });
+
+            // ② 功能名：允许折两行，尽量显示全名
+            stack.Children.Add(new TextBlock
+            {
+                Text = actionTitle,
+                FontSize = 8.5,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                MaxHeight = 26,                    // 最多两行
+                LineHeight = 9.5,
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                Foreground = textBrush,
+            });
+
+            // ③ 键名：缩小放在最下面
+            stack.Children.Add(new TextBlock
+            {
+                Text = isTrigger ? "★" + label : label,
+                FontSize = 6.5,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.NoWrap,
+                Foreground = subTextBrush,
+                Opacity = 0.7,
+                Margin = new Thickness(0, 1, 0, 0),
+            });
+        }
+        else
+        {
+            /* ===== 未绑定：只显示键名，居中大字 ===== */
+            stack.Children.Add(new TextBlock
+            {
+                Text = isTrigger ? "★" + label : label,
+                FontSize = label.Length switch
+                {
+                    <= 1 => 12,
+                    2 => 10.5,
+                    3 => 9,
+                    _ => 8,
+                },
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = textBrush,
             });
         }
         border.Child = stack;
@@ -948,6 +1006,13 @@ public partial class KeysView : UserControl
         if (id == "winBind")
         {
             if (string.IsNullOrWhiteSpace(binding.Arg)) return "切换窗口（未选程序）";
+
+            /* 用户自定义名优先。
+             *
+             * exe 名经常不是软件名（idea64.exe 是 IDEA、Code.exe 是 VS Code），
+             * 只显示文件名会让人认不出绑的是哪个软件。 */
+            if (!string.IsNullOrWhiteSpace(binding.Note)) return binding.Note!.Trim();
+
             try { return Path.GetFileNameWithoutExtension(binding.Arg); }
             catch { return "切换窗口"; }
         }
@@ -1150,9 +1215,18 @@ public partial class KeysView : UserControl
         string exe = CurrentWinBindExe();
         bool has = !string.IsNullOrWhiteSpace(exe) && File.Exists(exe);
 
+        // 自定义名称（备注）回填到输入框，不覆盖用户已写的内容
+        var cur = FindInCurrentLayer(CurrentCombo());
+        _suppressEvents = true;
+        WinBindNoteBox.Text = cur?.Action == "winBind" ? (cur.Note ?? "") : "";
+        _suppressEvents = false;
+
         if (has)
         {
-            WinBindName.Text = Path.GetFileNameWithoutExtension(exe);
+            // 显示名优先用自定义名，否则用 exe 文件名
+            WinBindName.Text = string.IsNullOrWhiteSpace(cur?.Note)
+                ? Path.GetFileNameWithoutExtension(exe)
+                : cur!.Note!.Trim();
             WinBindPath.Text = exe;
             WinBindClearButton.Visibility = Visibility.Visible;
             WinBindHint.Text = "按这个键：程序没开就自动启动；已开着就切过去；"
@@ -1160,7 +1234,6 @@ public partial class KeysView : UserControl
         }
         else if (!string.IsNullOrWhiteSpace(exe))
         {
-            // 路径记着但文件没了（程序被卸载/移动）
             WinBindName.Text = Path.GetFileNameWithoutExtension(exe);
             WinBindPath.Text = exe + "（文件不存在）";
             WinBindClearButton.Visibility = Visibility.Visible;
@@ -1178,6 +1251,22 @@ public partial class KeysView : UserControl
         WinBindIcon.Source = has ? Core.Icons.IconCache.FromFile(exe) : null;
     }
 
+    /// <summary>窗口绑定的自定义显示名（exe 名不一定是软件名）。</summary>
+    private void OnWinBindNoteChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b == null || b.Action != "winBind") return;
+
+        string note = WinBindNoteBox.Text.Trim();
+        b.Note = string.IsNullOrWhiteSpace(note) ? null : note;
+        _host.SaveSettings();
+        BuildKeyboard();
+
+        if (!string.IsNullOrWhiteSpace(note))
+            ShowBindStatus($"显示名称已保存：「{note}」—— 键帽上会显示这个名字");
+    }
+
     /// <summary>把选好的程序写进当前按键的绑定。</summary>
     private void ApplyWinBindExe(string exePath)
     {
@@ -1193,15 +1282,18 @@ public partial class KeysView : UserControl
         binding.Action = "winBind";
         binding.Arg = exePath;
 
-        // 换程序时旧备注（如果有）就不适用了，清掉免得显示错的
-        binding.Note = null;
+        /* 换程序时**保留**用户写的显示名 —— 他可能只是换了个安装路径。
+         * 但如果新程序的 exe 名和旧备注配对不上（比如从 notepad 换成 chrome），
+         * 保留旧名字反而误导，所以只在完全没备注时不动。 */
 
         _host.SaveSettings();
 
         RefreshWinBindPanel();
         BuildKeyboard();
 
-        string name = Path.GetFileNameWithoutExtension(exePath);
+        string name = string.IsNullOrWhiteSpace(binding.Note)
+            ? Path.GetFileNameWithoutExtension(exePath)
+            : binding.Note!.Trim();
         string keyLabel = KeyName.Display(_selectedKey);
         ShowBindStatus($"{keyLabel} 已绑定「{name}」—— 按一次切过去，再按一次最小化");
         _host.Notify($"{keyLabel} → {name}");

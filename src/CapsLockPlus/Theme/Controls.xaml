@@ -494,7 +494,9 @@
                 Margin="{TemplateBinding Margin}" />
     </ControlTemplate>
 
-    <!-- Qbar 深色面板里的结果行 -->
+    <!-- Qbar 结果行。
+         高亮色跟随主题：深色面板用白色半透明，浅色面板用黑色半透明
+         （写死白色会在浅色主题下变成"白底白高亮"，看不见）。 -->
     <Style x:Key="QbarRow" TargetType="ListBoxItem">
         <Setter Property="Padding" Value="0" />
         <Setter Property="Margin" Value="0,1" />
@@ -507,10 +509,12 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource Brush.QbarRowHover}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#2E5B93FF" />
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource Brush.QbarRowSelected}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

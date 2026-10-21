@@ -430,7 +430,7 @@ public sealed class QbarOptions
 {
     public string BorderColor { get; set; } = "#2B6CF6";
     public double BorderRadius { get; set; } = 14;
-    public string PanelColor { get; set; } = "#1C1F27";
+    public string PanelColor { get; set; } = "auto";   // auto = 跟随主题
     public string PanelOpacity { get; set; } = "0.96";
     public string TextColor { get; set; } = "#F2F5FA";
     public string TextFont { get; set; } = "Microsoft YaHei UI";

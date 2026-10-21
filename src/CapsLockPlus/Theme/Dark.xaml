@@ -44,6 +44,8 @@
     <SolidColorBrush x:Key="Brush.Danger" Color="{DynamicResource Color.Danger}" />
     <SolidColorBrush x:Key="Brush.Success" Color="{DynamicResource Color.Success}" />
     <SolidColorBrush x:Key="Brush.Warning" Color="{DynamicResource Color.Warning}" />
+    <SolidColorBrush x:Key="Brush.QbarRowHover" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="Brush.QbarRowSelected" Color="#2E5B93FF" />
     <SolidColorBrush x:Key="Brush.Keycap" Color="{DynamicResource Color.Keycap}" />
     <SolidColorBrush x:Key="Brush.KeycapBorder" Color="{DynamicResource Color.KeycapBorder}" />
     <SolidColorBrush x:Key="Brush.KeycapShadow" Color="{DynamicResource Color.KeycapShadow}" />

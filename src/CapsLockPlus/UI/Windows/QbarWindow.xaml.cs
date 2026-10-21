@@ -34,14 +34,178 @@ public partial class QbarWindow : Window
     private SolidColorBrush? _borderBrush;
     private string _styleStamp = "";
 
+    /// <summary>
+    /// 判断面板底色是深是浅，并据此推出一整套前景色。
+    ///
+    /// 背景：XAML 里原先所有文字/分隔线/图标底色都是**硬编码的深色系**
+    /// （#FFFFFF / #9FB4D8 / #1FFFFFFF…），一旦用户把面板底色改成浅色，
+    /// 就变成"白字白底"，什么都看不见 —— 用户反馈的"只有深色文本框"就是这个。
+    ///
+    /// 现在改为按底色的**相对亮度**推导：
+    ///   · 深底 → 白字 + 白色半透明分隔线（与原来一致）
+    ///   · 浅底 → 深灰字 + 黑色半透明分隔线
+    /// 这样无论用户把面板设成什么颜色，文字都可读。
+    /// </summary>
+    private static bool IsLightColor(Color c)
+    {
+        // sRGB 相对亮度（ITU-R BT.709 系数）
+        double lum = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
+        return lum > 0.55;
+    }
+
+    private static Color Mix(Color a, Color b, double t) => Color.FromRgb(
+        (byte)(a.R + (b.R - a.R) * t),
+        (byte)(a.G + (b.G - a.G) * t),
+        (byte)(a.B + (b.B - a.B) * t));
+
+    /// <summary>把整套配色应用到面板里的每个元素。</summary>
+    private void ApplyForegroundPalette(Color panelColor)
+    {
+        bool light = IsLightColor(panelColor);
+
+        // 前景色阶：主文字 → 次级 → 弱化
+        Color primary = light ? Color.FromRgb(0x16, 0x1A, 0x23) : Colors.White;
+        Color secondary = light ? Color.FromRgb(0x5B, 0x64, 0x78) : Color.FromRgb(0xC9, 0xD6, 0xEC);
+        Color muted = light ? Color.FromRgb(0x8A, 0x93, 0xA6) : Color.FromRgb(0x9F, 0xB0, 0xCC);
+        Color faint = light ? Color.FromRgb(0xA8, 0xB0, 0xBF) : Color.FromRgb(0x7F, 0x8D, 0xA8);
+
+        // 半透明叠色（图标底、标签底、分隔线）：浅底用黑，深底用白
+        Color veil = light ? Colors.Black : Colors.White;
+
+        var bPrimary = Frozen(primary);
+        var bSecondary = Frozen(secondary);
+        var bMuted = Frozen(muted);
+        var bFaint = Frozen(faint);
+        var bVeil06 = Frozen(Color.FromArgb(0x0F, veil.R, veil.G, veil.B));
+        var bVeil10 = Frozen(Color.FromArgb(0x1A, veil.R, veil.G, veil.B));
+        var bVeil13 = Frozen(Color.FromArgb(0x22, veil.R, veil.G, veil.B));
+        var bVeil20 = Frozen(Color.FromArgb(0x33, veil.R, veil.G, veil.B));
+
+        ModeIcon.Foreground = bSecondary;
+        Input.Foreground = bPrimary;
+        Input.CaretBrush = bPrimary;
+
+        ChipLabel.Foreground = bSecondary;
+        ChipClose.Foreground = bMuted;
+        ChipBox.Background = bVeil13;
+        ChipBox.BorderBrush = bVeil20;
+
+        ChipInitialBox.Background = bVeil13;
+        ChipInitial.Foreground = bPrimary;
+        HintText.Foreground = bMuted;
+        SepLine.Background = bVeil10;
+
+        // 「当前分类」角标——它的底色是强调色，文字始终用白
+        if (ModeIcon.Parent is Border modeBorder) modeBorder.Background = bVeil13;
+
+        /* 结果列表项在 DataTemplate 里，逐个取出来改色。
+         * 用 ItemContainerGenerator 拿容器，ContainerFromItem 在虚拟化下
+         * 可能为空，所以这里遍历可视树更可靠。 */
+        foreach (var tb in FindAll<TextBlock>(this))
+        {
+            string? name = tb.Name;
+            // 模板内的元素没有 x:Name，按字号/绑定特征分类
+            if (tb.FontSize >= 13.5) tb.Foreground = bPrimary;
+            else if (tb.FontSize >= 11) tb.Foreground = bSecondary;
+            else tb.Foreground = bFaint;
+            _ = name;
+        }
+
+        // 再按具体名字覆盖一次（上面那轮会把模板外的也刷成近似色）
+        ModeIcon.Foreground = bSecondary;
+        Input.Foreground = bPrimary;
+        ChipLabel.Foreground = bSecondary;
+        ChipClose.Foreground = bMuted;
+        HintText.Foreground = bMuted;
+        ChipInitial.Foreground = bPrimary;
+
+        foreach (var bd in FindAll<Border>(this))
+        {
+            // 图标底、徽标底这类小圆角块
+            if (bd.CornerRadius.TopLeft is > 4 and < 10 && bd.Width is > 0 and < 30)
+                bd.Background = bVeil10;
+        }
+
+        // 列表里的图标瓷砖（模板内，宽高都是 30）
+        foreach (var bd in FindAll<Border>(this))
+        {
+            if (Math.Abs(bd.Width - 30) < 1 && Math.Abs(bd.Height - 30) < 1)
+                bd.Background = bVeil06;
+        }
+    }
+
+    private static SolidColorBrush Frozen(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+
+    /// <summary>解析颜色字符串；非法值退回深色主题的卡片底色。</summary>
+    private static Color ParseColor(string s)
+    {
+        try { return (Color)ColorConverter.ConvertFromString(s); }
+        catch { return (Color)ColorConverter.ConvertFromString("#1C1F27"); }
+    }
+
+    /// <summary>
+    /// 当前主题面板应使用的底色。
+    ///
+    /// 从应用资源里取 SurfaceAlt（卡片底），取不到就按"深色主题"兜底。
+    /// 这样 Qbar 与主窗口的整体观感一致，而不是永远一块深色板。
+    /// </summary>
+    private Color ThemePanelColor()
+    {
+        try
+        {
+            if (Application.Current?.TryFindResource("Brush.SurfaceAlt") is SolidColorBrush br)
+                return br.Color;
+        }
+        catch { }
+        return (Color)ColorConverter.ConvertFromString("#1C1F27");
+    }
+
+    /// <summary>主题标识，用于让样式缓存能在切换主题后失效。</summary>
+    private static string ThemeStamp()
+    {
+        try
+        {
+            return Application.Current?.TryFindResource("Brush.SurfaceAlt") is SolidColorBrush br
+                ? br.Color.ToString()
+                : "?";
+        }
+        catch { return "?"; }
+    }
+
+    /// <summary>深度遍历可视树，收集指定类型的元素。</summary>
+    private static IEnumerable<T> FindAll<T>(DependencyObject root) where T : DependencyObject
+    {
+        int n = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T hit) yield return hit;
+            foreach (var deeper in FindAll<T>(child)) yield return deeper;
+        }
+    }
+
     private void ApplyStyle()
     {
         var q = _host.Settings.Qbar;
         try
         {
+            /* 面板底色跟随主题。
+             *
+             * 用户设置的 PanelColor 如果是"跟随主题"的保留值（空 / "auto"），
+             * 就按当前主题的 SurfaceAlt 取色；否则用他指定的颜色。
+             * 这样浅色主题下不会再出现"深色面板 + 白字看不见"。 */
+            bool followTheme = string.IsNullOrWhiteSpace(q.PanelColor)
+                               || q.PanelColor.Equals("auto", StringComparison.OrdinalIgnoreCase);
+            Color effectivePanel = followTheme ? ThemePanelColor() : ParseColor(q.PanelColor);
+
             // 只有设置真的变了才重建画笔：Qbar 是高频开关的面板，
             // 每次 Open 都 new 一次 SolidColorBrush 属于无谓开销。
-            string stamp = $"{q.AccentColor}|{q.PanelColor}|{q.PanelOpacity}|{q.TextFontSize}|{q.LineHeight}|{q.ListCount}";
+            string stamp = $"{q.AccentColor}|{effectivePanel}|{q.PanelOpacity}|{q.TextFontSize}|{q.LineHeight}|{q.ListCount}|{ThemeStamp()}";
             if (stamp == _styleStamp) return;
             _styleStamp = stamp;
 
@@ -50,11 +214,14 @@ public partial class QbarWindow : Window
             _borderBrush.Freeze();
             Panel.BorderBrush = _borderBrush;
 
-            var panelColor = (Color)ColorConverter.ConvertFromString(q.PanelColor);
+            var panelColor = effectivePanel;
             byte alpha = (byte)(double.TryParse(q.PanelOpacity, out double op) ? Math.Clamp(op, 0.3, 1) * 255 : 245);
             _panelBrush = new SolidColorBrush(Color.FromArgb(alpha, panelColor.R, panelColor.G, panelColor.B));
             _panelBrush.Freeze();
             Panel.Background = _panelBrush;
+
+            // 整套前景色按底色亮度推导，保证任何底色下文字都可读
+            ApplyForegroundPalette(panelColor);
 
             Input.FontSize = q.TextFontSize;
             // 字号变大时必须同步抬高输入框，否则上下缘会被裁掉。
@@ -324,6 +491,42 @@ public partial class QbarWindow : Window
         if (_items.Count > 0) Results.SelectedIndex = 0;
         UpdateMode();
         UpdateHint();
+
+        /* 结果行的文字颜色必须在**列表项生成之后**才能刷。
+         *
+         * ApplyStyle 里遍历可视树时，DataTemplate 还没实例化，
+         * 结果就是行内标题保持 XAML 里写死的浅色 —— 浅色面板上几乎看不见。
+         * 这里等布局完成再补一遍。 */
+        Dispatcher.BeginInvoke(new Action(() => ApplyRowPalette()),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>给结果行里的文字重新上色（模板生成后调用）。</summary>
+    private void ApplyRowPalette()
+    {
+        var q = _host.Settings.Qbar;
+        bool followTheme = string.IsNullOrWhiteSpace(q.PanelColor)
+                           || q.PanelColor.Equals("auto", StringComparison.OrdinalIgnoreCase);
+        bool light = IsLightColor(followTheme ? ThemePanelColor() : ParseColor(q.PanelColor));
+
+        Color primary = light ? Color.FromRgb(0x16, 0x1A, 0x23) : Colors.White;
+        Color secondary = light ? Color.FromRgb(0x5B, 0x64, 0x78) : Color.FromRgb(0xC9, 0xD6, 0xEC);
+        Color faint = light ? Color.FromRgb(0x8A, 0x93, 0xA6) : Color.FromRgb(0x7F, 0x8D, 0xA8);
+
+        var bPrimary = Frozen(primary);
+        var bSecondary = Frozen(secondary);
+        var bFaint = Frozen(faint);
+
+        // 只处理列表区域，别动输入框和提示行（它们已由 ApplyStyle 刷过）
+        foreach (var tb in FindAll<TextBlock>(Results))
+        {
+            tb.Foreground = tb.FontSize switch
+            {
+                >= 13.5 => bPrimary,      // 行标题
+                >= 11 => bSecondary,      // 副标题
+                _ => bFaint,              // 徽标、角标
+            };
+        }
     }
 
     private void UpdateMode()
