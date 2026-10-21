@@ -50,8 +50,6 @@ public sealed class WebDavClient
 
     private readonly WebDavOptions _opt;
 
-    public WebDavClient(WebDavOptions opt) => _opt = opt;
-
     /// <summary>
     /// 把用户填的地址整理成「可存进配置」的形态 —— 不含软件自己的子目录。
     ///
@@ -116,7 +114,33 @@ public sealed class WebDavClient
         return new Uri(baseUrl + Uri.EscapeDataString(fileName));
     }
 
-    private HttpClient MakeClient(int? timeoutSeconds = null)
+    /// <summary>共享的 HttpClient。整个客户端生命周期只建一次。</summary>
+    private readonly HttpClient _client;
+
+    /// <summary>按需建立的短超时客户端（退出同步用，避免拖慢关机）。</summary>
+    private HttpClient? _quickClient;
+
+    /// <summary>同步所有操作共用的锁（懒建 quick 客户端时用）。</summary>
+    private readonly object _clientGate = new();
+
+    public WebDavClient(WebDavOptions opt)
+    {
+        _opt = opt;
+        _client = MakeClient(null);
+    }
+
+    /// <summary>
+    /// 建一个配置好认证与 UA 的 HttpClient。
+    ///
+    /// ⚠ 绝不能每个请求 new 一个：
+    ///   * <c>HttpClient.Dispose</c> 只释放托管对象，底层连接进入 TIME_WAIT
+    ///     状态最长 4 分钟 —— 反复"new + Dispose"会耗尽临时端口
+    ///     （SocketException: Only one usage of each socket address），
+    ///     这是 .NET 里最著名的反模式之一；
+    ///   * 这里改成**整个客户端生命周期共享一个实例**
+    ///     （连接复用本来也是 HTTP/1.1 keep-alive 的设计意图）。
+    /// </summary>
+    private HttpClient MakeClient(int? timeoutSeconds)
     {
         var handler = new HttpClientHandler
         {
@@ -136,17 +160,27 @@ public sealed class WebDavClient
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Basic", token);
         }
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("CapsLockPlus/1.5");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("CapsLockPlus/1.6");
         return client;
+    }
+
+    /// <summary>取用于本次请求的客户端（quick=true 时给短超时的那份）。</summary>
+    private HttpClient Client(bool quick = false)
+    {
+        if (!quick) return _client;
+        lock (_clientGate)
+        {
+            _quickClient ??= MakeClient(Math.Min(8, _opt.TimeoutSeconds));
+            return _quickClient;
+        }
     }
 
     /// <summary>连通性探测：能列目录就算通。</summary>
     public async Task<string> ProbeAsync(CancellationToken ct = default)
     {
-        using var client = MakeClient();
         try
         {
-            var files = await ListAsync(client, ct).ConfigureAwait(false);
+            var files = await ListAsync(ct).ConfigureAwait(false);
             return $"连接成功，云端有 {files.Count} 份备份";
         }
         catch (Exception e)
@@ -159,13 +193,12 @@ public sealed class WebDavClient
     public async Task UploadAsync(string fileName, string content,
         CancellationToken ct = default)
     {
-        using var client = MakeClient();
         try
         {
-            await EnsureDirectoryAsync(client, ct).ConfigureAwait(false);
+            await EnsureDirectoryAsync(ct).ConfigureAwait(false);
             var uri = TargetOf(fileName);
             using var body = new StringContent(content, Encoding.UTF8, "application/json");
-            using var resp = await client.PutAsync(uri, body, ct).ConfigureAwait(false);
+            using var resp = await _client.PutAsync(uri, body, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException(DescribeStatus(resp.StatusCode, "上传"));
             CoreLog.Info($"WebDAV：已上传 {fileName}（{content.Length} 字节）");
@@ -180,11 +213,10 @@ public sealed class WebDavClient
     public async Task<string?> DownloadAsync(string fileName,
         CancellationToken ct = default)
     {
-        using var client = MakeClient();
         try
         {
             var uri = TargetOf(fileName);
-            using var resp = await client.GetAsync(uri, ct).ConfigureAwait(false);
+            using var resp = await _client.GetAsync(uri, ct).ConfigureAwait(false);
             if (resp.StatusCode == HttpStatusCode.NotFound) return null;
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException(DescribeStatus(resp.StatusCode, "下载"));
@@ -202,20 +234,19 @@ public sealed class WebDavClient
     public async Task<DateTimeOffset?> GetModifiedAsync(string fileName,
         CancellationToken ct = default)
     {
-        using var client = MakeClient();
         try
         {
             // 先试 HEAD（最省流量）；有些网盘不支持 HEAD，回落到 PROPFIND
             var uri = TargetOf(fileName);
             using (var head = new HttpRequestMessage(HttpMethod.Head, uri))
-            using (var resp = await client.SendAsync(head, ct).ConfigureAwait(false))
+            using (var resp = await _client.SendAsync(head, ct).ConfigureAwait(false))
             {
                 if (resp.StatusCode == HttpStatusCode.NotFound) return null;
                 if (resp.IsSuccessStatusCode && resp.Content.Headers.LastModified != null)
                     return resp.Content.Headers.LastModified;
             }
 
-            var files = await ListAsync(client, ct).ConfigureAwait(false);
+            var files = await ListAsync(ct).ConfigureAwait(false);
             var hit = files.FirstOrDefault(f =>
                 f.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
             return hit?.Modified;
@@ -228,8 +259,12 @@ public sealed class WebDavClient
     }
 
     /// <summary>列出目录里的备份文件（按时间倒序）。</summary>
-    public async Task<List<RemoteFile>> ListAsync(HttpClient client,
-        CancellationToken ct = default)
+    public Task<List<RemoteFile>> ListAsync(CancellationToken ct = default) =>
+        ListAsync(_client, ct);
+
+    /// <summary>列出目录的实现（给定客户端）。</summary>
+    private async Task<List<RemoteFile>> ListAsync(HttpClient client,
+        CancellationToken ct)
     {
         string baseUrl = NormalizeBase(_opt.Url);
         var req = new HttpRequestMessage(new HttpMethod("PROPFIND"), new Uri(baseUrl));
@@ -340,13 +375,13 @@ public sealed class WebDavClient
     }
 
     /// <summary>确保子目录存在（不存在就 MKCOL；已存在会返回 405，忽略）。</summary>
-    private async Task EnsureDirectoryAsync(HttpClient client, CancellationToken ct)
+    private async Task EnsureDirectoryAsync(CancellationToken ct)
     {
         string baseUrl = NormalizeBase(_opt.Url);
         try
         {
             var req = new HttpRequestMessage(new HttpMethod("MKCOL"), new Uri(baseUrl));
-            using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await _client.SendAsync(req, ct).ConfigureAwait(false);
             // 201 = 建好了；405 = 已存在；301/409 = 父目录问题，交给 PUT 去报错
             if (resp.StatusCode is HttpStatusCode.Created
                 or HttpStatusCode.MethodNotAllowed

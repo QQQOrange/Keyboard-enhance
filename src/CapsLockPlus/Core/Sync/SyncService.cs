@@ -198,8 +198,12 @@ public sealed class SyncService
 
             if (text == null)
             {
-                var files = await client.ListAsync(
-                    new HttpClient(), ct).ConfigureAwait(false);
+                /* 兜底：列目录找最新的一份。
+                 *
+                 * 早先这里传了一个 `new HttpClient()` —— 没带认证头（坚果云
+                 * 直接 401）、没有超时、也从不 Dispose。等于这条兜底路径
+                 * 从来没真正工作过。现在 ListAsync() 自己用共享客户端。 */
+                var files = await client.ListAsync(ct).ConfigureAwait(false);
                 var newest = files.FirstOrDefault();
                 if (newest == null) return SyncResult.Fail("云端还没有任何备份");
                 text = await client.DownloadAsync(newest.Name, ct).ConfigureAwait(false);
@@ -311,14 +315,20 @@ public sealed class SyncService
 
         try
         {
-            var task = UploadAsync();
-            // 同步等，但有硬上限：关软件不能卡住
-            if (!task.Wait(TimeSpan.FromSeconds(8)))
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var task = UploadAsync(cts.Token);
+            /* ① 用 CancellationToken 控制硬上限：到点后 HTTP 请求真的会中断，
+             *    而不是像 task.Wait(timeout) 那样只放弃等待、请求还在后台跑
+             *    （孤儿任务会在进程退出时抛未观察异常）。
+             * ② ContinueWith 观察异常，保证即便仍出现晚到的失败也不会是"未观察"的。 */
+            _ = task.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            if (!task.Wait(TimeSpan.FromSeconds(9)))
             {
+                cts.Cancel();
                 CoreLog.Warn("退出同步超时（8 秒），放弃这次上传");
                 return SyncResult.Fail("退出同步超时，本次未上传");
             }
-            return task.Result;
+            return task.IsCompletedSuccessfully ? task.Result : SyncResult.Fail("退出同步失败");
         }
         catch (Exception e)
         {

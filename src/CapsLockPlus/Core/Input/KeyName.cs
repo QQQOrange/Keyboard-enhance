@@ -196,7 +196,21 @@ public static class KeyName
     public static int? VkOf(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
-        return ToVk.TryGetValue(name.Trim(), out var vk) ? vk : null;
+        name = name.Trim();
+        if (ToVk.TryGetValue(name, out var vk)) return vk;
+
+        /* 兜底：识别 `vk0x??` 形式。
+         *
+         * 宏录制时未知键名会写成 "vk0x58" 这种形式；播放端若解析不了，
+         * 该步骤会被**静默跳过** —— 宏悄悄缺步，用户只觉得"回放不对劲"
+         * 却查不出原因。这里让回解析成立，录制什么就播什么。 */
+        if (name.Length == 6 && name.StartsWith("vk0x", StringComparison.OrdinalIgnoreCase)
+            && byte.TryParse(name.AsSpan(4), System.Globalization.NumberStyles.HexNumber,
+                null, out byte raw))
+        {
+            return raw;
+        }
+        return null;
     }
 
     /// <summary>用于界面显示的好看名字。</summary>

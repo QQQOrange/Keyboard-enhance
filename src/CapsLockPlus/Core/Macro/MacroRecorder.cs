@@ -70,10 +70,10 @@ public sealed class MacroRecorder
     }
 
     /// <summary>
-    /// 停止录制并生成宏。
+    /// 停止录制并生成宏。生成后未知键名的步骤用 <c>vk0x??</c> 形式保存，
+    /// <see cref="KeyName.VkOf"/> 支持回解析，播放时不会丢步。
     /// </summary>
     /// <param name="name">宏名称</param>
-    /// <param name="minDelayMs">小于这个间隔的延迟直接丢掉（过滤人手抖动）</param>
     public Core.Settings.Macro Stop(string name)
     {
         lock (_gate)

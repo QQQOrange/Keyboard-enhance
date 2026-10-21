@@ -28,6 +28,17 @@ public static class InputSender
         if (up) flags |= KEYEVENTF_KEYUP;
         if (unicode) flags |= KEYEVENTF_UNICODE;
         else if (scan != 0) flags |= KEYEVENTF_SCANCODE;
+
+        /* 扩展键必须带 KEYEVENTF_EXTENDEDKEY。
+         *
+         * 不带的话，系统按**非扩展扫描码**投递 —— 方向键、Home/End、
+         * Insert/Delete、小键盘这些键会被"按扫描码识别按键"的程序
+         * （游戏 / DirectInput / 部分终端 / RDP 会话）当成小键盘变体，
+         * 行为错乱。普通窗口不受影响，所以平时看不出来，进游戏就现形。
+         *
+         * NativeMethods 里这个常量早就定义了却全工程无人用。 */
+        if (IsExtendedKey(vk)) flags |= KEYEVENTF_EXTENDEDKEY;
+
         return new INPUT
         {
             type = INPUT_KEYBOARD,
@@ -44,6 +55,27 @@ public static class InputSender
             },
         };
     }
+
+    /// <summary>
+    /// 该虚拟键是否属于"扩展键"（需要 KEYEVENTF_EXTENDEDKEY 的那批）。
+    ///
+    /// 判定规则：VK &gt;= 0x21 且**不在**主键盘区的那些导航 / 编辑键，
+    /// 加上小键盘（NumLock 关闭时它们是方向/编辑语义）、右边的修饰键、
+    /// Break / PrintScreen。
+    /// </summary>
+    private static bool IsExtendedKey(int vk) => vk switch
+    {
+        0x21 or 0x22 or 0x23 or 0x24 => true,   // PgUp/PgDn/End/Home
+        0x25 or 0x26 or 0x27 or 0x28 => true,   // ←↑→↓
+        0x2D or 0x2E => true,                   // Insert/Delete
+        0x5B or 0x5C => true,                   // LWin/RWin
+        0x6F => true,                           // Numpad /（数字Enter/小键盘运算符在部分布局也是）
+        0x90 or 0x91 => true,                   // NumLock/ScrollLock
+        0xA0 or 0xA1 or 0xA3 or 0xA5 => true,   // RShift/LControl(极少数布局)/RControl/RAlt
+        0x13 => true,                           // Pause
+        0x2C => true,                           // PrintScreen
+        _ => false,
+    };
 
     /// <summary>按下或抬起一个虚拟键。</summary>
     public static void KeyDown(int vk) => Send(KeyInput(vk, false));

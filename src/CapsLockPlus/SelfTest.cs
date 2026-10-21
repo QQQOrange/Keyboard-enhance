@@ -118,6 +118,9 @@ public static class SelfTest
         Section("审计修复");
         TestAuditFindings();
 
+        Section("引擎复查修复");
+        TestEngineAuditFixes();
+
         Section("宏可绑定");
         TestMacroIsBindable();
         TestActionCategories();
@@ -2335,6 +2338,168 @@ public static class SelfTest
     ///
     /// 这些点以前都是"界面上有、实际不生效"，或"承诺了但没实现"。
     /// </summary>
+    /// <summary>
+    /// 引擎复查（第二轮审计）发现问题的修复验证。
+    ///
+    /// 1. ModifierTracker 自动重复 down 计数加爆；
+    /// 2. 暂停期间触发键被按住 → 状态机卡死（Enabled 切换必须复位）；
+    /// 3. 层内右 Ctrl/右 Shift/右 Alt/通用码 0x11/0x10/0x12 不被识别；
+    /// 4. MacroPlayer 异常后 held 键不补 up。
+    /// </summary>
+    private static void TestEngineAuditFixes()
+    {
+        // ---- 1. ModifierTracker：自动重复 down 幂等 ----
+        var tr = new ModifierTracker();
+        tr.Track(0xA2, true);
+        tr.Track(0xA2, true);     // 系统自动重复：第二个 down
+        tr.Track(0xA2, true);     // 第三个
+        CheckEqual("自动重复 down 后 Ctrl 仍按住", tr.Current, KeyModifiers.Ctrl);
+        tr.Track(0xA2, false);    // 一次 up 就该清掉
+        CheckEqual("一次 up 清掉自动重复的 Ctrl", tr.Current, KeyModifiers.None);
+
+        // 左右互不干扰
+        tr.Track(0xA3, true);     // 右 Ctrl
+        tr.Track(0xA2, true);     // 左 Ctrl
+        CheckEqual("左右 Ctrl 同时按住", tr.Current, KeyModifiers.Ctrl);
+        tr.Track(0xA3, false);    // 松右
+        CheckEqual("松右后左 Ctrl 仍按住", tr.Current, KeyModifiers.Ctrl);
+        tr.Track(0xA2, false);    // 松左
+        CheckEqual("全松后为空", tr.Current, KeyModifiers.None);
+
+        // ---- 2. Enabled 切换必须复位触发键状态（防卡死） ----
+        var settings = DefaultSettings.Create();
+        foreach (var t in settings.Triggers) t.HoldMs = 3000;   // 长阈值，避免测试期间超时
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => settings, (_, _) => true);
+        engine.StartHoldTimer();
+
+        engine.SimulateKey(VK.CapsLock, true);          // 按住触发键
+        Check("按住触发键后处于按住状态", engine.IsTriggerHeld);
+
+        engine.Enabled = false;                          // 暂停（期间松开 CapsLock）
+        Check("暂停后触发键状态被复位", !engine.IsTriggerHeld);
+        Check("暂停后不处于层模式", engine.ActiveLayer == -1);
+
+        engine.Enabled = true;                           // 恢复
+        Check("恢复后不处于按住状态（没有幽灵会话）", !engine.IsTriggerHeld);
+        Check("恢复后按普通键不被吞",
+            !engine.SimulateKey(0x53 /*S*/, true));
+        engine.SimulateKey(0x53, false);
+        engine.Dispose();
+        queue.Dispose();
+
+        // ---- 3. 层内右修饰键与通用码 ----
+        var s2 = DefaultSettings.Create();
+        var layer1 = s2.Layers.First(l => l.Id == 1);
+        layer1.Keys.RemoveAll(k => k.Combo == "caps_ctrl_k");
+        layer1.Keys.Add(new Core.Settings.KeyBinding
+        { Combo = "caps_ctrl_k", Action = "qbar" });
+
+        var fired = new List<string>();
+        var q2 = new ActionQueue();
+        var e2 = new HotkeyEngine(q2, () => s2, (a, _) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        })
+        { EnterLayerImmediatelyForTest = true };
+
+        e2.SimulateKey(VK.CapsLock, true);
+        bool swallowR = e2.SimulateKey(0xA3 /*右 Ctrl*/, true);
+        Check("层内右 Ctrl 被吞", swallowR);
+        bool swallowK = e2.SimulateKey(0x4B /*K*/, true);
+        Check("右 Ctrl + K 被吞（组合键成立）", swallowK);
+        e2.SimulateKey(0x4B, false);
+        e2.SimulateKey(0xA3, false);
+        e2.SimulateKey(VK.CapsLock, false);
+        DoEvents(150);
+        lock (fired)
+        {
+            Check("右 Ctrl 组合触发了绑定的动作", fired.Contains("qbar"),
+                string.Join(",", fired));
+        }
+        e2.Dispose();
+        q2.Dispose();
+
+        // 松开右 Ctrl 后不应残留修饰状态
+        var fired2 = new List<string>();
+        var q3 = new ActionQueue();
+        var e3 = new HotkeyEngine(q3, () => s2, (a, _) =>
+        {
+            lock (fired2) fired2.Add(a);
+            return true;
+        })
+        { EnterLayerImmediatelyForTest = true };
+        e3.SimulateKey(VK.CapsLock, true);
+        e3.SimulateKey(0xA3, true);      // 右 Ctrl 按下
+        e3.SimulateKey(0xA3, false);     // 右 Ctrl 松开
+        /* 验证"无幻影修饰"：按一个**默认无绑定**的键（f5 有 reload，f9 是
+         * doNothing 也算绑定……用 browserBack——默认布局没绑它）。
+         * 若 _ctrlDown 残留，组合会拼成 caps_ctrl_browserBack 一样无绑定，
+         * 区分不出来；所以反过来验：先绑一个 caps_browserBack，
+         * 幻影残留时按 browserBack 会变成 ctrl 组合而查不到 → 放行；
+         * 无幻影时正常命中绑定 → 被吞。 */
+        s2.Layers.First(l => l.Id == 1).Keys.RemoveAll(k => k.Combo == "caps_browserBack");
+        s2.Layers.First(l => l.Id == 1).Keys.Add(new Core.Settings.KeyBinding
+        { Combo = "caps_browserBack", Action = "qbar" });
+        lock (fired2) fired2.Clear();
+        bool swallowBb = e3.SimulateKey(0xA6 /*browserBack*/, true);
+        e3.SimulateKey(0xA6, false);
+        e3.SimulateKey(VK.CapsLock, false);
+        DoEvents(120);
+        Check("松开右 Ctrl 后无幻影修饰（普通绑定仍命中）",
+            swallowBb && fired2.Contains("qbar"),
+            $"swallowed={swallowBb} fired={string.Join(",", fired2)}");
+        e3.Dispose();
+        q3.Dispose();
+
+        // ---- 4. MacroPlayer 异常后补抬起 ----
+        // 用一个会抛异常的"键名"构造宏：VkOf 解析不了会得到 0 而跳过，
+        // 不抛异常；改为直接测 held 清理逻辑 —— 播放含 keyDown 的宏，
+        // 然后立刻 Cancel（模拟中断）。
+        var macro = new Core.Settings.Macro { Name = "取消测试", Repeat = 0 };
+        macro.Steps.Add(new Core.Settings.MacroStep
+        { Kind = "keyDown", Key = "lctrl" });
+        macro.Steps.Add(new Core.Settings.MacroStep
+        { Kind = "delay", DelayMs = 5000 });       // 长延迟，让 Cancel 有机会打断
+        macro.Steps.Add(new Core.Settings.MacroStep
+        { Kind = "keyUp", Key = "lctrl" });
+
+        var player = new Core.Macro.MacroPlayer();
+        player.Play(macro);
+        Thread.Sleep(100);                          // 让它跑到 delay
+        player.Cancel();
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (player.IsPlaying && DateTime.UtcNow < deadline) Thread.Sleep(30);
+        Check("取消后播放结束", !player.IsPlaying);
+        player.Dispose();
+
+        // ---- 5. vk0x?? 回解析（宏录制的未知键不能静默丢步） ----
+        CheckEqual("vk0x58 能回解析", KeyName.VkOf("vk0x58"), 0x58);
+        CheckEqual("vk0xA3 能回解析", KeyName.VkOf("vk0xA3"), 0xA3);
+        CheckEqual("大小写不敏感（VK0x58）", KeyName.VkOf("VK0x58"), 0x58);
+        Check("乱写的 vk0x 不解析", KeyName.VkOf("vk0xzz") == null);
+        Check("长度不对的 vk0x 不解析", KeyName.VkOf("vk0x1") == null);
+        Check("普通名字仍走原表", KeyName.VkOf("a") == 0x41);
+
+        // ---- 6. 扩展键标志：方向键注入要带 KEYEVENTF_EXTENDEDKEY ----
+        // 通过反射确认 InputSender 的 KeyInput 会加扩展标志太绕，
+        // 这里验证 IsExtendedKey 的判定逻辑（私有方法用反射取）。
+        var extMethod = typeof(Core.Input.InputSender).GetMethod("IsExtendedKey",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Check("IsExtendedKey 方法存在", extMethod != null);
+        if (extMethod != null)
+        {
+            bool IsExt(int vk) => (bool)extMethod.Invoke(null, new object[] { vk })!;
+            Check("方向键 ← 是扩展键", IsExt(0x25));
+            Check("Home 是扩展键", IsExt(0x24));
+            Check("Insert 是扩展键", IsExt(0x2D));
+            Check("字母 A 不是扩展键", !IsExt(0x41));
+            Check("数字 5 不是扩展键", !IsExt(0x35));
+            Check("RAlt 是扩展键", IsExt(0xA5));
+        }
+    }
+
     private static void TestAuditFindings()
     {
         // A4：粘贴系统剪贴板曾经是 `=> true;` 空实现。

@@ -57,7 +57,6 @@ public sealed class HotkeyEngine : IDisposable
     private int _lastRepeatVk = -1;
     private DateTime _lastRepeatTime = DateTime.MinValue;
 
-    /// <summary>长按判定的最短间隔：短于此视为抖动，不进入层模式。</summary>
     /// <summary>
     /// 双击触发键的判定窗口（毫秒）。
     ///
@@ -66,10 +65,61 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     public const int DoubleTapWindowMs = 420;
 
-    public bool Enabled { get; set; } = true;
+    private bool _enabled = true;
+    private bool _suspended;
 
-    /// <summary>按键录制界面打开时置为 true，此时引擎完全放行。</summary>
-    public bool Suspended { get; set; }
+    /// <summary>
+    /// 是否启用。切到 false（托盘"暂停"）时**必须复位触发键状态**：
+    /// 按住触发键的期间被暂停的话，up 事件到不了状态机（OnKeyEvent 早退），
+    /// <c>_triggerHeld</c> 会卡 true，恢复后计时器立刻把层激活，
+    /// 整个键盘被层逻辑劫持 —— 只能再完整按一次触发键才能解锁。
+    /// </summary>
+    public bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (_enabled == value) return;
+            _enabled = value;
+            ResetTriggerState("Enabled 切换");
+        }
+    }
+
+    /// <summary>
+    /// 挂起（录制宏时置 true，引擎完全放行、只记录不拦截）。
+    /// 切换时同样要复位触发键状态，理由同 <see cref="Enabled"/>。
+    /// </summary>
+    public bool Suspended
+    {
+        get => _suspended;
+        set
+        {
+            if (_suspended == value) return;
+            _suspended = value;
+            ResetTriggerState("Suspended 切换");
+        }
+    }
+
+    /// <summary>
+    /// 复位触发键状态机（不补发任何按键）。
+    ///
+    /// 用于暂停 / 恢复 / 挂起切换、以及钩子自愈重装之后 ——
+    /// 这些时刻我们可能错过了触发键的抬起事件，状态若不复位，
+    /// 计时器会在下一次 tick 时把一个"幽灵按住"升级成层模式。
+    /// </summary>
+    private void ResetTriggerState(string reason)
+    {
+        if (!_triggerHeld && !_layerActive) return;
+        CoreLog.Info($"引擎状态复位（{reason}）：丢弃未完成的触发键会话");
+        _triggerHeld = false;
+        _layerActive = false;
+        _activeTriggerVk = -1;
+        _activeTrigger = null;
+        _activeLayer = -1;
+        _swallowedDown.Clear();
+        _swallowedUp.Clear();
+        _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
+    }
 
     /// <summary>是否正处于某个触发键的按住状态。</summary>
     public bool IsTriggerHeld => _triggerHeld;
@@ -164,10 +214,23 @@ public sealed class HotkeyEngine : IDisposable
     public long KeyEventCount => _hook.KeyEventCount;
 
     /// <summary>
-    /// 宏录制器。非 null 时，所有按键**照常透传**（不影响用户操作），
-    /// 同时喂给录制器记录时间戳 —— 这就是宏录制的工作原理。
+    /// 挂起 / 恢复的真正入口之一：宏录制器被设置时自动挂起，
+    /// 被清空（null）时自动恢复。录制期间层逻辑完全不拦截按键 ——
+    /// 否则用户按 Caps+X 想录"打开 Qbar"，屏幕上却真弹出了 Qbar，
+    /// 录到的原始键序与回放时的行为对不上。
     /// </summary>
-    public MacroRecorder? MacroRecorder { get; set; }
+    public MacroRecorder? MacroRecorder
+    {
+        get => _recorder;
+        set
+        {
+            _recorder = value;
+            // 挂起/恢复走属性 setter，复用状态复位逻辑
+            Suspended = value != null;
+        }
+    }
+
+    private MacroRecorder? _recorder;
 
     /// <summary>
     /// 宏播放器。引擎用它做两件事：播放中按 Esc 取消、以及判断"当前是否在播放宏"。
@@ -203,8 +266,6 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     public bool SimulateShortPressForTest { get; set; }
 
-    private bool IsCapsLockOn => (GetKeyState(VK.CapsLock) & 1) != 0;
-
     /// <summary>
     /// 钩子回调。返回值 = 是否吞掉该按键。
     /// 这里只做状态判断与入队，绝不做耗时操作（否则系统会摘钩）。
@@ -228,19 +289,22 @@ public sealed class HotkeyEngine : IDisposable
         // 录制中：照常放行（不影响用户正常操作），只记录事件
         MacroRecorder?.Record(vk, down);
 
-        if (!Enabled || Suspended) return false;                // 暂停状态
-
-        var settings = _settings();
-
         /* ---- 0. 宏播放中按 Esc = 取消 ----
          *
-         * 界面一直写着"按 Esc 可中断"，但 MacroPlayer.Cancel() 之前**没有任何调用者**，
-         * 等于承诺了做不到的事。这里在钩子里检测 Esc 并转发取消信号。
+         * 必须放在 Enabled/Suspended 判断**之前**：无限循环的宏唯一的退出
+         * 通道就是这个，引擎一旦被暂停，Esc 再也转发不到 Cancel，
+         * 用户只能杀进程 —— 而进程被杀时播放线程不执行 finally，
+         * 已按下的修饰键会粘住。
+         *
          * 不吞掉 Esc，让它照常传给前台程序（用户可能确实想按 Esc）。 */
         if (down && vk == VK.Escape && MacroPlayer?.IsPlaying == true)
         {
             MacroPlayer.Cancel();
         }
+
+        if (!Enabled || Suspended) return false;                // 暂停状态
+
+        var settings = _settings();
 
         // ---- 1. 这个键是不是触发键？ ----
         if (IsTrigger(settings, vk))
@@ -443,30 +507,6 @@ public sealed class HotkeyEngine : IDisposable
          * 长按的语义就是"这个键变成功能键前缀"，它本身什么都不该做。 */
     }
 
-    private void FireTap(bool singleTap)
-    {
-        var s = _settings();
-        var trigger = _activeTrigger;
-        if (trigger == null) return;
-
-        // 双击判定
-        bool doubleTap = singleTap
-                         && !string.IsNullOrEmpty(trigger.DoubleTapAction)
-                         && _hasLastTap
-                         && (DateTime.Now - _lastTapTime).TotalMilliseconds < DoubleTapWindowMs;
-
-        if (doubleTap)
-        {
-            _hasLastTap = false;
-            _queue.Post(() => RunTapAction(trigger.DoubleTapAction));
-            return;
-        }
-
-        _lastTapTime = DateTime.Now;
-        _hasLastTap = true;
-        _queue.Post(() => RunTapAction(trigger.TapAction));
-    }
-
     /// <summary>执行短按动作。统一走动作表，便于在按键映射界面里改。</summary>
     private void RunTapAction(string action)
     {
@@ -481,10 +521,15 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>层模式下按下某个键。返回 true 表示吞掉。</summary>
     private bool OnKeyDownInLayer(int vk)
     {
-        // 修饰键：记录状态并吞掉（否则会触发系统级 Alt / Win 菜单）
-        if (vk is VK.LMenu or VK.RMenu)
+        /* 修饰键：记录状态并吞掉（否则会触发系统级 Alt / Win 菜单）。
+         *
+         * ⚠ 左右与通用码都要认。早先只认 LControl/LShift/LMenu：
+         *   · 按**右** Ctrl 组合会去查无修饰的 caps_k，绑了就错误执行；
+         *   · 部分键盘/驱动只发 0x11/0x10/0x12 这三个通用码，
+         *     完全没有分支处理，组合键永远拼不出来。 */
+        if (vk is VK.LMenu or VK.RMenu or 0x12)
         {
-            if (vk == VK.LMenu) _laltDown = true;
+            _laltDown = true;
             _swallowedUp.Add(vk);
             return true;
         }
@@ -494,15 +539,15 @@ public sealed class HotkeyEngine : IDisposable
             _swallowedUp.Add(vk);
             return true;
         }
-        if (vk is VK.LControl or VK.RControl)
+        if (vk is VK.LControl or VK.RControl or 0x11)
         {
-            if (vk == VK.LControl) _ctrlDown = true;
+            _ctrlDown = true;
             _swallowedUp.Add(vk);
             return true;
         }
-        if (vk is VK.LShift or VK.RShift)
+        if (vk is VK.LShift or VK.RShift or 0x10)
         {
-            if (vk == VK.LShift) _shiftDown = true;
+            _shiftDown = true;
             _swallowedUp.Add(vk);
             return true;
         }
@@ -562,11 +607,18 @@ public sealed class HotkeyEngine : IDisposable
     {
         bool swallow = _swallowedUp.Remove(vk);
         _swallowedDown.Remove(vk);
-        if (vk == VK.LMenu) _laltDown = false;
-        if (vk == VK.LWin) _lwinDown = false;
-        if (vk == VK.RWin) _rwinDown = false;
-        if (vk == VK.LControl) _ctrlDown = false;
-        if (vk == VK.LShift) _shiftDown = false;
+
+        /* ⚠ 左右修饰键和通用码都要清。
+         *
+         * 早先只写 LControl/LShift/LMenu —— 用户按**右** Ctrl 组合后松手，
+         * _ctrlDown 还是 true，之后按任何键都会被拼成 Ctrl 组合键
+         * （caps_ctrl_q 之类），看起来就是"组合键时灵时不灵"。
+         * 很多人习惯用右手小指按右 Ctrl，这条路径并不罕见。 */
+        if (vk is VK.LMenu or VK.RMenu or 0x12) _laltDown = false;
+        if (vk is VK.LWin or VK.RWin) { _lwinDown = false; _rwinDown = false; }
+        if (vk is VK.LControl or VK.RControl or 0x11) _ctrlDown = false;
+        if (vk is VK.LShift or VK.RShift or 0x10) _shiftDown = false;
+
         return swallow;
     }
 

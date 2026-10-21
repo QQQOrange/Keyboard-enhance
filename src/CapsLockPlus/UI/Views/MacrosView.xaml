@@ -60,6 +60,10 @@
                             Click="OnDeleteClick" />
                     <Button Content="测试播放" Style="{StaticResource Button.Base}" Margin="8,0,0,0"
                             Click="OnTestClick" />
+                    <!-- 停止按钮只在播放中显示（Esc 之外的第二入口） -->
+                    <Button x:Name="StopPlayButton" Content="■ 停止" Style="{StaticResource Button.Ghost}"
+                            Margin="8,0,0,0" Click="OnStopPlayClick" Visibility="Collapsed"
+                            ToolTip="停止正在播放的宏（按 Esc 也可以）" />
                     <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
                                Margin="14,0,0,0" />
                 </StackPanel>

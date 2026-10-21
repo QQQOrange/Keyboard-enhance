@@ -183,8 +183,23 @@ public partial class MacrosView : UserControl
             StatusText.Text = "先选一个宏";
             return;
         }
-        _host.Context.MacroPlayer.Play(_editing);
-        StatusText.Text = "播放中…按 Esc 可中断";
+        _host.Context.MacroPlayer.Play(_editing, onCompleted: () =>
+            Dispatcher.BeginInvoke(OnPlayFinished));
+        StatusText.Text = "播放中…按 Esc 或点「停止」可中断";
+        StopPlayButton.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>停止正在播放的宏（Esc 之外的第二入口 —— 引擎被暂停时
+    /// Esc 转发会失效，这里始终可用）。</summary>
+    private void OnStopPlayClick(object sender, RoutedEventArgs e)
+    {
+        _host?.Context.MacroPlayer.Cancel();
+    }
+
+    private void OnPlayFinished()
+    {
+        StopPlayButton.Visibility = Visibility.Collapsed;
+        if (StatusText.Text.StartsWith("播放中")) StatusText.Text = "播放结束";
     }
 
     // ---------------- 编辑 ----------------

@@ -90,8 +90,8 @@ public static class WebDavSelfTest
             Check("恢复后内容一致",
                 settings.Macros.FirstOrDefault(m => m.Id == "e2e")?.Steps.FirstOrDefault()?.DelayMs == 999);
 
-            // ⑥ 列目录里应该有我们上传的文件
-            var files = client.ListAsync(new HttpClient()).GetAwaiter().GetResult();
+            // ⑥ 列目录里应该有我们上传的文件（用共享客户端，不再裸 new）
+            var files = client.ListAsync().GetAwaiter().GetResult();
             Check("目录里能看到备份文件",
                 files.Any(f => f.Name == WebDavClient.LatestFile),
                 string.Join(",", files.Select(f => f.Name)));

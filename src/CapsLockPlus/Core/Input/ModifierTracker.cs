@@ -7,25 +7,24 @@ namespace CapsLockPlus.Core.Input;
 /// **不能用 <c>GetAsyncKeyState</c> 判断修饰键是否按着** ——
 /// 微软文档写明，回调被调用时异步按键状态尚未更新，查到的永远是上一个键的状态。
 ///
-/// 症状：按 Ctrl+K 只能录到 K，按 Shift+K 也只能录到 K；
-/// 用户看到的现象就是"能识别按键，但录不到组合键"。
+/// 症状：按 Ctrl+K 只能录到 K，按 Shift+K 也只能录到 K。
 ///
 /// 唯一可靠的做法是自己从钩子的 down / up 事件里维护按住集合。
 /// 这个类就是这个集合，单独抽出来是为了能脱离钩子做单元测试。
+///
+/// 内部记的是**物理键码集合**而不是"逻辑键计数"：
+///   * 按住键时系统会自动重复发 down，HashSet.Add 天然幂等，
+///     不会像计数那样被加爆（早先的计数实现就踩了这个坑，
+///     按住 Ctrl 一秒后松开，计数还残留，录到幻影组合键）；
+///   * 左右 Ctrl / 通用 Ctrl 码（0x11）各占一个槽位，互不干扰，
+///     松开右手不影响左手。
 /// </summary>
 public sealed class ModifierTracker
 {
-    /// <summary>
-    /// 每个逻辑修饰键当前按住了几个物理键。
-    ///
-    /// ⚠ 必须记**计数**而不是布尔值：左右两个 Ctrl 归一到同一个逻辑键，
-    /// 如果只记 bool，那么"先按右 Ctrl 再按左 Ctrl、然后松开右 Ctrl"
-    /// 会把整个 Ctrl 标记清掉 —— 用户明明还按着左 Ctrl，组合键却失效了。
-    /// 这是很常见的操作（很多人习惯用右手小指按右 Ctrl）。
-    /// </summary>
-    private readonly Dictionary<int, int> _down = new();
+    /// <summary>当前按住的物理修饰键码集合。</summary>
+    private readonly HashSet<int> _physicalDown = new();
 
-    /// <summary>把一个物理修饰键归一到逻辑修饰键（左右 Ctrl 都归成 Ctrl）。</summary>
+    /// <summary>把一个物理修饰键归一到逻辑修饰键。</summary>
     public static int Normalize(int vk) => vk switch
     {
         0xA2 or 0xA3 or 0x11 => 0x11,     // L/R Ctrl  -> Ctrl
@@ -42,29 +41,38 @@ public sealed class ModifierTracker
         0xA4 or 0xA5 or 0x12 or      // Alt
         0x5B or 0x5C;                // Win
 
-    /// <summary>记录一次修饰键事件。</summary>
+    /// <summary>
+    /// 记录一次修饰键事件。
+    ///
+    /// down 用 <see cref="HashSet{T}.Add"/>（幂等）：系统自动重复发的
+    /// 一串 down 不会让集合变大，一次 up 就能真正清掉。
+    /// </summary>
     public void Track(int vk, bool down)
     {
         if (!IsModifier(vk)) return;
-        int norm = Normalize(vk);
-
-        if (down)
-        {
-            // 同一个物理键的重复 down（自动重复）不能把计数加爆
-            _down[norm] = _down.TryGetValue(norm, out int n) ? n + 1 : 1;
-        }
-        else if (_down.TryGetValue(norm, out int cur))
-        {
-            if (cur <= 1) _down.Remove(norm);
-            else _down[norm] = cur - 1;
-        }
+        if (down) _physicalDown.Add(vk);
+        else _physicalDown.Remove(vk);
     }
 
     /// <summary>清空。</summary>
-    public void Clear() => _down.Clear();
+    public void Clear() => _physicalDown.Clear();
 
-    /// <summary>某个逻辑修饰键是否按着。</summary>
-    public bool IsDown(int normalizedVk) => _down.ContainsKey(normalizedVk);
+    /// <summary>某个逻辑修饰键（0x11/0x10/0x12/0x5B）是否有物理键按着。</summary>
+    public bool IsDown(int normalizedVk) => normalizedVk switch
+    {
+        0x11 => ContainsAny(0x11, 0xA2, 0xA3),
+        0x10 => ContainsAny(0x10, 0xA0, 0xA1),
+        0x12 => ContainsAny(0x12, 0xA4, 0xA5),
+        0x5B => ContainsAny(0x5B, 0x5C),
+        _ => _physicalDown.Contains(normalizedVk),
+    };
+
+    private bool ContainsAny(params int[] vks)
+    {
+        foreach (int v in vks)
+            if (_physicalDown.Contains(v)) return true;
+        return false;
+    }
 
     /// <summary>当前按住的修饰键集合。</summary>
     public KeyModifiers Current
@@ -72,10 +80,10 @@ public sealed class ModifierTracker
         get
         {
             var m = KeyModifiers.None;
-            if (_down.ContainsKey(0x11)) m |= KeyModifiers.Ctrl;
-            if (_down.ContainsKey(0x10)) m |= KeyModifiers.Shift;
-            if (_down.ContainsKey(0x12)) m |= KeyModifiers.Alt;
-            if (_down.ContainsKey(0x5B)) m |= KeyModifiers.Win;
+            if (IsDown(0x11)) m |= KeyModifiers.Ctrl;
+            if (IsDown(0x10)) m |= KeyModifiers.Shift;
+            if (IsDown(0x12)) m |= KeyModifiers.Alt;
+            if (IsDown(0x5B)) m |= KeyModifiers.Win;
             return m;
         }
     }
@@ -88,15 +96,9 @@ public sealed class ModifierTracker
     /// </summary>
     public void Seed(Func<int, bool> isPhysicallyDown)
     {
-        _down.Clear();
-        if (isPhysicallyDown(0x11) || isPhysicallyDown(0xA2) || isPhysicallyDown(0xA3))
-            _down[0x11] = 1;
-        if (isPhysicallyDown(0x10) || isPhysicallyDown(0xA0) || isPhysicallyDown(0xA1))
-            _down[0x10] = 1;
-        if (isPhysicallyDown(0x12) || isPhysicallyDown(0xA4) || isPhysicallyDown(0xA5))
-            _down[0x12] = 1;
-        if (isPhysicallyDown(0x5B) || isPhysicallyDown(0x5C))
-            _down[0x5B] = 1;
+        _physicalDown.Clear();
+        foreach (int vk in new[] { 0x11, 0xA2, 0xA3, 0x10, 0xA0, 0xA1, 0x12, 0xA4, 0xA5, 0x5B, 0x5C })
+            if (isPhysicallyDown(vk)) _physicalDown.Add(vk);
     }
 
     /// <summary>把修饰键集合拼成可读的组合串（"ctrl+shift+k"）。</summary>

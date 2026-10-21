@@ -12,9 +12,9 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.7.0</Version>
-    <FileVersion>1.7.0.0</FileVersion>
-    <AssemblyVersion>1.7.0.0</AssemblyVersion>
+    <Version>1.7.1</Version>
+    <FileVersion>1.7.1.0</FileVersion>
+    <AssemblyVersion>1.7.1.0</AssemblyVersion>
     <Product>CapsLock+（QQQOrange）</Product>
     <Company>QQQOrange</Company>
     <Description>CapsLock 键增强：光标移动 / 选择、Qbar 快速启动、窗口绑定、独立剪贴板</Description>
