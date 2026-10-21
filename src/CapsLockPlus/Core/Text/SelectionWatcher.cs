@@ -81,6 +81,24 @@ public sealed class SelectionWatcher : IDisposable
     /// <summary>最近一次捕获的文字。</summary>
     public string? LastSelection { get; private set; }
 
+    /// <summary>最近一次捕获的时间（UTC）。从没捕获过是 <see cref="DateTime.MinValue"/>。</summary>
+    public DateTime LastSelectionAt { get; private set; } = DateTime.MinValue;
+
+    /// <summary>
+    /// 只在 <paramref name="window"/> 时间内的最近捕获才算"新鲜"。
+    ///
+    /// 为什么必须限时：<see cref="LastSelection"/> 会一直留着上一次复制的内容。
+    /// 如果用户十分钟前复制过一段字，现在新选了一段却没复制就按搜索键，
+    /// 直接拿 LastSelection 去搜就会**搜到十分钟前那段**——
+    /// 比"搜不到"更让人困惑，所以过期的结果一律当没有。
+    /// </summary>
+    public string? LastSelectionWithin(TimeSpan window)
+    {
+        if (string.IsNullOrWhiteSpace(LastSelection)) return null;
+        if (LastSelectionAt == DateTime.MinValue) return null;
+        return DateTime.UtcNow - LastSelectionAt <= window ? LastSelection : null;
+    }
+
     /// <summary>钩子是否在跑。</summary>
     public bool IsRunning => _hook != IntPtr.Zero;
 
@@ -172,6 +190,7 @@ public sealed class SelectionWatcher : IDisposable
                     if (!string.IsNullOrWhiteSpace(text))
                     {
                         LastSelection = text;
+                        LastSelectionAt = DateTime.UtcNow;
                         Captured?.Invoke(text);
                         CoreLog.Info($"[选区监听] 捕获到 {text.Length} 字");
                     }

@@ -97,33 +97,44 @@ public sealed class ActionContext
             return true;
         }
 
-        /* 取选中文字。
+        /* ⚠ 这是"直接搜索按了没反应"的**真正原因**，别再改回去：
          *
-         * GetSelectedText 的实现是"模拟 Ctrl+C 读剪贴板"，
-         * 需要几十毫秒；它在引擎的动作队列里跑（不在钩子回调里），
-         * 所以阻塞这一下不会触发 Windows 的钩子超时。 */
-        /* 取选中文字。优先用「选中即捕获」监听器的结果 ——
-         * 用户真实按下的 Ctrl+C 不会被任何程序过滤，
-         * 而主动取词（UIA / WM_COPY / SendInput）在 Electron /
-         * Chromium 上全部不可靠（实测确认）。
+         * 按键绑定里 search:bd 的 Arg 默认是**空字符串**（不是 null）。
+         * 而 "" ?? xxx 的结果是 ""（?? 只认 null）——
+         * 于是 overrideText 拿着一个空串，后面"去读选区"的分支永远走不到，
+         * 直接落到"没有选中的文字"就 return 了：
+         * 既不取词，也不开浏览器，日志里连一条 [取词] 都不会有。
          *
-         * 只有监听器没捕获到（用户没复制过 / 监听器没启动）
-         * 才退回主动取词。 */
-        string text = overrideText
-            ?? SelectionWatcher?.LastSelection
-            ?? Text.TextActions.GetSelectedText();
+         * v3.0 到 v3.4 换了三套取词方案都没修好，就是因为它不在取词通道上，
+         * 而在参数判断这一步。所以：空白参数一律归一成 null，回退去读选区。 */
+        if (string.IsNullOrWhiteSpace(overrideText)) overrideText = null;
+
+        string? text = overrideText;
+
+        if (text == null)
+        {
+            text = CaptureSelectionText();
+            if (!string.IsNullOrWhiteSpace(text))
+                CoreLog.Info($"[搜索] 已取到选中文字 长度={text.Length}");
+        }
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            /* 提权运行时，三条取词通道（UIA / WM_COPY / SendInput）都会被
-             * Windows 的 UIPI 拦掉。这时必须把**真正的原因**告诉用户，
-             * 否则他会以为功能坏了 —— 这正是之前反复反馈"取不到"的根源。 */
-            if (Core.ElevationHelper.IsElevated)
-                Notify("读不到选区：当前是管理员模式。请到「设置 → 运行权限」"
-                     + "关掉「以管理员身份运行」后重启 —— Windows 不允许管理员"
-                     + "进程向普通权限的程序注入输入。");
-            else
-                Notify("没有选中的文字 —— 先选中要搜索的内容再按这个键");
+            /* 所有程序化通道都失败时的**保底**：请用户亲自按一下 Ctrl+C。
+             * 真实按键不会被 Chromium / Electron 过滤，也不受 UIPI 影响，
+             * 拿到内容就立刻用它搜索 —— 这样"直接搜索"在任何程序里都能用。 */
+            Notify(Core.ElevationHelper.IsElevated
+                ? "没读到选中文字（管理员模式取不到普通程序的选区）。请按一下 Ctrl+C，我马上用它搜索"
+                : "没读到选中文字，请按一下 Ctrl+C，我马上用它搜索");
+
+            var waitManualCopy = ManualCopyWaitForTest
+                                 ?? new Func<int, string>(Text.TextActions.WaitForManualCopy);
+            text = waitManualCopy(5000);
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Notify("没有取到选中的文字 —— 先选中要搜索的内容再按这个键");
             return true;
         }
 
@@ -133,13 +144,55 @@ public sealed class ActionContext
         const int maxLen = 1000;
         if (text.Length > maxLen) text = text[..maxLen];
 
-        string url = entry.Value.Replace("{q}", Uri.EscapeDataString(text));
+        string encoded = Uri.EscapeDataString(text);
+        string url;
+        if (entry.Value.Contains("{q}", StringComparison.Ordinal))
+        {
+            url = entry.Value.Replace("{q}", encoded);
+        }
+        else
+        {
+            /* 自定义引擎忘了写 {q} 时，不能把关键词默默丢掉 ——
+             * 那样只会打开搜索引擎首页，用户看到的就是"没搜"。
+             * 按最常见的约定补一个 q 参数。 */
+            CoreLog.Warn($"[搜索] 引擎 {engineKey} 的地址里没有 {{q}}，改为追加 q 参数");
+            url = entry.Value + (entry.Value.Contains('?') ? "&q=" : "?q=") + encoded;
+        }
+
         if (!url.Contains("://", StringComparison.Ordinal))
             url = "https://" + url;
 
         Notify(overrideText == null ? "正在搜索选中的文字…" : "正在搜索…");
+        CoreLog.Info($"[搜索] {engineKey} → {url}");
         OpenUrlRaw(url);   // 已编码，跳过规范化避免搜索词被解码/截断
         return true;
+    }
+
+    /// <summary>
+    /// 取当前选区文字：主动取词优先，其次用「选中即捕获」的新鲜结果。
+    ///
+    /// 顺序是刻意这样排的：
+    ///   ① 主动取词不需要用户额外操作，是"选中 + 按键"一步到位的正路；
+    ///   ② 监听器的结果只在**几秒内**才用，否则会搜到很久以前复制的内容。
+    /// 两条都拿不到才交给调用方去请用户手动 Ctrl+C。
+    /// </summary>
+    private string CaptureSelectionText()
+    {
+        if (CaptureTextForTest != null) return CaptureTextForTest() ?? "";
+
+        // ① UIA → WM_COPY → SendInput → 线程级注入 → Ctrl+Insert
+        string text = Text.TextActions.GetSelectedText();
+        if (!string.IsNullOrWhiteSpace(text)) return text;
+
+        // ② 用户几秒内自己按过 Ctrl+C，就别再折腾了
+        string? fresh = SelectionWatcher?.LastSelectionWithin(TimeSpan.FromSeconds(6));
+        if (!string.IsNullOrWhiteSpace(fresh))
+        {
+            CoreLog.Info($"[搜索] 用选区监听器捕获的内容 长度={fresh.Length}");
+            return fresh;
+        }
+
+        return string.Empty;
     }
 
     /// <summary>
@@ -154,6 +207,17 @@ public sealed class ActionContext
     /// （Electron / Chromium 会过滤合成输入，但用户的真实按键不会被拦）。
     /// </summary>
     public Core.Text.SelectionWatcher? SelectionWatcher { get; set; }
+
+    /// <summary>
+    /// 自检用：替换真实的取词通道，直接返回指定文字。
+    /// 自检跑在没有真实选区的环境里，必须能绕开剪贴板/UI Automation。
+    /// </summary>
+    public Func<string?>? CaptureTextForTest { get; set; }
+
+    /// <summary>
+    /// 自检用：替换"请用户按 Ctrl+C 再等待"的保底逻辑，避免自检真的卡 4 秒。
+    /// </summary>
+    public Func<int, string>? ManualCopyWaitForTest { get; set; }
 
     public bool TypeText(string text)
     {

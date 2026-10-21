@@ -70,6 +70,12 @@ public static class TextActions
             }
             catch { }
 
+            /* 记住"我们自己复制出来的内容"。
+             * 收尾还原剪贴板时要用它判断：如果剪贴板里已经不是这段文字，
+             * 说明期间用户自己按了 Ctrl+C（或者别的程序写了剪贴板），
+             * 这时**绝对不能**还原，否则会把用户刚复制的东西搞丢。 */
+            string? copiedByUs = null;
+
             try
             {
                 // ② WM_COPY：走窗口消息，绕过输入队列
@@ -77,21 +83,22 @@ public static class TextActions
                 CoreLog.Info($"[取词] WM_COPY 已投递={posted}");
                 string text = TryCopyVia(() => WindowMessageCopier.PostCopyToFocus(), timeoutMs);
                 CoreLog.Info($"[取词] WM_COPY 后剪贴板结果长度={text.Length}");
-                if (!string.IsNullOrEmpty(text)) return text;
+                if (!string.IsNullOrEmpty(text)) { copiedByUs = text; return text; }
 
                 // ③ SendInput：同权限时有效（0x43 = C）
                 text = TryCopyVia(() => InputSender.CopyChord(0x43), timeoutMs);
-                if (!string.IsNullOrEmpty(text)) return text;
+                if (!string.IsNullOrEmpty(text)) { copiedByUs = text; return text; }
 
                 /* ④ 线程级注入：attach 到目标输入队列 + 同步键盘状态。
                  * 这是最接近真实键盘的一条路，用于 SendInput 被程序过滤的情况。 */
                 string viaThread = TryCopyVia(() => ThreadKeyboardSender.SendCtrlChord(0x43), timeoutMs);
                 CoreLog.Info($"[取词] 线程级注入结果长度={viaThread.Length}");
-                if (!string.IsNullOrEmpty(viaThread)) return viaThread;
+                if (!string.IsNullOrEmpty(viaThread)) { copiedByUs = viaThread; return viaThread; }
 
                 // ⑤ 再试 Ctrl+Insert（终端、部分老程序只认这个）
                 string last = TryCopyVia(() => InputSender.CopyChord(VK.Insert), timeoutMs);
                 CoreLog.Info($"[取词] 最终结果长度={last.Length} 内容={Trim4(last)}");
+                if (!string.IsNullOrEmpty(last)) copiedByUs = last;
                 return last;
             }
             catch (Exception ex)
@@ -101,7 +108,7 @@ public static class TextActions
             }
             finally
             {
-                RestoreClipboard(old, hadText);
+                RestoreClipboard(old, hadText, copiedByUs);
             }
         }
     }
@@ -189,6 +196,32 @@ public static class TextActions
             else Clipboard.Clear();
         }
         catch { }
+    }
+
+    /// <summary>
+    /// 取词结束后还原剪贴板。
+    ///
+    /// <paramref name="copiedByUs"/> 是我们刚才复制出来的内容。还原前先确认
+    /// 剪贴板里**还是**这段文字 —— 如果不是，说明期间用户自己按了 Ctrl+C
+    /// （或别的程序写了剪贴板），此时还原等于把用户刚复制的东西擦掉，
+    /// 属于**帮倒忙**，所以直接放手不管。
+    /// </summary>
+    private static void RestoreClipboard(string old, bool hadText, string? copiedByUs)
+    {
+        if (copiedByUs != null)
+        {
+            try
+            {
+                string current = Clipboard.ContainsText() ? Clipboard.GetText() : "";
+                if (!string.Equals(current, copiedByUs, StringComparison.Ordinal))
+                {
+                    CoreLog.Info("[取词] 剪贴板已被用户/其它程序改写，跳过还原");
+                    return;
+                }
+            }
+            catch { return; }
+        }
+        RestoreClipboard(old, hadText);
     }
 
     /// <summary>用给定文本替换当前选区（没有选区则插入到光标处）。</summary>
@@ -313,6 +346,63 @@ public static class TextActions
                 RestoreClipboard(old, hadText);
             }
         }
+    }
+
+    /// <summary>
+    /// 最后的保底通道：请用户**亲自**按一下 Ctrl+C，我们顺手接住。
+    ///
+    /// 为什么这条一定有效：程序合成的 Ctrl+C 会被 Chromium / Electron 过滤，
+    /// 也可能被 UIPI 拦掉，但**用户真实按下的 Ctrl+C 谁也拦不住**。
+    ///
+    /// 实现上是"旁观"而不是"参与"：只盯剪贴板序号，一变就读内容。
+    /// 期间不写剪贴板，所以不会打乱用户自己的剪贴板。
+    /// </summary>
+    /// <param name="timeoutMs">最多等多久</param>
+    /// <returns>用户复制到的文字；超时返回空串。</returns>
+    public static string WaitForManualCopy(int timeoutMs = 4000)
+    {
+        uint seq;
+        try { seq = GetClipboardSequenceNumber(); }
+        catch { return string.Empty; }
+
+        long deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            Thread.Sleep(40);
+
+            uint now;
+            try { now = GetClipboardSequenceNumber(); }
+            catch { return string.Empty; }
+            if (now == seq) continue;
+
+            CoreLog.Info("[取词] 检测到剪贴板变化（视为用户手动复制）");
+
+            /* 序号变了不等于数据已经写好：浏览器 / OLE 可能是先占位再填。
+             * 给它最多 ~480ms，读到非空文本就走。 */
+            for (int i = 0; i < 12; i++)
+            {
+                Thread.Sleep(40);
+                try
+                {
+                    if (Clipboard.ContainsText())
+                    {
+                        string text = Clipboard.GetText();
+                        if (!string.IsNullOrWhiteSpace(text))
+                        {
+                            CoreLog.Info($"[取词] 手动复制成功 长度={text.Length} 内容={Trim4(text)}");
+                            return text;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // 这次变化读不出文本（可能复制的是图片/文件），继续等下一次
+            seq = now;
+        }
+
+        CoreLog.Info("[取词] 等待手动复制超时");
+        return string.Empty;
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]

@@ -3131,13 +3131,15 @@ public static class SelfTest
             Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
         }
 
-        // ④ 空文本不打开浏览器
+        // ④ 取不到选区时不打开浏览器（用测试桩绕开真实剪贴板）
+        ctx.CaptureTextForTest = () => "";
+        ctx.ManualCopyWaitForTest = _ => "";
         opened = null;
         Core.Actions.ActionContext.OpenUrlInterceptForTest = u => opened = u;
         try
         {
             ctx.SearchSelection("bd", "   ");
-            Check("空选中文本不搜索", opened == null, opened ?? "(null)");
+            Check("取不到选区时不搜索", opened == null, opened ?? "(null)");
         }
         finally
         {
@@ -3146,6 +3148,99 @@ public static class SelfTest
 
         // ⑤ 未知引擎安全返回且不崩
         Check("未知引擎不抛异常", ctx.SearchSelection("no_such_engine", "abc"));
+
+        TestDirectSearchEmptyArgRegression(ctx, cat);
+    }
+
+    /// <summary>
+    /// 回归测试：按键绑定里 Arg 是**空字符串**时，直接搜索必须照常工作。
+    ///
+    /// 这是 v3.5.0 修掉的核心 bug —— 绑定 <c>search:bd</c> 的 Arg 默认是 ""，
+    /// 老代码用 <c>overrideText ?? …</c> 判断，空串不算 null，
+    /// 于是永远判定"没有选中的文字"，按了键什么也不发生。
+    /// 这个用例必须走**动作表**（和真实热键同一条路径），不能直接调 SearchSelection，
+    /// 否则测不到参数传递这一层。
+    /// </summary>
+    private static void TestDirectSearchEmptyArgRegression(Core.Actions.ActionContext ctx,
+                                                           Core.Actions.ActionCatalog cat)
+    {
+        Section("直接搜索 · 空参数回归（v3.5.0）");
+
+        ctx.CaptureTextForTest = () => "被选中的文字ABC";
+        ctx.ManualCopyWaitForTest = _ => "";
+
+        string? opened = null;
+        Core.Actions.ActionContext.OpenUrlInterceptForTest = u => opened = u;
+        try
+        {
+            // ① 空字符串参数（真实绑定的默认值）
+            opened = null;
+            bool ok = cat.Invoke("search:bd", "");
+            Check("空参数时动作执行成功", ok);
+            Check("空参数时真的搜索了", opened != null, opened ?? "(null)");
+            if (opened != null)
+            {
+                Check("空参数时关键词正确",
+                    opened.Contains(Uri.EscapeDataString("被选中的文字ABC"), StringComparison.Ordinal),
+                    opened);
+            }
+
+            // ② 纯空白参数（绑定编辑器里手敲空格）
+            opened = null;
+            cat.Invoke("search:bd", "   ");
+            Check("空白参数时真的搜索了", opened != null, opened ?? "(null)");
+
+            // ③ null 参数（老调用方式）
+            opened = null;
+            cat.Invoke("search:bd", null!);
+            Check("null 参数时真的搜索了", opened != null, opened ?? "(null)");
+
+            // ④ 显式参数优先于选区
+            opened = null;
+            cat.Invoke("search:bd", "显式参数XYZ");
+            Check("显式参数优先",
+                opened != null && opened.Contains(Uri.EscapeDataString("显式参数XYZ"), StringComparison.Ordinal),
+                opened ?? "(null)");
+
+            // ⑤ 主动取词失败 → 保底「手动 Ctrl+C」拿到的内容也要能搜
+            ctx.CaptureTextForTest = () => "";
+            ctx.ManualCopyWaitForTest = _ => "手动复制的内容";
+            opened = null;
+            cat.Invoke("search:bd", "");
+            Check("保底手动复制路径可用",
+                opened != null && opened.Contains(Uri.EscapeDataString("手动复制的内容"), StringComparison.Ordinal),
+                opened ?? "(null)");
+
+            // ⑥ 引擎地址里没写 {q} 时不能把关键词丢掉
+            var noPlaceholder = DefaultSettings.Create();
+            noPlaceholder.Search.Add(new Core.Settings.QEntry
+            {
+                Key = "noplaceholder",
+                Value = "https://example.com/search",
+                Comment = "自定义",
+            });
+            var ctx2 = new Core.Actions.ActionContext
+            {
+                Settings = () => noPlaceholder,
+                Clipboard = new Core.Actions.ClipboardService(),
+                Windows = new Core.Actions.WindowActions(),
+                WindowBindings = new Core.Actions.WindowBindingService(noPlaceholder),
+                Mouse = new Core.Actions.MouseService(),
+                Notify = _ => { },
+                CaptureTextForTest = () => "关键词QQ",
+            };
+            opened = null;
+            ctx2.SearchSelection("noplaceholder");
+            Check("缺 {q} 时仍带上关键词",
+                opened != null && opened.Contains(Uri.EscapeDataString("关键词QQ"), StringComparison.Ordinal),
+                opened ?? "(null)");
+        }
+        finally
+        {
+            Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
+            ctx.CaptureTextForTest = null;
+            ctx.ManualCopyWaitForTest = null;
+        }
     }
 
     /// <summary>
