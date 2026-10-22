@@ -15,9 +15,14 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>4.5.0</Version>
-    <FileVersion>4.5.0.0</FileVersion>
-    <AssemblyVersion>4.5.0.0</AssemblyVersion>
+    <Version>4.5.1</Version>
+    <FileVersion>4.5.1.0</FileVersion>
+    <AssemblyVersion>4.5.1.0</AssemblyVersion>
+    <!-- 不要把源码 commit 拼进 ProductVersion。
+         默认行为会生成 "4.5.0+2c574eb…"，而发布时那个 commit 通常**还没包含**
+         本次改动（先构建、后提交），用户看文件属性会以为装的是旧版。
+         版本号就是版本号，commit 用 tag 与 Release 记录就够了。 -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
     <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达链接（网址/文件夹/文件）、独立剪贴板、宏与多图层</Description>
@@ -33,10 +38,15 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <UseSystemResourceKeys>false</UseSystemResourceKeys>
 
-    <!-- 性能与体积：ReadyToRun 让启动时少做 JIT；压缩单文件减小体积 -->
+    <!-- 性能与体积：ReadyToRun 把 IL 预编译成原生代码，理论上省 JIT；
+         但**实测在这台机器上没有收益**（本程序 5 轮交替测量：
+         中位数 718ms → 716ms，差异在噪声内），而它会让单文件大 2.06 MB。
+         原因是框架依赖模式下 WPF / BCL 程序集由运行时提供（它们本来就预编译过），
+         我们自己那点 IL 的 JIT 成本在总启动时间里看不出来。
+         所以这里关掉：体积减 40%，启动速度不变。 -->
     <TieredPGO>true</TieredPGO>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRun>false</PublishReadyToRun>
     <PublishSingleFile>true</PublishSingleFile>
 
     <!-- 框架依赖：体积最小（约 5MB），但运行前必须装 .NET 10 桌面运行时。

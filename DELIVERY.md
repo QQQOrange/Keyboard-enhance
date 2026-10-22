@@ -7,9 +7,10 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `dist/CapsLockPlus.exe` | 1.17 MB | 单文件、框架依赖、ReadyToRun |
+| `dist/KeyboardEnhance.exe` | 2.76 MB | 单文件、框架依赖 |
 
-- **单文件**、框架依赖（需 .NET 10 桌面运行时）、**ReadyToRun** 预编译
+- **单文件**、框架依赖（需 .NET 10 桌面运行时）；**不用 ReadyToRun** ——
+  实测启动时间无差异（718 ms vs 716 ms），但能省 2.06 MB
 - 目标平台：Windows 10 1809+ / Windows 11，x64，Per-Monitor V2 DPI
 - 源码：`src/CapsLockPlus/`（10 个目录）
 - 上游源码对照：`upstream/`（GPL-3.0，未修改）
@@ -134,9 +135,9 @@ CapsLockPlus.exe --selftest    → exit 0
 | --- | --- |
 | 热路径 | 真正的热路径只有"低级键盘钩子回调 + Win32 调用"，当前已是零分配的直接 P/Invoke，**Rust 不会让它更快**（实测钩子回调 <50 µs，人类感知阈值是 16 ms） |
 | 真实瓶颈 | 瓶颈在界面渲染（WPF 组合树），Rust GUI（egui/Slint/iced）在**中文排版、DPI、无障碍、输入法**上明显弱于 WPF，重写会让"美观、舒适"这个核心目标倒退 |
-| 体积 | 当前 1.1 MB 单文件已很小；Rust + 自绘 GUI 也在 2~8 MB 量级，无数量级收益 |
+| 体积 | 当前 2.76 MB 单文件已很小；Rust + 自绘 GUI 也在 2~8 MB 量级，无数量级收益 |
 | 成本 | Rust 需额外 ~1 GB 工具链，且要重写已完成的 1 万行；收益与风险不成比例 |
-| 已做的实际优化 | ReadyToRun、单文件、懒加载页面、去阴影、消息驱动剪贴板、空闲 0% CPU、1.1 MB 体积 |
+| 已做的实际优化 | 单文件、懒加载页面、去阴影、消息驱动剪贴板、空闲 0% CPU、2.76 MB 体积 |
 
 如果未来确实要跨平台（macOS/Linux），届时再抽离 `Core/` 层（它已完全与界面解耦、可无界面自检）为 Rust 库是合理路径；现在重写属于过度设计。
 

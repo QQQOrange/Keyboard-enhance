@@ -4,11 +4,11 @@
 > 重写成**原生 Windows 11 桌面程序**：功能一个不少，但所有设置都能在图形界面里点点点完成，
 > 再也不用去手改 `CapsLock+settings.ini`。
 
-**版本 v4.5.0** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 4.8 MB** ｜ **依赖 .NET 10 桌面运行时**
+**版本 v4.5.1** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 2.8 MB** ｜ **依赖 .NET 10 桌面运行时**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
-> 本程序**不自带运行时**（所以只有 4.8 MB）。没有它双击**不会有任何反应**，
+> 本程序**不自带运行时**（所以只有 2.8 MB）。没有它双击**不会有任何反应**，
 > 也不会报错 —— 请先装好再启动：
 >
 > **下载地址**：<https://dotnet.microsoft.com/download/dotnet/10.0>
@@ -35,7 +35,7 @@ dotnet --list-runtimes | findstr WindowsDesktop
 ### 2. 下载并放置程序
 
 到 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases) 页面下载
-**`KeyboardEnhance.exe`**（约 4.8 MB），放到任意目录。
+**`KeyboardEnhance.exe`**（约 2.8 MB），放到任意目录。
 
 运行时会自动在它旁边建两个文件夹：
 
@@ -47,7 +47,7 @@ KeyboardEnhance Back\     本地备份
 
 拷走整个文件夹就带走了软件和全部数据。
 
-> **为什么只有 4.8 MB**：界面框架和 .NET 运行时都由系统里那份提供。
+> **为什么只有 2.8 MB**：界面框架和 .NET 运行时都由系统里那份提供。
 > 代价是你得先装它；好处是程序本体极小、每次更新下载也快。
 
 
@@ -456,7 +456,7 @@ src/CapsLockPlus/
 | 首屏时间 | 约 0.6 s |
 | 空闲 CPU | 0 % |
 | 托盘常驻内存 | 私有约 60 MB |
-| 可执行文件 | 2.92 MB（单文件、框架依赖、ReadyToRun） |
+| 可执行文件 | 2.76 MB（单文件、框架依赖） |
 | 自检 | 568 项全部通过 |
 
 ### 钩子热路径的优化
