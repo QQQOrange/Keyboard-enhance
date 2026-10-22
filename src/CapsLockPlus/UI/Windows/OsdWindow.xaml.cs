@@ -80,11 +80,22 @@ public partial class OsdWindow : Window
      *
      * 用 alpha 而不是预先混合好的实色：这样浅色壁纸下不会发灰、
      * 深色壁纸下不会发亮，和系统那条的表现一致。 */
-    private static readonly Color LightCard = Color.FromArgb(0xE6, 0xEB, 0xED, 0xF0);
-    private static readonly Color LightText = Color.FromArgb(0xE4, 0x00, 0x00, 0x00);
+    /* 实测方法：给桌面铺一块纯黑 / 纯白窗体，各截一帧系统横条，反解
+     *     c_black = a*base
+     *     c_white = a*base + (1-a)*255
+     *
+     * 结果（两套都是"半透明磨砂板"，只是明暗相反）：
+     *   · 日间：base #F9F9F9，不透明度 85.5%（黑底实测 (212,212,212)、白底 (249,249,249)）
+     *   · 夜间：base #2D2D2D，不透明度 96.1%（黑底 (43,43,43)、白底 (53,53,53)）
+     *
+     * 文字：日间黑（合成后约 #1A1A1A）、夜间纯白；
+     * 槽：日间黑 45%（实测 (121,122,124)）、夜间白 55%（实测 (159,160,160)）；
+     * 进度条：日间强调色深档 #0067C0、夜间浅档 #4CC2FF（实测 (76,194,255)）。 */
+    private static readonly Color LightCard = Color.FromArgb(0xDA, 0xF9, 0xF9, 0xF9);
+    private static readonly Color LightText = Color.FromArgb(0xE6, 0x00, 0x00, 0x00);
     private static readonly Color LightTrack = Color.FromArgb(0x73, 0x00, 0x00, 0x00);
 
-    private static readonly Color DarkCard = Color.FromArgb(0xF0, 0x2D, 0x2D, 0x2D);
+    private static readonly Color DarkCard = Color.FromArgb(0xF5, 0x2D, 0x2D, 0x2D);
     private static readonly Color DarkText = Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
     private static readonly Color DarkTrack = Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF);
 
@@ -200,12 +211,17 @@ public partial class OsdWindow : Window
     ///
     /// 阴影留白不参与定位 —— 否则改了阴影大小横条会跟着漂。
     /// </summary>
-    public static (double Left, double Top) PositionForTest(Rect workArea)
+    public static (double Left, double Top) PositionForTest(Rect workArea, double taskbarTop = double.NaN)
     {
         double winW = DesignWidth + ShadowPad * 2;
 
+        // 任务栏自动隐藏时工作区就是整屏，但系统横条仍然让开任务栏 → 取更靠上的那个
+        double baseBottom = double.IsNaN(taskbarTop)
+            ? workArea.Bottom
+            : Math.Min(workArea.Bottom, taskbarTop);
+
         double left = Math.Round(workArea.Left + (workArea.Width - winW) / 2);
-        double top = Math.Round(workArea.Bottom - BottomGap - DesignHeight - ShadowPad);
+        double top = Math.Round(baseBottom - BottomGap - DesignHeight - ShadowPad);
         return (left, top);
     }
 
@@ -391,8 +407,20 @@ public partial class OsdWindow : Window
             int w = (int)Math.Round((DesignWidth + ShadowPad * 2) * scale);
             int h = (int)Math.Round((DesignHeight + ShadowPad * 2) * scale);
             int x = workLeft + (workWidth - w) / 2;
-            int y = workTop + workHeight
-                    - (int)Math.Round((BottomGap + DesignHeight + ShadowPad) * scale);
+
+            /* 竖直方向以"任务栏上沿"为准。
+             *
+             * 任务栏自动隐藏时 rcWork 等于整屏，只用 rcWork 算会把横条
+             * 压到屏幕最底部 —— 而系统那条是让开任务栏的（本机实测差 48 DIP）。
+             * 所以取 min(工作区底, 任务栏上沿)，再减 15 DIP。 */
+            int baseBottom = workTop + workHeight;
+            if (NativeMethods.TryGetTaskbarRect(out var bar)
+                && bar.Top > workTop && bar.Top < baseBottom)
+            {
+                baseBottom = Math.Min(baseBottom, bar.Top);
+            }
+
+            int y = baseBottom - (int)Math.Round((BottomGap + DesignHeight + ShadowPad) * scale);
 
             if (_placed == (x, y, w, h)) return;
             _placed = (x, y, w, h);

@@ -4948,8 +4948,14 @@ public static class SelfTest
         /* 卡片下沿离工作区底边必须和系统一样是 15 DIP：
          * 窗口比卡片大一圈（留给阴影），所以窗口底边不是卡片底边。 */
         double cardBottom = osdTop + 12 + oh;
-        CheckEqual("卡片下沿贴底 15 DIP（与系统一致）",
+        CheckEqual("卡片下沿贴底 15 DIP（相对工作区/任务栏上沿）",
             Math.Round(1040 - cardBottom, 3), UI.Windows.OsdWindow.CardBottomGapForTest);
+
+        /* 任务栏在底部占 48 DIP 时（本机就是自动隐藏 + 占位 48）：
+         * 系统横条的卡片下沿离**屏幕**底 63 DIP。 */
+        var (_, topWithBar) = UI.Windows.OsdWindow.PositionForTest(wa, 1040 - 48);
+        CheckEqual("有任务栏时卡片下沿离屏幕底 63 DIP（与系统实测一致）",
+            Math.Round(1040 - (topWithBar + 12 + oh), 0), 63.0);
 
         CheckEqual("卡片宽度与系统一致（192）", ow, 192.0);
         CheckEqual("卡片高度与系统一致（48）", oh, 48.0);
