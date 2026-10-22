@@ -75,39 +75,58 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="运行权限" Style="{StaticResource Text.Body}" />
-                                <Border x:Name="AdminBadge" Margin="8,0,0,0" Padding="7,1"
-                                        CornerRadius="5" Background="#22E5A23A"
-                                        BorderBrush="#55E5A23A" BorderThickness="1"
-                                        VerticalAlignment="Center">
-                                    <TextBlock x:Name="AdminBadgeText" Text="管理员" FontSize="10.5"
-                                               FontWeight="SemiBold" Foreground="#E5A23A" />
-                                </Border>
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="以管理员身份启动" Style="{StaticResource Text.Body}" />
+                                    <Border x:Name="AdminBadge" Margin="8,0,0,0" Padding="7,1"
+                                            CornerRadius="5" Background="#22E5A23A"
+                                            BorderBrush="#55E5A23A" BorderThickness="1"
+                                            VerticalAlignment="Center">
+                                        <TextBlock x:Name="AdminBadgeText" Text="管理员" FontSize="10.5"
+                                                   FontWeight="SemiBold" Foreground="#E5A23A" />
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock x:Name="PermissionText" Style="{StaticResource Text.Tertiary}"
+                                           Margin="0,4,0,0" TextWrapping="Wrap" />
                             </StackPanel>
-                            <TextBlock x:Name="PermissionText" Style="{StaticResource Text.Tertiary}"
-                                       Margin="0,4,0,0" TextWrapping="Wrap" />
-                        </StackPanel>
+
+                            <!--
+                                提权开关。
+                                ⚠ 切到管理员后，「选中文字 → 直接搜索」会失效 ——
+                                管理员进程无法向普通权限的浏览器 / 编辑器注入输入
+                                （Windows 的 UIPI 限制）。所以默认关闭。
+                            -->
+                            <CheckBox Grid.Column="1" x:Name="RunAsAdminBox" Style="{StaticResource ToggleSwitch}"
+                                      VerticalAlignment="Center" Click="OnRunAsAdminChanged"
+                                      ToolTip="开启后下次启动会弹一次 UAC 确认；关闭则一直以普通权限运行" />
+                        </Grid>
 
                         <!--
-                            提权开关。
-                            ⚠ 切到管理员后，「选中文字 → 直接搜索」会失效 ——
-                            管理员进程无法向普通权限的浏览器 / 编辑器注入输入
-                            （Windows 的 UIPI 限制）。所以默认关闭。
+                            状态行：把"设置成什么"和"现在实际是什么"分开显示。
+                            两者不一致时给一个「立即重启」按钮 ——
+                            否则用户改完开关以为已经生效，实际上要等下次启动，
+                            中间会一直以为功能坏了。
                         -->
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <CheckBox x:Name="RunAsAdminBox" Style="{StaticResource ToggleSwitch}"
-                                      Click="OnRunAsAdminChanged" />
-                            <TextBlock Text="以管理员身份运行" Style="{StaticResource Text.Tertiary}"
-                                       Margin="0,6,0,0" HorizontalAlignment="Center" />
-                        </StackPanel>
-                    </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="AdminStateText" Grid.Column="0"
+                                       Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="RestartElevatedButton" Grid.Column="1"
+                                    Style="{StaticResource Button.Base}" Padding="12,5"
+                                    Content="立即重启以生效" Visibility="Collapsed"
+                                    Click="OnRestartForElevation" />
+                        </Grid>
+                    </StackPanel>
 
                     <Border Style="{StaticResource Divider}" />
 

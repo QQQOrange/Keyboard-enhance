@@ -750,16 +750,50 @@ public static class SelfTest
     /// <summary>
     /// 窗口点选的"取窗口"逻辑。
     ///
-    /// 之前的 bug 是：遮罩自己铺满全屏，WindowFromPoint 返回的永远是遮罩，
-    /// 于是点了没反应。这里验证改造后的判定规则：
+    /// 判定规则：
     ///   * 自己的窗口必须被排除；
-    ///   * 桌面/任务栏等系统壳窗口必须被排除；
-    ///   * 普通窗口必须能被正确识别。
+    ///   * 桌面/任务栏/托盘溢出等系统壳窗口必须被排除；
+    ///   * 普通窗口必须能被正确识别；
+    ///   * 按坐标必须取得到窗口（WindowFromPoint 优先，Z 序扫描兜底）。
+    ///
+    /// 探针现在直接调生产路径上的 IsAcceptable —— 判据只能有一份。
+    /// 早先探针比生产路径多查一条"排除自身 exe"，而生产路径漏了壳窗口过滤，
+    /// 结果自检全绿、实际点哪儿都是桌面。
     /// </summary>
     private static void TestWindowPreview()
     {
         var picker = new UI.Windows.WindowPickerWindow();
         var probe = picker.Probe;
+
+        /* 遮罩要铺满**整个虚拟屏幕**。
+         * 原来用 WindowState=Maximized，只覆盖主显示器 ——
+         * 接了扩展屏时副屏上根本没有遮罩，那里的窗口既看不到高亮也点不到。 */
+        Check("遮罩铺满整个虚拟屏幕（含副屏）",
+            Math.Abs(picker.Width - System.Windows.SystemParameters.VirtualScreenWidth) < 1 &&
+            Math.Abs(picker.Height - System.Windows.SystemParameters.VirtualScreenHeight) < 1,
+            $"{picker.Width}x{picker.Height} vs " +
+            $"{System.Windows.SystemParameters.VirtualScreenWidth}x{System.Windows.SystemParameters.VirtualScreenHeight}");
+
+        Check("点选器初始没有选中任何窗口", picker.PickedWindow == IntPtr.Zero);
+
+        /* Esc 必须能退出。
+         *
+         * 遮罩是 WS_EX_NOACTIVATE 的（不能抢焦点，否则点选会把用户正在用的
+         * 窗口顶到后面），所以它**收不到 WPF 的键盘事件** ——
+         * 原来挂的 PreviewKeyDown 永远不会触发，按 Esc 一点反应都没有。
+         * 现在改由全局键盘钩子接，判定逻辑抽成纯函数在这里验。 */
+        const int keyDown = 0x0100, keyUp = 0x0101, sysKeyDown = 0x0104, sysKeyUp = 0x0105;
+        const uint esc = 0x1B, otherKey = 0x41;   // 0x41 = A
+        Check("Esc 按下被接住", picker.SwallowsKeyForTest(keyDown, esc));
+        Check("Esc 抬起也被接住（避免漏一个孤儿 keyup）", picker.SwallowsKeyForTest(keyUp, esc));
+        Check("Alt+Esc 也能取消", picker.SwallowsKeyForTest(sysKeyDown, esc));
+        Check("Esc 的系统抬起也接住", picker.SwallowsKeyForTest(sysKeyUp, esc));
+        Check("其它键不拦（点选时还能正常打字）",
+            !picker.SwallowsKeyForTest(keyDown, otherKey));
+        Check("鼠标消息不当成取消键", !picker.SwallowsKeyForTest(0x0200, esc));
+
+        picker.CancelForTest();
+        Check("取消后选中结果为空", picker.PickedWindow == IntPtr.Zero);
 
         // 自己的窗口必须排除（否则会绑到自己）
         var self = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
@@ -772,7 +806,11 @@ public static class SelfTest
         Check("识别出桌面窗口", probe.IsShellClassForTest("Progman"));
         Check("识别出 WorkerW", probe.IsShellClassForTest("WorkerW"));
         Check("识别出任务栏", probe.IsShellClassForTest("Shell_TrayWnd"));
+        Check("识别出副屏任务栏", probe.IsShellClassForTest("Shell_SecondaryTrayWnd"));
+        Check("识别出 Win10 托盘溢出", probe.IsShellClassForTest("NotifyIconOverflowWindow"));
+        Check("识别出 Win11 托盘溢出", probe.IsShellClassForTest("TopLevelWindowForOverflowXamlIsland"));
         Check("普通窗口类名不被当成壳窗口", !probe.IsShellClassForTest("Notepad"));
+        Check("微信主窗口类名不被当成壳窗口", !probe.IsShellClassForTest("WeChatMainWndForPC"));
 
         // 真实窗口：从当前已枚举到的顶层窗口里挑一个非自身的来验证
         var candidates = WindowService.EnumerateTopLevel()
@@ -790,9 +828,9 @@ public static class SelfTest
             Check("没有可作为目标的窗口，跳过", true);
         }
 
-        // 核心回归：按坐标从 Z 序里取窗口。
-        // 之前的实现用 WindowFromPoint，遮罩会挡住自己导致取不到；
-        // 现在的实现从桌面 Z 序顶端扫描，必须能取到一个真实窗口。
+        // 核心回归：按坐标取窗口。
+        // 走的是"WindowFromPoint → GA_ROOT，失败再扫 Z 序"两段式，
+        // 必须能取到一个真实窗口。
         var anyWindow = WindowService.EnumerateTopLevel()
             .FirstOrDefault(w => !w.ExeName.Equals(AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)
                                  && w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd"));
@@ -865,6 +903,12 @@ public static class SelfTest
                           && !IsOwnProcess(found);
             Check("遮罩可见时仍能取到真实窗口", isReal,
                 $"({cx},{cy}) -> 0x{found.ToInt64():X}");
+
+            /* 双保险：万一 WindowFromPoint 真把遮罩自己返回了（比如某些驱动
+             * 不按 WS_EX_TRANSPARENT 跳过），IsAcceptable 也必须拒掉它，
+             * 这样还能落到 Z 序扫描那条兜底路上。
+             * 两道防线各自独立成立，取窗口就不可能取到遮罩。 */
+            Check("遮罩自己永远不可被选中", !probe.AcceptsForTest(hwnd));
         }
         finally
         {
