@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
@@ -840,15 +840,17 @@ public partial class KeysView : UserControl
             ? $"触发键 {KeyName.Display(trigger.Key)}（键盘上已高亮）"
             : "（没有触发键指向这一层）";
 
-        string modText = _layer switch
-        {
-            KeyModifiers.Ctrl => " + Ctrl",
-            KeyModifiers.Shift => " + Shift",
-            KeyModifiers.Alt => " + LAlt",
-            KeyModifiers.Win => " + Win",
-            _ => "",
-        };
-        LayerHint.Text = $"当前：第 {_layerId} 层「{layerName}」{modText}（{bound} 个绑定）　·　{triggerText}";
+        /* 修饰子层的提示必须能显示**组合**修饰键。
+         *
+         * 原来是个 switch，只认 Ctrl / Shift / Alt / Win 四个单值，
+         * 录了 Ctrl+Shift 就落到 `_ => ""`，界面完全看不出"正在看一个修饰子层"，
+         * 只看到"0 个绑定"—— 用户会以为绑定被删了。
+         * 顺便把"怎么回到普通键"写在同一行。 */
+        string modText = _layer == KeyModifiers.None ? "" : ModifierText(_layer);
+        string backHint = _layer == KeyModifiers.None
+            ? ""
+            : "　·　点上方的「直接按」回到普通键";
+        LayerHint.Text = $"当前：第 {_layerId} 层「{layerName}」{modText}（{bound} 个绑定）　·　{triggerText}{backHint}";
 
         /* 顶部提示里的触发键必须**跟着当前层变**。
          *
@@ -990,6 +992,16 @@ public partial class KeysView : UserControl
         if (_host == null || _suppressEvents) return;
         if (LayerBox.SelectedItem is not ComboBoxItem { Tag: int id }) return;
         _layerId = id;
+
+        /* 切层必须把"层内修饰键"复位。
+         *
+         * 不复位的话：在基础层点了「自定义按键…」录了个 Ctrl+Shift+K，
+         * `_layer` 就停在 Ctrl|Shift；接着切到第 2、3 层，
+         * 键盘上每个键算出来的 combo 都是 `ctrl_shift_xx`，自然一个都查不到，
+         * 界面显示"0 个绑定"—— 用户看到的就是"所有层的东西都被清空了"。
+         * 实际上绑定都在，只是视图卡在一个空的修饰子层上。 */
+        _layer = KeyModifiers.None;
+        _subLayerKey = "";
         SelectKey(_selectedKey);
     }
 
@@ -1401,7 +1413,6 @@ public partial class KeysView : UserControl
         string combo = CurrentCombo();
         var binding = FindInCurrentLayer(combo);
 
-        EditKeyLabel.Text = KeyName.Display(keyId);
         _suppressEvents = true;
 
         string actionId = binding?.Action ?? "doNothing";
@@ -1436,9 +1447,7 @@ public partial class KeysView : UserControl
         }
         ArgBox.Text = binding?.Arg ?? "";
 
-        // 同步"窗口绑定模式"的分类下拉
-        foreach (ComboBoxItem it in CategoryBoxWinBind.Items)
-        // 同步另外两个"专用模式"的分类下拉
+        // 同步另外三个"专用模式"的分类下拉
         foreach (ComboBoxItem wi in CategoryBoxWinBind.Items)
         {
             if (wi.Tag as string == info?.Category) { CategoryBoxWinBind.SelectedItem = wi; break; }
@@ -2349,8 +2358,12 @@ public partial class KeysView : UserControl
         // 于是组合键与单键走的是同一条路径，不会再出现"录了却没绑上"。
         string key = dlg.CapturedKey ?? dlg.CapturedCombo;
         _layer = dlg.CapturedMods;
+        // 子层按钮的选中态必须跟着 _layer 走，否则会显示"直接按"被选中、
+        // 实际编辑的却是 Ctrl+Shift 子层，两处对不上。
+        _subLayerKey = LayerKeyOf(_layer);
 
         SelectKey(key);
+        UpdateLayerButtons();     // 让子层按钮高亮跟上来
 
         /* 这个键原来绑过东西 → 说清楚"同名会改绑"，
          * 而不是让用户以为"这个键被占用了所以绑不上"。 */

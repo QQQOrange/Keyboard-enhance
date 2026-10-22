@@ -24,6 +24,24 @@ public sealed class WebDavOptions
 public sealed record RemoteFile(string Name, DateTimeOffset Modified, long Size);
 
 /// <summary>
+/// 带 HTTP 状态码的 WebDAV 错误。
+///
+/// 为什么要单独一个类型：上层需要区分"目录还不存在（404/409，可以先建再试）"
+/// 和"认证失败 / 没权限（建也没用）"。靠解析异常文本来判断太脆。
+/// </summary>
+public sealed class WebDavStatusException : InvalidOperationException
+{
+    public HttpStatusCode Status { get; }
+
+    public WebDavStatusException(HttpStatusCode status, string message) : base(message)
+        => Status = status;
+
+    /// <summary>是不是"目录还不存在"这类可以靠 MKCOL 解决的错误。</summary>
+    public bool IsMissingDirectory =>
+        Status is HttpStatusCode.NotFound or HttpStatusCode.Conflict or HttpStatusCode.Gone;
+}
+
+/// <summary>
 /// WebDAV 客户端。
 ///
 /// 只做最普通的三件事：PUT 一个文件上去、GET 下来、PROPFIND 列目录。
@@ -178,17 +196,46 @@ public sealed class WebDavClient
         }
     }
 
-    /// <summary>连通性探测：能列目录就算通。</summary>
+    /// <summary>
+    /// 连通性探测：能列目录就算通；目录不存在就先建出来再列。
+    ///
+    /// 为什么要建：用户刚填完地址点「测连接」时，云端那个子目录**通常还不存在**，
+    /// 旧实现直接 PROPFIND → 404 → 提示"地址或目录不存在"，
+    /// 而界面上写的是"子目录会自动创建" —— 说的和做的对不上。
+    /// 现在先把 MKCOL 打出去，再列，第一次点就能通过。
+    /// </summary>
     public async Task<string> ProbeAsync(CancellationToken ct = default)
     {
         try
         {
-            var files = await ListAsync(ct).ConfigureAwait(false);
-            return $"连接成功，云端有 {files.Count} 份备份";
+            var (files, created) = await ListEnsuringDirectoryAsync(ct).ConfigureAwait(false);
+            return created
+                ? $"连接成功，已自动创建目录 {DefaultSubdir}/，云端有 {files.Count} 份备份"
+                : $"连接成功，云端有 {files.Count} 份备份";
         }
         catch (Exception e)
         {
             throw new InvalidOperationException(Describe(e), e);
+        }
+    }
+
+    /// <summary>
+    /// 列目录；目录不存在就先建再列。
+    /// 返回 (文件列表, 是否新建了目录)。
+    /// </summary>
+    public async Task<(List<RemoteFile> Files, bool Created)> ListEnsuringDirectoryAsync(
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return (await ListAsync(ct).ConfigureAwait(false), false);
+        }
+        catch (WebDavStatusException e) when (e.IsMissingDirectory)
+        {
+            // 目录不存在 → 建出来再列一次。这是"刚填完地址"最常见的情况。
+            bool created = await EnsureDirectoryAsync(ct).ConfigureAwait(false);
+            var files = await ListAsync(ct).ConfigureAwait(false);
+            return (files, created);
         }
     }
 
@@ -297,7 +344,8 @@ public sealed class WebDavClient
 
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
-            throw new InvalidOperationException(DescribeStatus(resp.StatusCode, "列出目录"));
+            throw new WebDavStatusException(resp.StatusCode,
+                DescribeStatus(resp.StatusCode, "列出目录"));
 
         string xml = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         return ParsePropfind(xml);
@@ -395,24 +443,32 @@ public sealed class WebDavClient
         return DateTimeOffset.TryParse(s, inv, styles, out result);
     }
 
-    /// <summary>确保子目录存在（不存在就 MKCOL；已存在会返回 405，忽略）。</summary>
-    private async Task EnsureDirectoryAsync(CancellationToken ct)
+    /// <summary>
+    /// 确保子目录存在（不存在就 MKCOL）。
+    /// 返回 true 表示这次真的新建了（201）。
+    /// </summary>
+    private async Task<bool> EnsureDirectoryAsync(CancellationToken ct)
     {
         string baseUrl = NormalizeBase(_opt.Url);
         try
         {
             var req = new HttpRequestMessage(new HttpMethod("MKCOL"), new Uri(baseUrl));
             using var resp = await _client.SendAsync(req, ct).ConfigureAwait(false);
-            // 201 = 建好了；405 = 已存在；301/409 = 父目录问题，交给 PUT 去报错
-            if (resp.StatusCode is HttpStatusCode.Created
-                or HttpStatusCode.MethodNotAllowed
-                or HttpStatusCode.Conflict)
-                return;
+            // 201 = 建好了；405 = 已存在；301/409 = 父目录问题，交给后面的请求去报错
+            if (resp.StatusCode == HttpStatusCode.Created)
+            {
+                CoreLog.Info($"WebDAV：已创建目录 {baseUrl}");
+                return true;
+            }
+            if (resp.StatusCode is HttpStatusCode.MethodNotAllowed or HttpStatusCode.Conflict)
+                return false;
         }
-        catch
+        catch (Exception ex)
         {
             // MKCOL 失败不致命：很多网盘根目录已存在，直接 PUT 也能成功
+            CoreLog.Warn("WebDAV：MKCOL 失败（忽略）：" + ex.Message);
         }
+        return false;
     }
 
     /// <summary>把异常翻译成人能看懂的话。</summary>

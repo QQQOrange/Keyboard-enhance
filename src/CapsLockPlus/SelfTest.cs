@@ -163,6 +163,7 @@ public static class SelfTest
         Section("窗口点选");
         TestWindowPreview();
         TestPickerWithOverlayVisible();
+        TestPickerCommitKeepsResult();
 
         Section("文字度量");
         TestTextMetrics();
@@ -854,6 +855,45 @@ public static class SelfTest
     }
 
     /// <summary>
+    /// 选中之后结果不能被"取消"抹掉。
+    ///
+    /// 旧实现是 `PickedWindow = target; Cancel();`，而 Cancel() 里有一句
+    /// `PickedWindow = IntPtr.Zero` —— 等于点完立刻把自己选中的东西清掉。
+    /// 用户看到的现象正是："窗口明明已经高亮了，点下去却怎么都确定不了"。
+    /// 现在选中和取消都走 Finish(picked)，不会再互相踩。
+    /// </summary>
+    private static void TestPickerCommitKeepsResult()
+    {
+        var anyWindow = WindowService.EnumerateTopLevel()
+            .FirstOrDefault(w => !w.ExeName.Equals(AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)
+                                 && w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd"));
+        if (anyWindow.Handle == IntPtr.Zero)
+        {
+            Check("没有可点选的窗口，跳过选中结果检查", true);
+            return;
+        }
+
+        var r = WindowService.GetRect(anyWindow.Handle);
+        int cx = r.Left + r.Width / 2;
+        int cy = r.Top + r.Height / 2;
+
+        var picker = new UI.Windows.WindowPickerWindow();
+        try
+        {
+            var picked = picker.CommitAtForTest(cx, cy);
+            Check("点选后结果不为空（没被取消逻辑抹掉）", picked != IntPtr.Zero,
+                $"({cx},{cy}) -> 0x{picked.ToInt64():X}");
+            Check("点选结果不是本进程窗口", picked == IntPtr.Zero || !IsOwnProcess(picked),
+                "0x" + picked.ToInt64().ToString("X"));
+            Check("点选后遮罩已关闭", !picker.IsVisible);
+        }
+        finally
+        {
+            picker.Close();
+        }
+    }
+
+    /// <summary>
     /// 实测点选器遮罩"在屏幕上真实可见"时，取窗口还能不能成功。
     ///
     /// 这是"点选点了没反应"的直接回归测试。之前只测了不显示遮罩的情况，
@@ -1242,6 +1282,24 @@ public static class SelfTest
         CheckEqual("用户自定义路径不套子目录",
             Core.Sync.WebDavClient.NormalizeBase("https://dav.jianguoyun.com/dav/我的备份/"),
             "https://dav.jianguoyun.com/dav/我的备份/");
+
+        /* 「目录还不存在」这个判断必须准。
+         *
+         * 它是"点测连接时自动建目录"这条修复的开关：
+         * 判对了才会去打 MKCOL；判错了（比如把 401 也算进来）
+         * 就会在密码错误时反复重试建目录，把真正的错误盖住。 */
+        Check("404 判定为「目录不存在」",
+            new Core.Sync.WebDavStatusException(
+                System.Net.HttpStatusCode.NotFound, "x").IsMissingDirectory);
+        Check("409 判定为「目录不存在」",
+            new Core.Sync.WebDavStatusException(
+                System.Net.HttpStatusCode.Conflict, "x").IsMissingDirectory);
+        Check("401 不算「目录不存在」",
+            !new Core.Sync.WebDavStatusException(
+                System.Net.HttpStatusCode.Unauthorized, "x").IsMissingDirectory);
+        Check("403 不算「目录不存在」",
+            !new Core.Sync.WebDavStatusException(
+                System.Net.HttpStatusCode.Forbidden, "x").IsMissingDirectory);
 
         Check("空地址不算错误（未启用）", Core.Sync.WebDavClient.Validate("") == null);
         Check("非法地址报错", Core.Sync.WebDavClient.Validate("not a url") != null);

@@ -96,7 +96,12 @@ public static class WebDavSelfTest
                 files.Any(f => f.Name == WebDavClient.LatestFile),
                 string.Join(",", files.Select(f => f.Name)));
 
-            // ⑦ 错密码必须被拒（而不是把垃圾灌进配置）
+            /* ⑦ 错密码必须被拒（而不是把垃圾灌进配置）。
+             *
+             * 这里要接**所有**异常：解密失败可能抛 InvalidOperationException，
+             * 也可能抛别的（CryptographicException 之类）。
+             * 只接 InvalidOperationException 的话，异常会漏到最外层，
+             * 被报成"整个过程没有抛异常 → FAIL"，看起来像功能坏了。 */
             var bad = DefaultSettings.Create();
             bad.Sync.BackupPassword = "错误密码";
             var badSvc = new SyncService(() => bad);
@@ -105,7 +110,7 @@ public static class WebDavSelfTest
             if (text != null)
             {
                 try { badSvc.RestoreFromText(text); }
-                catch (InvalidOperationException) { rejected = true; }
+                catch (Exception) { rejected = true; }
             }
             Check("用错误密码恢复会被拒绝", rejected);
         }

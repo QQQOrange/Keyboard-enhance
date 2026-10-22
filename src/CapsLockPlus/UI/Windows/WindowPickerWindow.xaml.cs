@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -31,10 +31,19 @@ namespace CapsLockPlus.UI.Windows;
 /// WindowFromPoint 就会穿过去。只留 ② 的代价是：窗口矩形受 DWM 隐形边框
 /// 与 DPI 虚拟化影响，某些程序（尤其自绘 UI）会算不中，表现就是"点不到某个窗口"。
 ///
-/// 取消：鼠标右键，或者 **Esc**。
-/// Esc 走全局键盘钩子而不是 WPF 的 PreviewKeyDown —— 遮罩是
-/// WS_EX_NOACTIVATE 的（不能抢焦点，否则点选时会把用户正在用的窗口
-/// 顶到后面），它根本收不到键盘事件，所以 PreviewKeyDown 永远不会触发。
+/// 输入（左键选中 / 右键取消 / Esc 取消）**全部靠轮询按键状态**，不用低级钩子：
+///
+///   * 遮罩是 WS_EX_NOACTIVATE 的（不能抢焦点，否则点选会把用户正在用的窗口
+///     顶到后面），所以它收不到 WPF 的键盘鼠标事件 —— PreviewKeyDown 永远不触发；
+///   * 低级钩子（WH_MOUSE_LL）在**目标窗口完整性级别更高**时会收不到事件
+///     （UIPI 限制，比如对方以管理员身份运行），而且 UI 线程一忙就会被系统
+///     静默摘掉钩子（LowLevelHooksTimeout）。表现正是"能高亮、点了没反应、
+///     右键也取消不了" —— 用户报的就是这个；
+///   * GetAsyncKeyState 查的是**物理按键状态**，不经过任何投递链路，
+///     不受 UIPI 与钩子超时影响，永远拿得到。
+///
+/// 代价只是延迟最多 20ms（一个轮询周期），人手感觉不到。
+/// Esc 另外还挂了一个键盘钩子，唯一目的是把它**吞掉**，不让它漏到下面的程序。
 /// </summary>
 public partial class WindowPickerWindow : Window
 {
@@ -42,29 +51,18 @@ public partial class WindowPickerWindow : Window
     public IntPtr PickedWindow { get; private set; }
 
     private IntPtr _selfHandle;
-    private IntPtr _mouseHook = IntPtr.Zero;
     private IntPtr _kbdHook = IntPtr.Zero;
-    private HookProc? _mouseProc;                 // 必须保存引用，防止被 GC
-    private HookProc? _kbdProc;
+    private HookProc? _kbdProc;                   // 必须保存引用，防止被 GC
     private readonly DispatcherTimer _poll;
     private bool _closing;
 
+    /// <summary>上一轮轮询看到的按键状态，用来识别"按下沿"。</summary>
+    private bool _prevLeft, _prevRight, _prevEsc;
+
+    /// <summary>轮询计数：按键每 20ms 查一次，高亮不必这么勤，每 4 次刷一次。</summary>
+    private int _pollTick;
+
     private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MSLLHOOKSTRUCT
-    {
-        public POINT pt;
-        public uint mouseData;
-        public uint flags;
-        public uint time;
-        public IntPtr dwExtraInfo;
-    }
-
-    private const int WH_MOUSE_LL = 14;
-    private const int WM_MOUSEMOVE = 0x0200;
-    private const int WM_LBUTTONUP = 0x0202;
-    private const int WM_RBUTTONUP = 0x0205;
 
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
@@ -72,6 +70,14 @@ public partial class WindowPickerWindow : Window
     private const int WM_SYSKEYDOWN = 0x0104;
     private const int WM_SYSKEYUP = 0x0105;
     private const uint VK_ESCAPE = 0x1B;
+    private const uint VK_LBUTTON = 0x01;
+    private const uint VK_RBUTTON = 0x02;
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    /// <summary>这个键此刻是否被按住（查物理状态，不受 UIPI / 钩子影响）。</summary>
+    private static bool IsDown(uint vk) => (GetAsyncKeyState((int)vk) & 0x8000) != 0;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint threadId);
@@ -89,15 +95,19 @@ public partial class WindowPickerWindow : Window
     {
         InitializeComponent();
         FitToVirtualScreen();          // 先摆好尺寸再显示，避免一帧小窗闪过
-        _mouseProc = MouseCallback;
         _kbdProc = KeyboardCallback;
         Loaded += OnLoaded;
         Closed += OnClosed;
         PreviewKeyDown += OnKeyDown;
 
-        // 兜底轮询：万一全局鼠标钩子被安全软件拦掉，高亮仍能跟随鼠标
-        _poll = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(80) };
-        _poll.Tick += (_, _) => UpdateHover(CurrentCursor());
+        /* 20ms 一轮：既用来识别点击/取消，也顺便驱动高亮跟随。
+         * 用 Input 优先级而不是 Render —— 它要在渲染之前跑，
+         * 不然界面一忙，点击判定就跟着慢半拍。 */
+        _poll = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(20),
+        };
+        _poll.Tick += (_, _) => PollInput();
     }
 
     /// <summary>
@@ -129,14 +139,20 @@ public partial class WindowPickerWindow : Window
 
         FitToVirtualScreen();
 
-        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, GetModuleHandle(null), 0);
-        if (_mouseHook == IntPtr.Zero)
-            CoreLog.Warn($"点选器鼠标钩子安装失败（错误码 {Marshal.GetLastWin32Error()}），改用轮询");
+        /* 用"当前实际按键状态"初始化沿检测。
+         *
+         * 不初始化的话，用户点完「选择窗口」按钮、手还没松开时遮罩就弹出来了，
+         * 第一轮轮询看到"左键是按下的"会立刻当成一次点击，当场选中鼠标底下
+         * 那个窗口 —— 点选器一出来就自己关掉。 */
+        _prevLeft = IsDown(VK_LBUTTON);
+        _prevRight = IsDown(VK_RBUTTON);
+        _prevEsc = IsDown(VK_ESCAPE);
 
-        // Esc 靠全局键盘钩子收：遮罩是 NOACTIVATE 的，收不到键盘事件
+        // 键盘钩子只为了把 Esc 吞掉，不让它漏到底下的程序
         _kbdHook = SetWindowsHookEx(WH_KEYBOARD_LL, _kbdProc, GetModuleHandle(null), 0);
         if (_kbdHook == IntPtr.Zero)
-            CoreLog.Warn($"点选器键盘钩子安装失败（错误码 {Marshal.GetLastWin32Error()}），Esc 可能无效");
+            CoreLog.Warn($"点选器键盘钩子安装失败（错误码 {Marshal.GetLastWin32Error()}），" +
+                         "Esc 仍可用（轮询兜底），但会同时传到底下的程序");
 
         _poll.Start();
     }
@@ -144,16 +160,64 @@ public partial class WindowPickerWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         _poll.Stop();
-        if (_mouseHook != IntPtr.Zero)
-        {
-            UnhookWindowsHookEx(_mouseHook);
-            _mouseHook = IntPtr.Zero;
-        }
         if (_kbdHook != IntPtr.Zero)
         {
             UnhookWindowsHookEx(_kbdHook);
             _kbdHook = IntPtr.Zero;
         }
+    }
+
+    /// <summary>
+    /// 每 20ms 一轮：识别左键选中 / 右键取消 / Esc 取消，顺便刷新高亮。
+    ///
+    /// 只在**按下沿**动作（上一次没按、这一次按下）。用按下而不是抬起：
+    /// 抬起沿要依赖"看见过按下"，快速点击可能整个按下阶段都落在两轮轮询之间，
+    /// 那就永远等不到抬起沿；按下沿只要碰上一次就成立。
+    /// </summary>
+    private void PollInput()
+    {
+        if (_closing) return;
+
+        bool left = IsDown(VK_LBUTTON);
+        bool right = IsDown(VK_RBUTTON);
+        bool esc = IsDown(VK_ESCAPE);
+
+        bool leftEdge = left && !_prevLeft;
+        bool rightEdge = right && !_prevRight;
+        bool escEdge = esc && !_prevEsc;
+
+        _prevLeft = left;
+        _prevRight = right;
+        _prevEsc = esc;
+
+        if (escEdge || rightEdge) { Cancel(); return; }
+        if (leftEdge) { CommitAt(CurrentCursor()); return; }
+
+        // 高亮每 4 轮（80ms）刷一次就够了
+        if (++_pollTick % 4 == 0) UpdateHover(CurrentCursor());
+    }
+
+    /// <summary>在指定位置"定案"：认得出窗口就选中并关闭，认不出就提示换个位置。</summary>
+    private void CommitAt(POINT pt)
+    {
+        if (_closing) return;
+
+        var target = ResolveTargetUnder(pt.X, pt.Y);
+        if (target == IntPtr.Zero)
+        {
+            HoverTitle.Text = "这里没认出窗口，换个位置再点一次";
+            HoverProcess.Text = "（任务栏、桌面这类系统窗口不能绑）　·　Esc / 右键取消";
+            HoverInfo.Visibility = Visibility.Visible;
+            HoverInfo.Margin = new Thickness(
+                Math.Max(0, ActualWidth / 2 - 200), 60, 0, 0);
+            return;
+        }
+
+        var info = WindowService.Describe(target);
+        CoreLog.Info($"点选到窗口 0x{target.ToInt64():X}" +
+                     $" class={WindowService.ClassNameOf(target)}" +
+                     $" title={info?.Title}");
+        Finish(target);
     }
 
     /// <summary>WPF 事件通道的 Esc（键盘钩子装不上时的备用路径）。</summary>
@@ -162,11 +226,19 @@ public partial class WindowPickerWindow : Window
         if (e.Key == Key.Escape) Cancel();
     }
 
-    private void Cancel()
+    private void Cancel() => Finish(IntPtr.Zero);
+
+    /// <summary>
+    /// 收尾：记下结果并关闭。取消时传 <see cref="IntPtr.Zero"/>。
+    ///
+    /// 选中和取消都走这里 —— 以前选中是"先赋值再调 Cancel()"，
+    /// 而 Cancel() 会把 PickedWindow 抹成 0，等于白选。
+    /// </summary>
+    private void Finish(IntPtr picked)
     {
         if (_closing) return;
         _closing = true;
-        PickedWindow = IntPtr.Zero;
+        PickedWindow = picked;
         Close();
     }
 
@@ -212,56 +284,19 @@ public partial class WindowPickerWindow : Window
     /// <summary>自检用：走一次"取消"，验证会把选中结果清空。</summary>
     public void CancelForTest() => Cancel();
 
+    /// <summary>自检用：在指定坐标模拟一次点击，返回最终选中的句柄。</summary>
+    public IntPtr CommitAtForTest(int x, int y)
+    {
+        CommitAt(new POINT { X = x, Y = y });
+        return PickedWindow;
+    }
+
     private static POINT CurrentCursor()
     {
         GetCursorPos(out var pt);
         return pt;
     }
 
-    private IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        if (nCode >= 0 && !_closing)
-        {
-            int msg = (int)wParam;
-            var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-
-            if (msg == WM_MOUSEMOVE)
-            {
-                Dispatcher.BeginInvoke(() => UpdateHover(data.pt));
-            }
-            else if (msg == WM_LBUTTONUP)
-            {
-                // 在钩子里就定案，避免遮罩先关掉导致坐标失效
-                var target = ResolveTargetUnder(data.pt.X, data.pt.Y);
-                Dispatcher.BeginInvoke(() =>
-                {
-                    if (target != IntPtr.Zero)
-                    {
-                        PickedWindow = target;
-                        var info = WindowService.Describe(target);
-                        CoreLog.Info($"点选到窗口 0x{target.ToInt64():X}" +
-                                     $" class={WindowService.ClassNameOf(target)}" +
-                                     $" title={info?.Title}");
-                        Cancel();
-                    }
-                    else
-                    {
-                        // 取不到时不要静默失败——告诉用户换个位置再点
-                        HoverTitle.Text = "这里没认出窗口，换个位置再点一次";
-                        HoverProcess.Text = "（任务栏、桌面这类系统窗口不能绑）　·　Esc / 右键取消";
-                        HoverInfo.Visibility = Visibility.Visible;
-                        HoverInfo.Margin = new Thickness(
-                            Math.Max(0, ActualWidth / 2 - 200), 60, 0, 0);
-                    }
-                });
-            }
-            else if (msg == WM_RBUTTONUP)
-            {
-                Dispatcher.BeginInvoke(Cancel);
-            }
-        }
-        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
-    }
 
     private void UpdateHover(POINT pt)
     {

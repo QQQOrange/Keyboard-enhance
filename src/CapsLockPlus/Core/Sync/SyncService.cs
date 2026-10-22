@@ -502,7 +502,9 @@ public sealed class SyncService
     public async Task<List<RemoteFile>> ListBackupsAsync(CancellationToken ct = default)
     {
         var client = Client();
-        var all = await client.ListAsync(ct).ConfigureAwait(false);
+        /* 目录不存在就先建再列 —— 用户可能刚填完地址，
+         * 还没上传过任何东西，这时候"恢复"对话框也该能正常打开（空列表）。 */
+        var (all, _) = await client.ListEnsuringDirectoryAsync(ct).ConfigureAwait(false);
         return all
             .Where(f => IsBackupName(f.Name))
             .OrderByDescending(f => f.Modified)
