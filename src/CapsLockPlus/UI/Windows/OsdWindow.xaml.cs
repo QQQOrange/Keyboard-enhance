@@ -1,67 +1,92 @@
 ﻿using System;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Interop;
+using Microsoft.Win32;
 
 namespace CapsLockPlus.UI.Windows;
 
 /// <summary>
-/// 亮度横条（屏幕中下方、任务栏偏上）。
+/// 亮度横条。
 ///
-/// 为什么只有亮度还留着自绘：音量交给系统音量键，Windows 自己会弹它那条
-/// 横条（自绘只会多出一条重复的）；而亮度没有通用 OSD —— 系统那条只对
-/// 内置屏存在，是 OEM 驱动画的，外接屏走 DDC/CI 时系统根本不知道值变了。
+/// 造型**逐项复刻 Windows 自己的音量横条**（功能不同：一个是亮度，一个是音量）：
 ///
-/// 四条硬性要求（缺一条就会被用户当成 bug）：
-///   1. **不抢焦点** —— 用户可能正在打字，横条跳出来抢焦点会把输入打断
-///      （<c>ShowActivated=False</c> + <c>WS_EX_NOACTIVATE</c>）；
-///   2. **点击穿透** —— 横条挡在鼠标位置上时不能吃掉点击
-///      （<c>WS_EX_TRANSPARENT</c> + <c>IsHitTestVisible=False</c>）；
-///   3. **永远在最上层** —— 显示期间反复 <c>SetWindowPos(HWND_TOPMOST)</c>，
-///      因为别的 topmost 窗口（播放器、悬浮球、任务栏）随时可能压上来；
-///   4. **只建一个窗口** —— 连按亮度键时复用同一个，反复 new 会闪烁。
+///   | 项目 | 系统音量条（实测） | 本横条 |
+///   | --- | --- | --- |
+///   | 卡片 | 192×48 DIP、深色、圆角 6、无边框、带柔光阴影 | 同 |
+///   | 版式 | 左图标 + 中间进度条 + 右侧数字 | 同（图标换成亮度） |
+///   | 进度条 | 高 5 DIP、填充=系统强调色浅档、槽=白色 55% | 同 |
+///   | 文字 | 纯白，图标 16、数字 14 | 同 |
+///   | 位置 | 水平居中、贴工作区底边 15 DIP | 同 |
+///   | 动画 | 淡入约 150ms、停留约 1.9s、淡出约 120ms（合计 ~2.1s） | 同 |
 ///
-/// v4.3.0 的三处改动：
-///   · **尺寸缩小**（248×52，原 368×98），排版对齐系统音量条：图标 + 条 + 数字；
-///   · **跟随主题**（白夜 / 深浅模式）：配色全部走主题画刷，深色主题深底浅字，
-///     浅色主题浅底深字，不再写死深色；
-///   · **降延迟**：提前建好 HWND（<see cref="Warmup"/>）、用 Input 优先级
-///     回到 UI 线程、位置没变就不重复 SetWindowPos —— 长按亮度时每次刷新
-///     都要走这条路，省下的每一毫秒都直接体现在"跟手"上。
+/// 这些数字不是拍脑袋：用全屏截图 + 连通域/边缘分析量出来的
+/// （这台机器 3840×2160 @200%，对应 384×96 像素的卡片）。
+///
+/// **不跟随应用主题**：实测系统那条横条在浅色桌面上照样是深色卡片。
+/// 之前跟着主题走，结果是"白天蓝、夜里白"，和系统对不上。
+///
+/// 四条硬性要求（缺一条就会被当成 bug）：
+///   1. 不抢焦点（WS_EX_NOACTIVATE）—— 用户可能正在打字；
+///   2. 点击穿透（WS_EX_TRANSPARENT）；
+///   3. 永远在最上层（显示期间周期性重提 HWND_TOPMOST）；
+///   4. 只建一个窗口（连按时复用，避免闪烁）。
 /// </summary>
 public partial class OsdWindow : Window
 {
-    /// <summary>
-    /// 横条尺寸（DIP）。代码里定死，不依赖 XAML 上的值 ——
-    /// 尺寸会同时参与物理像素定位计算，两处写死迟早对不上。
-    ///
-    /// 208×44（约 4.7:1）参照 Windows 自带音量条的体量：那条是横长条，
-    /// 高度只有字高的两倍出头。上一版 248×52 在 200% 缩放下显得又宽又厚，
-    /// 挡住的内容比它本身还多。
-    /// </summary>
-    public const double DesignWidth = 208;
-    public const double DesignHeight = 44;
+    /// <summary>卡片尺寸（DIP）。与系统音量条一致。</summary>
+    public const double DesignWidth = 192;
+    public const double DesignHeight = 48;
 
     /// <summary>
-    /// 距工作区底边的距离（DIP）。
+    /// 卡片四周留给阴影的余量（DIP）。
     ///
-    /// Windows 11 的音量 / 亮度横条就贴在任务栏上方一点点，
-    /// 之前留 96 太靠上了，看起来像悬在屏幕中间。
-    /// 28 是"压在任务栏上沿、又不贴着边"的位置。
+    /// 窗口必须比卡片大一圈，否则 DropShadowEffect 会被窗口边界裁掉 ——
+    /// 系统那条横条是有柔和投影的，没有它看起来像"贴上去的色块"。
     /// </summary>
-    private const double BottomGap = 28;
+    private const double ShadowPad = 12;
 
-    /// <summary>淡入时间。太慢会觉得"迟钝"，太快会闪。</summary>
-    private const int FadeInMs = 80;
+    /// <summary>卡片下沿到工作区底边的距离（DIP）。实测系统是 15。</summary>
+    private const double BottomGap = 15;
 
-    private const int HoldMs = 1100;
-    private const int FadeOutMs = 200;
+    /// <summary>淡入（毫秒）。实测系统 ~150ms。</summary>
+    private const int FadeInMs = 150;
 
-    /// <summary>显示期间多久重新提一次置顶。太频繁没必要，太慢会被压住一会儿。</summary>
+    /// <summary>停留（毫秒）。实测系统条在 2.1s 左右消失，扣掉淡出约 1.9s。</summary>
+    private const int HoldMs = 1900;
+
+    /// <summary>淡出（毫秒）。实测系统收得很快。</summary>
+    private const int FadeOutMs = 120;
+
+    /// <summary>显示期间多久重新提一次置顶。</summary>
     private const int RaiseIntervalMs = 320;
+
+    /// <summary>强调色的缓存有效期：连按亮度时 Show 每秒会被调几十次。</summary>
+    private const int AccentCacheMs = 5000;
+
+    /* ---- 两套配色：跟 **Windows 系统主题** 走（不是本应用的主题） ----
+     *
+     * 系统那条横条是**半透明材质**（acrylic）：底色带 alpha，会透出一点背后的画面。
+     * 直接写死不透明色会显得"死板"，也和系统对不上 —— 用户特意提过这一点。
+     *
+     *   · 夜间：卡片 ≈ #2D2D2D @94%（实测净色 (44,45,45)），图标/数字纯白，
+     *           槽 = 白色 55%，进度条 = 强调色"浅色档"（本机 #4CC2FF）；
+     *   · 日间：卡片 ≈ #EBEDF0 @90%（实测 (220,223,226)），图标/数字黑 89%，
+     *           槽 = 黑色 45%，进度条 = 强调色"深色档"（本机 #0067C0）。
+     *
+     * 用 alpha 而不是预先混合好的实色：这样浅色壁纸下不会发灰、
+     * 深色壁纸下不会发亮，和系统那条的表现一致。 */
+    private static readonly Color LightCard = Color.FromArgb(0xE6, 0xEB, 0xED, 0xF0);
+    private static readonly Color LightText = Color.FromArgb(0xE4, 0x00, 0x00, 0x00);
+    private static readonly Color LightTrack = Color.FromArgb(0x73, 0x00, 0x00, 0x00);
+
+    private static readonly Color DarkCard = Color.FromArgb(0xF0, 0x2D, 0x2D, 0x2D);
+    private static readonly Color DarkText = Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+    private static readonly Color DarkTrack = Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF);
 
     private static OsdWindow? _instance;
 
@@ -71,6 +96,9 @@ public partial class OsdWindow : Window
     private double _scale;
     private bool _fadingOut;
 
+    private long _paletteTick;
+    private bool _lightPalette;
+
     /// <summary>上次摆放的物理坐标，用来跳过无意义的 SetWindowPos。</summary>
     private (int X, int Y, int W, int H) _placed;
 
@@ -78,8 +106,8 @@ public partial class OsdWindow : Window
     {
         InitializeComponent();
 
-        Width = DesignWidth;
-        Height = DesignHeight;
+        Width = DesignWidth + ShadowPad * 2;
+        Height = DesignHeight + ShadowPad * 2;
 
         _hideTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
@@ -93,15 +121,16 @@ public partial class OsdWindow : Window
         // 扩展样式必须在拿到 HWND 之后设置，否则 WPF 会用自己的值盖回去
         SourceInitialized += (_, _) => ApplyNoActivateStyle();
 
-        Loaded += (_, _) => RefreshFill();
+        Loaded += (_, _) => { ApplyPalette(force: true); RefreshFill(); };
+
+        ApplyPalette(force: true);
     }
 
     /// <summary>
     /// 预热：只把窗口和 HWND 建出来，不显示。
     ///
     /// 第一次 <c>new Window()</c> 要解析 XAML、建 HWND，冷启动 50~120ms ——
-    /// 用户第一次按亮度键会明显觉得"慢半拍"。启动后空闲时先建好，
-    /// 之后第一次显示就没有这笔开销。
+    /// 用户第一次按亮度键会明显觉得"慢半拍"。启动后空闲时先建好。
     /// </summary>
     public static void Warmup()
     {
@@ -133,8 +162,7 @@ public partial class OsdWindow : Window
 
         if (!app.Dispatcher.CheckAccess())
         {
-            // Input 优先级：和按键同一档，比 Normal 更早被执行 —— 长按连发时
-            // 每次刷新都要抢这一下，用 Background/Normal 会排在后台任务后面。
+            // Input 优先级：和按键同一档 —— 长按连发时每次刷新都要抢这一下
             app.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => Show(percent)));
             return;
         }
@@ -161,11 +189,24 @@ public partial class OsdWindow : Window
     /// <summary>仅供自检：百分比 → 进度条填充比例。</summary>
     public static double ScaleForTest(int percent) => Math.Clamp(percent, 0, 100) / 100.0;
 
-    /// <summary>仅供自检：横条应该出现在屏幕哪个位置。</summary>
-    public static (double Left, double Top) PositionForTest(Rect workArea, double width, double height)
+    /// <summary>仅供自检：卡片下沿离工作区底边多少 DIP。</summary>
+    internal static double CardBottomGapForTest => BottomGap;
+
+    /// <summary>仅供自检：当前系统是浅色还是深色模式。</summary>
+    internal static bool SystemLightForTest => IsSystemLightTheme();
+
+    /// <summary>
+    /// 仅供自检：横条（窗口）应该出现在屏幕哪个位置。
+    ///
+    /// 阴影留白不参与定位 —— 否则改了阴影大小横条会跟着漂。
+    /// </summary>
+    public static (double Left, double Top) PositionForTest(Rect workArea)
     {
-        return (Math.Round(workArea.Left + (workArea.Width - width) / 2),
-                Math.Round(workArea.Bottom - height - BottomGap));
+        double winW = DesignWidth + ShadowPad * 2;
+
+        double left = Math.Round(workArea.Left + (workArea.Width - winW) / 2);
+        double top = Math.Round(workArea.Bottom - BottomGap - DesignHeight - ShadowPad);
+        return (left, top);
     }
 
     private void Apply(int percent)
@@ -173,6 +214,7 @@ public partial class OsdWindow : Window
         percent = Math.Clamp(percent, 0, 100);
         _scale = percent / 100.0;
         ValueText.Text = percent.ToString();
+        ApplyPalette();
         RefreshFill();
     }
 
@@ -197,8 +239,10 @@ public partial class OsdWindow : Window
         if (firstShow) LogGeometry("首次显示");
 
         if (firstShow || wasFadingOut)
-            BeginAnimation(OpacityProperty,
-                new DoubleAnimation(1, TimeSpan.FromMilliseconds(FadeInMs)));
+            BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(FadeInMs))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            });
 
         _hideTimer.Stop();
         _hideTimer.Interval = TimeSpan.FromMilliseconds(HoldMs);
@@ -224,18 +268,107 @@ public partial class OsdWindow : Window
     }
 
     /// <summary>
-    /// 水平居中，垂直落在任务栏上方。
+    /// 按 **Windows 系统主题**（浅色/深色）套用一整套配色。
     ///
-    /// **用物理像素直接 SetWindowPos**，不走 WPF 的 Left/Top。
+    /// 为什么不跟本应用的主题：系统那条横条是跟着 Windows 的明暗走的，
+    /// 而本应用可以单独选主题。两者不一致时，用户看到的就会是
+    /// "系统浅、我们深"这种对不上。所以这里直接读系统的 AppsUseLightTheme。
     ///
-    /// 原因：WPF 的 Left/Top 是"窗口所在显示器 DPI 下的 DIP"，
-    /// 而 <c>SystemParameters.WorkArea</c> 给的是"系统 DPI 下的 DIP"。
-    /// 这台机器 200% 缩放，两个坐标系差一倍 —— 实测按 DIP 算出来的位置
-    /// 是 864，乘 2 之后落到 1728，屏幕只有 1080 高，横条直接不见了。
-    /// 物理像素只有一个坐标系，乘一下缩放就对齐了，不会错。
+    /// 缓存 5 秒：长按亮度时 Show 每秒被调几十次，没必要每次都读注册表。
+    /// </summary>
+    private void ApplyPalette(bool force = false)
+    {
+        long now = Environment.TickCount64;
+        if (!force && now - _paletteTick < AccentCacheMs) return;
+
+        _paletteTick = now;
+        _lightPalette = IsSystemLightTheme();
+
+        Color card = _lightPalette ? LightCard : DarkCard;
+        Color text = _lightPalette ? LightText : DarkText;
+        Color track = _lightPalette ? LightTrack : DarkTrack;
+        Color fill = ReadAccent(_lightPalette);
+
+        Card.Background = new SolidColorBrush(card);
+        IconText.Foreground = new SolidColorBrush(text);
+        ValueText.Foreground = new SolidColorBrush(text);
+        TrackBar.Background = new SolidColorBrush(track);
+        FillBar.Background = new SolidColorBrush(fill);
+    }
+
+    /// <summary>Windows 当前是不是浅色模式。</summary>
+    private static bool IsSystemLightTheme()
+    {
+        try
+        {
+            object? v = Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "AppsUseLightTheme", null);
+
+            if (v is int i) return i != 0;
+        }
+        catch (Exception e)
+        {
+            CoreLog.Warn("读取系统明暗模式失败：" + e.Message);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 读强调色调色板：白天用"深色档"（索引 4），夜间用"浅色档"（索引 1）。
     ///
-    /// 位置没变就**不再调** SetWindowPos：连按亮度时这个方法每 45ms 跑一次，
-    /// 多余的调用会让 DWM 反复重组图层，看起来就是"横条在抖"。
+    /// HKCU\…\Explorer\Accent 的 AccentPalette 是 8 组 RGBX 共 32 字节：
+    ///   0=更浅、1=浅、2/3=标准…（本机 1=#4CC2FF、4=#0067C0）。
+    /// 系统横条正是按当前明暗取不同档位，这里照做；读不到就回退默认蓝。
+    /// </summary>
+    private static Color ReadAccent(bool light)
+    {
+        try
+        {
+            object? raw = Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent",
+                "AccentPalette", null);
+
+            if (raw is byte[] b)
+            {
+                int offset = light ? 16 : 4;      // 索引 4（白天）/ 1（夜间）
+                if (b.Length >= offset + 3)
+                    return Color.FromRgb(b[offset], b[offset + 1], b[offset + 2]);
+            }
+        }
+        catch (Exception e)
+        {
+            CoreLog.Warn("读取强调色失败：" + e.Message);
+        }
+
+        return light ? Color.FromRgb(0x00, 0x67, 0xC0) : Color.FromRgb(0x4C, 0xC2, 0xFF);
+    }
+
+    /// <summary>仅供自检：按明暗取整套配色（十六进制，便于断言）。</summary>
+    internal static (string Card, string Text, string Track, string Fill) PaletteForTest(bool light)
+    {
+        Color card = light ? LightCard : DarkCard;
+        Color text = light ? LightText : DarkText;
+        Color track = light ? LightTrack : DarkTrack;
+        Color fill = ReadAccent(light);
+
+        return ($"#{card.R:X2}{card.G:X2}{card.B:X2}",
+                $"#{text.R:X2}{text.G:X2}{text.B:X2}",
+                $"#{track.R:X2}{track.G:X2}{track.B:X2}",
+                $"#{fill.R:X2}{fill.G:X2}{fill.B:X2}");
+    }
+
+    /// <summary>
+    /// 水平居中，卡片下沿贴工作区底边 15 DIP（和系统那条一样）。
+    ///
+    /// **用物理像素直接 SetWindowPos**，不走 WPF 的 Left/Top：
+    /// WPF 的 Left/Top 是"窗口所在显示器 DPI 下的 DIP"，而
+    /// <c>SystemParameters.WorkArea</c> 是"系统 DPI 下的 DIP"，
+    /// 200% 缩放下这两个坐标系差一倍，按 DIP 算会把横条送到屏幕外（踩过）。
+    ///
+    /// 位置没变就不重复调 SetWindowPos：连按时这个方法每 45ms 跑一次，
+    /// 多余的调用会让 DWM 反复重组图层，看起来像"横条在抖"。
     /// </summary>
     private void Place()
     {
@@ -248,7 +381,6 @@ public partial class OsdWindow : Window
             if (!TryMonitorWorkArea(hwnd, out int workLeft, out int workTop,
                                     out int workWidth, out int workHeight))
             {
-                // 拿不到显示器信息时退回 WPF 的值，再换算成物理像素
                 var wa = SystemParameters.WorkArea;
                 workLeft = (int)Math.Round(wa.Left * scale);
                 workTop = (int)Math.Round(wa.Top * scale);
@@ -256,10 +388,11 @@ public partial class OsdWindow : Window
                 workHeight = (int)Math.Round(wa.Height * scale);
             }
 
-            int w = (int)Math.Round(Width * scale);
-            int h = (int)Math.Round(Height * scale);
+            int w = (int)Math.Round((DesignWidth + ShadowPad * 2) * scale);
+            int h = (int)Math.Round((DesignHeight + ShadowPad * 2) * scale);
             int x = workLeft + (workWidth - w) / 2;
-            int y = workTop + workHeight - h - (int)Math.Round(BottomGap * scale);
+            int y = workTop + workHeight
+                    - (int)Math.Round((BottomGap + DesignHeight + ShadowPad) * scale);
 
             if (_placed == (x, y, w, h)) return;
             _placed = (x, y, w, h);
@@ -313,9 +446,8 @@ public partial class OsdWindow : Window
     /// <summary>
     /// 提到 topmost 组的最前面。
     ///
-    /// 只靠 <c>Topmost=True</c> 不够：那只是给窗口加了 WS_EX_TOPMOST，
-    /// 其它同样是 topmost 的窗口（播放器、悬浮工具、任务栏）后来者居上，
-    /// 就会盖住横条。所以显示期间要周期性重新提一次。
+    /// 只靠 <c>Topmost=True</c> 不够：其它同样是 topmost 的窗口
+    /// （播放器、悬浮工具、任务栏）后来者居上，就会盖住横条。
     /// </summary>
     private void RaiseToTop()
     {

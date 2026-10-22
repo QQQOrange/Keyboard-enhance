@@ -2664,27 +2664,10 @@ public static class SelfTest
         // 两种主题的实际配色必须不同（否则等于没切）
         UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Light);
         string lightBg = BrushColor("Brush.Background");
-        string lightOsdCard = BrushColor("Brush.OsdCard");
-        string lightOsdText = BrushColor("Brush.OsdText");
         UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
         string darkBg = BrushColor("Brush.Background");
-        string darkOsdCard = BrushColor("Brush.OsdCard");
-        string darkOsdText = BrushColor("Brush.OsdText");
         Check("浅色与深色的背景色不同", lightBg != darkBg,
             $"light={lightBg} dark={darkBg}");
-
-        /* 亮度横条必须**跟随主题**。
-         *
-         * 写死深色在白天模式下就是一块突兀的黑板；写死浅色则夜里刺眼。
-         * 两套主题里 OsdCard / OsdText 都得有，而且要真的不一样。 */
-        Check("浅色主题有横条配色", lightOsdCard.Length > 0 && lightOsdText.Length > 0,
-            $"card={lightOsdCard} text={lightOsdText}");
-        Check("深色主题有横条配色", darkOsdCard.Length > 0 && darkOsdText.Length > 0,
-            $"card={darkOsdCard} text={darkOsdText}");
-        Check("横条底色随主题变化", lightOsdCard != darkOsdCard,
-            $"light={lightOsdCard} dark={darkOsdCard}");
-        Check("横条文字色随主题变化", lightOsdText != darkOsdText,
-            $"light={lightOsdText} dark={darkOsdText}");
     }
 
     private static bool HasThemeDict(string needle)
@@ -4953,24 +4936,58 @@ public static class SelfTest
         CheckEqual("进度条越界会被夹住（上）", UI.Windows.OsdWindow.ScaleForTest(180), 1.0);
         CheckEqual("进度条越界会被夹住（下）", UI.Windows.OsdWindow.ScaleForTest(-20), 0.0);
 
-        /* 位置：水平居中，紧贴任务栏上方（和 Windows 自己的横条同一个区域）。
-         * 尺寸取 OsdWindow.DesignWidth/Height，避免两处写死后对不上。 */
+        /* 位置与尺寸：全部对齐系统音量条（192×48、贴底 15 DIP）。
+         * 数字来自对系统横条的全屏截图测量，见 OsdWindow 的注释。 */
         double ow = UI.Windows.OsdWindow.DesignWidth;
         double oh = UI.Windows.OsdWindow.DesignHeight;
         var wa = new System.Windows.Rect(0, 0, 1920, 1040);
-        var (osdLeft, osdTop) = UI.Windows.OsdWindow.PositionForTest(wa, ow, oh);
-        CheckEqual("横条水平居中", osdLeft, (1920 - ow) / 2.0);
+        var (osdLeft, osdTop) = UI.Windows.OsdWindow.PositionForTest(wa);
+        CheckEqual("横条水平居中", osdLeft, (1920 - (ow + 24)) / 2.0);
         Check("横条在屏幕下半部分（不是正中）", osdTop > 1040 * 0.85, $"top={osdTop}");
-        Check("横条不压到工作区底边", osdTop + oh < 1040, $"bottom={osdTop + oh}");
-        Check("横条离任务栏够近（≤ 48 DIP，不再悬在半空）",
-            1040 - (osdTop + oh) <= 48, $"gap={1040 - (osdTop + oh)}");
 
-        /* 尺寸必须"小"：368×98 → 248×52 → 208×44，
-         * 一路往 Windows 自带音量条的体量靠。这里钉住范围，避免以后又改回去。 */
-        Check("亮度横条够紧凑（宽 180~220）", ow is >= 180 and <= 220, $"{ow}");
-        Check("亮度横条够扁（高 38~48）", oh is >= 38 and <= 48, $"{oh}");
-        Check("横条长宽比接近 Windows 音量条（4~5.5 : 1）",
-            ow / oh is >= 4 and <= 5.5, $"{ow / oh:F2}");
+        /* 卡片下沿离工作区底边必须和系统一样是 15 DIP：
+         * 窗口比卡片大一圈（留给阴影），所以窗口底边不是卡片底边。 */
+        double cardBottom = osdTop + 12 + oh;
+        CheckEqual("卡片下沿贴底 15 DIP（与系统一致）",
+            Math.Round(1040 - cardBottom, 3), UI.Windows.OsdWindow.CardBottomGapForTest);
+
+        CheckEqual("卡片宽度与系统一致（192）", ow, 192.0);
+        CheckEqual("卡片高度与系统一致（48）", oh, 48.0);
+        Check("横条长宽比与系统一致（4 : 1）",
+            Math.Abs(ow / oh - 4.0) < 0.05, $"{ow / oh:F2}");
+
+        /* 配色：两套都对齐系统（半透明材质 + 强调色进度条）。
+         * 横条跟的是 **Windows 系统主题**，不是本应用主题。 */
+        var darkPal = UI.Windows.OsdWindow.PaletteForTest(light: false);
+        var lightPal = UI.Windows.OsdWindow.PaletteForTest(light: true);
+
+        Check("夜间：卡片是深色", LuminanceOf(darkPal.Card) < 0.06,
+            $"{darkPal.Card} lum={LuminanceOf(darkPal.Card):F3}");
+        Check("夜间：图标/数字是白色（和系统一致）",
+            darkPal.Text.Equals("#FFFFFF", StringComparison.OrdinalIgnoreCase), darkPal.Text);
+        Check("日间：卡片是浅色", LuminanceOf(lightPal.Card) > 0.70,
+            $"{lightPal.Card} lum={LuminanceOf(lightPal.Card):F3}");
+        Check("日间：图标/数字是深色（和系统一致）",
+            LuminanceOf(lightPal.Text) < 0.10, $"{lightPal.Text}");
+
+        Check("夜间进度条是强调色的浅色档（蓝色系）", IsBlueish(darkPal.Fill), darkPal.Fill);
+        Check("日间进度条是强调色的深色档（蓝色系）", IsBlueish(lightPal.Fill), lightPal.Fill);
+        Check("日间/夜间是两个不同的蓝（不能共用一档）",
+            !darkPal.Fill.Equals(lightPal.Fill, StringComparison.OrdinalIgnoreCase),
+            $"dark={darkPal.Fill} light={lightPal.Fill}");
+
+        Check("夜间：文字与卡片对比 ≥ 4.5:1",
+            ContrastRatio(darkPal.Text, darkPal.Card) >= 4.5,
+            $"{ContrastRatio(darkPal.Text, darkPal.Card):F2}:1");
+        Check("日间：文字与卡片对比 ≥ 4.5:1",
+            ContrastRatio(lightPal.Text, lightPal.Card) >= 4.5,
+            $"{ContrastRatio(lightPal.Text, lightPal.Card):F2}:1");
+        Check("夜间：进度条与卡片对比 ≥ 3:1",
+            ContrastRatio(darkPal.Fill, darkPal.Card) >= 3.0,
+            $"{ContrastRatio(darkPal.Fill, darkPal.Card):F2}:1");
+        Check("日间：进度条与卡片对比 ≥ 3:1",
+            ContrastRatio(lightPal.Fill, lightPal.Card) >= 3.0,
+            $"{ContrastRatio(lightPal.Fill, lightPal.Card):F2}:1");
 
         // 连续量动作：按住要一直执行，所以必须认得出来
         Check("音量+ 属于连续量", HotkeyEngine.IsContinuous("volumeUp"));
@@ -5086,7 +5103,7 @@ public static class SelfTest
         var app = System.Windows.Application.Current;
         if (app == null)
         {
-            Check("亮度横条主题适配（无 Application，跳过）", true);
+            Check("亮度横条不随主题变（无 Application，跳过）", true);
             return;
         }
 
@@ -5097,43 +5114,23 @@ public static class SelfTest
             double lightCard = MeasureOsdLuminance(UI.Theme.ThemeManager.Mode.Light, out double lightRange);
             double darkCard = MeasureOsdLuminance(UI.Theme.ThemeManager.Mode.Dark, out double darkRange);
 
-            Check("浅色模式下横条是浅底", lightCard > 0.70, $"亮度={lightCard:F2}");
-            Check("深色模式下横条是深底", darkCard < 0.30, $"亮度={darkCard:F2}");
-            Check("浅色模式下画面里有明显的前景（不是一片纯色）",
-                lightRange > 0.15, $"对比幅度={lightRange:F2}");
-            Check("深色模式下画面里有明显的前景（不是一片纯色）",
-                darkRange > 0.15, $"对比幅度={darkRange:F2}");
-
-            /* 配色必须**两边都是蓝色系**：
+            /* 横条**不跟随应用主题**：这是实测的结论 ——
              *
-             * 用户明确要求"白天蓝、夜里也别变白"。上一版深色主题的进度条
-             * 和数字都是 #F4F6FA（近白），夜里看着刺眼、也和白天的蓝断成两套。
-             * 这里直接按画刷断言：蓝色通道必须明显压过红/绿。 */
-            UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Light);
-            string lCard = BrushColor("Brush.OsdCard");
-            string lText = BrushColor("Brush.OsdText");
-            string lFill = BrushColor("Brush.OsdFill");
-
-            UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
-            string dCard = BrushColor("Brush.OsdCard");
-            string dText = BrushColor("Brush.OsdText");
-            string dFill = BrushColor("Brush.OsdFill");
-
-            Check("浅色模式：进度条是蓝色系（不是白色）", IsBlueish(lFill), lFill);
-            Check("深色模式：进度条是蓝色系（不是白色）", IsBlueish(dFill), dFill);
-            Check("浅色模式：图标与数字是蓝色系", IsBlueish(lText), lText);
-            Check("深色模式：图标与数字是蓝色系", IsBlueish(dText), dText);
-
-            /* 对比度按 WCAG 算：文字对小字要 ≥ 4.5:1。
-             * 蓝色比白色暗，凭肉眼看不出"够不够"，只能算。 */
-            double lc = ContrastRatio(lText, lCard);
-            double dc = ContrastRatio(dText, dCard);
-            Check("浅色模式：文字与底色对比 ≥ 4.5:1", lc >= 4.5, $"对比={lc:F2}:1");
-            Check("深色模式：文字与底色对比 ≥ 4.5:1", dc >= 4.5, $"对比={dc:F2}:1");
+             * 系统那条音量横条在浅色桌面上照样是深色卡片（截图确认）。
+             * 之前跟着主题走，结果是"白天浅底、夜里深底"，怎么调都和系统对不上；
+             * 现在两套主题都渲染成同一个深色卡片，差异只可能来自绘制 bug。 */
+            /* 横条跟的是 Windows 系统主题，不是本应用主题 ——
+             * 同一时刻切换应用主题，渲染结果必须完全不受影响。 */
+            Check("横条跟系统主题、不跟应用主题（两种应用主题下亮度差 < 0.05）",
+                Math.Abs(lightCard - darkCard) < 0.05,
+                $"app-light={lightCard:F2} app-dark={darkCard:F2}");
+            Check("画面里有明显的前景（进度条/文字，不是一片纯色）",
+                lightRange > 0.15 && darkRange > 0.15,
+                $"light={lightRange:F2} dark={darkRange:F2}");
         }
         catch (Exception ex)
         {
-            Check("亮度横条主题适配渲染", false, ex.Message);
+            Check("亮度横条渲染", false, ex.Message);
         }
         finally
         {

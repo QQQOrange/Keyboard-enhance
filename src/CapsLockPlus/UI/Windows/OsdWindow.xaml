@@ -1,58 +1,62 @@
 ﻿<Window x:Class="CapsLockPlus.UI.Windows.OsdWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="208" Height="44"
+        Width="216" Height="72"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         Topmost="True" Focusable="False" IsHitTestVisible="False"
         SnapsToDevicePixels="True" UseLayoutRounding="True"
         Title="按键增强 横条">
 
-    <!-- 亮度横条：造型对齐 Windows 自己的音量横条 ——
-         一行「图标 + 进度条 + 数字」，没有多余文字，尺寸更紧凑（208×44，约 4.7:1）。
+    <!-- 亮度横条 —— 逐项对齐 Windows 自己的音量横条：
+         192×48 深色圆角卡片（圆角 6）、无边框、带柔和阴影，
+         一行「图标 + 进度条 + 数字」；进度条用系统强调色的浅色档，
+         图标与数字纯白。**不跟随应用主题** —— 系统那条横条在浅色桌面上
+         也仍然是深色卡片（实测），跟着主题变反而会"白天蓝、夜里白"。
 
-         配色**跟随主题**（白夜/深浅模式），而且两边都是**蓝色系**：
-         浅色主题用强调蓝，深色主题用压暗的同族蓝 —— 不再出现"白天蓝、夜里白"。
-         进度条、图标、数字三者同色，风格才统一。 -->
-    <Border x:Name="Card" CornerRadius="11"
-            Background="{DynamicResource Brush.OsdCard}"
-            BorderBrush="{DynamicResource Brush.OsdCardBorder}"
-            BorderThickness="1" Padding="13,10">
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+         尺寸在这里只作为设计参考：真正的尺寸由代码里的
+         DesignWidth/DesignHeight/ShadowPad 决定（定位也要用同一组数字）。 -->
+    <Grid>
+        <Border x:Name="Card" Margin="12" CornerRadius="6" Background="#F02D2D2D"
+                BorderThickness="0" Padding="13,0,12,0">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.24" Color="#000000" />
+            </Border.Effect>
 
-            <!-- 图标：亮度。颜色跟进度条/数字同源（Brush.OsdText）。 -->
-            <TextBlock x:Name="IconText" Grid.Column="0"
-                       Text="&#xE706;"
-                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                       FontSize="17" Foreground="{DynamicResource Brush.OsdText}"
-                       VerticalAlignment="Center" Margin="0,0,11,0" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-            <!-- 进度条：底槽 + 填充。
-                 填充用**星号比例列**而不是固定宽度：固定宽度要靠
-                 Track.ActualWidth 来算，而窗口刚显示时布局还没完成，
-                 算出来是 0，进度条就永远是空的（踩过）。 -->
-            <Grid x:Name="Track" Grid.Column="1" Height="4" VerticalAlignment="Center">
-                <Border CornerRadius="2" Background="{DynamicResource Brush.OsdTrack}" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition x:Name="FillColumn" />
-                        <ColumnDefinition x:Name="RestColumn" />
-                    </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" CornerRadius="2"
-                            Background="{DynamicResource Brush.OsdFill}" />
+                <!-- 图标：亮度。和系统那条一样是纯白。 -->
+                <TextBlock x:Name="IconText" Grid.Column="0"
+                           Text="&#xE706;"
+                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                           FontSize="16" Foreground="#FFFFFF"
+                           VerticalAlignment="Center" Margin="0,0,13,0" />
+
+                <!-- 进度条：底槽 + 填充（星号比例列，避免布局未完成时宽度为 0）。
+                     槽 = 白色 55%，填充 = 系统强调色浅档（运行时注入）。 -->
+                <Grid x:Name="Track" Grid.Column="1" Height="5" VerticalAlignment="Center">
+                    <Border x:Name="TrackBar" CornerRadius="2.5" Background="#8CFFFFFF" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="FillColumn" />
+                            <ColumnDefinition x:Name="RestColumn" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="FillBar" Grid.Column="0" CornerRadius="2.5"
+                                Background="#4CC2FF" />
+                    </Grid>
                 </Grid>
-            </Grid>
 
-            <TextBlock x:Name="ValueText" Grid.Column="2" Text="0"
-                       FontSize="13.5" FontWeight="SemiBold"
-                       Foreground="{DynamicResource Brush.OsdText}"
-                       VerticalAlignment="Center" Margin="10,0,0,0"
-                       MinWidth="26" TextAlignment="Right" />
-        </Grid>
-    </Border>
+                <TextBlock x:Name="ValueText" Grid.Column="2" Text="0"
+                           FontSize="14" FontWeight="Normal"
+                           Foreground="#FFFFFF"
+                           VerticalAlignment="Center" Margin="4,0,0,0"
+                           MinWidth="26" TextAlignment="Right" />
+            </Grid>
+        </Border>
+    </Grid>
 </Window>
