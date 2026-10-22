@@ -80,8 +80,7 @@ CapsLockPlus.exe --selftest    → exit 0
 | `keys.png` | 按键映射（可视化键盘，点键即改） |
 | `qbar.png` | Qbar 条目与外观管理（含图标字段） |
 | `qbar-panel.png` | Qbar 浮层本体（深色毛玻璃面板） |
-| **`osd-volume.png`** | **音量横条（自绘，屏幕中下方、任务栏偏上）** |
-| **`osd-brightness.png`** | **亮度横条（同一套样式）** |
+| **`osd-brightness.png`** | **亮度横条（自绘，248×52，跟随白夜主题）** |
 | **`qbar-chip.png`** | **关键字 `bd` 变成「百度」标签（带图标）** |
 | **`qbar-chip-typing.png`** | **标签 + 已输入搜索词** |
 | **`qbar-chip-run.png`** | **程序标签（无 exe 图标时用首字兜底）** |

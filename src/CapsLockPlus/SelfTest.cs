@@ -183,6 +183,7 @@ public static class SelfTest
         TestModifierTriggerWithRepeat();
         TestContinuousVolumeRepeat();
         TestRepeatSurvivesPhysicalJitter();
+        TestTwoContinuousKeysIndependent();
         TestTriggerRecovery();
         TestSubLayerWindowLayout();
 
@@ -2080,6 +2081,89 @@ public static class SelfTest
         engine.Dispose();
     }
 
+    /// <summary>
+    /// 按住亮度键的同时再按音量键 —— 两个连续量必须**各自**继续生效。
+    ///
+    /// v4.2.x 只有一个"连续调节槽位"：后按下的键会把前面的顶掉，
+    /// 松开其中任何一个又会把整条重复清掉。用户的实际感受是
+    /// "调完亮度，手还按着触发键，再按音量完全没反应"，
+    /// 或者"按住音量时按一下亮度，音量就不涨了"。
+    ///
+    /// 现在每个键各存一份节奏，互不干扰。
+    /// </summary>
+    private static void TestTwoContinuousKeysIndependent()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock",
+            LayerId = 1,
+            HoldMs = 60,
+            Enabled = true,
+        });
+
+        var layer1 = s.Layers.First(l => l.Id == 1);
+        layer1.Keys.RemoveAll(b => b.Combo is "caps_up" or "caps_down");
+        layer1.Keys.Add(new KeyBinding { Combo = "caps_up", Action = "brightnessUp" });
+        layer1.Keys.Add(new KeyBinding { Combo = "caps_down", Action = "volumeUp" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+        engine.StartHoldTimer();
+        engine.EnterLayerImmediatelyForTest = true;
+
+        int Count(string action)
+        {
+            lock (fired) return fired.Count(x => x == action);
+        }
+
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("按住触发键进第 1 层（双连续量）", engine.ActiveLayer, 1);
+
+        // 先按住亮度+
+        engine.SimulateKey(VK.Up, true);
+        DoEvents(560);
+        int bright1 = Count("brightnessUp");
+        Check("按住亮度会连续执行", bright1 >= 2, $"{bright1} 次");
+
+        // 再按住音量+（另一个键，同时按着）
+        engine.SimulateKey(VK.Down, true);
+        DoEvents(560);
+
+        int vol1 = Count("volumeUp");
+        int bright2 = Count("brightnessUp");
+        Check("音量键自己也开始连续执行", vol1 >= 1, $"{vol1} 次");
+        Check("后按的音量没有顶掉亮度", bright2 > bright1, $"{bright1} → {bright2}");
+
+        // 松开音量：亮度必须继续
+        engine.SimulateKey(VK.Down, false);
+        DoEvents(120);
+        int bright3 = Count("brightnessUp");
+        DoEvents(320);
+        int bright4 = Count("brightnessUp");
+        Check("松开音量后亮度仍在继续", bright4 > bright3, $"{bright3} → {bright4}");
+
+        int vol2 = Count("volumeUp");
+        DoEvents(220);
+        CheckEqual("松开音量后音量确实停了", Count("volumeUp"), vol2);
+
+        // 松开亮度：两条都停
+        engine.SimulateKey(VK.Up, false);
+        DoEvents(110);
+        int bright5 = Count("brightnessUp");
+        DoEvents(320);
+        CheckEqual("松开亮度后亮度也停了", Count("brightnessUp"), bright5);
+
+        engine.SimulateKey(VK.CapsLock, false);
+        engine.Dispose();
+    }
+
     private static void TestModifierTriggerWithRepeat()
     {
         var s = DefaultSettings.Create();
@@ -2580,10 +2664,27 @@ public static class SelfTest
         // 两种主题的实际配色必须不同（否则等于没切）
         UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Light);
         string lightBg = BrushColor("Brush.Background");
+        string lightOsdCard = BrushColor("Brush.OsdCard");
+        string lightOsdText = BrushColor("Brush.OsdText");
         UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
         string darkBg = BrushColor("Brush.Background");
+        string darkOsdCard = BrushColor("Brush.OsdCard");
+        string darkOsdText = BrushColor("Brush.OsdText");
         Check("浅色与深色的背景色不同", lightBg != darkBg,
             $"light={lightBg} dark={darkBg}");
+
+        /* 亮度横条必须**跟随主题**。
+         *
+         * 写死深色在白天模式下就是一块突兀的黑板；写死浅色则夜里刺眼。
+         * 两套主题里 OsdCard / OsdText 都得有，而且要真的不一样。 */
+        Check("浅色主题有横条配色", lightOsdCard.Length > 0 && lightOsdText.Length > 0,
+            $"card={lightOsdCard} text={lightOsdText}");
+        Check("深色主题有横条配色", darkOsdCard.Length > 0 && darkOsdText.Length > 0,
+            $"card={darkOsdCard} text={darkOsdText}");
+        Check("横条底色随主题变化", lightOsdCard != darkOsdCard,
+            $"light={lightOsdCard} dark={darkOsdCard}");
+        Check("横条文字色随主题变化", lightOsdText != darkOsdText,
+            $"light={lightOsdText} dark={darkOsdText}");
     }
 
     private static bool HasThemeDict(string needle)
@@ -4852,12 +4953,21 @@ public static class SelfTest
         CheckEqual("进度条越界会被夹住（上）", UI.Windows.OsdWindow.ScaleForTest(180), 1.0);
         CheckEqual("进度条越界会被夹住（下）", UI.Windows.OsdWindow.ScaleForTest(-20), 0.0);
 
-        // 位置：水平居中，垂直落在任务栏偏上
+        // 位置：水平居中，垂直落在任务栏偏上（尺寸见 OsdWindow.xaml：248×52）
         var wa = new System.Windows.Rect(0, 0, 1920, 1040);
-        var (osdLeft, osdTop) = UI.Windows.OsdWindow.PositionForTest(wa, 368, 98);
-        CheckEqual("横条水平居中", osdLeft, (1920 - 368) / 2.0);
+        var (osdLeft, osdTop) = UI.Windows.OsdWindow.PositionForTest(wa, 248, 52);
+        CheckEqual("横条水平居中", osdLeft, (1920 - 248) / 2.0);
         Check("横条在屏幕下半部分（不是正中）", osdTop > 1040 * 0.7, $"top={osdTop}");
-        Check("横条不压到工作区底边", osdTop + 98 < 1040, $"bottom={osdTop + 98}");
+        Check("横条不压到工作区底边", osdTop + 52 < 1040, $"bottom={osdTop + 52}");
+
+        /* 尺寸必须"小"：原来 368×98 太占地方，遮住的内容比它本身还多。
+         * 这里钉住上限，避免以后改样式时又改回去。 */
+        Check("亮度横条足够紧凑（宽 ≤ 280）",
+            UI.Windows.OsdWindow.DesignWidth <= 280,
+            $"{UI.Windows.OsdWindow.DesignWidth}");
+        Check("亮度横条足够扁（高 ≤ 64）",
+            UI.Windows.OsdWindow.DesignHeight <= 64,
+            $"{UI.Windows.OsdWindow.DesignHeight}");
 
         // 连续量动作：按住要一直执行，所以必须认得出来
         Check("音量+ 属于连续量", HotkeyEngine.IsContinuous("volumeUp"));
@@ -4931,8 +5041,11 @@ public static class SelfTest
         var (t4, _) = ActionContext.PlanVolumeTaps(0, 2, 0);
         CheckEqual("幅度为 0 也至少发一次（否则按了没反应）", t4, 1);
 
-        // ---------- 输入文本方式 ----------
-        Check("纯 ASCII 走真实按键", InputSender.LooksLikePlainAscii("Abc123!@#"));
+        /* 亮度横条要跟着"白夜"（浅色 / 深色）走，而且文字不能和底色糊在一起。
+         * 这条真的把横条渲染成位图去量亮度，比只查画刷存在更实在。 */
+        TestOsdFollowsTheme();
+
+        // ---------- 输入文本方式 ----------        Check("纯 ASCII 走真实按键", InputSender.LooksLikePlainAscii("Abc123!@#"));
         Check("带空格也算", InputSender.LooksLikePlainAscii("hello world"));
         Check("中文不算纯 ASCII", !InputSender.LooksLikePlainAscii("你好"));
         Check("emoji 不算纯 ASCII", !InputSender.LooksLikePlainAscii("a😀"));
@@ -4957,6 +5070,106 @@ public static class SelfTest
         {
             Check("三种输入方式都能跑通（干跑）", false, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// 亮度横条必须适配"白夜"（浅色 / 深色）模式，且文字与底色有足够对比。
+    ///
+    /// 真渲染成位图去量：只看画刷键存在是骗人的 —— 画刷定义对了，
+    /// XAML 里若还写死 <c>#F4F6FA</c>，浅色主题下就是"白字白底"。
+    /// </summary>
+    private static void TestOsdFollowsTheme()
+    {
+        var app = System.Windows.Application.Current;
+        if (app == null)
+        {
+            Check("亮度横条主题适配（无 Application，跳过）", true);
+            return;
+        }
+
+        var saved = UI.Theme.ThemeManager.Current;
+
+        try
+        {
+            double lightCard = MeasureOsdLuminance(UI.Theme.ThemeManager.Mode.Light, out double lightRange);
+            double darkCard = MeasureOsdLuminance(UI.Theme.ThemeManager.Mode.Dark, out double darkRange);
+
+            Check("浅色模式下横条是浅底", lightCard > 0.70, $"亮度={lightCard:F2}");
+            Check("深色模式下横条是深底", darkCard < 0.30, $"亮度={darkCard:F2}");
+            Check("浅色模式下文字与底色对比够（不是白字白底）",
+                lightRange > 0.45, $"对比幅度={lightRange:F2}");
+            Check("深色模式下文字与底色对比够",
+                darkRange > 0.45, $"对比幅度={darkRange:F2}");
+        }
+        catch (Exception ex)
+        {
+            Check("亮度横条主题适配渲染", false, ex.Message);
+        }
+        finally
+        {
+            UI.Theme.ThemeManager.Apply(saved);
+        }
+    }
+
+    /// <summary>
+    /// 在某套主题下渲染一次横条，返回卡片区域的平均亮度（0~1）
+    /// 以及整张图里最亮与最暗的差值（用来判断"字能不能看清"）。
+    /// </summary>
+    private static double MeasureOsdLuminance(UI.Theme.ThemeManager.Mode mode, out double range)
+    {
+        UI.Theme.ThemeManager.Apply(mode);
+        DoEvents(40);
+
+        var osd = UI.Windows.OsdWindow.CreateDetached();
+        osd.ShowInTaskbar = false;
+        osd.WindowStartupLocation = System.Windows.WindowStartupLocation.Manual;
+        osd.Left = -32000;
+        osd.Top = -32000;
+        osd.Show();
+        osd.PrepareForRender(60);
+        DoEvents(120);
+        osd.UpdateLayout();
+
+        var root = (System.Windows.FrameworkElement)osd.Content;
+        int w = Math.Max(1, (int)Math.Round(root.ActualWidth));
+        int h = Math.Max(1, (int)Math.Round(root.ActualHeight));
+
+        var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            w, h, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        bmp.Render(root);
+
+        int stride = w * 4;
+        var pixels = new byte[stride * h];
+        bmp.CopyPixels(pixels, stride, 0);
+
+        double sum = 0;
+        int count = 0;
+        double min = 1, max = 0;
+
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int i = y * stride + x * 4;
+                byte a = pixels[i + 3];
+                if (a < 200) continue;      // 跳过透明边角（圆角外的部分）
+
+                double lum = (0.2126 * pixels[i + 2] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i]) / 255.0;
+
+                // 卡片底色：避开图标、进度条、数字所在的中间带
+                bool inCard = y > h * 0.12 && y < h * 0.28;
+                if (inCard) { sum += lum; count++; }
+
+                if (lum < min) min = lum;
+                if (lum > max) max = lum;
+            }
+        }
+
+        osd.Close();
+        DoEvents(60);
+
+        range = max - min;
+        return count > 0 ? sum / count : -1;
     }
 
     private static void TestBrightnessMath()
@@ -4988,9 +5201,56 @@ public static class SelfTest
         }
         Check("亮度换算往返误差 ≤ 1%", roundTripOk);
 
+        /* ---------- 长按亮度的平滑推进 ----------
+         *
+         * 用户的原话是"避免生硬跳变，使过渡更平滑"。
+         * 上一版每一轮固定走 4%，在 DDC 屏上看起来就是"一格一格蹦"；
+         * 现在按剩余距离成比例走：远时步子大、近时退到 1%。 */
+        CheckEqual("差 1% 就走 1%", Core.Windows.BrightnessService.PlanStepForTest(1), 1);
+        CheckEqual("差 -1% 就走 -1%", Core.Windows.BrightnessService.PlanStepForTest(-1), -1);
+        CheckEqual("差 2% 只走 1%（最后几格要慢）",
+            Math.Abs(Core.Windows.BrightnessService.PlanStepForTest(2)), 1);
+        Check("单步不超过剩余距离（不会冲过头）",
+            Math.Abs(Core.Windows.BrightnessService.PlanStepForTest(3)) <= 3);
+        Check("差 40% 时步子变大（追得上）",
+            Math.Abs(Core.Windows.BrightnessService.PlanStepForTest(40)) >= 4,
+            $"{Core.Windows.BrightnessService.PlanStepForTest(40)}");
+        Check("单步有上限（不跳大格）",
+            Math.Abs(Core.Windows.BrightnessService.PlanStepForTest(100)) <= 6,
+            $"{Core.Windows.BrightnessService.PlanStepForTest(100)}");
+        Check("单步方向跟着目标走",
+            Core.Windows.BrightnessService.PlanStepForTest(-40) < 0);
+
+        bool monotonic = true, neverOvershoot = true;
+        int prevStep = 0;
+        for (int d = 1; d <= 100; d++)
+        {
+            int step = Math.Abs(Core.Windows.BrightnessService.PlanStepForTest(d));
+            if (step < prevStep) monotonic = false;      // 差距变大时步子不能反而变小
+            if (step > d) neverOvershoot = false;
+            prevStep = step;
+        }
+        Check("步长随差距单调不减（不会忽大忽小）", monotonic);
+        Check("任何差距都不会一步冲过头", neverOvershoot);
+        Check("最后 8% 都是小步（收尾不突兀）",
+            Math.Abs(Core.Windows.BrightnessService.PlanStepForTest(8)) <= 2,
+            $"{Core.Windows.BrightnessService.PlanStepForTest(8)}");
+
+        /* ---------- 单键步进参数（绑定界面里可填） ---------- */
+        CheckEqual("参数为空 → 用设置里的幅度",
+            Core.Actions.ActionCatalog.StepOrForTest("", 10), 10);
+        CheckEqual("参数为空白 → 用设置里的幅度",
+            Core.Actions.ActionCatalog.StepOrForTest("   ", 10), 10);
+        CheckEqual("参数优先", Core.Actions.ActionCatalog.StepOrForTest("3", 10), 3);
+        CheckEqual("填 0 视为没填（否则按了不动）",
+            Core.Actions.ActionCatalog.StepOrForTest("0", 10), 10);
+        CheckEqual("非数字视为没填",
+            Core.Actions.ActionCatalog.StepOrForTest("abc", 10), 10);
+        CheckEqual("超上限夹到 100",
+            Core.Actions.ActionCatalog.StepOrForTest("999", 10), 100);
+
         // 只读探测：这台机器走哪条通道（不支持也是合法结果，不能算失败）
-        var backend = Core.Windows.BrightnessService.Backend;
-        int? now = Core.Windows.BrightnessService.Get();
+        var backend = Core.Windows.BrightnessService.Backend;        int? now = Core.Windows.BrightnessService.Get();
         Check($"亮度通道：{Core.Windows.BrightnessService.BackendName}",
             backend != Core.Windows.BrightnessBackend.Unknown,
             $"backend={backend}, value={now}");

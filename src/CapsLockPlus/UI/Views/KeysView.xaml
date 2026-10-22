@@ -555,9 +555,24 @@
                         <StackPanel x:Name="ArgPanel" Margin="0,14,0,0" Visibility="Collapsed">
                             <TextBlock x:Name="ArgLabel" Text="参数" Style="{StaticResource Text.Secondary}"
                                        Margin="0,0,0,7" />
-                            <TextBox x:Name="ArgBox" Style="{StaticResource TextBox.Base}"
-                                     MinHeight="36" VerticalContentAlignment="Center"
-                                     TextChanged="OnArgChanged" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="ArgBox" Grid.Column="0" Style="{StaticResource TextBox.Base}"
+                                         MinHeight="36" VerticalContentAlignment="Center"
+                                         TextChanged="OnArgChanged" />
+
+                                <!-- 音量 / 亮度这类"步进"参数：一键回到设置里的幅度。
+                                     留空 = 跟随设置页的滑杆，用户不必记自己填过什么。 -->
+                                <Button x:Name="ArgDefaultButton" Grid.Column="1" Content="用默认"
+                                        Style="{StaticResource Button.Ghost}" Padding="10,5"
+                                        Margin="8,0,0,0" VerticalAlignment="Center"
+                                        Visibility="Collapsed" Click="OnArgUseDefault"
+                                        ToolTip="清空这里，改用设置页里的调节幅度" />
+                            </Grid>
                             <TextBlock x:Name="ArgHint" Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0"
                                        TextWrapping="Wrap" />
                         </StackPanel>

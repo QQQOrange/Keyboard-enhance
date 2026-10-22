@@ -194,6 +194,26 @@ public sealed class AppHost : IDisposable
         catch (Exception ex) { CoreLog.Warn("选区监听启动失败：" + ex.Message); }
 
         ApplyStartupSetting();
+
+        /* 预热亮度横条：把窗口和 HWND 提前建好。
+         *
+         * 冷启动时 new Window() + 建 HWND 要 50~120ms，第一次按亮度键
+         * 会明显慢半拍（横条比手慢）。这里放到界面线程空闲时做，
+         * 开机那一下的热路径不受影响。 */
+        _dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+            new Action(() => UI.Windows.OsdWindow.Warmup()));
+
+        /* 顺便把亮度通道也探一次（WMI / DDC 探测要几百毫秒）。
+         *
+         * 不预热的话，"本次启动后第一次按亮度键"会先卡在探测上，
+         * 横条要等半秒才出来。放到后台线程做，开机那一下完全无感。 */
+        Task.Run(() =>
+        {
+            try { Core.Windows.BrightnessService.IsSupported(); }
+            catch (Exception ex) { CoreLog.Warn("亮度通道预热失败：" + ex.Message); }
+        });
+
         CoreLog.Info($"{AppInfo.ProductName} 已启动（管理员：{ElevationHelper.IsElevated}）");
     }
 

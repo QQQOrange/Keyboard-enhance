@@ -271,10 +271,10 @@ public sealed class ActionCatalog
          * 参数不再控制步进，只在媒体键被吞时用作兜底的调整量。
          * 按住会连续发，见 HotkeyEngine.IsContinuous。 */
         c.Add("volumeUp", "系统功能", "音量 +",
-            "系统音量键：调高音量并弹出 Windows 自带的横条（幅度在设置里改，按住连续调）",
+            "系统音量键：调高音量并弹出 Windows 自带的横条（可在下面单独填步进，留空用设置里的幅度；按住连续调）",
             a => ctx.ChangeVolume(StepOr(a, ctx.VolumeStep)), shortTitle: "音量+");
         c.Add("volumeDown", "系统功能", "音量 -",
-            "系统音量键：调低音量并弹出 Windows 自带的横条（幅度在设置里改，按住连续调）",
+            "系统音量键：调低音量并弹出 Windows 自带的横条（可在下面单独填步进，留空用设置里的幅度；按住连续调）",
             a => ctx.ChangeVolume(-StepOr(a, ctx.VolumeStep)), shortTitle: "音量-");
         c.Add("volumeMute", "系统功能", "静音", "静音 / 取消静音（切换）",
             _ => ctx.ToggleMute(), shortTitle: "静音");
@@ -286,10 +286,10 @@ public sealed class ActionCatalog
         /* 亮度：WMI（内置屏）→ DDC/CI（外接屏）。两条都不通时给明确提示 ——
          * 用户按了没反应会以为按键坏了。 */
         c.Add("brightnessUp", "系统功能", "亮度 +",
-            "屏幕亮度提高一档（幅度在设置里改），屏幕上会显示横条（按住连续调；外接屏需开启 DDC/CI）",
+            "屏幕亮度提高（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，按住连续调；外接屏需开启 DDC/CI）",
             a => ctx.ChangeBrightness(StepOr(a, ctx.BrightnessStep)), shortTitle: "亮+");
         c.Add("brightnessDown", "系统功能", "亮度 -",
-            "屏幕亮度降低一档（幅度在设置里改），屏幕上会显示横条（按住连续调；外接屏需开启 DDC/CI）",
+            "屏幕亮度降低（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，按住连续调；外接屏需开启 DDC/CI）",
             a => ctx.ChangeBrightness(-StepOr(a, ctx.BrightnessStep)), shortTitle: "亮-");
 
         c.Add("openExplorer", "系统功能", "打开文件资源管理器",
@@ -448,9 +448,14 @@ public sealed class ActionCatalog
     ///
     /// 引擎按住连发时会传 "1" —— 那就是"这一步只走 1%"，
     /// 不需要再靠时间窗口去猜是不是连发。
+    ///
+    /// 上限夹到 100：参数是手填的，写成 999 会让"按一下"直接跳到头。
     /// </summary>
     private static int StepOr(string? arg, int fallback)
-        => int.TryParse(arg, out var v) && v > 0 ? v : fallback;
+        => int.TryParse(arg, out var v) && v > 0 ? Math.Clamp(v, 1, 100) : fallback;
+
+    /// <summary>仅供自检：步进参数的取值与夹取规则。</summary>
+    internal static int StepOrForTest(string? arg, int fallback) => StepOr(arg, fallback);
 
     private static int VolumeStep(string? arg)
         => int.TryParse(arg, out var v) ? Math.Clamp(v, 1, 100) : Core.Windows.VolumeService.DefaultStep;

@@ -11,8 +11,10 @@ dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self
 ```
 
 > **只有一个 exe**。曾经拆成"启动器 + 主程序"两个文件来解决
-> "没装 .NET 点了没反应"，但那让用户不知道该双击哪个 ——
-> 现在直接把运行时打进程序里，代价是体积变大。
+> "没装 .NET 点了没反应"，但那让用户不知道该双击哪个；
+> 也试过把运行时整个打进去，体积从 5 MB 涨到 75 MB。
+> 现在是一个**框架依赖的单文件**（约 5 MB）：体积和"只有一个 exe"都保住了，
+> 代价是机器上要先装 .NET 10 桌面运行时（README 顶部有下载地址）。
 
 ## 自检
 
@@ -33,7 +35,7 @@ dist\KeyboardEnhance.exe --selftest
 离屏渲染所有页面与浮层，结果不受桌面遮挡、DPI 缩放和焦点动画影响，可复现：
 
 ```powershell
-dist\CapsLockPlus.exe --render docs\screenshots
+dist\KeyboardEnhance.exe --render docs\screenshots
 ```
 
 ## 性能基准

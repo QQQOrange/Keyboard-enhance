@@ -643,17 +643,15 @@ public sealed class ActionContext
          *   · Windows 弹出它自己的横条 —— 那条横条就是 shell 处理这个键时画的，
          *     自绘永远做不出"系统那个"。
          *
-         * 早先试过把 WM_APPCOMMAND 直接发给任务栏，那条路 explorer 有时不接
-         * （Win11 任务栏重写过），表现是"按了音量完全不动"，比没有横条更糟。
-         * 发真实按键没有这个问题：它和手按键盘走的是同一条全局热键。
+         * ⚠ v4.3.0 起**不再画自绘的音量横条**。
+         * 上一版在"媒体键似乎没生效"时会退回音频引擎并自绘一条 ——
+         * 结果用户常常一次看到**两条**横条（系统的 + 我们的），
+         * 而且音量还被多调了一次。现在音量的一切反馈都交给系统，
+         * 自绘横条只保留亮度那一条（系统对亮度没有通用 OSD）。
          *
          * 兜底：极少数机器上媒体键会被键盘过滤驱动 / 远程会话 / 抢媒体键的
-         * 前台程序吞掉。单次调节时回读一次音量，没变就改用音频引擎直接调
-         * （此时没有系统横条，退回自绘一条，保证用户看得到反馈）。 */
-        /* 一次调多少：单次走设置里的幅度，按住连发时 delta 是 1。
-         *
-         * 连发不能按用户幅度：设 10% 时按住就是 10% × 14 次/秒 = 140%/秒，
-         * 一眨眼就到底，完全没有"线性"的手感。 */
+         * 前台程序吞掉。单次调节时回读一次音量，没变就改用音频引擎直接调，
+         * 音量照样会变（只是没有横条，比"按了没反应"好得多）。 */
         int sysStep = Math.Max(1, VolumeService.StepPercent());
         var (taps, rem) = PlanVolumeTaps(Math.Abs(delta), sysStep, _volumeRemainder);
         _volumeRemainder = rem;
@@ -662,6 +660,16 @@ public sealed class ActionContext
         bool fine = Math.Abs(delta) <= sysStep;
 
         int? before = VolumeService.Get();
+
+        /* 已经到 0 / 100：系统音量键再发也不会变。
+         * 不先拦住的话，"回读没变化"会被当成"媒体键被吞"，
+         * 从而误触发兜底逻辑 —— 用户看到的就是"明明调不动还弹了条提示"。 */
+        if (before is int edge && ((delta > 0 && edge >= 100) || (delta < 0 && edge <= 0)))
+        {
+            CoreLog.Info($"[音量] 已经是 {edge}%，到头了");
+            return true;
+        }
+
         InputSender.Tap(delta > 0 ? VK.VolumeUp : VK.VolumeDown, taps);
 
         if (fine) return true;
@@ -683,7 +691,7 @@ public sealed class ActionContext
                 Notify("没有找到可用的播放设备，音量调不了");
                 return true;
             }
-            UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Volume, now.Value);
+            CoreLog.Info($"[音量] {now}%（直接调音频引擎）");
             return true;
         }
 
@@ -708,16 +716,15 @@ public sealed class ActionContext
 
         if (before == null || after == before)
         {
-            // 媒体键被吞了：直接切，并自绘一条提示
+            // 媒体键被吞了：直接切。**不自绘横条** —— 系统那条才是用户认的，
+            // 两条一起出现只会让人以为按了两次。
             bool? muted = VolumeService.ToggleMute();
             if (muted == null)
             {
                 Notify("没有找到可用的播放设备，静音切不了");
                 return true;
             }
-            int level = VolumeService.Get() ?? 0;
-            UI.Windows.OsdWindow.Show(
-                muted.Value ? UI.Windows.OsdKind.Mute : UI.Windows.OsdKind.Volume, level);
+            CoreLog.Info(muted.Value ? "[静音] 已静音（直接调音频引擎）" : "[静音] 已取消（直接调音频引擎）");
             return true;
         }
 
@@ -741,7 +748,12 @@ public sealed class ActionContext
          * 一个动作 250ms，用户体感就是"按了没反应"，按住连发还会互相排队。
          * 所以这里先把目标定下来、立刻刷横条（跟手），
          * 真正的硬件写入交给 BrightnessService 里的后台线程一步步追，
-         * 看起来就是亮度在平滑爬升 —— 和 Windows 音量横条一个路数。 */
+         * 看起来就是亮度在平滑爬升 —— 和 Windows 音量横条一个路数。
+         *
+         * v4.3.0：AddTarget 现在只改一个 int，不再抢"硬件锁"。
+         * 上一版它会等后台的 DDC 写入（100~250ms），按住连发时
+         * 动作队列越积越长 —— 用户调完亮度、手还按着触发键去按音量，
+         * 音量动作排在几十条亮度任务后面，表现就是"完全没反应"。 */
         int? target = BrightnessService.AddTarget(delta);
         if (target == null)
         {
@@ -755,7 +767,7 @@ public sealed class ActionContext
         /* 亮度横条只能自己画：Windows 的亮度 OSD 只对内置屏存在
          * （那条是 OEM 驱动画的），外接屏走 DDC/CI 时系统根本不知道值变了。
          * 横条样式与音量那条一致，位置也一样。 */
-        UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Brightness, target.Value);
+        UI.Windows.OsdWindow.Show(target.Value);
 
         // 连续调节时每 45ms 一条会把日志刷爆，只在"单次"时记
         if (Math.Abs(delta) > 1) CoreLog.Info($"[亮度] 目标 {target}%");

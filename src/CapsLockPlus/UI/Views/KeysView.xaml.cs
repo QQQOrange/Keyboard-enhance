@@ -585,6 +585,10 @@ public partial class KeysView : UserControl
         }
         if (binding.Action == actionId) return;      // 已经是了，别覆盖 Arg
 
+        /* 换成音量 / 亮度时，上一个动作的参数（比如"移动 5 个字符"的 5）
+         * 不能被继承成"步进 5%" —— 用户没设过却生效了，非常费解。 */
+        if (IsStepArgAction(actionId) && !IsValidStep(binding.Arg)) binding.Arg = "";
+
         binding.Action = actionId;
         _host.SaveSettings();
         BuildKeyboard();
@@ -771,11 +775,12 @@ public partial class KeysView : UserControl
         }
         binding.Action = actionId;
         if (actionId == "doNothing") binding.Arg = "";
+        else if (IsStepArgAction(actionId) && !IsValidStep(binding.Arg)) binding.Arg = "";
         _host.SaveSettings();
 
         var info = _host.Actions.Get(actionId);
         ActionDesc.Text = info?.Description ?? "";
-        ShowArgPanelFor(actionId, info?.NeedsArg == true);
+        ShowArgPanelFor(actionId, info?.NeedsArg == true || IsStepArgAction(actionId));
         BuildKeyboard();
     }
 
@@ -1520,7 +1525,8 @@ public partial class KeysView : UserControl
         if (mode == EditorMode.Normal)
         {
             ActionDesc.Text = info?.Description ?? "";
-            ShowArgPanelFor(actionId, info?.NeedsArg == true || IsCountArgAction(actionId));
+            ShowArgPanelFor(actionId,
+                info?.NeedsArg == true || IsCountArgAction(actionId) || IsStepArgAction(actionId));
         }
 
         BuildKeyboard();
@@ -1534,25 +1540,82 @@ public partial class KeysView : UserControl
         or "selectWordLeft" or "selectWordRight"
         or "pageMoveLineUp" or "pageMoveLineDown";
 
+    /// <summary>
+    /// 音量 / 亮度：参数是"按一次调多少个百分点"。
+    ///
+    /// 以前这两个动作只能整体用设置页里的幅度，想让"音量 +"和"音量 -"
+    /// 走不同的步子就没办法。参数本来就支持覆盖（<c>StepOr</c>），
+    /// 但界面上没有入口 —— 等于藏起来了。现在给它们一个明确的输入框。
+    /// </summary>
+    private static bool IsStepArgAction(string actionId) => actionId is
+        "volumeUp" or "volumeDown" or "brightnessUp" or "brightnessDown";
+
+    private static bool IsVolumeStepAction(string actionId)
+        => actionId is "volumeUp" or "volumeDown";
+
+    /// <summary>参数是不是一个有效的步进（1~100 的整数）。</summary>
+    private static bool IsValidStep(string? arg)
+        => int.TryParse(arg, out int v) && v is >= 1 and <= 100;
+
+    /// <summary>这个步进动作"留空"时实际用多少（设置页里的幅度）。</summary>
+    private int DefaultStepFor(string actionId)
+    {
+        var g = _host?.Settings.Global;
+        if (g == null) return VolDefaultStep;
+        return IsVolumeStepAction(actionId)
+            ? Math.Clamp(g.VolumeStep, 1, 50)
+            : Math.Clamp(g.BrightnessStep, 1, 50);
+    }
+
+    /// <summary>系统音量每步固定 2%，设置里不允许低于它。</summary>
+    private const int VolDefaultStep = 5;
+
     /// <summary>按动作类型决定参数面板的样子。</summary>
     private void ShowArgPanelFor(string actionId, bool needsArg, bool isWinBind = false)
     {
-        ArgPanel.Visibility = needsArg && !isWinBind ? Visibility.Visible : Visibility.Collapsed;
+        bool step = IsStepArgAction(actionId);
+
+        ArgPanel.Visibility = (needsArg || step) && !isWinBind
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        ArgDefaultButton.Visibility = step ? Visibility.Visible : Visibility.Collapsed;
 
         ArgLabel.Text = actionId switch
         {
             "openUrl" => "网址",
             "runProgram" => "程序路径或命令",
             "wrapSelection" => "起始符号",
+            "volumeUp" or "volumeDown" => "音量步进（%）",
+            "brightnessUp" or "brightnessDown" => "亮度步进（%）",
             _ => "次数 / 参数",
         };
+
+        int def = DefaultStepFor(actionId);
+
         ArgHint.Text = actionId switch
         {
             "openUrl" => "例如 https://github.com",
             "runProgram" => "例如 notepad.exe",
             "wrapSelection" => "例如 ( 会把选中文字变成 (文字)",
+            "volumeUp" or "volumeDown" =>
+                $"按一次调多少音量：留空 = 用设置里的 {def}%。"
+                + "按住不放时会自动切成 1% 细调，一路平滑地加上去",
+            "brightnessUp" or "brightnessDown" =>
+                $"按一次调多少亮度：留空 = 用设置里的 {def}%。"
+                + "按住不放时会自动切成 1% 细调，一路平滑地加上去",
             _ => "不填默认 1，填 5 表示一次移动 5 个字符",
         };
+
+        // 步进最多三位（1~100），次数最多三位（1~200）
+        ArgBox.MaxLength = step || IsCountArgAction(actionId) ? 3 : 0;
+    }
+
+    /// <summary>「用默认」：清空参数，回到设置页里的调节幅度。</summary>
+    private void OnArgUseDefault(object sender, RoutedEventArgs e)
+    {
+        // 走 TextChanged 那条路，绑定与保存都会自动跟上
+        ArgBox.Text = "";
     }
 
     // ---------------- 窗口绑定面板 ----------------
@@ -2397,8 +2460,70 @@ public partial class KeysView : UserControl
         if (_host == null || _suppressEvents) return;
         var binding = FindInCurrentLayer(CurrentCombo());
         if (binding == null) return;
-        binding.Arg = ArgBox.Text.Trim();
+
+        string text = ArgBox.Text.Trim();
+
+        /* 步进类参数只收数字。
+         *
+         * 用户很自然会写「5%」或「5个点」，而 <c>int.TryParse</c> 认不出来 ——
+         * 结果就是"我明明填了 5，按一下还是跳 10%"，看着像没保存。
+         * 这里直接把非数字滤掉，顺手夹到 1~100，填什么都是有效值。 */
+        if (IsStepArgAction(binding.Action) && text.Length > 0)
+        {
+            string digits = new(text.Where(char.IsDigit).Take(3).ToArray());
+
+            if (digits.Length > 0 && int.TryParse(digits, out int n))
+            {
+                if (n > 100) digits = "100";
+                else if (n == 0) digits = "1";      // 0 等于"按了不动"，没有意义
+            }
+
+            if (digits != ArgBox.Text)
+            {
+                _suppressEvents = true;
+                try
+                {
+                    ArgBox.Text = digits;
+                    ArgBox.CaretIndex = digits.Length;
+                }
+                finally { _suppressEvents = false; }
+            }
+
+            text = digits;
+            UpdateStepHint(binding.Action, text);
+        }
+
+        binding.Arg = text;
         _host.SaveSettings();
+    }
+
+    /// <summary>步进框下面那行提示跟着输入变，让用户立刻看到"实际会用多少"。</summary>
+    private void UpdateStepHint(string actionId, string text)
+    {
+        int def = DefaultStepFor(actionId);
+        string unit = IsVolumeStepAction(actionId) ? "音量" : "亮度";
+
+        if (string.IsNullOrEmpty(text))
+        {
+            ArgHint.Text = $"留空 = 用设置里的 {def}%：按一次{unit}变 {def}%";
+            return;
+        }
+
+        if (!int.TryParse(text, out int v)) return;
+
+        string extra = string.Empty;
+        if (IsVolumeStepAction(actionId))
+        {
+            /* 系统音量是按档走的（通常 2%），设定值不是整数倍时要累计补偿。
+             *
+             * 这里**不能**去问 VolumeService.StepPercent()：那是 COM 调用，
+             * 会在界面线程上把音频端点建起来，而动作队列是另一条 STA 线程 ——
+             * 跨单元拿同一个接口指针会出问题。所以只做算术提示。 */
+            if (v % 2 != 0)
+                extra = $"（系统每档 2%，会按次数平均凑成 {v}%）";
+        }
+
+        ArgHint.Text = $"按一次{unit}变 {v}%{extra}；按住不放仍按 1% 细调";
     }
 
     private void OnClearClick(object sender, RoutedEventArgs e)

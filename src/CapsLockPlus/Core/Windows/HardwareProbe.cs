@@ -84,8 +84,7 @@ public static class HardwareProbe
                 W("=== 自绘横条（亮度用） ===");
                 try
                 {
-                    UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Brightness,
-                        BrightnessService.Get() ?? 50);
+                    UI.Windows.OsdWindow.Show(BrightnessService.Get() ?? 50);
                     System.Threading.Thread.Sleep(240);
                     W("已显示");
                 }

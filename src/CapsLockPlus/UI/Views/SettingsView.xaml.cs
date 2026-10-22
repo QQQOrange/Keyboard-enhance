@@ -296,15 +296,17 @@ public partial class SettingsView : UserControl
     {
         if (VolumeStepText == null) return;
         int sys = Core.Windows.VolumeService.StepPercent();
-        VolumeStepText.Text = v % sys == 0
+        VolumeStepText.Text = (v % sys == 0
             ? $"{v}%（按住时按系统 {sys}% 细调）"
-            : $"{v}%（系统步进 {sys}%，按整数倍补偿，长期平均正好 {v}%）";
+            : $"{v}%（系统步进 {sys}%，按整数倍补偿，长期平均正好 {v}%）")
+            + " · 单个键可在「按键映射 → 编辑绑定」里单独设步进";
     }
 
     private void UpdateBrightnessStepText(int v)
     {
         if (BrightnessStepText == null) return;
-        BrightnessStepText.Text = $"{v}%（按住时按 1% 细调）";
+        BrightnessStepText.Text = $"{v}%（按住时按 1% 细调）"
+            + " · 单个键可在「按键映射 → 编辑绑定」里单独设步进";
     }
 
     private void OnMouseSpeedChanged(object sender, RoutedEventArgs e)

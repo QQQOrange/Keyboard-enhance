@@ -194,14 +194,14 @@ public static class RenderTools
 
         main.Close();
 
-        /* 音量 / 亮度横条。
+        /* 亮度横条。
          *
-         * 它是自绘的浮层，用户最关心的就是"长什么样、出现在哪"，
-         * 所以单独出一张图，别让文档里只有文字描述。 */
-        foreach (var (kind, file, pct) in new[]
+         * 只出亮度这一张：音量已经交给系统音量键，Windows 自己弹它的横条，
+         * 我们不再画第二条（v4.3.0 删掉了自绘音量横条）。
+         * 这张图是自绘浮层，"长什么样、出现在哪"必须能一眼看到。 */
+        foreach (var (file, pct) in new[]
                  {
-                     (OsdKind.Volume, "osd-volume.png", 65),
-                     (OsdKind.Brightness, "osd-brightness.png", 40),
+                     ("osd-brightness.png", 40),
                  })
         {
             var osd = OsdWindow.CreateDetached();
@@ -210,7 +210,7 @@ public static class RenderTools
             osd.Left = -32000;
             osd.Top = -32000;
             osd.Show();
-            osd.PrepareForRender(kind, pct);
+            osd.PrepareForRender(pct);
             Pump(160);
             osd.UpdateLayout();
             Save(osd, Path.Combine(outDir, file));

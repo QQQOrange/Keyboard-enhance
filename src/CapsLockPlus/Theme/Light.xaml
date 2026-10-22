@@ -50,6 +50,14 @@
     <SolidColorBrush x:Key="Brush.KeycapBorder" Color="{DynamicResource Color.KeycapBorder}" />
     <SolidColorBrush x:Key="Brush.KeycapShadow" Color="{DynamicResource Color.KeycapShadow}" />
 
+    <!-- 亮度横条（OSD）。
+         浅色主题 = 浅底深字 + 蓝色进度：白天模式下不该突然出现一块黑板。 -->
+    <SolidColorBrush x:Key="Brush.OsdCard" Color="#F7FFFFFF" />
+    <SolidColorBrush x:Key="Brush.OsdCardBorder" Color="#1F000000" />
+    <SolidColorBrush x:Key="Brush.OsdTrack" Color="#24000000" />
+    <SolidColorBrush x:Key="Brush.OsdFill" Color="#2B6CF6" />
+    <SolidColorBrush x:Key="Brush.OsdText" Color="#161A23" />
+
     <!-- 渐变背景（窗口/侧栏） -->
     <LinearGradientBrush x:Key="Brush.WindowGradient" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#F7FAFF" Offset="0" />
