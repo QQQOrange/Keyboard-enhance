@@ -187,6 +187,7 @@ public static class SelfTest
         TestLayers();
         TestLayerIsolation();
         TestHoldThreshold();
+        TestLayerSurvivesIdle();
         TestModifierTriggerWithRepeat();
         TestContinuousVolumeRepeat();
         TestRepeatSurvivesPhysicalJitter();
@@ -1823,6 +1824,70 @@ public static class SelfTest
     }
 
     /// <summary>
+    /// 按住触发键、触发一个功能、**停下来几秒**、再按另一个键 ——
+    /// 第二个键必须仍然是层内绑定。
+    ///
+    /// 这是用户报的问题（v4.5.4 修）：原来的"抬起事件丢失自愈"每 20ms
+    /// 读一次 GetAsyncKeyState，而触发键的按下被我们自己的钩子吞掉了，
+    /// 系统层面它从未被按下 —— 于是只要停顿超过 1 秒就被判成"已松开"，
+    /// 层被踢掉，后续按键全部变回原生功能。
+    ///
+    /// 断言方式：模拟 3 秒空闲后，层必须还在，且再按键仍然被吞、仍然触发动作。
+    /// </summary>
+    private static void TestLayerSurvivesIdle()
+    {
+        var settings = DefaultSettings.Create();
+        foreach (var t in settings.Triggers) t.HoldMs = 120;
+
+        var triggered = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => settings, (action, arg) =>
+        {
+            lock (triggered) triggered.Add(action);
+            return true;
+        });
+        engine.StartHoldTimer();
+
+        engine.SimulateKey(VK.CapsLock, true);
+        DoEvents(260);
+        CheckEqual("空闲测试：已进入第 1 层", engine.ActiveLayer, 1);
+
+        // 触发第一个功能（caps_q）
+        engine.SimulateKey(0x51 /*Q*/, true);
+        engine.SimulateKey(0x51, false);
+        DoEvents(100);
+
+        /* 用户停下来看结果：触发键还按着，但三秒没碰其它键。
+         * 把时间往前拨，再跑两次 tick —— 老代码在这里会复位状态机。 */
+        engine.SimulateIdleForTest(3000);
+        engine.CheckHoldThresholdForTest();
+        engine.CheckHoldThresholdForTest();
+        DoEvents(80);
+
+        Check("停顿 3 秒后层还在", engine.ActiveLayer == 1, $"ActiveLayer={engine.ActiveLayer}");
+        Check("停顿后仍视为按住触发键", engine.IsTriggerHeld);
+
+        // 再按另一个键：必须仍然走层内绑定
+        int before;
+        lock (triggered) before = triggered.Count;
+
+        bool swallowed = engine.SimulateKey(0x53 /*S*/, true);   // caps_s
+        engine.SimulateKey(0x53, false);
+        DoEvents(120);
+
+        Check("停顿后再按键仍被层吞掉", swallowed);
+        lock (triggered)
+        {
+            Check("停顿后仍触发层内动作", triggered.Count > before,
+                string.Join(",", triggered));
+        }
+
+        engine.SimulateKey(VK.CapsLock, false);
+        CheckEqual("松开触发键后退出层", engine.ActiveLayer, -1);
+        engine.Dispose();
+    }
+
+    /// <summary>
     /// **真实的长按路径**：走计时器，而不是 EnterLayerImmediatelyForTest。
     ///
     /// 之前的自检用 EnterLayerImmediatelyForTest 直接跳过了计时器，
@@ -2078,11 +2143,26 @@ public static class SelfTest
         engine.SimulateKey(VK.Up, false);
         DoEvents(80);
 
-        /* 真正的抬起丢失（切桌面 / 远程接管）里用户是**完全没在按键**的：
-         * 静默超过门槛之后，自愈必须照常生效，否则触发键会永久卡住。 */
-        DoEvents(1150);       // 等过 1 秒静默门槛
+        /* v4.5.4：**不再**靠 GetAsyncKeyState 猜"触发键还按着没有"。
+         *
+         * 触发键的按下被我们自己的钩子吞掉了（不吞 CapsLock 会切大小写），
+         * 系统层面它从未被按下 —— 物理状态读出来永远是"未按下"。
+         * 旧实现在静默 1 秒后就判"抬起事件丢失"，把层踢掉；
+         * 用户按住触发键、触发功能、停顿几秒再按键，绑定就全失效了。
+         *
+         * 现在的约定：静默不复位；重新按下触发键时才复位旧会话。 */
+        DoEvents(1150);
         for (int i = 0; i < 16; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
-        Check("静默一段时间后自愈照常生效", !engine.IsTriggerHeld);
+        Check("静默期间层保持（不再按物理状态误杀）", engine.IsTriggerHeld);
+        CheckEqual("静默期间层号不变", engine.ActiveLayer, 1);
+
+        /* 用户重新按了一次触发键 —— 上一次会话没正常结束（抬起事件丢了）。
+         * 靠"两次 down 的间隔"识别：>100ms 说明中间松开过，按新会话处理。 */
+        DoEvents(150);
+        engine.SimulateKey(VK.CapsLock, true);
+        Check("重新按下触发键后仍是按住状态", engine.IsTriggerHeld);
+        DoEvents(260);
+        CheckEqual("重新按下后能再次进层", engine.ActiveLayer, 1);
 
         engine.PhysicalDownProbe = null;
         engine.Dispose();
@@ -2346,18 +2426,22 @@ public static class SelfTest
         engine.CheckHoldThresholdForTest();
         Check("单次采样「没按着」不会立刻取消按住状态", engine.IsTriggerHeld);
 
-        /* 自愈现在要求"用户已经静默一段时间"——
-         * 连按层内按键时绝不复位（v4.2.1 修的那个 bug）。
-         * 所以这里要先等过静默门槛，再喂几轮检查。 */
-        DoEvents(1100);       // 等过 1 秒静默门槛
+        /* v4.5.4：不再按物理状态自愈。
+         *
+         * 触发键的按下被我们自己的钩子吞掉了，系统层面它从未被按下，
+         * 物理读数永远是 false —— 旧实现因此会在"按住停顿 1 秒"后
+         * 误判成松开、把层踢掉（用户按住触发键触发功能、看几秒再按别的键，
+         * 绑定就全失效了）。现在静默期间一律不复位。 */
+        DoEvents(1100);
         for (int i = 0; i < 16; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
-        Check("物理已松开但没收到抬起 → 状态自愈", !engine.IsTriggerHeld);
-        CheckEqual("自愈后退出层", engine.ActiveLayer, -1);
+        Check("静默期间不会误判成松开", engine.IsTriggerHeld);
+        CheckEqual("静默期间仍停在第 3 层", engine.ActiveLayer, 3);
 
-        // 再按一次：必须正常进层（修复前会被当成自动重复吞掉）
+        // 恢复路径：用户重新按下触发键时，用 down 间隔识别出"新的一次按下"
         physicallyDown.Add(VK.RMenu);
+        DoEvents(150);                       // 保证与上次 down 的间隔 > 100ms
         engine.SimulateKey(VK.RMenu, true);
-        CheckEqual("抬起丢失后，下一次按下仍能触发", engine.ActiveLayer, 3);
+        CheckEqual("抬起丢失后，重新按下仍能进层", engine.ActiveLayer, 3);
 
         // ---------- ② 真按住时，自动重复不能重置状态 ----------
         engine.SimulateKey(VK.RMenu, true);
@@ -6488,12 +6572,17 @@ public static class SelfTest
             Check("Caps+S 触发了“左移”", triggered.Contains("moveLeft"), string.Join(",", triggered));
         }
 
-        // 没有绑定的键应当放行，保证正常打字
+        /* 层内没有绑定的键：**吞掉**（v4.5.4 起）。
+         *
+         * 语义是"按住触发键 = 键盘完全交给这一层"：
+         *   绑了 → 执行功能；没绑 → 空操作，不恢复原生输入。
+         * 以前是放行（会打出原字符），并由此引出了"按住触发键按时序
+         * 不同的键，有时出功能、有时出字符"的困惑。 */
         triggered.Clear();
         engine.SimulateKey(VK.CapsLock, true);
         Check("已绑定的键被吞掉（Caps+Q）", engine.SimulateKey(0x51 /*Q*/, true));
         engine.SimulateKey(0x51, false);
-        Check("未绑定的键放行（F7 默认无绑定）", !engine.SimulateKey(0x76 /*F7*/, true));
+        Check("未绑定的键也被吞掉（F7 默认无绑定）", engine.SimulateKey(0x76 /*F7*/, true));
         engine.SimulateKey(0x76, false);
         engine.SimulateKey(VK.CapsLock, false);
         Thread.Sleep(140);

@@ -56,6 +56,14 @@ public sealed class HotkeyEngine : IDisposable
     private bool _tapHandled;              // 短按动作是否已触发（超时那一刻触发）
 
     private DateTime _triggerDownTime = DateTime.MinValue;
+
+    /// <summary>
+    /// 上一次收到触发键 down 的时刻（Environment.TickCount64）。
+    ///
+    /// 用来区分"系统自动重复"和"用户重新按下" —— 见 OnTriggerDown 里的说明。
+    /// 不能用 GetAsyncKeyState：触发键的按下被我们吞掉了，系统层面它从未按下。
+    /// </summary>
+    private long _lastTriggerDownTick;
     private DateTime _lastTapTime = DateTime.MinValue;
     private bool _hasLastTap;
 
@@ -217,6 +225,7 @@ public sealed class HotkeyEngine : IDisposable
         _swallowedUp.Clear();
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
         _physicallyUpTicks = 0;
+        _lastTriggerDownTick = 0;
         _lastKeyActivity = DateTime.Now;
         ClearContinuousRepeat();
     }
@@ -343,60 +352,29 @@ public sealed class HotkeyEngine : IDisposable
 
         if (!_triggerHeld) return;
 
-        /* ---- 自愈：抬起事件丢了 ----
+        /* ---- 这里**不再**用 GetAsyncKeyState 判断"触发键还按着没有" ----
          *
-         * 钩子并不是万无一失的：切到 UAC 安全桌面、远程桌面接管、
-         * 系统因超时把钩子静默摘掉再重装、睡眠唤醒……这些窗口里
-         * **抬起事件会永久丢失**。此时 `_triggerHeld` 卡在 true，
-         * 下一次按触发键会被当成"自动重复"直接忽略（见 OnTriggerDown），
-         * 用户看到的就是"触发键偶尔按了没反应，再按一次又好了"。
+         * v4.5.4 删掉了原来每 20ms 一次的"自愈"，因为它从根上就是错的：
+         * 触发键的按下和抬起都被我们自己的钩子吞掉了（不吞的话 CapsLock
+         * 会切换大小写、右 Alt 会激活菜单栏），所以**系统层面这个键
+         * 从来没有被按下过** —— GetAsyncKeyState 对它读出来永远是"未按下"。
          *
-         * 每 20ms 拿物理按键状态核对一次，比等下一次按键去猜要可靠得多。
-         * 注意：这里**必须**用 PhysDownFamily —— 触发键可能是右 Alt，
-         * 而系统/驱动可能只报通用码 0x12。 */
-        if (_activeTriggerVk != -1 && !PhysDownFamily(_activeTriggerVk))
-        {
-            /* ---- 先看"用户是不是正在按键" ----
-             *
-             * 这条是 v4.2.1 修的核心 bug：
-             *
-             * 用户按住右 Alt 进层、按 Up 调音量 —— 第一次有效，
-             * 第二次起 Up 变回原生功能（光标上移）。根因就在这里：
-             * 连按层内按键时，`GetAsyncKeyState(触发键)` 会在两次按键之间
-             * 短暂读到"没按下"（注入媒体键、AltGr 合成 Ctrl、驱动抖动都会），
-             * 连续 3 轮（60ms）就判"抬起事件丢失"→ ResetTriggerState →
-             * 层被踢掉，后面的按键自然全走原生路径。
-             *
-             * 真正的"抬起事件丢失"场景（切 UAC 桌面 / 远程接管 / 睡眠唤醒）
-             * 里用户是**完全没在按键**的，所以"静默 400ms"这个门槛
-             * 既能保住自愈能力，又不会误伤连按。 */
-            var now = DateTime.Now;
-            /* 门槛取 1 秒（不是 400ms）。
-             *
-             * 这个门槛只防"误判"，而误判的代价是**层突然消失**，
-             * 比"自愈晚 1 秒生效"严重得多。用户慢慢点也能落在窗口内。 */
-            bool busyTyping = (now - _lastKeyActivity).TotalMilliseconds < 1000;
-            bool justInjected = (now - InputSender.LastInjectAt).TotalMilliseconds < 800;
-            if (busyTyping || justInjected)
-            {
-                _physicallyUpTicks = 0;
-                return;
-            }
-
-            /* 连续 12 次（约 240ms）都读不到按下才认账。
-             *
-             * 单次采样可能抖：`GetAsyncKeyState` 在切桌面、UAC 提示、
-             * 远程会话切换的瞬间会短暂返回"没按下"。若一抖就复位，
-             * 用户正按着触发键进层会被莫名取消 —— 那是比原 bug 更糟的体验。 */
-            if (++_physicallyUpTicks >= 12)
-            {
-                CoreLog.Warn($"触发键 0x{_activeTriggerVk:X2} 物理上已松开但没收到抬起事件，复位状态");
-                ResetTriggerState("抬起事件丢失");
-            }
-            return;
-        }
-
-        _physicallyUpTicks = 0;
+         * 于是只要用户按住触发键、中途停顿超过 1 秒没按别的键，就会被判成
+         * "抬起事件丢失"，层被踢掉。用户那边的体感是：
+         * 按住触发键 → 触发一个功能 → 停下来看一眼 → 再按第二个键 →
+         * 第二个键变回了原生功能（字母又变成了字母，而不是层里的绑定）。
+         *
+         * 真正需要自愈的场合（钩子被系统静默摘掉、UAC / 会话切换）另有
+         * 更可靠的信号，不需要猜物理状态：
+         *   · Suspended / Enabled 切换会显式 ResetTriggerState；
+         *   · 用户下一次按触发键时，OnTriggerDown 用"两次 down 的间隔"
+         *     区分"系统自动重复"和"重新按下"，后者会复位旧会话。
+         *
+         * 代价：万一抬起事件真的丢了，层会一直挂着，直到用户再按一次触发键。
+         * 这期间层内**没有绑定**的键是放行的（照常输入），只有绑了功能的
+         * 键会执行功能 —— 用户很容易察觉，按一下触发键就恢复。
+         * 相比之下，"按住好好的层突然消失、所有绑定一次性失效"要糟得多。
+         */
         if (_layerActive) return;
 
         /* 触发键配置读不到（按住期间被用户禁用 / 列表被重建）时，
@@ -632,6 +610,16 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>仅供自检：手动跑一次阈值检查，不依赖计时器。</summary>
     public void CheckHoldThresholdForTest() => CheckHoldThreshold();
+
+    /// <summary>
+    /// 仅供自检：把"最后一次按键活动"往前拨，用来复现
+    /// "按住触发键、触发一个功能后停下来看了几秒"这个场景。
+    ///
+    /// 这个场景正是 v4.5.4 修的 bug：原来的自愈逻辑会在这时误判
+    /// "抬起事件丢失"并把层踢掉，用户再按任何键就都变回原生功能了。
+    /// </summary>
+    public void SimulateIdleForTest(int milliseconds)
+        => _lastKeyActivity = DateTime.Now.AddMilliseconds(-milliseconds);
 
     private System.Windows.Threading.DispatcherTimer? _holdTimer;
 
@@ -1051,19 +1039,34 @@ public sealed class HotkeyEngine : IDisposable
          * `_triggerHeld` 会卡在 true，于是**这一次真实的按下被当成自动重复
          * 直接吞掉** —— 用户感受到的就是"触发键偶尔按一下没反应"。
          * 所以先拿物理状态核对：这个键现在其实没被按住 → 按全新按下处理。 */
+        long nowTick = Environment.TickCount64;
+
         if (_triggerHeld)
         {
-            if (_activeTriggerVk != -1 && !PhysDownFamily(_activeTriggerVk))
+            /* 区分"系统自动重复"和"用户重新按下"。
+             *
+             * 这里**不能**看 GetAsyncKeyState：触发键的按下被我们吞掉了，
+             * 系统层面它从未被按下，物理状态读出来永远是 false ——
+             * 那样每一次真实的重新按下都会被误判成"上次抬起丢了"，
+             * 日志里刷一片警告，而且每次都要先复位一遍。
+             *
+             * 改看两次 down 的间隔：系统自动重复大概 30~50ms 一次，
+             * 而人不可能在 100ms 内完成"松开再按下"。 */
+            bool isAutoRepeat = _lastTriggerDownTick != 0
+                                && nowTick - _lastTriggerDownTick < 100;
+
+            if (isAutoRepeat)
             {
-                CoreLog.Warn($"触发键 0x{_activeTriggerVk:X2} 的上次抬起事件丢失，按新按下处理");
-                ResetTriggerState("抬起事件丢失（按下时发现）");
-            }
-            else
-            {
+                _lastTriggerDownTick = nowTick;
                 ClearModifierFlag(vk);
                 return;      // 真的自动重复
             }
+
+            CoreLog.Info($"触发键 0x{_activeTriggerVk:X2} 重新按下（上次会话没有正常结束），复位后重新开始");
+            ResetTriggerState("触发键重新按下");
         }
+
+        _lastTriggerDownTick = nowTick;
 
         /* ⚠ 先确定是哪个触发键，**再**清零修饰键状态。
          *
@@ -1252,7 +1255,19 @@ public sealed class HotkeyEngine : IDisposable
         }
 
         string? keyName = KeyName.NameOf(vk);
-        if (keyName == null) return false;   // 不认识的功能键，放行
+
+        /* 不认识的键（键名表里没有）→ 同样吞掉。
+         *
+         * 用户的要求是"按住触发键时，按的任何键都是层的按键；层里没绑定
+         * 就等于空操作"。以前这里放行，结果是按了个没收录的键会漏到前台，
+         * 和"层完全接管键盘"的预期不符。 */
+        if (keyName == null)
+        {
+            _usedOtherKey = true;
+            _swallowedDown.TryAdd(vk, 0);
+            _swallowedUp.TryAdd(vk, 0);
+            return true;
+        }
 
         /* 用物理状态校正一遍修饰键标记再拼 combo。
          * 漏掉一次修饰键抬起事件就会让整层的组合键永久错位
@@ -1292,9 +1307,22 @@ public sealed class HotkeyEngine : IDisposable
 
         if (binding == null || !binding.IsBound)
         {
-            // 没有绑定：放行，让按键正常输入
-            if (mods == KeyModifiers.None) _usedOtherKey = true;
-            return false;
+            /* 层内没有绑定的键 → **吞掉**，恢复成"按了什么都不发生"。
+             *
+             * v4.5.4 按用户要求改了语义：按住触发键 = 键盘完全交给这一层。
+             *   · 绑了功能 → 执行功能；
+             *   · 没绑    → 空操作（既不执行功能，也不恢复原生输入）。
+             *
+             * 以前这里是 return false（放行），于是"按住触发键按个没绑的键"
+             * 会打出原字符 —— 用户的原话是"只会恢复成按键原有的功能"，
+             * 他认为这是错的：层的语义应该是接管，而不是"没绑就漏过去"。
+             *
+             * up 事件也要一起吞：只吞 down 会让前台程序收到"没有按下过
+             * 的抬起"，个别程序（游戏、远程桌面）会因此判定输入异常。 */
+            _usedOtherKey = true;
+            _swallowedDown.TryAdd(vk, 0);
+            _swallowedUp.TryAdd(vk, 0);
+            return true;
         }
 
         string action = binding.Action;
