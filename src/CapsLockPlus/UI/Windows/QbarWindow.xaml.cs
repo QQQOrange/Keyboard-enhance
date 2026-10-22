@@ -370,19 +370,24 @@ public partial class QbarWindow : Window
         ClearChip();
         if (!IsVisible)
         {
-            Show();
+            /* 顺序很重要：**先建句柄 → 再定位 → 最后 Show**。
+             *
+             * 定位要用到 HWND（才知道该落在哪块屏、那块屏的 DPI 是多少），
+             * 但若先 Show 再挪，第一次打开会看到面板从默认位置"跳"一下。
+             * EnsureHandle 只创建窗口句柄、不显示，正好满足"先有句柄又不闪"。 */
+            try { _ = new WindowInteropHelper(this).EnsureHandle(); } catch { }
 
-            /* 定位必须在 Show 之后：这时才有 HWND，才知道该落在哪块屏。
-             * 以"前台窗口"所在显示器为准 —— 用户在副屏打字时，
-             * 面板就该出现在副屏，而不是永远弹回主屏。 */
             var fg = Core.Interop.NativeMethods.GetForegroundWindow();
             if (!Core.Windows.ScreenPlacement.Place(this, Core.Windows.ScreenPlacement.Anchor.UpperCenter,
                     target: fg))
             {
+                // 拿不到显示器信息时退回旧算法（至少保证在主屏上可见）
                 var wa = SystemParameters.WorkArea;
                 Left = wa.Left + (wa.Width - Width) / 2;
                 Top = wa.Top + wa.Height * 0.22;
             }
+
+            Show();
         }
 
         /* 抢前台 + 抢输入焦点。
