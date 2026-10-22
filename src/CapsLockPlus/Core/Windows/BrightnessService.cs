@@ -110,6 +110,9 @@ public static class BrightnessService
 
     private static long _lastDdcWriteTick;
 
+    /// <summary>上一次写失败的目标值（同一个值只记一条日志，避免刷屏）。</summary>
+    private static int _lastDdcFailPercent = -1;
+
     /// <summary>上次成功读写的亮度（-1 = 还不知道）。</summary>
     private static int _last = -1;
 
@@ -140,6 +143,41 @@ public static class BrightnessService
     private static long _probeFailTick;
 
     private static Thread? _pump;
+
+    /// <summary>
+    /// 干跑：不真的写硬件（自检用）。
+    ///
+    /// 自检要覆盖"目标 → 推进线程 → 写入"这条链路，但绝不能在测试里
+    /// 把用户屏幕的亮度改掉。打开这个开关后 WriteLocked 直接成功返回。
+    /// </summary>
+    internal static bool DryRun { get; set; }
+
+    /// <summary>推进线程是否还活着（自检用：确认它真的被启动了）。</summary>
+    internal static bool PumpRunning => _pump is { IsAlive: true };
+
+    /// <summary>当前目标值（自检用）。</summary>
+    internal static int TargetForTest
+    {
+        get { lock (TinyGate) return _target; }
+    }
+
+    /// <summary>
+    /// 仅供自检：把"目标已建立"的状态摆好，但**不**启动推进线程。
+    ///
+    /// 这样就能复现真实启动顺序 —— AppHost 在后台预热时调 IsSupported()，
+    /// 目标已建立、推进线程还没起，此时第一次按键必须把线程拉起来。
+    /// </summary>
+    internal static void PrimeTargetForTest(int target)
+    {
+        lock (TinyGate)
+        {
+            _supported = 1;
+            _target = Math.Clamp(target, 0, 100);
+            _last = _target;
+            _lastSyncTick = Environment.TickCount64;
+            _settleMisses = 0;
+        }
+    }
 
     /// <summary>当前使用的通道（界面提示 / 自检用）。</summary>
     public static BrightnessBackend Backend
@@ -245,8 +283,19 @@ public static class BrightnessService
 
         if (fast is int ready)
         {
-            /* 目标变了就叫醒推进线程。
-             * 放在锁外面：Wait/Set 是内核调用，持锁做没必要。 */
+            /* 目标变了就要保证**推进线程真的在跑**，再叫醒它。
+             *
+             * 这里曾经漏掉 EnsurePump()，造成一个很隐蔽的回归：
+             * 启动时 AppHost 会在后台预热一次 IsSupported()，那一步就把
+             * _target 建好了；于是用户第一次按键直接走快路径 ——
+             * 目标从 13 一路涨到 47，日志里全是「目标 X%」，
+             * 但推进线程根本没启动过，硬件一个字节都没写。
+             * 表现就是"按键有反应（日志在动）、屏幕亮度一动不动"。
+             *
+             * EnsurePump 只在 _pump == null 时才建线程，已经跑起来时
+             * 就是一次空判断，不碰硬件，不会破坏"快路径不碰硬件"的约束。
+             * 锁在这里已经释放了，所以不必担心和 TinyGate 的嵌套。 */
+            EnsurePump();
             Wake.Set();
             return ready;
         }
@@ -375,65 +424,88 @@ public static class BrightnessService
     /// </summary>
     private static void PumpLoop()
     {
-        while (true)
+        /* 整条循环外面必须有一层兜底。
+         *
+         * 里面逐处的 try/catch 只护住了"写"这一步，读硬件
+         * （WMI 查询 / DDC 句柄）同样可能抛 —— 一旦抛到这里没人接，
+         * 后台线程就静静死掉：之后目标照变、日志照打，硬件再也不会写。
+         * 这正是"按键有反应但亮度不动"最难查的一种形态。
+         *
+         * finally 里把 _pump 置空，是为了让下一次 EnsurePump 能重建线程 ——
+         * 否则 _pump != null 的判断会让它永远不再启动。 */
+        try
         {
-            int target, cur, supported;
-            lock (TinyGate)
-            {
-                target = _target;
-                cur = _last;
-                supported = _supported;
-            }
+            // 启动时记一条：以后"按键没反应"时，看一眼就知道线程到底起没起
+            CoreLog.Info($"[亮度] 推进线程已启动（supported={_supported} target={_target} last={_last}）");
 
-            // 没活干就睡着等（不是轮询）：按键时 Wake.Set() 会立刻叫醒
-            if (supported != 1 || target < 0) { Wake.WaitOne(500); continue; }
+            while (true)
+            {
+                int target, cur, supported;
+                lock (TinyGate)
+                {
+                    target = _target;
+                    cur = _last;
+                    supported = _supported;
+                }
 
-            if (cur < 0)
-            {
-                int? read;
-                lock (HwGate) read = ReadLocked();
-                if (read is int r) PublishLast(r);
-                else Wake.WaitOne(150);
-                continue;
-            }
+                // 没活干就睡着等（不是轮询）：按键时 Wake.Set() 会立刻叫醒
+                if (supported != 1 || target < 0) { Wake.WaitOne(500); continue; }
 
-            if (cur == target)
-            {
-                /* 已经追上目标。这里**不能**继续 25ms 醒一次 ——
-                 * 那样即使没人调亮度，后台线程每秒也要醒 40 次，
-                 * 白白耗电（笔记本上尤其明显）。改成等事件，
-                 * 只有"目标变了"或"到点回读校验"才醒。 */
-                SettleVerify(target);
-                Wake.WaitOne(SettleVerifyMs);
-                continue;
-            }
+                if (cur < 0)
+                {
+                    int? read;
+                    lock (HwGate) read = ReadLocked();
+                    if (read is int r) PublishLast(r);
+                    else Wake.WaitOne(150);
+                    continue;
+                }
 
-            int next = Math.Clamp(cur + PlanStep(target - cur), 0, 100);
+                if (cur == target)
+                {
+                    /* 已经追上目标。这里**不能**继续 25ms 醒一次 ——
+                     * 那样即使没人调亮度，后台线程每秒也要醒 40 次，
+                     * 白白耗电（笔记本上尤其明显）。改成等事件，
+                     * 只有"目标变了"或"到点回读校验"才醒。 */
+                    SettleVerify(target);
+                    Wake.WaitOne(SettleVerifyMs);
+                    continue;
+                }
 
-            bool ok;
-            try
-            {
-                lock (HwGate) ok = WriteLocked(next, verify: false);
-            }
-            catch (Exception e)
-            {
-                CoreLog.Warn("[亮度] 平滑推进出错：" + e.Message);
-                Wake.WaitOne(250);
-                continue;
-            }
+                int next = Math.Clamp(cur + PlanStep(target - cur), 0, 100);
 
-            if (ok)
-            {
-                PublishLast(next);
-                lock (TinyGate) _settleMisses = 0;
-                Wake.WaitOne(FastGapMs);
+                bool ok;
+                try
+                {
+                    lock (HwGate) ok = WriteLocked(next, verify: false);
+                }
+                catch (Exception e)
+                {
+                    CoreLog.Warn("[亮度] 平滑推进出错：" + e.Message);
+                    Wake.WaitOne(250);
+                    continue;
+                }
+
+                if (ok)
+                {
+                    PublishLast(next);
+                    lock (TinyGate) _settleMisses = 0;
+                    Wake.WaitOne(FastGapMs);
+                }
+                else
+                {
+                    // 写不进去：留给下一次探测 / 换通道，别死循环刷屏
+                    lock (TinyGate) _lastSyncTick = Environment.TickCount64;
+                    Wake.WaitOne(300);
+                }
             }
-            else
-            {
-                // 写不进去：留给下一次探测 / 换通道，别死循环刷屏
-                lock (TinyGate) _lastSyncTick = Environment.TickCount64;
-                Wake.WaitOne(300);
-            }
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("[亮度] 推进线程异常退出（下次按键会重新拉起）", ex);
+        }
+        finally
+        {
+            lock (TinyGate) _pump = null;
         }
     }
 
@@ -658,12 +730,22 @@ public static class BrightnessService
     /// 反过来 DDC/CI 也会在显示器从休眠唤醒后短暂失效。
     /// 只试一条就放弃，用户看到的就是"按了没反应"。
     /// </summary>
-    private static bool WriteLocked(int percent, bool verify) => _backend switch
+    private static bool WriteLocked(int percent, bool verify)
     {
-        BrightnessBackend.Wmi => WmiSet(percent) || DdcSet(percent, verify),
-        BrightnessBackend.Ddc => DdcSet(percent, verify) || WmiSet(percent),
-        _ => false,
-    };
+        // 自检用：不碰硬件，直接当成功（否则测试会把用户屏幕调暗）
+        if (DryRun)
+        {
+            PublishLast(percent);
+            return true;
+        }
+
+        return _backend switch
+        {
+            BrightnessBackend.Wmi => WmiSet(percent) || DdcSet(percent, verify),
+            BrightnessBackend.Ddc => DdcSet(percent, verify) || WmiSet(percent),
+            _ => false,
+        };
+    }
 
     // ================= 通道 ①：WMI =================
 
@@ -870,6 +952,23 @@ public static class BrightnessService
                 CoreLog.Warn("[亮度] DDC 写入失败：" + ex.Message);
             }
         }
+
+        /* 写不进去要留痕。
+         *
+         * SetVCPFeature 返回 false 是**最容易被忽略**的失败：没有异常、没有日志，
+         * 上层只看到"返回 false"，而 pump 会静静重试 —— 用户那边就是
+         * "目标一路涨、屏幕一动不动"，日志里干干净净，根本查不出问题。
+         * 同一个目标只记一次（pump 会反复重试同一个值，别刷屏）。 */
+        if (!any && percent != _lastDdcFailPercent)
+        {
+            _lastDdcFailPercent = percent;
+            CoreLog.Warn($"[亮度] DDC 写入 {percent}% 没有被显示器接受（SetVCPFeature 返回 false）");
+        }
+        else if (any)
+        {
+            _lastDdcFailPercent = -1;
+        }
+
         return any;
     }
 

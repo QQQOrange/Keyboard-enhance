@@ -148,6 +148,7 @@ public static class SelfTest
         Section("音量与亮度");
         TestVolumeCore();
         TestBrightnessMath();
+        TestBrightnessPumpStarts();
         TestOsdAndTextInput();
         TestToastCoalescing();
         TestDirectSearchCoversAllEngines();
@@ -5329,6 +5330,44 @@ public static class SelfTest
 
         range = max - min;
         return count > 0 ? sum / count : -1;
+    }
+
+    /// <summary>
+    /// 回归测试：**目标已建立**时按亮度键，推进线程必须被拉起来。
+    ///
+    /// 4.4.0 为了让按键路径完全不碰硬件，把 AddTarget 拆成快 / 慢两条路；
+    /// 快路径只改了目标值，漏掉了 EnsurePump()。而 AppHost 启动时会在后台
+    /// 预热一次 IsSupported()，那一步就把目标建好了 —— 于是用户第一次按键
+    /// 就走快路径：日志里「目标 X%」一路涨，屏幕一动不动。
+    ///
+    /// 这里用干跑（DryRun）复现当时的先后顺序，钉住"快路径也要拉起线程"。
+    /// 没有这条断言，下次谁再"优化"一遍快路径还会踩回去。
+    /// </summary>
+    private static void TestBrightnessPumpStarts()
+    {
+        bool savedDry = Core.Windows.BrightnessService.DryRun;
+
+        try
+        {
+            Core.Windows.BrightnessService.DryRun = true;      // 不真的改屏幕亮度
+
+            // 模拟"启动预热已经把目标建好、但推进线程还没起"
+            Core.Windows.BrightnessService.PrimeTargetForTest(50);
+            CheckEqual("预热后目标已建立", Core.Windows.BrightnessService.TargetForTest, 50);
+
+            int? after = Core.Windows.BrightnessService.AddTarget(5);
+            CheckEqual("快路径下目标正确累加", after, 55);
+            Check("快路径也把推进线程拉起来了", Core.Windows.BrightnessService.PumpRunning);
+
+            Core.Windows.BrightnessService.AddTarget(-3);
+            Check("连续按键后推进线程仍存活", Core.Windows.BrightnessService.PumpRunning);
+            CheckEqual("连减后目标正确", Core.Windows.BrightnessService.TargetForTest, 52);
+        }
+        finally
+        {
+            Core.Windows.BrightnessService.DryRun = savedDry;
+            Core.Windows.BrightnessService.Reset();            // 清掉测试留下的状态
+        }
     }
 
     private static void TestBrightnessMath()
