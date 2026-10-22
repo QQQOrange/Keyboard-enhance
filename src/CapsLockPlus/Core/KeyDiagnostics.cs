@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -183,11 +183,11 @@ public static class KeyDiagnostics
 
     private static void WriteAndFlush(string text)
     {
-        try { Console.Write(text); Console.Out.Flush(); } catch { }
+        try { Console.Write(text); Console.Out.Flush(); } catch { }   /* 预期内：清理动作，失败无副作用 */
         try
         {
             File.AppendAllText(Path.Combine(AppPaths.DataDir, "diagnose.log"), text);
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 }

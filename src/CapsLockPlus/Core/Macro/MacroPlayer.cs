@@ -1,4 +1,4 @@
-using CapsLockPlus.Core.Input;
+﻿using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus.Core.Macro;
@@ -133,12 +133,13 @@ public sealed class MacroPlayer : IDisposable
                 // 收尾必须在 finally：正常 / 取消 / 异常三条路都要补齐抬起
                 foreach (var vk in held)
                 {
-                    try { InputSender.KeyUp(vk); } catch { }
+                    try { InputSender.KeyUp(vk); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
                 }
                 held.Clear();
 
                 CurrentStep = -1;
-                try { _callback?.Invoke(); } catch { }
+                try { _callback?.Invoke(); }
+                catch (Exception ex) { CoreLog.Swallow(ex, "宏播放结束回调"); }
             }
         })
         {

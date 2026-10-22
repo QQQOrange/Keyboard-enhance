@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using CapsLockPlus.Core.Text;
@@ -66,7 +66,7 @@ public partial class MathBoardWindow : Window
         History.ItemsSource = _history;
         Expression.Text = _lastResult;
         Expression.CaretIndex = Expression.Text.Length;
-        try { System.Windows.Clipboard.SetText(_lastResult); } catch { }
+        try { System.Windows.Clipboard.SetText(_lastResult); } catch { }   /* 预期内：清理动作，失败无副作用 */
     }
 
     private void OnEquals(object sender, RoutedEventArgs e) => Commit();

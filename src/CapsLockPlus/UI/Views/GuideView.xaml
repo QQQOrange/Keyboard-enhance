@@ -1,4 +1,4 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.GuideView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.GuideView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource Font.Ui}">
@@ -8,11 +8,8 @@
             <!-- 欢迎横幅 -->
             <Border CornerRadius="18" Padding="26,24" Margin="0,0,0,18">
                 <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#2B6CF6" Offset="0" />
-                        <GradientStop Color="#5B5BF0" Offset="0.55" />
-                        <GradientStop Color="#22C1E8" Offset="1" />
-                    </LinearGradientBrush>
+                    <!-- 与引导页同一块品牌渐变（Controls.xaml / Brush.BrandHero） -->
+                    <StaticResource ResourceKey="Brush.BrandHero" />
                 </Border.Background>
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -23,24 +20,26 @@
                         <TextBlock Text="让每一个按键，都能变成你的快捷键" FontSize="24" FontWeight="SemiBold"
                                    Foreground="White" />
                         <TextBlock Text="按住触发键就是功能键：字母键移动 / 选择光标，数字键切换窗口，Q 打开搜索面板。"
-                                   Foreground="#E4EDFF" FontSize="13.5" Margin="0,9,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource Brush.BrandSubtitle}" FontSize="13.5" Margin="0,9,0,0" TextWrapping="Wrap"
                                    MaxWidth="620" />
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
                             <Button Content="开始 3 步设置" Style="{StaticResource Button.Base}"
-                                    Background="White" BorderBrush="White" Foreground="#1D4ED8"
+                                    Background="{StaticResource Brush.BrandOnLight}" BorderBrush="{StaticResource Brush.BrandOnLight}"
+                                    Foreground="{StaticResource Brush.BrandOnLightText}"
                                     FontWeight="SemiBold" Padding="18,8" Click="OnStartSetup" />
                             <Button Content="查看快捷键速查" Style="{StaticResource Button.Base}"
-                                    Background="#33FFFFFF" BorderBrush="#55FFFFFF" Foreground="White"
+                                    Background="{StaticResource Brush.BrandHairline}" BorderBrush="{StaticResource Brush.BrandHairline}"
+                                    Foreground="{StaticResource Brush.BrandTitle}"
                                     Padding="16,8" Margin="10,0,0,0" Click="OnOpenHelp" />
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                        <Border Style="{StaticResource Keycap}" Background="#FFFFFF" Padding="14,10">
-                            <TextBlock Text="Caps" FontWeight="SemiBold" FontSize="15" Foreground="#1D4ED8" />
+                        <Border Style="{StaticResource Keycap}" Background="{StaticResource Brush.BrandOnLight}" Padding="14,10">
+                            <TextBlock Text="Caps" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource Brush.BrandOnLightText}" />
                         </Border>
                         <TextBlock Text="+" FontSize="18" Foreground="White" VerticalAlignment="Center" Margin="2,0,4,0" />
-                        <Border Style="{StaticResource Keycap}" Background="#FFFFFF" Padding="14,10">
-                            <TextBlock Text="Q" FontWeight="SemiBold" FontSize="15" Foreground="#1D4ED8" />
+                        <Border Style="{StaticResource Keycap}" Background="{StaticResource Brush.BrandOnLight}" Padding="14,10">
+                            <TextBlock Text="Q" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource Brush.BrandOnLightText}" />
                         </Border>
                     </StackPanel>
                 </Grid>

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using CapsLockPlus.Core.Update;
 
@@ -82,7 +82,14 @@ public partial class UpdatePromptWindow : Window
                 {
                     Process.Start(new ProcessStartInfo(_info.PageUrl) { UseShellExecute = true });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // 浏览器没起来（默认浏览器未关联 / 被策略拦）：告诉用户，别只是关窗
+                    Core.CoreLog.Swallow(ex, "打开更新下载页");
+                    AppDialog.Warn(Application.Current?.MainWindow,
+                        "没能自动打开浏览器。\n\n请手动访问：\n" + _info.PageUrl,
+                        "打开下载页失败");
+                }
                 Close();
             };
         }

@@ -51,19 +51,19 @@
                     <PasswordBox x:Name="BackupPassBox" Style="{StaticResource PasswordBox.Base}"
                                  PasswordChanged="OnBackupPassChanged" />
                     <Border x:Name="NoPasswordWarning" Margin="0,8,0,0" Padding="10,7" CornerRadius="8"
-                            Background="#22E5484D" BorderBrush="#55E5484D" BorderThickness="1"
+                            Background="{DynamicResource Brush.DangerSoft}" BorderBrush="{DynamicResource Brush.DangerBorder}" BorderThickness="1"
                             Visibility="Collapsed">
                         <TextBlock TextWrapping="Wrap" FontSize="12"
-                                   Foreground="#E5484D"
+                                   Foreground="{DynamicResource Brush.Danger}"
                                    Text="没设备份密码 —— 现在不能备份。备份和本地数据都必须加密，设一个密码就能用。" />
                     </Border>
 
                     <!-- 本地加密状态：设了密码之后磁盘上就不再留明文用户数据 -->
                     <Border x:Name="VaultStatusBar" Margin="0,8,0,0" Padding="10,7" CornerRadius="8"
-                            Background="#221D9E75" BorderBrush="#551D9E75" BorderThickness="1"
+                            Background="{DynamicResource Brush.SuccessSoft}" BorderBrush="{DynamicResource Brush.SuccessBorder}" BorderThickness="1"
                             Visibility="Collapsed">
                         <TextBlock x:Name="VaultStatusText" TextWrapping="Wrap" FontSize="12"
-                                   Foreground="#0F6E56" />
+                                   Foreground="{DynamicResource Brush.Success}" />
                     </Border>
 
                     <Border Style="{StaticResource Divider}" Margin="0,16,0,12" />
@@ -130,7 +130,7 @@
                                            FontSize="11.5" TextWrapping="Wrap"
                                            Foreground="{DynamicResource Brush.TextSecondary}" />
                                 <TextBlock x:Name="FallbackHint" Style="{StaticResource Text.Tertiary}"
-                                           TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#E5484D"
+                                           TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Brush.Danger}"
                                            Visibility="Collapsed"
                                            Text="软件目录不可写，备份已改放到数据目录。" />
                             </StackPanel>
@@ -261,12 +261,12 @@
                                                                Foreground="{DynamicResource Brush.TextPrimary}" />
                                                     <!-- 隐私标记：红色 -->
                                                     <Border Margin="8,0,0,0" Padding="6,1"
-                                                            CornerRadius="5" Background="#22E5484D"
-                                                            BorderBrush="#55E5484D" BorderThickness="1"
+                                                            CornerRadius="5" Background="{DynamicResource Brush.DangerSoft}"
+                                                            BorderBrush="{DynamicResource Brush.DangerBorder}" BorderThickness="1"
                                                             Visibility="{Binding PrivateVisibility}">
                                                         <TextBlock Text="隐私 · 默认不勾" FontSize="10.5"
                                                                    FontWeight="SemiBold"
-                                                                   Foreground="#E5484D" />
+                                                                   Foreground="{DynamicResource Brush.Danger}" />
                                                     </Border>
                                                 </StackPanel>
                                                 <TextBlock Text="{Binding Desc}"

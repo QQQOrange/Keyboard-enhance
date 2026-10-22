@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 using CapsLockPlus.Core;
@@ -135,7 +135,7 @@ public sealed class TrayIcon : IDisposable
             _enabledItem.Text = enabled ? "暂停 " + AppInfo.ShortName : "恢复 " + AppInfo.ShortName;
             _icon.Text = enabled ? AppInfo.ProductName : AppInfo.ShortName + " 已暂停";
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
     private static Icon? LoadIcon()
@@ -167,7 +167,7 @@ public sealed class TrayIcon : IDisposable
             _icon.Dispose();
             _customIcon?.Dispose();
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
     private sealed class DarkColorTable : ProfessionalColorTable

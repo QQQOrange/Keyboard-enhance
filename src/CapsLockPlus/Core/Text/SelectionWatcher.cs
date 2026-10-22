@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -168,7 +168,7 @@ public sealed class SelectionWatcher : IDisposable
                 }
             }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         return CallNextHookEx(_hook, nCode, wParam, lParam);
     }

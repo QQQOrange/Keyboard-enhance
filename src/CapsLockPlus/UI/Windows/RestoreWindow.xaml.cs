@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
@@ -175,10 +175,9 @@ public partial class RestoreWindow : Window
 
         if (row.Cloud)
         {
-            var ok = MessageBox.Show(this,
-                $"从云端删除这份备份？\n\n　{row.Name}\n\n删了就找不回来了。",
-                "删除云端备份", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-            if (ok != MessageBoxResult.OK) return;
+            if (!AppDialog.ConfirmDanger(this,
+                    $"从云端删除这份备份？\n\n　{row.Name}\n\n删了就找不回来了。",
+                    "删除云端备份", okText: "删除")) return;
 
             StatusText.Text = "正在删除…";
             var r = await _host.Sync.DeleteCloudAsync(row.Name).ConfigureAwait(true);
@@ -189,10 +188,9 @@ public partial class RestoreWindow : Window
 
         try
         {
-            var ok = MessageBox.Show(this,
-                $"删除这份本地备份？\n\n　{row.Name}\n　{row.Path}\n\n删了就找不回来了。",
-                "删除本地备份", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-            if (ok != MessageBoxResult.OK) return;
+            if (!AppDialog.ConfirmDanger(this,
+                    $"删除这份本地备份？\n\n　{row.Name}\n　{row.Path}\n\n删了就找不回来了。",
+                    "删除本地备份", okText: "删除")) return;
             if (!string.IsNullOrEmpty(row.Path)) File.Delete(row.Path);
             StatusText.Text = "✓ 已删除 " + row.Name;
             await LoadAsync().ConfigureAwait(true);
@@ -218,12 +216,11 @@ public partial class RestoreWindow : Window
 
         if (mode == RestoreMode.Overwrite)
         {
-            var ok = MessageBox.Show(this,
-                "覆盖恢复会把当前配置整份换成备份里的内容。\n" +
-                "恢复之前会自动把当前配置另存一份到本地备份目录，恢复错了还能退回去。\n\n" +
-                $"确定用「{row.Name}」覆盖吗？",
-                "覆盖恢复", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-            if (ok != MessageBoxResult.OK) return;
+            if (!AppDialog.Confirm(this,
+                    "覆盖恢复会把当前配置整份换成备份里的内容。\n" +
+                    "恢复之前会自动把当前配置另存一份到本地备份目录，恢复错了还能退回去。\n\n" +
+                    $"确定用「{row.Name}」覆盖吗？",
+                    "覆盖恢复", DialogKind.Warn, okText: "覆盖恢复")) return;
         }
 
         RestoreButton.IsEnabled = false;
@@ -278,7 +275,7 @@ public partial class RestoreWindow : Window
 
             var msg = outcome.Summary
                       + (selfBackup != null ? $"\n\n恢复前的配置已另存：{System.IO.Path.GetFileName(selfBackup)}" : "");
-            MessageBox.Show(this, msg, "恢复完成", MessageBoxButton.OK, MessageBoxImage.Information);
+            AppDialog.Success(this, msg, "恢复完成");
             DialogResult = true;
             Close();
         }

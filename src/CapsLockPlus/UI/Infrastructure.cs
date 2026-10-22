@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using CapsLockPlus.Core;
@@ -59,7 +59,7 @@ public sealed class ClipboardWatcher : IDisposable
                 _source = null;
             }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
     private static class NativeMethodsShim

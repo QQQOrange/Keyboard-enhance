@@ -62,4 +62,29 @@
         <GradientStop Color="#6C4CF6" Offset="0.6" />
         <GradientStop Color="#22D3EE" Offset="1" />
     </LinearGradientBrush>
+
+    <!-- ================= 浮层（Qbar / 提示条 / 录制条 / 选窗口） =================
+         浅色主题下浮层是"半透明白 + 深色字"，和 Windows 通知中心同一套观感；
+         以前这里写死深色，浅色主题下弹出一块黑板（审视报告 P2-2）。 -->
+    <SolidColorBrush x:Key="Brush.OverlayCard" Color="#F7FFFFFF" />
+    <SolidColorBrush x:Key="Brush.OverlayCardAlt" Color="#F7FFFFFF" />
+    <SolidColorBrush x:Key="Brush.OverlayBorder" Color="#1F000000" />
+    <SolidColorBrush x:Key="Brush.OverlayBorderAccent" Color="#332B6CF6" />
+    <SolidColorBrush x:Key="Brush.OverlayText" Color="#161A23" />
+    <SolidColorBrush x:Key="Brush.OverlayTextSecondary" Color="#5A6478" />
+    <SolidColorBrush x:Key="Brush.OverlayTextTertiary" Color="#8A93A6" />
+    <SolidColorBrush x:Key="Brush.OverlayAccent" Color="#2B6CF6" />
+    <SolidColorBrush x:Key="Brush.OverlayAccentSoft" Color="#1F2B6CF6" />
+    <SolidColorBrush x:Key="Brush.OverlayAccentText" Color="#2B6CF6" />
+    <SolidColorBrush x:Key="Brush.OverlayRowHover" Color="#0F000000" />
+    <SolidColorBrush x:Key="Brush.OverlayScrim" Color="#22000000" />
+    <SolidColorBrush x:Key="Brush.OverlayShadow" Color="#26000000" />
+
+    <!-- 语义色的"柔和底 + 描边"，见 Dark.xaml 同名说明。 -->
+    <SolidColorBrush x:Key="Brush.DangerSoft" Color="#14E5484D" />
+    <SolidColorBrush x:Key="Brush.DangerBorder" Color="#44E5484D" />
+    <SolidColorBrush x:Key="Brush.SuccessSoft" Color="#141F9D62" />
+    <SolidColorBrush x:Key="Brush.SuccessBorder" Color="#441F9D62" />
+    <SolidColorBrush x:Key="Brush.WarningSoft" Color="#14D9822B" />
+    <SolidColorBrush x:Key="Brush.WarningBorder" Color="#44D9822B" />
 </ResourceDictionary>

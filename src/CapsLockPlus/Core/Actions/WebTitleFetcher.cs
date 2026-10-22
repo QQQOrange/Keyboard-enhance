@@ -81,7 +81,7 @@ public static class WebTitleFetcher
                 return System.Text.Encoding.GetEncoding(charset.Trim('"', '\''))
                     .GetString(buf, 0, len);
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         try { return new System.Text.UTF8Encoding(false, true).GetString(buf, 0, len); }
         catch

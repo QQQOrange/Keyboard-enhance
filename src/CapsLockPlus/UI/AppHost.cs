@@ -237,6 +237,12 @@ public sealed class AppHost : IDisposable
         });
 
         CoreLog.Info($"{AppInfo.ProductName} 已启动（管理员：{ElevationHelper.IsElevated}）");
+
+        /* 设置文件读不出来时，用户看到的是"所有配置都没了"。
+         * 日志里有 ERROR，但他不会去看 —— 必须主动说一句，
+         * 而且要说清"原文件已另存"，否则他只会以为被删了。 */
+        if (SettingsStore.LoadFailure is { } loadFailure)
+            Notify(loadFailure);
     }
 
     private void ApplyStartupSetting()
@@ -695,7 +701,7 @@ public sealed class AppHost : IDisposable
         SaveSettings();
         _tray?.Dispose();
         _tray = null;
-        try { _selectionWatcher?.Dispose(); _selectionWatcher = null; } catch { }
+        try { _selectionWatcher?.Dispose(); _selectionWatcher = null; } catch { }   /* 预期内：清理动作，失败无副作用 */
         if (restart)
         {
             /* 重启自己（权限切换必须重启才生效）。

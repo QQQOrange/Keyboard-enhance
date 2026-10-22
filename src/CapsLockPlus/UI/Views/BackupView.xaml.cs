@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
+using CapsLockPlus.UI.Windows;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Sync;
 using Microsoft.Win32;
@@ -371,7 +372,7 @@ public partial class BackupView : UserControl
         if (_host == null) return;
         SyncStatus.Text = "正在连接…";
         var r = await _host.Sync.TestAsync();
-        SyncStatus.Text = (r.Ok ? "✓ " : "✗ ") + r.Message;
+        SyncStatus.Text = (r.Ok ? UiText.OkMark : UiText.FailMark) + r.Message;
     }
 
     private async void OnUploadClick(object sender, RoutedEventArgs e)
@@ -384,7 +385,7 @@ public partial class BackupView : UserControl
         }
         SyncStatus.Text = "正在上传…";
         var r = await _host.RunSyncNowAsync(upload: true);
-        SyncStatus.Text = (r.Ok ? "✓ " : "✗ ") + r.Message;
+        SyncStatus.Text = (r.Ok ? UiText.OkMark : UiText.FailMark) + r.Message;
         Refresh();
     }
 
@@ -469,8 +470,7 @@ public partial class BackupView : UserControl
         var selected = _groups.Where(g => g.Checked).Select(g => g.Id).ToList();
         if (selected.Count == 0)
         {
-            MessageBox.Show(Window.GetWindow(this), "一项都没勾，没什么可导出的。",
-                "导出配置", MessageBoxButton.OK, MessageBoxImage.Information);
+            AppDialog.Info(Window.GetWindow(this), "一项都没勾，没什么可导出的。", "导出配置");
             return;
         }
 
@@ -479,12 +479,12 @@ public partial class BackupView : UserControl
 
         if (encrypted && string.IsNullOrWhiteSpace(password))
         {
-            var go = MessageBox.Show(Window.GetWindow(this),
+            AppDialog.Info(Window.GetWindow(this),
                 "还没有「备份密码」，没法加密导出。\n\n" +
                 "可以先去上面的「备份密码」里设一个（本地数据也会一起变成密文），\n" +
                 "或者关掉「加密导出」改用明文导出。",
-                "需要先设密码", MessageBoxButton.OK, MessageBoxImage.Information);
-            if (go == MessageBoxResult.OK) BackupPassBox.Focus();
+                "需要先设密码");
+            BackupPassBox.Focus();
             return;
         }
 
@@ -495,10 +495,9 @@ public partial class BackupView : UserControl
             string extra = priv.Count > 0
                 ? $"\n\n你勾了隐私内容：\n　{string.Join("\n　", priv)}\n（这些组的密码类字段仍会被剔除）"
                 : "";
-            var ok = MessageBox.Show(Window.GetWindow(this),
-                "这次是**明文导出**，谁拿到文件都能读到内容。" + extra + "\n\n确定要继续吗？",
-                "明文导出", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-            if (ok != MessageBoxResult.OK) return;
+            if (!AppDialog.Confirm(Window.GetWindow(this),
+                    "这次是明文导出，谁拿到文件都能读到内容。" + extra + "\n\n确定要继续吗？",
+                    "明文导出", DialogKind.Warn, okText: "继续导出")) return;
         }
 
         var dlg = new SaveFileDialog
@@ -527,7 +526,7 @@ public partial class BackupView : UserControl
         }
         catch (Exception ex)
         {
-            _host.Notify("导出失败：" + ex.Message);
+            _host.Notify(UiText.Failed("导出配置", ex.Message));
             ShowImportResult("导出失败：" + ex.Message, false);
         }
     }
@@ -584,10 +583,9 @@ public partial class BackupView : UserControl
             }
 
             var names = groups.Select(g => ExportImport.FindGroup(g)?.Name ?? g).ToList();
-            var confirm = MessageBox.Show(Window.GetWindow(this),
-                $"将导入以下内容（会覆盖当前对应的项）：\n\n　{string.Join("\n　", names)}\n\n继续吗？",
-                "导入配置", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-            if (confirm != MessageBoxResult.OK) return;
+            if (!AppDialog.Confirm(Window.GetWindow(this),
+                    $"将导入以下内容（会覆盖当前对应的项）：\n\n　{string.Join("\n　", names)}\n\n继续吗？",
+                    "导入配置", DialogKind.Question, okText: "导入")) return;
 
             ExportImport.Apply(_host.Settings, groups, data);
             _host.SaveSettings();

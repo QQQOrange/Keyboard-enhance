@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace CapsLockPlus.Core.Text;
 
@@ -83,7 +83,7 @@ public static class ThreadKeyboardSender
                 SetKeyboardState(down);
             }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         // ② 发按键（带扫描码的 lParam）
         bool any = false;
@@ -98,7 +98,7 @@ public static class ThreadKeyboardSender
             System.Threading.Thread.Sleep(10);
             PostMessage(fg, WM_KEYUP, new IntPtr(vk), upLParam);
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         // ③ 还原键盘状态并 detach
         try
@@ -106,7 +106,7 @@ public static class ThreadKeyboardSender
             if (attached && haveSaved) SetKeyboardState(saved);
             if (attached) AttachThreadInput(myTid, fgTid, false);
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         return any;
     }

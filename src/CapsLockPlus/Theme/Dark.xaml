@@ -61,4 +61,35 @@
         <GradientStop Color="#8B6CFF" Offset="0.6" />
         <GradientStop Color="#3EE0F0" Offset="1" />
     </LinearGradientBrush>
+
+    <!-- ================= 浮层（Qbar / 提示条 / 录制条 / 选窗口） =================
+         这几个窗口是"浮在别的内容上"的，所以有自己的底色体系：
+         底色比普通面板更深、边框靠一点透明白、强调色更亮。
+
+         以前这套颜色是**在 4 个 XAML 里各写一遍**（#F21C1F27 / #F2161A23 /
+         #F2F5FA / #9FB4D8 …），深浅两套主题下都不跟随 —— 浅色主题里
+         突然弹出一块深色板。现在统一由主题提供，浮层只引用键名。 -->
+    <SolidColorBrush x:Key="Brush.OverlayCard" Color="#F21C1F27" />
+    <SolidColorBrush x:Key="Brush.OverlayCardAlt" Color="#F2161A23" />
+    <SolidColorBrush x:Key="Brush.OverlayBorder" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="Brush.OverlayBorderAccent" Color="#335B93FF" />
+    <SolidColorBrush x:Key="Brush.OverlayText" Color="#F2F5FA" />
+    <SolidColorBrush x:Key="Brush.OverlayTextSecondary" Color="#9FB4D8" />
+    <SolidColorBrush x:Key="Brush.OverlayTextTertiary" Color="#6E7F99" />
+    <SolidColorBrush x:Key="Brush.OverlayAccent" Color="#5B93FF" />
+    <SolidColorBrush x:Key="Brush.OverlayAccentSoft" Color="#2E5B93FF" />
+    <SolidColorBrush x:Key="Brush.OverlayAccentText" Color="#8FB6FF" />
+    <SolidColorBrush x:Key="Brush.OverlayRowHover" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="Brush.OverlayScrim" Color="#33000000" />
+    <SolidColorBrush x:Key="Brush.OverlayShadow" Color="#1A000000" />
+
+    <!-- 语义色的"柔和底 + 描边"：用于提示条、危险操作区。
+         以前这些值直接写死在 BackupView 里（#22E5484D / #221D9E75 …），
+         文字色也是硬编码的浅色红绿 —— 深色主题下那几块几乎看不清。 -->
+    <SolidColorBrush x:Key="Brush.DangerSoft" Color="#22FF6369" />
+    <SolidColorBrush x:Key="Brush.DangerBorder" Color="#55FF6369" />
+    <SolidColorBrush x:Key="Brush.SuccessSoft" Color="#223DD68C" />
+    <SolidColorBrush x:Key="Brush.SuccessBorder" Color="#553DD68C" />
+    <SolidColorBrush x:Key="Brush.WarningSoft" Color="#22F5A524" />
+    <SolidColorBrush x:Key="Brush.WarningBorder" Color="#55F5A524" />
 </ResourceDictionary>

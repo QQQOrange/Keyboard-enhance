@@ -18,7 +18,7 @@ public static class HardwareProbe
     public static int Run()
     {
         // 控制台默认是系统 OEM 代码页（936），重定向到 bash / CI 时会变乱码
-        try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
+        try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         var lines = new System.Collections.Generic.List<string>();
         void W(string s)
@@ -187,7 +187,7 @@ public static class HardwareProbe
                 System.IO.Path.Combine(AppPaths.DataDir, "hwtest.txt"),
                 string.Join(Environment.NewLine, lines));
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         return problems == 0 ? 0 : 1;
     }

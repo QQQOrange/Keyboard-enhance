@@ -103,8 +103,17 @@ public static class SettingsStore
         foreach (var layer in s.Layers) yield return layer.Keys;
     }
 
-    public static AppSettings Load()
-    {
+    /// <summary>
+    /// 上次 <see cref="Load"/> 失败时给用户看的说明；正常时为 null。
+    ///
+    /// 以前这里的处理是"复制成 settings.json.broken，然后返回默认设置"，
+    /// 日志里留一行 ERROR —— 但用户看不到日志，表现就是**开机后所有配置都没了**，
+    /// 而且没有任进何提示，只能以为"软件把我的设置弄丢了"。
+    /// 现在把失败原因挂在这里，由 AppHost 启动后提示一次。
+    /// </summary>
+    public static string? LoadFailure { get; private set; }
+
+    public static AppSettings Load()    {
         lock (Gate)
         {
             try
@@ -162,12 +171,24 @@ public static class SettingsStore
             catch (Exception ex)
             {
                 CoreLog.Error("读取设置失败，已回退到默认设置", ex);
+
+                string brokenPath = AppPaths.SettingsFile + ".broken";
+                bool backedUp = false;
                 try
                 {
                     if (File.Exists(AppPaths.SettingsFile))
-                        File.Copy(AppPaths.SettingsFile, AppPaths.SettingsFile + ".broken", true);
+                    {
+                        File.Copy(AppPaths.SettingsFile, brokenPath, true);
+                        backedUp = true;
+                    }
                 }
-                catch { }
+                catch (Exception copyEx) { CoreLog.Swallow(copyEx, "备份损坏的设置文件"); }
+
+                LoadFailure = backedUp
+                    ? $"设置文件读不出来，已把原文件另存为 {System.IO.Path.GetFileName(brokenPath)}，\n" +
+                      "本次先用默认设置启动（原文件没有被删除，可以手工修复后换回去）。"
+                    : "设置文件读不出来，本次先用默认设置启动（原文件可能已被占用或权限不足）。";
+
                 var s = DefaultSettings.Create();
                 return s;
             }

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
@@ -58,7 +58,7 @@ public partial class AboutView : UserControl
         }
         catch (Exception ex)
         {
-            _host?.Notify("打开链接失败：" + ex.Message);
+            _host?.Notify(UiText.Failed("打开链接", ex.Message));
         }
     }
 

@@ -89,6 +89,9 @@ public static class SelfTest
         Section("主题");
         TestTheme();
 
+        Section("界面文案");
+        TestUiText();
+
         Section("Qbar 引擎过滤");
         TestQbarEntryFilter();
 
@@ -2668,6 +2671,88 @@ public static class SelfTest
         string darkBg = BrushColor("Brush.Background");
         Check("浅色与深色的背景色不同", lightBg != darkBg,
             $"light={lightBg} dark={darkBg}");
+
+        TestOverlayPalette();
+    }
+
+    /// <summary>
+    /// 界面文案的统一规则（审视报告 P2-4）。
+    ///
+    /// 这些断言看着琐碎，但文案是最容易被下一次改动破坏的东西：
+    /// 谁顺手写回一句「打开失败：xxx」，全仓口径就又散了。
+    /// </summary>
+    private static void TestUiText()
+    {
+        CheckEqual("成功文案：已 + 动词", UiText.Done("恢复默认设置"), "已恢复默认设置");
+
+        CheckEqual("失败文案：没能 + 动作 + 原因",
+            UiText.Failed("打开网址", "没有默认浏览器"), "没能打开网址：没有默认浏览器");
+
+        CheckEqual("失败文案：原因为空时不带冒号",
+            UiText.Failed("打开网址"), "没能打开网址");
+
+        // 系统异常常带结尾句号，拼进去就是「：xxx。。」
+        CheckEqual("失败文案：去掉原因结尾的句号",
+            UiText.Failed("打开文件", "拒绝访问。"), "没能打开文件：拒绝访问");
+        CheckEqual("失败文案：去掉原因结尾的英文句点",
+            UiText.Failed("打开文件", "Access denied."), "没能打开文件：Access denied");
+
+        CheckEqual("状态行成功带 ✓", UiText.OkLine("已删除"), "✓ 已删除");
+        CheckEqual("状态行失败带 ✗", UiText.FailLine("没能删除"), "✗ 没能删除");
+
+        // 三条规则的自检：不能出现"失败"二字（那是旧口径）
+        Check("失败文案里不再出现「失败」二字",
+            !UiText.Failed("打开网址", "x").Contains("失败"),
+            UiText.Failed("打开网址", "x"));
+    }
+
+
+    ///
+    /// 这四个浮层（Qbar / 提示条 / 录制条 / 选窗口）原来把颜色写死在各自的
+    /// XAML 里，浅色主题下会弹出一块深色板。现在统一走 Brush.Overlay*，
+    /// 这里钉住两件事：**每个键两套主题都存在**、**深浅两套取值不同**。
+    /// 少一个键的后果是运行时画刷为 null —— 背景透明、字看不见，很难查。
+    /// </summary>
+    private static void TestOverlayPalette()
+    {
+        string[] keys =
+        {
+            "Brush.OverlayCard", "Brush.OverlayCardAlt", "Brush.OverlayBorder",
+            "Brush.OverlayBorderAccent", "Brush.OverlayText", "Brush.OverlayTextSecondary",
+            "Brush.OverlayTextTertiary", "Brush.OverlayAccent", "Brush.OverlayAccentSoft",
+            "Brush.OverlayAccentText", "Brush.OverlayRowHover", "Brush.OverlayScrim",
+            "Brush.OverlayShadow",
+        };
+
+        var saved = UI.Theme.ThemeManager.Current;
+
+        try
+        {
+            UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Light);
+            var light = keys.ToDictionary(k => k, BrushColor);
+
+            UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
+            var dark = keys.ToDictionary(k => k, BrushColor);
+
+            foreach (string k in keys)
+            {
+                Check($"浅色主题有 {k}", light[k].Length > 0, light[k]);
+                Check($"深色主题有 {k}", dark[k].Length > 0, dark[k]);
+            }
+
+            int diff = keys.Count(k => light[k] != dark[k]);
+            Check("浮层配色跟随主题（至少 10 个键两套不同）", diff >= 10, $"不同={diff}/{keys.Length}");
+
+            // 浮层底色：浅色更亮、深色更暗（和系统通知中心一致）
+            double lightCard = LuminanceOf(light["Brush.OverlayCard"]);
+            double darkCard = LuminanceOf(dark["Brush.OverlayCard"]);
+            Check("浅色浮层是浅底", lightCard > 0.70, $"亮度={lightCard:F2}");
+            Check("深色浮层是深底", darkCard < 0.30, $"亮度={darkCard:F2}");
+        }
+        finally
+        {
+            UI.Theme.ThemeManager.Apply(saved);
+        }
     }
 
     private static bool HasThemeDict(string needle)

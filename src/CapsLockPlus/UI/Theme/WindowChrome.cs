@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using CapsLockPlus.Core;
@@ -54,6 +54,6 @@ public static class WindowChrome
             int round = 2;
             DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 }

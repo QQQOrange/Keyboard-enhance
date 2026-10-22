@@ -779,7 +779,7 @@ public static class BrightnessService
                                 int z = raw.IndexOf('\0');
                                 desc = (z >= 0 ? raw[..z] : raw).Trim();
                             }
-                            catch { }
+                            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
                             // 读一次亮度：能读出 max 才说明这台屏支持 VCP 0x10
                             if (GetVCPFeatureAndVCPFeatureReply(h, VcpBrightness, out _, out uint cur, out uint max)
@@ -947,7 +947,7 @@ public static class BrightnessService
         if (_ddc == null) return;
         foreach (var m in _ddc)
         {
-            try { DestroyPhysicalMonitor(m.Handle); } catch { }
+            try { DestroyPhysicalMonitor(m.Handle); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         }
         _ddc = null;
     }

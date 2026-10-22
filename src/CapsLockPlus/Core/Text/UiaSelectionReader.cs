@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
@@ -49,7 +49,7 @@ public static class UiaSelectionReader
                 var focused = AutomationElement.FocusedElement;
                 if (focused != null) candidates.Add(focused);
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
             try
             {
@@ -60,7 +60,7 @@ public static class UiaSelectionReader
                     if (root != null) candidates.Add(root);
                 }
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
             /* ②b UIA SelectionPattern：某些程序（Win11 记事本等）只在
              * SelectionPattern 里暴露选中项，没有 TextPattern。 */
@@ -77,13 +77,13 @@ public static class UiaSelectionReader
                             var sb2 = new System.Text.StringBuilder();
                             foreach (var it in items)
                             {
-                                try { sb2.Append(it.Current.Name); } catch { }
+                                try { sb2.Append(it.Current.Name); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
                             }
                             if (sb2.Length > 0) return sb2.ToString();
                         }
                     }
                 }
-                catch { }
+                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             }
 
             // ③ 沿父链找带 TextPattern 的元素
@@ -135,7 +135,7 @@ public static class UiaSelectionReader
                     string piece = range.GetText(-1);
                     if (!string.IsNullOrEmpty(piece)) sb.Append(piece);
                 }
-                catch { }
+                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             }
             return sb.ToString();
         }
@@ -175,7 +175,7 @@ public static class UiaSelectionReader
         {
             Automation.AddAutomationFocusChangedEventHandler((s, e) => { });
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         // ② WM_GETOBJECT：直接找窗口要 provider
         try
@@ -187,9 +187,9 @@ public static class UiaSelectionReader
                     IntPtr.Zero, SMTO_ABORTIFHUNG, 200, out _);
             }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         // Chromium 建树是异步的，给它一点时间
-        try { System.Threading.Thread.Sleep(60); } catch { }
+        try { System.Threading.Thread.Sleep(60); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 }

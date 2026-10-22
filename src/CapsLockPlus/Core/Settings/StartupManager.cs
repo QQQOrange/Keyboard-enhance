@@ -91,7 +91,7 @@ public static class StartupManager
             // 只有一个 exe，自启就写它自己。
             // 早期版本这里会去找"启动器"，现在没有那东西了。
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         return Environment.ProcessPath ?? "";
     }

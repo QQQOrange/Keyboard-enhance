@@ -244,7 +244,7 @@ public sealed class ActionContext
         }
         catch (Exception ex)
         {
-            Notify("输入文字失败：" + ex.Message);
+            Notify(UiText.Failed("输入文字", ex.Message));
             CoreLog.Warn("输入文字失败：" + ex.Message);
         }
         return true;
@@ -364,7 +364,7 @@ public sealed class ActionContext
             return true;
         }
 
-        Notify("无法计算：" + err);
+        Notify(UiText.Failed("算出结果", err));
         return true;
     }
 
@@ -412,7 +412,7 @@ public sealed class ActionContext
         {
             Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
         }
-        catch (Exception ex) { Notify("打开网址失败：" + ex.Message); }
+        catch (Exception ex) { Notify(UiText.Failed("打开网址", ex.Message)); }
     }
 
     /// <summary>
@@ -452,7 +452,7 @@ public sealed class ActionContext
             }
             Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
         }
-        catch (Exception ex) { Notify("打开文件夹失败：" + ex.Message); }
+        catch (Exception ex) { Notify(UiText.Failed("打开文件夹", ex.Message)); }
     }
 
     /// <summary>
@@ -487,7 +487,7 @@ public sealed class ActionContext
             }
             Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
         }
-        catch (Exception ex) { Notify("打开文件失败：" + ex.Message); }
+        catch (Exception ex) { Notify(UiText.Failed("打开这个文件", ex.Message)); }
     }
 
     /// <summary>
@@ -559,7 +559,7 @@ public sealed class ActionContext
             if (args.Length > 0) psi.Arguments = args;
             Process.Start(psi);
         }
-        catch (Exception ex) { Notify("运行失败：" + ex.Message); }
+        catch (Exception ex) { Notify(UiText.Failed("运行这个程序", ex.Message)); }
     }
 
     public bool Screenshot()
@@ -578,7 +578,7 @@ public sealed class ActionContext
             }
             catch (Exception ex)
             {
-                Notify("无法启动截图工具：" + ex.Message);
+                Notify(UiText.Failed("启动截图工具", ex.Message));
                 return false;
             }
         }

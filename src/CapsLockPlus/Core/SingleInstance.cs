@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace CapsLockPlus.Core;
@@ -97,7 +97,7 @@ public static class SingleInstance
             if (_owned) _mutex?.ReleaseMutex();
             _mutex?.Dispose();
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         _mutex = null;
         _owned = false;
     }

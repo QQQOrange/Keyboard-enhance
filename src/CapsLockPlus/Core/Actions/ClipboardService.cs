@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using CapsLockPlus.Core.Input;
 
 namespace CapsLockPlus.Core.Actions;
@@ -113,7 +113,7 @@ public sealed class ClipboardService
         catch (Exception ex)
         {
             CoreLog.Warn("粘贴系统剪贴板失败：" + ex.Message);
-            Notified?.Invoke("粘贴失败：" + ex.Message);
+            Notified?.Invoke(UiText.Failed("粘贴", ex.Message));
             return false;
         }
     }

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -162,8 +162,7 @@ public partial class SubLayerEditorWindow : Window
     {
         if (_rows.Count >= LayerOptions.MaxSubLayers)
         {
-            MessageBox.Show(this, $"最多 {LayerOptions.MaxSubLayers} 个子层。",
-                "已达到上限", MessageBoxButton.OK, MessageBoxImage.Information);
+            AppDialog.Info(this, $"最多 {LayerOptions.MaxSubLayers} 个子层。", "已达到上限");
             return;
         }
         _rows.Add(new Row());
@@ -188,9 +187,8 @@ public partial class SubLayerEditorWindow : Window
     {
         if (_rows.Count > LayerOptions.MaxSubLayers)
         {
-            MessageBox.Show(this,
-                $"最多 {LayerOptions.MaxSubLayers} 个子层，请先删掉一些。",
-                "子层太多", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AppDialog.Warn(this,
+                $"最多 {LayerOptions.MaxSubLayers} 个子层，请先删掉一些。", "子层太多");
             return;
         }
         DialogResult = true;

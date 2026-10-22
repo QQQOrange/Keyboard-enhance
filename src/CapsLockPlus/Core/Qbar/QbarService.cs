@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Text;
@@ -302,7 +302,7 @@ public sealed class QbarService
                     { Score = 200 });
                 }
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Swallow(ex, "识别路径候选"); }
         }
 
         // 8) 默认搜索（永远兜底，回车即可搜）
@@ -489,7 +489,11 @@ public sealed class QbarService
                 return;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 打开文件夹失败：用户按了回车却什么都没发生，必须有痕迹
+            CoreLog.Swallow(ex, "用资源管理器打开文件夹");
+        }
 
         try
         {

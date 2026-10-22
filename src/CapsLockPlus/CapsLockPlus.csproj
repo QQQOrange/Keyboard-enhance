@@ -15,9 +15,9 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>4.4.0</Version>
-    <FileVersion>4.4.0.0</FileVersion>
-    <AssemblyVersion>4.4.0.0</AssemblyVersion>
+    <Version>4.5.0</Version>
+    <FileVersion>4.5.0.0</FileVersion>
+    <AssemblyVersion>4.5.0.0</AssemblyVersion>
     <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
     <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达链接（网址/文件夹/文件）、独立剪贴板、宏与多图层</Description>
@@ -45,9 +45,15 @@
     <SelfContained>false</SelfContained>
     <!-- 注意：EnableCompressionInSingleFile 只在自带运行时时有效，
          框架依赖模式下 SDK 会直接报 NETSDK1176，所以这里不能开。 -->
-    <!-- 自带的运行时不需要 ICU：中文排序/大小写走 NLS，能省 30MB -->
-    <InvariantGlobalization>false</InvariantGlobalization>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <!-- 诊断工具开关（审视报告 P1-5）。
+         默认 true：发布版仍带「自检」与「离屏渲染」两个命令行入口，
+         用户报「某功能不灵」时可以让他自己跑一次自检，比远程猜快得多。
+         需要最小体积时用 MSBuild 属性 IncludeDiagnostics=false 发布：
+         会从编译里移除 SelfTest.cs 与 RenderTools.cs（合计约 6.6k 行），
+         并去掉自检文案。两者都不参与运行期逻辑，行为完全一致。 -->
+    <IncludeDiagnostics Condition="'$(IncludeDiagnostics)' == ''">true</IncludeDiagnostics>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
@@ -69,5 +75,16 @@
     <PackageReference Include="System.Management" Version="10.0.13" />
     <!-- DPAPI（ProtectedData）在 net10.0-windows 目标框架里已自带，无需额外引用 -->
   </ItemGroup>
+
+  <!-- P1-5：精简发布形态。这两个文件只服务于自检与离屏渲染两个入口，
+       运行期逻辑没有任何引用，所以可以整份排除。 -->
+  <ItemGroup Condition="'$(IncludeDiagnostics)' == 'false'">
+    <Compile Remove="SelfTest.cs" />
+    <Compile Remove="UI\RenderTools.cs" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(IncludeDiagnostics)' == 'false'">
+    <DefineConstants>$(DefineConstants);NO_DIAGNOSTICS</DefineConstants>
+  </PropertyGroup>
 
 </Project>

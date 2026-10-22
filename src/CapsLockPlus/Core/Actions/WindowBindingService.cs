@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Windows;
 
@@ -230,7 +230,7 @@ public sealed class WindowBindingService
         }
         catch (Exception ex)
         {
-            Notified?.Invoke("启动失败：" + ex.Message);
+            Notified?.Invoke(UiText.Failed("启动这个程序", ex.Message));
             CoreLog.Warn($"窗口绑定启动失败 {exe}: {ex.Message}");
             return;
         }
@@ -308,7 +308,7 @@ public sealed class WindowBindingService
 
         string? runningPath = null;
         try { runningPath = WindowService.GetProcessPath((uint)Environment.ProcessId); }
-        catch { }
+        catch (Exception ex) { CoreLog.Swallow(ex, "读取自身进程路径"); }
         if (runningPath != null &&
             Path.GetFullPath(exePath).Equals(Path.GetFullPath(runningPath), StringComparison.OrdinalIgnoreCase))
         {
@@ -537,7 +537,7 @@ public sealed class WindowBindingService
         }
         catch (Exception ex)
         {
-            Notified?.Invoke("启动失败：" + ex.Message);
+            Notified?.Invoke(UiText.Failed("启动这个程序", ex.Message));
             CoreLog.Warn($"绑定窗口启动失败 {exePath}: {ex.Message}");
             return;
         }

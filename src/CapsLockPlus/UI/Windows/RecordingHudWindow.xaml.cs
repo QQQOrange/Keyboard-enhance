@@ -86,7 +86,7 @@ public partial class RecordingHudWindow : Window
             w?.Dot.BeginAnimation(OpacityProperty, null);
             w?.Close();
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
     /// <summary>0:03.4 这种短格式（宏一般录几秒到几十秒，不需要小时位）。</summary>

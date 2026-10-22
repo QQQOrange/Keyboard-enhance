@@ -97,7 +97,7 @@ public static class AppPaths
                 Directory.CreateDirectory(custom);
                 return custom;
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Swallow(ex, "使用自定义数据目录"); }
         }
 
         /* 首选：exe 同级。先真写一个文件再删 —— 只测 CreateDirectory
@@ -112,7 +112,7 @@ public static class AppPaths
         // 回落：Program Files 之类不可写位置
         string fallback = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KeyboardEnhance");
-        try { Directory.CreateDirectory(fallback); } catch { }
+        try { Directory.CreateDirectory(fallback); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         DataDirIsFallback = true;
         MigrateLegacyData(fallback);
         return fallback;
@@ -175,7 +175,7 @@ public static class AppPaths
                     $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 从 {legacy} 迁移 {n} 个文件到 {target}"
                     + Environment.NewLine);
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         }
         catch
         {
@@ -200,7 +200,7 @@ public static class AppPaths
 
                 string dest = Path.Combine(to, name);
                 if (File.Exists(dest)) continue;       // 不覆盖
-                try { File.Copy(file, dest); n++; } catch { }
+                try { File.Copy(file, dest); n++; } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             }
 
             foreach (string dir in Directory.EnumerateDirectories(from))
@@ -212,7 +212,7 @@ public static class AppPaths
                 n += CopyTree(dir, Path.Combine(to, name), depth + 1);
             }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         return n;
     }

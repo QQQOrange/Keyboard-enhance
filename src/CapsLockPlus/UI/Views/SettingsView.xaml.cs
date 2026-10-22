@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
+using CapsLockPlus.UI.Windows;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.UI.Theme;
 using Microsoft.Win32;
@@ -167,7 +168,7 @@ public partial class SettingsView : UserControl
 
         if (enable)
         {
-            var ok = MessageBox.Show(Window.GetWindow(this),
+            bool ok = AppDialog.Confirm(Window.GetWindow(this),
                 "以管理员身份启动后，「选中文字 → 直接搜索」会失效。\n\n" +
                 "原因：Windows 禁止管理员进程向普通权限的浏览器 / 编辑器\n" +
                 "注入输入（UIPI 安全限制），取词通道会全部被拦掉。\n\n" +
@@ -175,8 +176,8 @@ public partial class SettingsView : UserControl
                 "（锁屏状态下任何用户态程序都无法使用快捷键，\n" +
                 " 这与是否管理员无关。）\n\n" +
                 "确定要开启吗？",
-                "开启管理员模式", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-            if (ok != MessageBoxResult.OK)
+                "开启管理员模式", DialogKind.Warn, okText: "开启");
+            if (!ok)
             {
                 _suppress = true;
                 RunAsAdminBox.IsChecked = false;
@@ -189,12 +190,12 @@ public partial class SettingsView : UserControl
         Save();
         RefreshAdminState();
 
-        var ask = MessageBox.Show(Window.GetWindow(this),
+        bool ask = AppDialog.Confirm(Window.GetWindow(this),
             enable
                 ? "已保存。下次启动会以管理员身份运行（会弹一次 UAC 确认）。\n\n现在就重启吗？"
                 : "已保存。下次启动会以普通权限运行。\n\n现在就重启吗？",
-            "需要重启才生效", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (ask == MessageBoxResult.Yes) RestartApp();
+            "需要重启才生效", DialogKind.Question, okText: "现在重启", cancelText: "稍后");
+        if (ask) RestartApp();
     }
 
     /// <summary>设置页里的「立即重启以生效」按钮。</summary>
@@ -217,9 +218,9 @@ public partial class SettingsView : UserControl
                 _host.ExitApp(restart: false);
                 return;
             }
-            MessageBox.Show(Window.GetWindow(this),
+            AppDialog.Warn(Window.GetWindow(this),
                 "提权失败：" + (err ?? "未知原因") + "\n\n（多半是在 UAC 对话框里点了「否」）",
-                "没能以管理员身份重启", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "没能以管理员身份重启");
             return;
         }
         _host.ExitApp(restart: true);
@@ -386,12 +387,11 @@ public partial class SettingsView : UserControl
                          $"· 网址 {result.Web} 个\n· 文字替换 {result.HotStrings} 条";
             if (result.Warnings.Count > 0)
                 msg += "\n\n以下项目需要手动确认：\n" + string.Join("\n", result.Warnings.Take(8));
-            MessageBox.Show(Window.GetWindow(this), msg, "导入旧版设置", MessageBoxButton.OK, MessageBoxImage.Information);
+            AppDialog.Info(Window.GetWindow(this), msg, "导入旧版设置", DialogKind.Success);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(Window.GetWindow(this), "导入失败：" + ex.Message, "导入旧版设置",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            AppDialog.Error(Window.GetWindow(this), "导入失败：" + ex.Message, "导入旧版设置");
         }
     }
 
@@ -427,10 +427,9 @@ public partial class SettingsView : UserControl
     private void OnResetAll(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        var r = MessageBox.Show(Window.GetWindow(this),
-            "把全部设置恢复成默认值？\n（按键映射、Qbar 条目、窗口绑定、外观都会被重置）",
-            "重置全部设置", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (r != MessageBoxResult.OK) return;
+        if (!AppDialog.ConfirmDanger(Window.GetWindow(this),
+                "把全部设置恢复成默认值？\n（按键映射、Qbar 条目、窗口绑定、外观都会被重置）",
+                "重置全部设置", okText: "恢复默认")) return;
         _host.Settings = DefaultSettings.Create();
         _host.SaveSettings();
         _host.ReloadAll();

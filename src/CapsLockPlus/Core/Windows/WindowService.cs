@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -210,7 +210,7 @@ public static class WindowService
                 return true;
             }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         finally
         {
             if (attached) AttachThreadInput(curThread, fgThread, false);
@@ -260,7 +260,7 @@ public static class WindowService
                 {
                     SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, old, IntPtr.Zero, SPIF_SENDCHANGE);
                 }
-                catch { }
+                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             }
         }
     }

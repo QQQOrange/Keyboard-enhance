@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace CapsLockPlus.Core.Text;
 
@@ -81,7 +81,7 @@ public static class WindowMessageCopier
                 if (!targets.Contains(fg)) targets.Add(fg);
             }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
         bool any = false;
         foreach (var h in targets)
@@ -90,7 +90,7 @@ public static class WindowMessageCopier
             {
                 if (PostMessage(h, WM_COPY, IntPtr.Zero, IntPtr.Zero)) any = true;
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         }
         return any;
     }

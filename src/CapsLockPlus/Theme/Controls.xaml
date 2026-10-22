@@ -1,4 +1,4 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
@@ -592,6 +592,68 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- ============ 品牌区（引导页 / 帮助页横幅） ============ -->
+    <!--
+      这两处的背景是"深色渐变 + 白字"，**刻意不跟随主题**：
+      它是品牌画面，不是内容区，深浅两套下都用同一块渐变，
+      视觉上更稳（否则浅色主题下会变成一块淡蓝，白字看不清）。
+      以前三色渐变在两个 XAML 里各写一遍，改一次要改两处。
+    -->
+    <LinearGradientBrush x:Key="Brush.BrandHero" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#2B6CF6" Offset="0" />
+        <GradientStop Color="#5B5BF0" Offset="0.5" />
+        <GradientStop Color="#22C1E8" Offset="1" />
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="Brush.BrandTitle" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.BrandSubtitle" Color="#DCE9FF" />
+    <SolidColorBrush x:Key="Brush.BrandBody" Color="#EAF3FF" />
+    <SolidColorBrush x:Key="Brush.BrandAccent" Color="#B8E6FF" />
+    <SolidColorBrush x:Key="Brush.BrandHairline" Color="#4DFFFFFF" />
+    <!-- 品牌区里的"白底蓝字"按钮与白键帽：深色渐变上唯一能保证对比的组合 -->
+    <SolidColorBrush x:Key="Brush.BrandOnLight" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.BrandOnLightText" Color="#1D4ED8" />
+
+    <!-- ============ 浮层（Qbar / 提示条 / 录制条 / 选窗口） ============ -->
+    <!--
+      这几个窗口都有同一套需求：半透明卡片 + 细边框 + 浮层专属文字色。
+      以前是各自在 XAML 里写死颜色与圆角，改一处要改四处，而且不跟主题。
+      这里只抽"共性"（底色、边框、圆角、文字），
+      各自的特殊形状（Qbar 的大圆角、录制条的胶囊）仍由本地覆盖。
+    -->
+    <CornerRadius x:Key="Radius.Overlay">12</CornerRadius>
+
+    <Style x:Key="Overlay.Card" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource Brush.OverlayCard}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.OverlayBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource Radius.Overlay}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+    </Style>
+
+    <Style x:Key="Overlay.CardAlt" TargetType="Border" BasedOn="{StaticResource Overlay.Card}">
+        <Setter Property="Background" Value="{DynamicResource Brush.OverlayCardAlt}" />
+    </Style>
+
+    <Style x:Key="Text.Overlay" TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.OverlayText}" />
+    </Style>
+
+    <Style x:Key="Text.OverlaySecondary" TargetType="TextBlock" BasedOn="{StaticResource Text.Overlay}">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.OverlayTextSecondary}" />
+        <Setter Property="FontSize" Value="{StaticResource Size.Small}" />
+    </Style>
+
+    <Style x:Key="Text.OverlayTertiary" TargetType="TextBlock" BasedOn="{StaticResource Text.Overlay}">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.OverlayTextTertiary}" />
+        <Setter Property="FontSize" Value="{StaticResource Size.Small}" />
+    </Style>
+
+    <Style x:Key="Text.OverlayAccent" TargetType="TextBlock" BasedOn="{StaticResource Text.Overlay}">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.OverlayAccentText}" />
     </Style>
 
     <!-- ============ 提示气泡 ============ -->

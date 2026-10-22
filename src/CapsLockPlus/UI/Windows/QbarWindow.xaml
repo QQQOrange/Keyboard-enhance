@@ -1,4 +1,4 @@
-<Window x:Class="CapsLockPlus.UI.Windows.QbarWindow"
+﻿<Window x:Class="CapsLockPlus.UI.Windows.QbarWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Qbar" Width="760" SizeToContent="Height"
@@ -9,10 +9,12 @@
 
     <Grid Margin="18">
         <!-- 投影用一整块圆角实心底衬模拟（比 DropShadowEffect 便宜，也不会露出桌面） -->
-        <Border CornerRadius="20" Background="#1A000000" Margin="10,14,10,-2" Opacity="0.7" />
+        <Border CornerRadius="20" Background="{DynamicResource Brush.OverlayShadow}" Margin="10,14,10,-2" />
 
         <!-- 面板 -->
-        <Border x:Name="Panel" CornerRadius="18" BorderThickness="1.5" Background="#F21C1F27">
+        <Border x:Name="Panel" CornerRadius="18" BorderThickness="1.5"
+                Background="{DynamicResource Brush.OverlayCard}"
+                BorderBrush="{DynamicResource Brush.OverlayBorder}">
             <Border.RenderTransform>
                 <TranslateTransform x:Name="Slide" Y="10" />
             </Border.RenderTransform>
@@ -33,9 +35,9 @@
                     </Grid.ColumnDefinitions>
 
                     <Border Grid.Column="0" Width="30" Height="30" CornerRadius="9" VerticalAlignment="Center"
-                            Background="#22FFFFFF">
+                            Background="{DynamicResource Brush.OverlayRowHover}">
                         <TextBlock x:Name="ModeIcon" Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   FontSize="14" Foreground="#FFFFFF" HorizontalAlignment="Center"
+                                   FontSize="14" Foreground="{DynamicResource Brush.OverlayText}" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
 
@@ -44,7 +46,8 @@
                         <!-- 关键词标签：输入 "bd " 后出现 -->
                         <Border x:Name="ChipBox" Visibility="Collapsed" CornerRadius="9" Height="32"
                                 Padding="8,0" Margin="0,0,8,0" VerticalAlignment="Center"
-                                Background="#2E5B93FF" BorderThickness="1" BorderBrush="#665B93FF">
+                                Background="{DynamicResource Brush.OverlayAccentSoft}" BorderThickness="1"
+                                BorderBrush="{DynamicResource Brush.OverlayBorderAccent}">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <!-- 有图标：显示图标 -->
                                 <Border x:Name="ChipIconBox" Width="18" Height="18" CornerRadius="5"
@@ -59,10 +62,10 @@
                                                VerticalAlignment="Center" />
                                 </Border>
                                 <TextBlock x:Name="ChipLabel" Text="百度" FontSize="13" Margin="7,0,0,0"
-                                           VerticalAlignment="Center" Foreground="#EAF1FF" />
+                                           VerticalAlignment="Center" Foreground="{DynamicResource Brush.OverlayText}" />
                                 <Button x:Name="ChipClose" Content="&#xE711;"
                                         FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9"
-                                        Foreground="#9FB4D8" Background="Transparent" BorderThickness="0"
+                                        Foreground="{DynamicResource Brush.OverlayTextSecondary}" Background="Transparent" BorderThickness="0"
                                         Margin="7,0,-2,0" Padding="2" Cursor="Hand"
                                         ToolTip="移除标签（Backspace）" Click="OnChipClose"
                                         WindowChrome.IsHitTestVisibleInChrome="True" />
@@ -72,18 +75,21 @@
                         <!-- Qbar 输入框：字号可在设置里调到 30，
                              所以高度给足（字号 + 上下各 8px），否则大字号下文字会被裁掉上下缘。 -->
                         <TextBox x:Name="Input" FontSize="21" Background="Transparent" BorderThickness="0"
-                                 Foreground="#FFFFFF" CaretBrush="#FFFFFF" VerticalContentAlignment="Center"
+                                 Foreground="{DynamicResource Brush.OverlayText}" CaretBrush="{DynamicResource Brush.OverlayText}"
+                                 VerticalContentAlignment="Center"
                                  Padding="0,4" MinHeight="42" MinWidth="120" TextChanged="OnInputChanged"
                                  PreviewKeyDown="OnInputKeyDown" FontFamily="{StaticResource Font.Ui}" />
                     </StackPanel>
 
                     <Border Grid.Column="2" CornerRadius="7" Padding="8,4" VerticalAlignment="Center"
-                            Background="#1AFFFFFF">
-                        <TextBlock x:Name="HintText" Text="Enter 执行" FontSize="11" Foreground="#9FB0CC" />
+                            Background="{DynamicResource Brush.OverlayRowHover}">
+                        <TextBlock x:Name="HintText" Text="Enter 执行" FontSize="11"
+                                   Foreground="{DynamicResource Brush.OverlayTextSecondary}" />
                     </Border>
                 </Grid>
 
-                <Border x:Name="SepLine" Grid.Row="1" Height="1" Background="#1FFFFFFF" Margin="16,0" />
+                <Border x:Name="SepLine" Grid.Row="1" Height="1"
+                        Background="{DynamicResource Brush.OverlayBorder}" Margin="16,0" />
 
                 <!-- 结果列表 -->
                 <ListBox Grid.Row="2" x:Name="Results" Margin="8,8,8,4" Background="Transparent"
@@ -104,10 +110,11 @@
                                 <!-- 结果图标：有条目图标就显示图标，否则用品牌色首字 -->
                                 <Grid Grid.Column="0" Width="28" Height="28" Margin="0,0,11,0"
                                       VerticalAlignment="Center">
-                                    <Border x:Name="IconTile" CornerRadius="8" Background="#1AFFFFFF">
+                                    <Border x:Name="IconTile" CornerRadius="8"
+                                            Background="{DynamicResource Brush.OverlayRowHover}">
                                         <TextBlock Text="{Binding IconGlyph}"
                                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                   FontSize="12.5" Foreground="#C9D6EC"
+                                                   FontSize="12.5" Foreground="{DynamicResource Brush.OverlayTextSecondary}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
                                     <Border x:Name="IconImageTile" CornerRadius="8" Visibility="Collapsed"
@@ -123,15 +130,17 @@
                                 </Grid>
 
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Title}" FontSize="14" Foreground="#F2F5FA"
+                                    <TextBlock Text="{Binding Title}" FontSize="14" Foreground="{DynamicResource Brush.OverlayText}"
                                                TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Subtitle}" FontSize="11.5" Foreground="#7F8DA8"
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="11.5" Foreground="{DynamicResource Brush.OverlayTextTertiary}"
                                                TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
                                 </StackPanel>
 
-                                <Border Grid.Column="2" CornerRadius="6" Padding="7,2" Background="#14FFFFFF"
+                                <Border Grid.Column="2" CornerRadius="6" Padding="7,2"
+                                        Background="{DynamicResource Brush.OverlayRowHover}"
                                         VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Badge}" FontSize="10.5" Foreground="#8FA3C4" />
+                                    <TextBlock Text="{Binding Badge}" FontSize="10.5"
+                                               Foreground="{DynamicResource Brush.OverlayTextTertiary}" />
                                 </Border>
                             </Grid>
                             <DataTemplate.Triggers>
@@ -154,7 +163,8 @@
 
                 <!-- 底部提示 -->
                 <TextBlock Grid.Row="3" Text="↑↓ 选择    Enter 执行    Tab 补全    Esc 关闭"
-                           FontSize="10.5" Foreground="#5F6C84" Margin="20,4,20,14" />
+                           FontSize="10.5" Foreground="{DynamicResource Brush.OverlayTextTertiary}"
+                           Margin="20,4,20,14" />
             </Grid>
         </Border>
     </Grid>

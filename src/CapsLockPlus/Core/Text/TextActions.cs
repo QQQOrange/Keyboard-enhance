@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using CapsLockPlus.Core.Input;
 using Clipboard = System.Windows.Clipboard;
 
@@ -52,7 +52,7 @@ public static class TextActions
             var info = Core.Windows.WindowService.Describe(fgHwnd);
             if (info != null) { fgTitle = info.Title; fgClass = info.ClassName; }
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         CoreLog.Info($"[取词] 前台 hwnd=0x{fgHwnd.ToInt64():X} class={fgClass} title={fgTitle}");
 
         // ① UIA：不碰剪贴板，最干净
@@ -68,7 +68,7 @@ public static class TextActions
             {
                 if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
             /* 记住"我们自己复制出来的内容"。
              * 收尾还原剪贴板时要用它判断：如果剪贴板里已经不是这段文字，
@@ -132,7 +132,7 @@ public static class TextActions
         Thread.Sleep(35);
 
         uint afterSeq = before;
-        try { afterSeq = GetClipboardSequenceNumber(); } catch { }
+        try { afterSeq = GetClipboardSequenceNumber(); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         bool changed = afterSeq != before;
         CoreLog.Info($"[取词] 剪贴板序号 before={before} after={afterSeq} 变化={changed}");
         if (!changed) return string.Empty;
@@ -149,7 +149,7 @@ public static class TextActions
                     if (!string.IsNullOrEmpty(s)) return s;
                 }
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             Thread.Sleep(12);
         }
         return string.Empty;
@@ -182,7 +182,7 @@ public static class TextActions
                     if (Clipboard.ContainsText()) return true;
                 }
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             Thread.Sleep(10);
         }
         return false;
@@ -195,7 +195,7 @@ public static class TextActions
             if (hadText) Clipboard.SetText(old);
             else Clipboard.Clear();
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
     /// <summary>
@@ -235,7 +235,7 @@ public static class TextActions
             {
                 if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
             try
             {
@@ -256,7 +256,7 @@ public static class TextActions
                     if (hadText) Clipboard.SetText(old);
                     else Clipboard.Clear();
                 }
-                catch { }
+                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             }
         }
     }
@@ -320,7 +320,7 @@ public static class TextActions
             {
                 if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
             }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
             try
             {
@@ -394,7 +394,7 @@ public static class TextActions
                         }
                     }
                 }
-                catch { }
+                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
             }
 
             // 这次变化读不出文本（可能复制的是图片/文件），继续等下一次

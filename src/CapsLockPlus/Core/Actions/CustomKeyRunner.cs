@@ -159,7 +159,7 @@ public static class CustomKeyRunner
                     StringComparison.OrdinalIgnoreCase));
             if (hit != null) return hit.Handle;
         }
-        catch { }
+        catch (Exception ex) { CoreLog.Swallow(ex, "按进程名查找顶层窗口"); }
 
         return IntPtr.Zero;
     }

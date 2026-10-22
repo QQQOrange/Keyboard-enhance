@@ -731,7 +731,7 @@ public sealed class HotkeyEngine : IDisposable
          * 界面异常绝不能影响键盘钩子，所以吞掉所有异常。 */
         if (!injected && KeySeen != null)
         {
-            try { KeySeen(vk, down, ActiveLayer); } catch { }
+            try { KeySeen(vk, down, ActiveLayer); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         }
 
         // 录制中：照常放行（不影响用户正常操作），只记录事件

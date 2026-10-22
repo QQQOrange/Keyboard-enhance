@@ -192,7 +192,7 @@ public sealed class SyncService
                     if (!IsBackupName(name)) continue;
                     string dest = Path.Combine(target, name);
                     if (File.Exists(dest)) continue;
-                    try { File.Move(file, dest); moved++; } catch { }
+                    try { File.Move(file, dest); moved++; } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
                 }
 
                 if (moved > 0)
@@ -203,7 +203,7 @@ public sealed class SyncService
                 {
                     if (!Directory.EnumerateFileSystemEntries(src).Any()) Directory.Delete(src);
                 }
-                catch { }
+                catch (Exception ex) { CoreLog.Swallow(ex, "迁移时删除空备份目录"); }
             }
         }
         catch (Exception e)
@@ -383,7 +383,7 @@ public sealed class SyncService
                 if (!IsBackupName(f.Name)) continue;
                 bool enc = true;
                 try { enc = CryptoBox.LooksEncrypted(File.ReadAllText(f.FullName)); }
-                catch { }
+                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
                 list.Add(new LocalBackup(f.FullName, f.Name, f.LastWriteTime, f.Length, enc));
             }
         }

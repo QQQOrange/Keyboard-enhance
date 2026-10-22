@@ -359,7 +359,7 @@ public static class InputSender
         {
             if (hwnd != IntPtr.Zero && old != IntPtr.Zero) ImmAssociateContext(hwnd, old);
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
     /// <summary>输入任意文本（走 Unicode 注入，不经过键盘布局）。</summary>

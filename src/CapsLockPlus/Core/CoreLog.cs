@@ -10,8 +10,8 @@ namespace CapsLockPlus.Core;
 ///   · 旧实现每写一行都 `Directory.CreateDirectory` + `new FileInfo` + `File.AppendAllText`，
 ///     等于一次日志 = 三次文件系统调用，而且全程持一把进程级锁。
 ///     按键路径每秒能写十几条 → 钩子线程被文件 IO 拖住，表现为"偶尔卡一下"。
-///   · 现在改成**长开一个 StreamWriter**、累计一定行数再 flush，
-///     体积检查用内存计数器（不再 stat），ERROR 级别立刻 flush（崩了也要留证据）。
+///   · 现在改成**长开一个 StreamWriter** 并逐行 flush（见下方 Write 的说明），
+///     体积检查用内存计数器（不再 stat）。
 ///
 /// 线程模型：钩子线程 / 动作队列 / 界面线程都会调用，全部走同一把 <see cref="Gate"/>，
 /// 但临界区里只剩一次内存写入（偶尔一次 flush），不会阻塞按键。
@@ -36,6 +36,34 @@ public static class CoreLog
     public static void Info(string message) => Write("INFO", message, null);
     public static void Warn(string message) => Write("WARN", message, null);
     public static void Error(string message, Exception? ex = null) => Write("ERROR", message, ex);
+
+    /* ---- 允许静默、但要留痕的异常 ----
+     *
+     * 全仓有一批 `catch { }`：清理由、探测型、回退型。它们**不该**弹窗打扰用户，
+     * 但也不该彻底消失 —— 用户报"某个功能偶尔不灵"时，日志里没有任何线索，
+     * 只能靠猜（这就是审视报告里 P1-1 的实质问题）。
+     *
+     * Swallow() 给这类地方一个统一的出口：
+     *   · 写 WARN，带场景名与异常类型，能在 app.log 里搜到；
+     *   · 同一场景 60 秒内只记一次，避免"每次按键都失败"把日志刷爆。
+     */
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> SwallowTicks = new();
+    private const int SwallowWindowMs = 60_000;
+
+    /// <summary>
+    /// 吞掉一个预期内的异常，但在日志里留一行（同一场景每分钟最多一次）。
+    /// 用于"失败可接受、但要能事后定位"的地方。
+    /// </summary>
+    public static void Swallow(Exception? ex, string scene)
+    {
+        if (ex == null) return;
+
+        long now = Environment.TickCount64;
+        if (SwallowTicks.TryGetValue(scene, out long last) && now - last < SwallowWindowMs) return;
+        SwallowTicks[scene] = now;
+
+        Warn($"[已忽略] {scene}：{ex.GetType().Name} {ex.Message}");
+    }
 
     private static void Write(string level, string message, Exception? ex)
     {

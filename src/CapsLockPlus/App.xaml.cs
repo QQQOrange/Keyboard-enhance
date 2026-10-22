@@ -45,6 +45,15 @@ public partial class App : Application
         // 诊断模式：不走 WPF 的消息循环，直接跑完用 Environment.Exit 硬退出。
         // 用 Shutdown() 依赖消息循环正常运转，一旦中途抛异常就会永远等下去
         // （之前 %TEMP% 不可写时就出现过命令行挂死）。
+#if NO_DIAGNOSTICS
+        // 精简发布（-p:IncludeDiagnostics=false）：自检没编进来，给出明确提示
+        if (isSelfTest)
+        {
+            CoreLog.Warn("这个版本不含自检（精简发布）。完整版可从 Releases 下载。");
+            Environment.Exit(3);
+            return;
+        }
+#else
         if (isSelfTest)
         {
             int code;
@@ -60,6 +69,7 @@ public partial class App : Application
             Environment.Exit(code);
             return;
         }
+#endif
 
         /* 硬件自检：真的调一次音量与亮度再还原。
          * 用来区分"代码没生效"和"这台设备不支持" —— 用户报
@@ -214,9 +224,14 @@ public partial class App : Application
         Host.Start();
 
         // 离屏渲染（文档 / 回归用），渲染完直接退出
+#if NO_DIAGNOSTICS
+        int renderIndex = -1;
+#else
         int renderIndex = Array.FindIndex(e.Args, a => a.Equals("--render", StringComparison.OrdinalIgnoreCase));
+#endif
         if (renderIndex >= 0)
         {
+#if !NO_DIAGNOSTICS
             // --render-diag 额外输出输入框布局诊断，用于排查文字被裁切
             RenderTools.DiagnosticsRequested =
                 e.Args.Any(a => a.Equals("--render-diag", StringComparison.OrdinalIgnoreCase));
@@ -234,6 +249,9 @@ public partial class App : Application
                 renderCode = 2;
             }
             Environment.Exit(renderCode);
+#else
+            Environment.Exit(3);
+#endif
             return;
         }
 
@@ -375,12 +393,12 @@ public partial class App : Application
         }
         catch (Exception ex) { CoreLog.Warn("退出同步异常：" + ex.Message); }
 
-        try { Host?.Dispose(); } catch { }
+        try { Host?.Dispose(); } catch { }   /* 预期内：清理动作，失败无副作用 */
 
         /* 收尾：把防抖中的设置落盘、把日志缓冲刷出去。
          * 顺序放在 Dispose 之后 —— Dispose 里可能还会写日志。 */
         try { SettingsStore.FlushPending(); } catch (Exception ex) { CoreLog.Warn("退出前保存设置失败：" + ex.Message); }
-        try { CoreLog.Flush(); CoreLog.Shutdown(); } catch { }
+        try { CoreLog.Flush(); CoreLog.Shutdown(); } catch { }   /* 预期内：清理动作，失败无副作用 */
 
         SingleInstance.Release();
         base.OnExit(e);

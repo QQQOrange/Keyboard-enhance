@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Media;
 
 namespace CapsLockPlus.Core.Text;
@@ -50,7 +50,7 @@ public static class TextMetrics
 
             double pixelsPerDip = 1.0;
             try { pixelsPerDip = VisualTreeHelper.GetDpi(new DrawingVisual()).PixelsPerDip; }
-            catch { }
+            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
             var ft = new FormattedText(sample, System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight, typeface, fontSize, Brushes.Black, pixelsPerDip);

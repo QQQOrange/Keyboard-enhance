@@ -333,7 +333,7 @@ public sealed class UpdateService
                     {
                         if (DateTime.Now - File.GetLastWriteTime(f) > TimeSpan.FromHours(6)) File.Delete(f);
                     }
-                    catch { }
+                    catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
                 }
             }
             catch (Exception ex)
@@ -352,7 +352,7 @@ public sealed class UpdateService
 
     private static void TryDelete(string path)
     {
-        try { if (File.Exists(path)) File.Delete(path); } catch { }
+        try { if (File.Exists(path)) File.Delete(path); } catch { }   /* 预期内：清理动作，失败无副作用 */
     }
 
     // ---------------- GitHub API 模型 ----------------

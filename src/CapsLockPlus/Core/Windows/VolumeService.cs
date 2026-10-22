@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 
 namespace CapsLockPlus.Core.Windows;
@@ -223,7 +223,7 @@ public static class VolumeService
         {
             if (_endpoint != null)
             {
-                try { Marshal.ReleaseComObject(_endpoint); } catch { }
+                try { Marshal.ReleaseComObject(_endpoint); } catch { }   /* 预期内：清理动作，失败无副作用 */
                 _endpoint = null;
             }
             // 归属线程与步进缓存一起作废：下次在新线程上重建时重新问
@@ -285,8 +285,8 @@ public static class VolumeService
             }
             finally
             {
-                if (device != null) { try { Marshal.ReleaseComObject(device); } catch { } }
-                if (enumerator != null) { try { Marshal.ReleaseComObject(enumerator); } catch { } }
+                if (device != null) { try { Marshal.ReleaseComObject(device); } catch { /* 预期内：清理动作，失败无副作用 */ } }
+                if (enumerator != null) { try { Marshal.ReleaseComObject(enumerator); } catch { /* 预期内：清理动作，失败无副作用 */ } }
             }
         }
     }

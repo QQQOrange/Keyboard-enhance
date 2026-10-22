@@ -1,4 +1,4 @@
-<Window x:Class="CapsLockPlus.UI.Windows.OnboardingWindow"
+﻿<Window x:Class="CapsLockPlus.UI.Windows.OnboardingWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="欢迎使用按键增强" Width="820" Height="560"
@@ -18,16 +18,13 @@
                 <!-- 左：品牌区 -->
                 <Border Grid.Column="0" CornerRadius="20,0,0,20">
                     <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#2B6CF6" Offset="0" />
-                            <GradientStop Color="#5B5BF0" Offset="0.5" />
-                            <GradientStop Color="#22C1E8" Offset="1" />
-                        </LinearGradientBrush>
+                        <!-- 品牌渐变：定义在 Controls.xaml（Brush.BrandHero），两套主题共用 -->
+                        <StaticResource ResourceKey="Brush.BrandHero" />
                     </Border.Background>
                     <Grid>
                         <StackPanel VerticalAlignment="Center" Margin="30,0">
                             <!-- 与侧栏、exe 用同一张应用图标（淡白描边勾出轮廓） -->
-                            <Border CornerRadius="16" BorderThickness="1" BorderBrush="#4DFFFFFF"
+                            <Border CornerRadius="16" BorderThickness="1" BorderBrush="{StaticResource Brush.BrandHairline}"
                                     HorizontalAlignment="Left">
                                 <Image Width="64" Height="64"
                                        RenderOptions.BitmapScalingMode="HighQuality"
@@ -35,25 +32,25 @@
                             </Border>
                             <TextBlock Text="按键增强" FontSize="30" FontWeight="SemiBold" Foreground="White"
                                        Margin="0,22,0,0" />
-                            <TextBlock Text="让 Caps 键成为你最顺手的修饰键" Foreground="#DCE9FF" FontSize="13.5"
+                            <TextBlock Text="让 Caps 键成为你最顺手的修饰键" Foreground="{StaticResource Brush.BrandSubtitle}" FontSize="13.5"
                                        TextWrapping="Wrap" Margin="0,10,0,0" />
                             <StackPanel Margin="0,26,0,0">
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                               FontSize="13" Foreground="#B8E6FF" VerticalAlignment="Center" />
-                                    <TextBlock Text="光标移动不用离开主键区" Foreground="#EAF3FF" FontSize="12.5"
+                                               FontSize="13" Foreground="{StaticResource Brush.BrandAccent}" VerticalAlignment="Center" />
+                                    <TextBlock Text="光标移动不用离开主键区" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
                                                Margin="9,0,0,0" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                               FontSize="13" Foreground="#B8E6FF" VerticalAlignment="Center" />
-                                    <TextBlock Text="一个 Qbar 搞定搜索与启动" Foreground="#EAF3FF" FontSize="12.5"
+                                               FontSize="13" Foreground="{StaticResource Brush.BrandAccent}" VerticalAlignment="Center" />
+                                    <TextBlock Text="一个 Qbar 搞定搜索与启动" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
                                                Margin="9,0,0,0" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                               FontSize="13" Foreground="#B8E6FF" VerticalAlignment="Center" />
-                                    <TextBlock Text="全部设置都能可视化修改" Foreground="#EAF3FF" FontSize="12.5"
+                                               FontSize="13" Foreground="{StaticResource Brush.BrandAccent}" VerticalAlignment="Center" />
+                                    <TextBlock Text="全部设置都能可视化修改" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
                                                Margin="9,0,0,0" />
                                 </StackPanel>
                             </StackPanel>

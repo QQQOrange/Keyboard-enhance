@@ -105,7 +105,7 @@ public partial class QbarWindow : Window
 
         if (_hwnd == IntPtr.Zero)
         {
-            try { _hwnd = new WindowInteropHelper(this).Handle; } catch { }
+            try { _hwnd = new WindowInteropHelper(this).Handle; } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         }
 
         if (_hwnd != IntPtr.Zero && WindowService.ForegroundIs(_hwnd))
@@ -137,7 +137,7 @@ public partial class QbarWindow : Window
             _focusTimer?.Stop();
             if (_focusTimer != null) _focusTimer.Tick -= OnFocusTick;
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
     private void OnDeactivated(object? sender, EventArgs e)
@@ -286,7 +286,7 @@ public partial class QbarWindow : Window
             if (Application.Current?.TryFindResource("Brush.SurfaceAlt") is SolidColorBrush br)
                 return br.Color;
         }
-        catch { }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         return (Color)ColorConverter.ConvertFromString("#1C1F27");
     }
 
@@ -375,7 +375,7 @@ public partial class QbarWindow : Window
              * 定位要用到 HWND（才知道该落在哪块屏、那块屏的 DPI 是多少），
              * 但若先 Show 再挪，第一次打开会看到面板从默认位置"跳"一下。
              * EnsureHandle 只创建窗口句柄、不显示，正好满足"先有句柄又不闪"。 */
-            try { _ = new WindowInteropHelper(this).EnsureHandle(); } catch { }
+            try { _ = new WindowInteropHelper(this).EnsureHandle(); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
 
             var fg = Core.Interop.NativeMethods.GetForegroundWindow();
             if (!Core.Windows.ScreenPlacement.Place(this, Core.Windows.ScreenPlacement.Anchor.UpperCenter,
@@ -728,7 +728,7 @@ public partial class QbarWindow : Window
                     Notify: _host.Notify,
                     CopyToClipboard: text =>
                     {
-                        try { System.Windows.Clipboard.SetText(text); } catch { }
+                        try { System.Windows.Clipboard.SetText(text); } catch { }   /* 预期内：清理动作，失败无副作用 */
                     },
                     Paste: text => _host.Clipboard.PasteText(text),
                     OpenTarget: OpenTarget,
