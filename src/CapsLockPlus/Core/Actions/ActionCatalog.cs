@@ -291,15 +291,32 @@ public sealed class ActionCatalog
         c.Add("openUrl", "系统", "打开网址", "打开参数里的网址", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; });
         c.Add("runProgram", "系统", "运行程序", "运行参数里的程序或命令", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.RunProgram(a); return true; });
 
+        /* 「直达链接」（智能识别）放在「系统」分类里，和上面两个并列。
+         *
+         * 三者都是"给一个目标就打开"，区别只在目标从哪来：
+         *   · 打开网址 / 运行程序 → 目标**预先写在参数里**
+         *   · 直达链接           → 目标来自**当前选中的文字**，按下才知道
+         *
+         * 把它放在这里而不是再造一个分类，是因为它属于"系统级打开能力"，
+         * 不是某类需要用户长期维护的配置。 */
+        c.Add("smartOpen", "系统", "直达链接",
+            "先选中一段文字再按这个键：是网址就用浏览器打开，是文件夹就用资源管理器打开，是文件就用默认程序打开",
+            _ => ctx.SmartOpen());
+
         // ---------------- 直达链接 ----------------
         //
-        // 这一类下面有两个动作：打开网址 / 打开文件夹。
+        // 这一类下面有三个动作：直达网址 / 直达文件夹 / 直达文件。
+        // 共同点：目标**预先填好**，按键时照单打开，不需要选区。
         // 选了「直达链接」分类后，界面会换成"类型 + 目标 + 备注"的专用面板
         // （见 KeysView），备注还能显示在键帽上。
         //
+        // 与「系统 → 直达链接」的区别：
+        //   预填 = 常用地址一键直达（每天点的后台、常开的工作目录）
+        //   智能 = 眼前临时出现的东西，选中即开，不用配置
+        //
         // 为什么单独建动作而不是复用「系统 → 打开网址」：
         // 界面要根据分类切换到专用面板，复用的话用户在「系统」分类里
-        // 选「打开网址」就看不到备注框，也不会出现文件夹那一套。
+        // 选「打开网址」就看不到备注框，也不会出现文件夹/文件那一套。
         c.Add("webPage", "直达链接", "直达网址",
             "用默认浏览器打开这个网址；可以加备注，备注会显示在键帽上",
             a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; },
@@ -308,6 +325,11 @@ public sealed class ActionCatalog
         c.Add("openFolder", "直达链接", "直达文件夹",
             "在文件资源管理器里打开这个文件夹；可以加备注，备注会显示在键帽上",
             a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenFolder(a); return true; },
+            needsArg: true);
+
+        c.Add("openFile", "直达链接", "直达文件",
+            "用系统默认程序打开这个文件（.docx 进 Word、.mp4 进播放器，跟双击一样）；可以加备注，备注会显示在键帽上",
+            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenFile(a); return true; },
             needsArg: true);
 
         // ---------------- 输入文本 ----------------

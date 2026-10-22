@@ -271,8 +271,8 @@ public partial class KeysView : UserControl
     /// <summary>
     /// 「直达链接」分类的名字（同样不走功能下拉）。
     ///
-    /// 这一类下面有两个动作：直达网址 / 直达文件夹。
-    /// 面板里先用两个按钮选类型，再填目标 + 备注 ——
+    /// 这一类下面有三个动作：直达网址 / 直达文件夹 / 直达文件。
+    /// 面板里先用三个按钮选类型，再填目标 + 备注 ——
     /// 比"在功能下拉里翻 200 个动作"直观得多。
     /// </summary>
     private const string WebPageCategory = "直达链接";
@@ -280,9 +280,10 @@ public partial class KeysView : UserControl
     /// <summary>「输入文本」分类（只要一个多行文本框）。</summary>
     private const string TypeTextCategory = "输入文本";
 
-    /// <summary>「直达链接」下的两个动作 ID。</summary>
+    /// <summary>「直达链接」下的三个动作 ID。</summary>
     private const string LinkUrlAction = "webPage";
     private const string LinkFolderAction = "openFolder";
+    private const string LinkFileAction = "openFile";
 
     /// <summary>当前分类是不是「窗口绑定」。</summary>
     private bool IsWinBindCategory =>
@@ -480,7 +481,7 @@ public partial class KeysView : UserControl
                 RefreshWinBindPanel();
                 break;
             case EditorMode.WebPage:
-                ActionDesc.Text = "选「直达网址」就用默认浏览器打开网址；选「直达文件夹」就在资源管理器里打开那个目录。备注会显示在键帽上。";
+                ActionDesc.Text = "选「直达网址」就用默认浏览器打开网址；选「直达文件夹」就在资源管理器里打开那个目录；选「直达文件」就用系统默认程序打开它。备注会显示在键帽上。";
                 RefreshWebPageFields();
                 break;
             case EditorMode.TypeText:
@@ -565,26 +566,30 @@ public partial class KeysView : UserControl
     /// <summary>
     /// 选了「直达链接」分类时的默认动作。
     ///
-    /// 与其它分类不同，这一类里已经有两个动作（网址 / 文件夹）——
-    /// 用户在这个键上原本绑的是「直达文件夹」时，重新点一下分类
+    /// 与其它分类不同，这一类里已经有三个动作（网址 / 文件夹 / 文件）——
+    /// 用户在这个键上原本绑的是「直达文件」时，重新点一下分类
     /// **不能**把它悄悄改成「直达网址」，那会把他填的路径当成网址打开。
     /// </summary>
     private void EnsureLinkAction()
     {
         if (_host == null) return;
         var binding = FindInCurrentLayer(CurrentCombo());
-        if (binding != null && binding.Action is LinkUrlAction or LinkFolderAction) return;
+        if (binding != null && IsLinkAction(binding.Action)) return;
         EnsureActionForCategory(LinkUrlAction);
     }
+
+    /// <summary>是不是「直达链接」分类下的三种动作之一。</summary>
+    private static bool IsLinkAction(string? actionId) =>
+        actionId is LinkUrlAction or LinkFolderAction or LinkFileAction;
 
     /// <summary>当前键绑的是「直达链接」里的哪一种（没绑则返回 null）。</summary>
     private string? CurrentLinkKind()
     {
         var b = FindInCurrentLayer(CurrentCombo());
-        return b?.Action is LinkUrlAction or LinkFolderAction ? b!.Action : null;
+        return IsLinkAction(b?.Action) ? b!.Action : null;
     }
 
-    /// <summary>切换「直达网址 / 直达文件夹」。</summary>
+    /// <summary>切换「直达网址 / 直达文件夹 / 直达文件」。</summary>
     private void SetLinkKind(string actionId)
     {
         if (_host == null || _suppressEvents) return;
@@ -599,7 +604,7 @@ public partial class KeysView : UserControl
 
         if (binding.Action == actionId) return;
 
-        /* 网址和文件夹的 Arg 是两种东西，互相不能复用：
+        /* 网址、文件夹、文件的 Arg 是三种东西，互相不能复用：
          * 把 "https://github.com" 当文件夹路径去打开只会弹"文件夹不存在"，
          * 反过来把 "D:\Work" 当网址更糟（会拼成 http://d:\Work）。
          * 所以切换类型时清空目标，备注保留（用户起的名字通常还能用）。 */
@@ -613,13 +618,17 @@ public partial class KeysView : UserControl
 
         RefreshWebPageFields();
         BuildKeyboard();
-        ShowBindStatus(actionId == LinkUrlAction
-            ? "已切换成「直达网址」—— 填一个网址即可"
-            : "已切换成「直达文件夹」—— 填路径或点「浏览…」选一个");
+        ShowBindStatus(actionId switch
+        {
+            LinkUrlAction => "已切换成「直达网址」—— 填一个网址即可",
+            LinkFolderAction => "已切换成「直达文件夹」—— 填路径或点「浏览…」选一个",
+            _ => "已切换成「直达文件」—— 点「浏览…」挑一个文件，或直接填路径",
+        });
     }
 
     private void OnLinkKindUrl(object sender, RoutedEventArgs e) => SetLinkKind(LinkUrlAction);
     private void OnLinkKindFolder(object sender, RoutedEventArgs e) => SetLinkKind(LinkFolderAction);
+    private void OnLinkKindFile(object sender, RoutedEventArgs e) => SetLinkKind(LinkFileAction);
 
     /// <summary>
     /// 挑一个文件夹填进目标框。
@@ -645,6 +654,40 @@ public partial class KeysView : UserControl
 
         WebUrlBox.Text = dlg.FolderName;          // TextChanged 会负责落盘
         ShowBindStatus($"文件夹已设置：{dlg.FolderName}");
+    }
+
+    /// <summary>
+    /// 挑一个文件填进目标框（「直达文件」用）。
+    ///
+    /// 和文件夹那边一样用 .NET 自带的 OpenFileDialog（WPF 版），不引 WinForms。
+    /// 过滤器只留「所有文件」而不按类型筛：要直达的文件可能是 .docx、.psd、
+    /// .mp4 甚至没有扩展名的数据文件，替用户预设类型只会让他找不到自己的文件。
+    /// </summary>
+    private void OnBrowseFile(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择要直达的文件",
+            Multiselect = false,
+            CheckFileExists = true,
+            Filter = "所有文件|*.*",
+        };
+
+        // 已经填过路径时从它所在的目录开始浏览
+        string current = Core.Actions.ActionContext.ExpandPath(WebUrlBox.Text);
+        try
+        {
+            string? dir = Path.GetDirectoryName(current);
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) dlg.InitialDirectory = dir;
+        }
+        catch { }
+
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.FileName)) return;
+
+        WebUrlBox.Text = dlg.FileName;            // TextChanged 会负责落盘
+        ShowBindStatus($"文件已设置：{dlg.SafeFileName}");
     }
 
     /// <summary>
@@ -854,7 +897,7 @@ public partial class KeysView : UserControl
         {
             var info = _host?.Actions.Get(binding.Action);
             if (info != null && !string.IsNullOrWhiteSpace(info.ShortTitle)
-                && binding.Action is not ("winBind" or "webPage" or "openFolder" or "typeText")
+                && binding.Action is not ("winBind" or "webPage" or "openFolder" or "openFile" or "typeText")
                 && !binding.Action.StartsWith("macro:", StringComparison.OrdinalIgnoreCase))
             {
                 keycapTitle = info.ShortTitle;
@@ -1415,7 +1458,7 @@ public partial class KeysView : UserControl
         var mode = actionId switch
         {
             "winBind" => EditorMode.WinBind,
-            "webPage" or "openFolder" => EditorMode.WebPage,   // 直达链接的两种类型
+            "webPage" or "openFolder" or "openFile" => EditorMode.WebPage,   // 直达链接的三种类型
             "typeText" => EditorMode.TypeText,
             _ => EditorMode.Normal,
         };
@@ -1531,6 +1574,10 @@ public partial class KeysView : UserControl
         if (id == "openFolder")
             return FolderLabelOf(binding.Note, binding.Arg);
 
+        // 直达文件：备注优先，否则用文件名
+        if (id == "openFile")
+            return FileLabelOf(binding.Note, binding.Arg);
+
         // 输入文本：备注优先，否则显示文字开头几个字
         if (id == "typeText")
             return TypeTextLabelOf(binding.Note, binding.Arg);
@@ -1572,6 +1619,34 @@ public partial class KeysView : UserControl
 
         // "D:\" 这种根目录：GetFileName 返回空，退回盘符
         if (string.IsNullOrWhiteSpace(name)) name = p.TrimEnd('\\');
+        return name.Length <= 8 ? name : name[..8] + "…";
+    }
+
+    /// <summary>
+    /// 直达文件在键帽上的标签：备注优先，否则用文件名（去掉扩展名）。
+    ///
+    /// 和文件夹同一个道理：完整路径放不进键帽，而"直达文件"四个字
+    /// 完全看不出绑的是哪个文件。扩展名去掉是因为 `.docx` 不带信息量，
+    /// 保留名字反而更容易一眼认出（"方案" vs "方案.docx"）。
+    /// </summary>
+    internal static string FileLabelOf(string? note, string? path)
+    {
+        if (!string.IsNullOrWhiteSpace(note)) return note.Trim();
+        if (string.IsNullOrWhiteSpace(path)) return "文件";
+
+        string p = Core.Actions.ActionContext.ExpandPath(path);
+        if (p.Length == 0) return "文件";
+
+        string name;
+        try { name = Path.GetFileNameWithoutExtension(p); }
+        catch { return "文件"; }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            try { name = Path.GetFileName(p); } catch { return "文件"; }
+        }
+        if (string.IsNullOrWhiteSpace(name)) return "文件";
+
         return name.Length <= 8 ? name : name[..8] + "…";
     }
 
@@ -1706,62 +1781,83 @@ public partial class KeysView : UserControl
     private void RefreshWebPageFields()
     {
         var b = FindInCurrentLayer(CurrentCombo());
-        string kind = b?.Action is LinkUrlAction or LinkFolderAction ? b!.Action : LinkUrlAction;
+        string kind = IsLinkAction(b?.Action) ? b!.Action! : LinkUrlAction;
+        bool isUrl = kind == LinkUrlAction;
         bool isFolder = kind == LinkFolderAction;
+        bool isFile = kind == LinkFileAction;
 
         _suppressEvents = true;
-        WebUrlBox.Text = b != null && (b.Action == LinkUrlAction || b.Action == LinkFolderAction)
-            ? (b.Arg ?? "")
-            : "";
+        WebUrlBox.Text = IsLinkAction(b?.Action) ? (b!.Arg ?? "") : "";
         WebNoteBox.Text = b?.Note ?? "";
         _suppressEvents = false;
 
-        // 类型按钮：选中的那个用主按钮样式，另一个用普通样式
-        LinkKindUrlButton.Style = (Style)FindResource(isFolder ? "Button.Base" : "Button.Primary");
+        // 类型按钮：选中的那个用主按钮样式，另外两个用普通样式
+        LinkKindUrlButton.Style = (Style)FindResource(isUrl ? "Button.Primary" : "Button.Base");
         LinkKindFolderButton.Style = (Style)FindResource(isFolder ? "Button.Primary" : "Button.Base");
+        LinkKindFileButton.Style = (Style)FindResource(isFile ? "Button.Primary" : "Button.Base");
 
-        LinkTargetLabel.Text = isFolder ? "文件夹路径" : "网址";
-        WebUrlBox.ToolTip = isFolder
-            ? @"例如 D:\Work\项目；支持 %USERPROFILE%、~ 和 shell:Downloads"
-            : "例如 https://github.com；不带 http 也会自动补全";
+        LinkTargetLabel.Text = isUrl ? "网址" : isFolder ? "文件夹路径" : "文件路径";
+        WebUrlBox.ToolTip = isUrl
+            ? "例如 https://github.com；不带 http 也会自动补全"
+            : isFolder
+                ? @"例如 D:\Work\项目；支持 %USERPROFILE%、~ 和 shell:Downloads"
+                : @"例如 D:\文档\方案.docx；支持 %USERPROFILE%、~ 和正斜杠";
 
         BrowseFolderButton.Visibility = isFolder ? Visibility.Visible : Visibility.Collapsed;
-        FetchTitleButton.Visibility = isFolder ? Visibility.Collapsed : Visibility.Visible;
+        BrowseFileButton.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
+        FetchTitleButton.Visibility = isUrl ? Visibility.Visible : Visibility.Collapsed;
 
-        WebFetchStatus.Text = isFolder && !string.IsNullOrWhiteSpace(b?.Arg)
-            ? (Directory.Exists(Core.Actions.ActionContext.ExpandFolderPath(b!.Arg))
-                ? "文件夹存在，按这个键就会在资源管理器里打开它。"
-                : "这个路径现在不存在 —— 按下去会提示「文件夹不存在」。")
-            : "";
+        WebFetchStatus.Text = string.IsNullOrWhiteSpace(b?.Arg) || isUrl
+            ? ""
+            : isFolder
+                ? (Directory.Exists(Core.Actions.ActionContext.ExpandPath(b!.Arg))
+                    ? "文件夹存在，按这个键就会在资源管理器里打开它。"
+                    : "这个路径现在不存在 —— 按下去会提示「文件夹不存在」。")
+                : (File.Exists(Core.Actions.ActionContext.ExpandPath(b!.Arg))
+                    ? "文件存在，按这个键就会用默认程序打开它。"
+                    : "这个路径现在不存在 —— 按下去会提示「文件不存在」。");
 
-        LinkHint.Text = isFolder
-            ? @"不填备注时，键帽上显示文件夹名。路径支持 %USERPROFILE%\Desktop、~\Downloads 和 shell:Downloads 这几种写法。"
-            : "填网址时会自动抓网页标题当备注（不满意可以改）。备注会显示在键帽上。";
+        LinkHint.Text = isUrl
+            ? "填网址时会自动抓网页标题当备注（不满意可以改）。备注会显示在键帽上。"
+            : isFolder
+                ? @"不填备注时，键帽上显示文件夹名。路径支持 %USERPROFILE%\Desktop、~\Downloads 和 shell:Downloads 这几种写法。"
+                : "不填备注时，键帽上显示文件名。会按系统文件关联打开（和双击一样），不用选程序。";
     }
 
     private void OnWebUrlChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppressEvents) return;
         var b = FindInCurrentLayer(CurrentCombo());
-        if (b == null || b.Action is not (LinkUrlAction or LinkFolderAction)) return;
+        if (b == null || !IsLinkAction(b.Action)) return;
 
         b.Arg = WebUrlBox.Text.Trim();
         _host.SaveSettings();
         BuildKeyboard();          // 键帽上要跟着变
 
-        if (b.Action == LinkUrlAction)
+        switch (b.Action)
         {
-            // 网址填完就去抓标题当备注（用户要求"一定要先拉一下"）
-            MaybeFetchTitle();
-        }
-        else
-        {
-            // 文件夹：立刻反馈"这条路径到底存不存在"，别等用户按了才发现
-            WebFetchStatus.Text = string.IsNullOrWhiteSpace(b.Arg)
-                ? ""
-                : (Directory.Exists(Core.Actions.ActionContext.ExpandFolderPath(b.Arg))
-                    ? "文件夹存在，按这个键就会在资源管理器里打开它。"
-                    : "这个路径现在不存在 —— 按下去会提示「文件夹不存在」。");
+            case LinkUrlAction:
+                // 网址填完就去抓标题当备注（用户要求"一定要先拉一下"）
+                MaybeFetchTitle();
+                break;
+
+            case LinkFolderAction:
+                // 文件夹：立刻反馈"这条路径到底存不存在"，别等用户按了才发现
+                WebFetchStatus.Text = string.IsNullOrWhiteSpace(b.Arg)
+                    ? ""
+                    : (Directory.Exists(Core.Actions.ActionContext.ExpandPath(b.Arg))
+                        ? "文件夹存在，按这个键就会在资源管理器里打开它。"
+                        : "这个路径现在不存在 —— 按下去会提示「文件夹不存在」。");
+                break;
+
+            default:
+                // 文件：同样立刻告诉用户"这个文件在不在"
+                WebFetchStatus.Text = string.IsNullOrWhiteSpace(b.Arg)
+                    ? ""
+                    : (File.Exists(Core.Actions.ActionContext.ExpandPath(b.Arg))
+                        ? "文件存在，按这个键就会用默认程序打开它。"
+                        : "这个路径现在不存在 —— 按下去会提示「文件不存在」。");
+                break;
         }
     }
 
@@ -1857,7 +1953,7 @@ public partial class KeysView : UserControl
     {
         if (_host == null || _suppressEvents) return;
         var b = FindInCurrentLayer(CurrentCombo());
-        if (b == null || b.Action is not (LinkUrlAction or LinkFolderAction)) return;
+        if (b == null || !IsLinkAction(b.Action)) return;
 
         b.Note = WebNoteBox.Text.Trim();
         _host.SaveSettings();

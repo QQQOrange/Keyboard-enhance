@@ -1,9 +1,9 @@
-namespace CapsLockPlus.Core.Actions;
+﻿namespace CapsLockPlus.Core.Actions;
 
 /// <summary>
 /// 网址的规范化与展示。
 ///
-/// 「直达网页」让用户直接填网址，得容忍各种写法：
+/// 「直达链接」让用户直接填网址，得容忍各种写法：
 ///   github.com                → https://github.com
 ///   www.baidu.com/s?wd=x      → https://www.baidu.com/s?wd=x
 ///   http://intranet/wiki      → 原样（内部 http 站点很常见）

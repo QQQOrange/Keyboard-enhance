@@ -1,11 +1,11 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 
 namespace CapsLockPlus.Core.Actions;
 
 /// <summary>
-/// 抓取网页标题，用来给「直达网页」预填备注。
+/// 抓取网页标题，用来给「直达链接 → 直达网址」预填备注。
 ///
 /// 只在用户填完网址时跑一次，超时很短（3 秒）—— 用户正在界面里等，
 /// 不能因为对方站点慢就卡住 UI。抓不到就静默返回 null，让用户自己写备注。

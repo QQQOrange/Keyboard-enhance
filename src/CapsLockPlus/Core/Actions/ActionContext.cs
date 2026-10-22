@@ -237,6 +237,88 @@ public sealed class ActionContext
         }
         return true;
     }
+    /// <summary>
+    /// 「直达链接」：把当前**选中的文字**识别成网址 / 文件夹 / 文件并打开。
+    ///
+    /// 与 <see cref="OpenUrl"/>、<see cref="OpenFolder"/> 的区别：
+    /// 那两个是"先填地址、按键就开"，目标在设置里写死；
+    /// 这个是"眼前有什么就开什么"，用户选中一段文字按下即可，不用预先配置。
+    ///
+    /// 也正因为目标来自选区，它被归到「系统」分类，和「打开网址」「运行程序」并列 ——
+    /// 三者都是"给什么开什么"，只是参数来源不同（手填 / 选区）。
+    /// </summary>
+    /// <param name="overrideText">自检用：直接指定"选中的文字"，绕开真实取词。</param>
+    public bool SmartOpen(string? overrideText = null)
+    {
+        string text = overrideText ?? "";
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            text = CaptureSelectionText();
+            if (!string.IsNullOrWhiteSpace(text))
+                CoreLog.Info($"[直达链接] 已取到选中文字 长度={text.Length}");
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            /* 取词失败时的保底：请用户亲手按一下 Ctrl+C。
+             *
+             * 这不是偷懒 —— Chromium / Electron 会过滤程序合成的 Ctrl+C，
+             * 管理员模式下还会被 UIPI 拦掉，只有"真人按的"一定有效。
+             * 和「直接搜索」用的是同一条保底路径。 */
+            Notify(Core.ElevationHelper.IsElevated
+                ? "没读到选中内容（管理员模式取不到普通程序的选区）。请按一下 Ctrl+C，我马上打开它"
+                : "没读到选中内容，请按一下 Ctrl+C，我马上打开它");
+
+            var waitManualCopy = ManualCopyWaitForTest
+                                 ?? new Func<int, string>(Text.TextActions.WaitForManualCopy);
+            text = waitManualCopy(4000);
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Notify("先选中一段文字（网址、文件夹或文件路径），再按这个键");
+            return true;
+        }
+
+        var hit = SmartTargetDetector.Detect(text);
+        CoreLog.Info($"[直达链接] 识别结果={hit.Kind} 目标={hit.Target} 原文长度={text.Length}");
+
+        switch (hit.Kind)
+        {
+            case SmartKind.Url:
+                Notify($"打开网址：{UrlUtil.HostOf(hit.Target)}");
+                OpenUrl(hit.Target);
+                break;
+
+            case SmartKind.Folder:
+                Notify("正在打开文件夹…");
+                OpenFolder(hit.Target);
+                break;
+
+            case SmartKind.File:
+                Notify("正在用默认程序打开…");
+                OpenFile(hit.Target);
+                break;
+
+            case SmartKind.MissingFolder:
+                Notify($"文件夹不存在：{hit.Target}");
+                break;
+
+            case SmartKind.MissingFile:
+                Notify($"文件不存在：{hit.Target}");
+                break;
+
+            default:
+                /* 选中了普通文字（一句话、一个单词）。不要试图去搜索 ——
+                 * 这个动作的名字是「直达链接」，猜错了打开浏览器比"什么都不做"更烦人。 */
+                Notify("选中的内容既不是网址，也不是文件夹或文件路径");
+                break;
+        }
+
+        return true;
+    }
+
     /// <summary>Caps+Tab：把光标前的算式算出结果 / 展开热字串。</summary>
     public bool RunTabScript()    {
         var settings = Settings();
@@ -362,11 +444,47 @@ public sealed class ActionContext
     }
 
     /// <summary>
-    /// 把用户填的文件夹路径整理成可以直接交给 shell 的形式：
-    /// 去引号、去尾部反斜杠以外还支持 %ENV%、~ 与 shell: 前缀。
+    /// 仅供自检：拦截"打开文件"，免得测试真的拉起 Office / 播放器。
+    /// 置为 null 时走真实的 Process.Start。
+    /// </summary>
+    public static Action<string>? OpenFileInterceptForTest { get; set; }
+
+    /// <summary>
+    /// 用系统默认程序打开一个**文件**（双击它时会发生什么，这里就做什么）。
+    ///
+    /// 用 shell 而不是手工查注册表：`.psd`、`.docx`、`.mp4` 该用什么程序打开
+    /// 完全由系统关联决定，我们没必要也不应该自己判断。
+    /// </summary>
+    public void OpenFile(string path)
+    {
+        string target = ExpandPath(path);
+        if (target.Length == 0) return;
+
+        if (OpenFileInterceptForTest != null)
+        {
+            OpenFileInterceptForTest(target);
+            return;
+        }
+
+        try
+        {
+            if (!File.Exists(target))
+            {
+                Notify($"文件不存在：{target}");
+                return;
+            }
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (Exception ex) { Notify("打开文件失败：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 把用户填的路径整理成可以直接交给 shell 的形式：
+    /// 去引号 / `%ENV%` / `~` / `shell:` / 正斜杠归一 / 去尾部分隔符。
+    /// 文件夹、文件、选区里来的路径都走这里，保证"同一个路径只有一种写法"。
     /// 抽成静态是为了让自检能直接验，不必真的打开资源管理器。
     /// </summary>
-    public static string ExpandFolderPath(string? path)
+    public static string ExpandPath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return "";
         string p = path.Trim().Trim('"').Trim();
@@ -387,6 +505,9 @@ public sealed class ActionContext
         if (p.Length > 3 && p.EndsWith('\\')) p = p.TrimEnd('\\');
         return p;
     }
+
+    /// <summary>旧名字，保留给已有调用点；行为与 <see cref="ExpandPath"/> 一致。</summary>
+    public static string ExpandFolderPath(string? path) => ExpandPath(path);
 
     /// <summary>
     /// 运行一个程序或命令。

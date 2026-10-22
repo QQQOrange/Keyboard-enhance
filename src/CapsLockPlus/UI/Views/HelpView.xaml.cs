@@ -146,10 +146,12 @@ public partial class HelpView : UserControl
 
         AddSection("⑤ 直达链接", new[]
         {
-            "分类选「直达链接」后先选类型：「直达网址」用默认浏览器打开，「直达文件夹」在资源管理器里打开。",
-            "网址写成 github.com 也行，会自动补 https://；填完会自动抓网页标题当备注。",
-            "文件夹可以点「浏览…」直接挑，也支持 %USERPROFILE%\\Desktop、~\\Downloads、shell:Downloads 这些写法。",
-            "备注会显示在键帽上；不写备注时，网址显示域名、文件夹显示文件夹名。",
+            "这里有两种用法，别混：一种是「先填好、按键就开」，一种是「选中什么就开什么」。",
+            "【先填好】分类选「直达链接」，再选类型：直达网址用默认浏览器打开，直达文件夹在资源管理器里打开，直达文件用系统默认程序打开（和双击一样）。",
+            "网址写成 github.com 也行，会自动补 https://；填完会自动抓网页标题当备注。文件夹和文件都能点「浏览…」直接挑。",
+            "路径支持 %USERPROFILE%\\Desktop、~\\Downloads、shell:Downloads 这些写法；备注会显示在键帽上，不写备注时显示域名 / 文件夹名 / 文件名。",
+            "【选中什么就开什么】分类选「系统」，挑「直达链接」：在任意程序里选中一段文字，按这个键 —— 是网址就开浏览器、是文件夹就开资源管理器、是文件就用默认程序打开。不用预先配置。",
+            "智能识别支持带协议的网址、裸域名、盘符路径、UNC 网络路径、环境变量路径，以及 file:/// 开头的地址；选中普通句子时会明确告诉你「这不是链接」，不会乱开浏览器。",
         });
 
         AddSection("⑥ 直接搜索", new[]
@@ -334,6 +336,10 @@ public partial class HelpView : UserControl
         // 直达文件夹：说清"打开的是哪个目录"，目录名比整条路径好认
         if (id == "openFolder")
             return "打开文件夹 " + UI.Views.KeysView.FolderLabelOf(binding.Note, binding.Arg);
+
+        // 直达文件：同理，用文件名代替整条路径
+        if (id == "openFile")
+            return "打开文件 " + UI.Views.KeysView.FileLabelOf(binding.Note, binding.Arg);
 
         return binding.Arg.Length > 0
             ? $"{info.Description}（参数 {binding.Arg}）"

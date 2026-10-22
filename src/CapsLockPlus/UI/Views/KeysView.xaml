@@ -269,9 +269,9 @@
                                        Text="点选窗口：鼠标变成准星，点哪个窗口就绑哪个程序。&#x0a;选择程序文件：从资源管理器挑一个 exe（程序没在运行也能绑）。" />
                         </StackPanel>
 
-                        <!-- ================= 直达链接：网址 / 文件夹 + 备注 =================
+                        <!-- ================= 直达链接：网址 / 文件夹 / 文件 + 备注 =================
                              选了「直达链接」分类后，下面换成这个面板：
-                             先选类型（网址 / 文件夹），再填目标，备注可选。
+                             先选类型（网址 / 文件夹 / 文件），再填目标，备注可选。
                         -->
                         <StackPanel x:Name="WebPagePicker" Visibility="Collapsed">
                             <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
@@ -284,7 +284,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <!-- 只放文字、不放图标字体：E774 这类 globe 字形在
                                      部分 Win10 的 Fluent Icons 里是空白/方框，
-                                     与其赌字体，不如让两个按钮靠样式区分选中态。 -->
+                                     与其赌字体，不如让三个按钮靠样式区分选中态。 -->
                                 <Button x:Name="LinkKindUrlButton" Content="直达网址"
                                         Style="{StaticResource Button.Base}"
                                         Padding="18,8" MinWidth="96" Click="OnLinkKindUrl"
@@ -294,6 +294,11 @@
                                         Padding="18,8" MinWidth="108" Margin="8,0,0,0"
                                         Click="OnLinkKindFolder"
                                         ToolTip="按这个键在文件资源管理器里打开文件夹" />
+                                <Button x:Name="LinkKindFileButton" Content="直达文件"
+                                        Style="{StaticResource Button.Base}"
+                                        Padding="18,8" MinWidth="96" Margin="8,0,0,0"
+                                        Click="OnLinkKindFile"
+                                        ToolTip="按这个键用系统默认程序打开文件" />
                             </StackPanel>
 
                             <TextBlock x:Name="LinkTargetLabel" Text="网址"
@@ -301,6 +306,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBox Grid.Column="0" x:Name="WebUrlBox" Style="{StaticResource TextBox.Base}"
@@ -311,6 +317,10 @@
                                         Style="{StaticResource Button.Base}" Padding="12,6" Margin="8,0,0,0"
                                         Visibility="Collapsed" Click="OnBrowseFolder"
                                         ToolTip="从资源管理器里挑一个文件夹" />
+                                <Button Grid.Column="2" x:Name="BrowseFileButton" Content="浏览…"
+                                        Style="{StaticResource Button.Base}" Padding="12,6" Margin="8,0,0,0"
+                                        Visibility="Collapsed" Click="OnBrowseFile"
+                                        ToolTip="从资源管理器里挑一个文件" />
                             </Grid>
 
                             <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"

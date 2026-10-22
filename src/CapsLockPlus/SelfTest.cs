@@ -124,6 +124,7 @@ public static class SelfTest
         TestArbitraryWindowBinding();
         TestWinBindRestoreLogic();
         TestWebPageCategory();
+        TestSmartOpen();
         TestKeycapVisualStates();
         TestProductIdentity();
         TestWebTitleExtract();
@@ -653,9 +654,12 @@ public static class SelfTest
             Check($"系统功能含 {id}", catalog.Get(id) != null);
         }
 
-        Check("「系统」分类只剩打开网址/运行程序",
-            catalog.Items.Where(i => i.Category == "系统").All(i => i.Id is "openUrl" or "runProgram"),
+        Check("「系统」分类只有打开网址 / 运行程序 / 直达链接（智能识别）",
+            catalog.Items.Where(i => i.Category == "系统")
+                .All(i => i.Id is "openUrl" or "runProgram" or "smartOpen"),
             string.Join(",", catalog.Items.Where(i => i.Category == "系统").Select(i => i.Id)));
+        Check("「系统 → 直达链接」不带预填参数",
+            catalog.Get("smartOpen")?.NeedsArg == false);
 
         queue.Dispose();
     }
@@ -2919,6 +2923,8 @@ public static class SelfTest
         Core.Actions.ActionContext.OpenUrlInterceptForTest = u => opened = u;
         string? openedFolder = null;
         Core.Actions.ActionContext.OpenFolderInterceptForTest = p => openedFolder = p;
+        string? openedFile = null;
+        Core.Actions.ActionContext.OpenFileInterceptForTest = p => openedFile = p;
         try
         {
             var cat = Core.Actions.ActionCatalog.Create(ctx);
@@ -2936,8 +2942,14 @@ public static class SelfTest
             CheckEqual("openFolder 在「直达链接」分类", of?.Category, "直达链接");
             CheckEqual("openFolder 标题是「直达文件夹」", of?.Title, "直达文件夹");
             Check("openFolder 需要参数（路径）", of?.NeedsArg == true);
-            Check("「直达链接」分类下只有这两个动作",
-                cat.Items.Count(i => i.Category == "直达链接") == 2,
+
+            var ofi = cat.Items.FirstOrDefault(i => i.Id == "openFile");
+            Check("动作表有 openFile", ofi != null);
+            CheckEqual("openFile 在「直达链接」分类", ofi?.Category, "直达链接");
+            CheckEqual("openFile 标题是「直达文件」", ofi?.Title, "直达文件");
+            Check("openFile 需要参数（路径）", ofi?.NeedsArg == true);
+            Check("「直达链接」分类下只有这三个动作",
+                cat.Items.Count(i => i.Category == "直达链接") == 3,
                 string.Join(",", cat.Items.Where(i => i.Category == "直达链接").Select(i => i.Id)));
 
             // 2. 执行时把规范化后的网址传出去
@@ -2957,11 +2969,20 @@ public static class SelfTest
             openedFolder = null;
             cat.Invoke("openFolder", "  ");
             Check("空路径不执行打开", openedFolder == null);
+
+            // 3b. openFile：路径整理后交给默认程序
+            cat.Invoke("openFile", "\"D:/文档/方案.docx\"");
+            CheckEqual("执行 openFile 归一正斜杠并去引号", openedFile, @"D:\文档\方案.docx");
+
+            openedFile = null;
+            cat.Invoke("openFile", "   ");
+            Check("空文件路径不执行打开", openedFile == null);
         }
         finally
         {
             Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
             Core.Actions.ActionContext.OpenFolderInterceptForTest = null;
+            Core.Actions.ActionContext.OpenFileInterceptForTest = null;
         }
 
         // 3. Note 字段能存能读，空值不序列化
@@ -3017,6 +3038,188 @@ public static class SelfTest
             UI.Views.KeysView.FolderLabelOf("", @"D:\Work\项目文档"), "项目文档");
         CheckEqual("文件夹名为空时兜底",
             UI.Views.KeysView.FolderLabelOf("", ""), "文件夹");
+
+        // 7. 直达文件：键帽标签用文件名
+        CheckEqual("文件有备注用备注",
+            UI.Views.KeysView.FileLabelOf("周报", @"D:\文档\方案.docx"), "周报");
+        CheckEqual("文件无备注用文件名（去扩展名）",
+            UI.Views.KeysView.FileLabelOf("", @"D:\文档\方案.docx"), "方案");
+        CheckEqual("文件名兜底",
+            UI.Views.KeysView.FileLabelOf("", ""), "文件");
+        CheckEqual("ExpandPath 与 ExpandFolderPath 行为一致",
+            Core.Actions.ActionContext.ExpandPath("D:/Work/A/"),
+            Core.Actions.ActionContext.ExpandFolderPath("D:/Work/A/"));
+    }
+
+    /// <summary>
+    /// 「直达链接」的智能识别（系统分类里那个）：选中什么就开什么。
+    ///
+    /// 这个功能的风险全在**误判**上：把一句话当网址塞进浏览器、
+    /// 把 `reade.md` 当域名打开，比"什么都不做"更打扰人。
+    /// 所以这里用可控的假文件系统，把各种边界情况逐条钉住：
+    ///
+    ///   1. 动作必须归在「系统」，和打开网址 / 运行程序并列；
+    ///   2. 网址（带协议 / 裸域名 / 引号包裹 / 末尾句号）；
+    ///   3. 文件夹与文件按**真实存在性**区分，不存在时给出准确的"不存在"类型；
+    ///   4. 路径的各种写法：引号、正斜杠、环境变量、UNC、file:///、shell:；
+    ///   5. 不是链接的内容一律不乱开（多行、普通句子、像域名的文件名）。
+    /// </summary>
+    private static void TestSmartOpen()
+    {
+        // ---------- 1. 动作归位 ----------
+        var settings = DefaultSettings.Create();
+        var notes = new List<string>();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = n => notes.Add(n),
+        };
+
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+        var so = cat.Items.FirstOrDefault(i => i.Id == "smartOpen");
+        Check("动作表有 smartOpen", so != null);
+        CheckEqual("smartOpen 在「系统」分类", so?.Category, "系统");
+        CheckEqual("smartOpen 标题是「直达链接」", so?.Title, "直达链接");
+        Check("smartOpen 不需要预填参数", so?.NeedsArg == false);
+        Check("「系统」分类里同时有打开网址 / 运行程序 / 直达链接",
+            cat.Items.Any(i => i.Category == "系统" && i.Id == "openUrl")
+            && cat.Items.Any(i => i.Category == "系统" && i.Id == "runProgram")
+            && so != null,
+            string.Join(",", cat.Items.Where(i => i.Category == "系统").Select(i => i.Id)));
+
+        // ---------- 2. 识别：用假文件系统，避免依赖测试机磁盘 ----------
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            @"D:\文档\方案.docx", @"C:\Windows\notepad.exe",
+        };
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            @"D:\Work\项目", @"D:\Work\2026", @"C:\Windows",
+        };
+        static bool Has(HashSet<string> set, string p) => set.Contains(p);
+
+        Core.Actions.SmartTarget Hit(string text) =>
+            Core.Actions.SmartTargetDetector.Detect(text, p => Has(files, p), p => Has(dirs, p));
+
+        // 2a. 网址
+        CheckEqual("带协议的网址", Hit("https://github.com/a?b=1").Kind, Core.Actions.SmartKind.Url);
+        CheckEqual("http 内网地址", Hit("http://intranet/wiki").Kind, Core.Actions.SmartKind.Url);
+        CheckEqual("裸域名", Hit("github.com").Kind, Core.Actions.SmartKind.Url);
+        CheckEqual("带 www 与路径", Hit("www.baidu.com/s?wd=x").Kind, Core.Actions.SmartKind.Url);
+        CheckEqual("mailto 也算链接", Hit("mailto:a@b.com").Kind, Core.Actions.SmartKind.Url);
+        CheckEqual("网址末尾的中文句号被去掉",
+            Hit("https://a.com。").Target, "https://a.com");
+        CheckEqual("引号包裹的网址也能认",
+            Hit("「https://example.com/path」").Target, "https://example.com/path");
+
+        // 2b. 文件夹 / 文件：存在性优先
+        CheckEqual("存在的目录 → 文件夹", Hit(@"D:\Work\项目").Kind, Core.Actions.SmartKind.Folder);
+        CheckEqual("引号包裹的路径", Hit("\"D:\\Work\\项目\"").Kind, Core.Actions.SmartKind.Folder);
+        CheckEqual("正斜杠 + 尾分隔符", Hit("D:/Work/项目/").Target, @"D:\Work\项目");
+        CheckEqual("存在的文件 → 文件", Hit(@"D:\文档\方案.docx").Kind, Core.Actions.SmartKind.File);
+        CheckEqual("文件目标做了路径归一", Hit("D:/文档/方案.docx").Target, @"D:\文档\方案.docx");
+        CheckEqual("带空格路径", Hit(@"C:\Windows\notepad.exe").Kind, Core.Actions.SmartKind.File);
+
+        // 2c. 不存在时也要说清是"文件不存在"还是"文件夹不存在"
+        CheckEqual("不存在的文件", Hit(@"D:\文档\没有这个.docx").Kind, Core.Actions.SmartKind.MissingFile);
+        CheckEqual("不存在的文件夹", Hit(@"D:\工作\2026规划").Kind, Core.Actions.SmartKind.MissingFolder);
+        CheckEqual("结尾带分隔符按文件夹算", Hit(@"D:\没有这个目录\").Kind, Core.Actions.SmartKind.MissingFolder);
+        CheckEqual("UNC 路径", Hit(@"\\nas\share\doc").Kind, Core.Actions.SmartKind.MissingFolder);
+
+        // 2d. 特殊写法
+        CheckEqual("file:/// 地址", Hit("file:///D:/文档/方案.docx").Kind, Core.Actions.SmartKind.File);
+        CheckEqual("shell: 虚拟目录", Hit("shell:Downloads").Kind, Core.Actions.SmartKind.Folder);
+        CheckEqual("shell: 目标原样保留", Hit("shell:Downloads").Target, "shell:Downloads");
+        Check("环境变量被展开",
+            !Hit(@"%USERPROFILE%\Desktop").Target.Contains('%'),
+            Hit(@"%USERPROFILE%\Desktop").Target);
+
+        // 2e. 不像链接的内容：一个都不许开
+        CheckEqual("多行选区不认", Hit("第一行\r\n第二行").Kind, Core.Actions.SmartKind.None);
+        CheckEqual("普通句子不认", Hit("今天天气不错").Kind, Core.Actions.SmartKind.None);
+        CheckEqual("没有一个点的单词不认", Hit("hello").Kind, Core.Actions.SmartKind.None);
+        CheckEqual("像域名的文件名（readme.md）不认", Hit("readme.md").Kind, Core.Actions.SmartKind.None);
+        CheckEqual("像域名的脚本名（build.ps1）不认", Hit("build.ps1").Kind, Core.Actions.SmartKind.None);
+        CheckEqual("空输入不认", Hit("   ").Kind, Core.Actions.SmartKind.None);
+        CheckEqual("超长文本不认",
+            Core.Actions.SmartTargetDetector.Detect(new string('a', 3000),
+                _ => false, _ => false).Kind, Core.Actions.SmartKind.None);
+
+        // ---------- 3. 动作执行：三类目标分别落到三个通道 ----------
+        string? openedUrl = null, openedFolder = null, openedFile = null;
+        Core.Actions.ActionContext.OpenUrlInterceptForTest = u => openedUrl = u;
+        Core.Actions.ActionContext.OpenFolderInterceptForTest = p => openedFolder = p;
+        Core.Actions.ActionContext.OpenFileInterceptForTest = p => openedFile = p;
+
+        string tmp = Path.Combine(Path.GetTempPath(), "ke_smart_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(tmp);
+        string tmpFile = Path.Combine(tmp, "方案.txt");
+        File.WriteAllText(tmpFile, "selftest");
+
+        try
+        {
+            ctx.CaptureTextForTest = () => tmp;
+            cat.Invoke("smartOpen", "");
+            CheckEqual("选中文件夹 → 交给资源管理器", openedFolder, tmp);
+            Check("选中文件夹 → 不该走浏览器", openedUrl == null);
+
+            openedFolder = null;
+            ctx.CaptureTextForTest = () => tmpFile;
+            cat.Invoke("smartOpen", "");
+            CheckEqual("选中文件 → 交给默认程序", openedFile, tmpFile);
+
+            openedFile = null;
+            openedUrl = null;
+            ctx.CaptureTextForTest = () => "github.com";
+            cat.Invoke("smartOpen", "");
+            Check("选中裸域名 → 走浏览器（自动补 https）",
+                openedUrl != null && openedUrl.StartsWith("https://github.com", StringComparison.Ordinal),
+                openedUrl ?? "(null)");
+            Check("裸域名不该走文件通道", openedFile == null && openedFolder == null);
+
+            openedUrl = null;
+            notes.Clear();
+            ctx.CaptureTextForTest = () => "这是一段普通文字";
+            cat.Invoke("smartOpen", "");
+            Check("普通文字什么都不开",
+                openedUrl == null && openedFolder == null && openedFile == null);
+            Check("普通文字给出明确提示",
+                notes.Any(n => n.Contains("既不是网址")), string.Join(" | ", notes));
+
+            notes.Clear();
+            ctx.CaptureTextForTest = () => Path.Combine(tmp, "没有这个.docx");
+            cat.Invoke("smartOpen", "");
+            Check("文件不存在时提示「文件不存在」",
+                notes.Any(n => n.Contains("文件不存在")), string.Join(" | ", notes));
+            Check("文件不存在时不去打开", openedFile == null);
+
+            notes.Clear();
+            ctx.CaptureTextForTest = () => "";
+            ctx.ManualCopyWaitForTest = _ => "";
+            cat.Invoke("smartOpen", "");
+            Check("完全没取到内容时提示先选中",
+                notes.Any(n => n.Contains("先选中")), string.Join(" | ", notes));
+
+            // 取词失败 → 用户手动 Ctrl+C 的保底路径要能接上
+            openedFolder = null;
+            ctx.CaptureTextForTest = () => "";
+            ctx.ManualCopyWaitForTest = _ => tmp;
+            cat.Invoke("smartOpen", "");
+            CheckEqual("手动复制的内容也能直达", openedFolder, tmp);
+        }
+        finally
+        {
+            Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
+            Core.Actions.ActionContext.OpenFolderInterceptForTest = null;
+            Core.Actions.ActionContext.OpenFileInterceptForTest = null;
+            ctx.CaptureTextForTest = null;
+            ctx.ManualCopyWaitForTest = null;
+            try { Directory.Delete(tmp, true); } catch { }
+        }
     }
 
     /// <summary>
