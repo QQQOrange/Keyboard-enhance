@@ -1523,6 +1523,53 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
+    /// 仅供渲染：切到「系统 → 直达链接」，确认智能直达这个动作
+    /// 真的出现在功能下拉里、说明文字也写对了。
+    ///
+    /// 刻意**不调用** <c>ApplySelectedAction</c> —— 那会真的改写当前按键的绑定，
+    /// 截图是"观察"不是"操作"，不能顺手改配置。
+    /// </summary>
+    public bool ShowSmartOpenForRender()
+    {
+        if (_host == null) return false;
+
+        _suppressEvents = true;
+        try
+        {
+            foreach (ComboBoxItem it in CategoryBox.Items)
+            {
+                if (it.Tag as string == "系统")
+                {
+                    CategoryBox.SelectedItem = it;
+                    break;
+                }
+            }
+
+            ApplyEditorMode(EditorMode.Normal);
+            BuildActionBox();
+
+            foreach (ComboBoxItem it in ActionBox.Items)
+            {
+                if (it.Tag as string == "smartOpen")
+                {
+                    ActionBox.SelectedItem = it;
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+
+        var info = _host.Actions.Get("smartOpen");
+        ActionDesc.Text = info?.Description ?? "";
+        ShowArgPanelFor("smartOpen", needsArg: false);
+
+        return ActionBox.SelectedItem is ComboBoxItem { Tag: "smartOpen" };
+    }
+
+    /// <summary>
     /// 仅供渲染：把界面切到「窗口绑定」模式，好截一张图确认按钮和卡片都画出来了。
     /// </summary>
     public bool ShowWinBindPanelForRender()

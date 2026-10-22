@@ -84,6 +84,22 @@ public static class RenderTools
                 }
                 kv.ResetRenderState();
                 Pump(120);
+
+                // 智能直达（系统 → 直达链接）也要能截到，确认它真在功能下拉里
+                try
+                {
+                    if (kv.ShowSmartOpenForRender())
+                    {
+                        Pump(200);
+                        Save(main, Path.Combine(outDir, "keys-smartopen.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染智能直达失败：" + ex.Message);
+                }
+                kv.ResetRenderState();
+                Pump(120);
             }
 
             /* 宏页额外截一张"正在录制"的样子。

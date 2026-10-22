@@ -3981,11 +3981,35 @@ public static class SelfTest
             /* 必须在 **STA 线程**调用：Clipboard 是 OLE 组件，
              * 在 MTA 线程上会抛「必须先将当前线程设置为单个线程单元(STA)模式」。 */
             string gotFromSta = "";
-            var staThread = new Thread(() => gotFromSta = TextActions.GetSelectedText(900));
-            staThread.SetApartmentState(ApartmentState.STA);
-            staThread.IsBackground = true;
-            staThread.Start();
-            for (int i = 0; i < 40 && staThread.IsAlive; i++) DoEvents(50);
+
+            void GrabSelection()
+            {
+                gotFromSta = "";
+                var t = new Thread(() => gotFromSta = TextActions.GetSelectedText(900));
+                t.SetApartmentState(ApartmentState.STA);
+                t.IsBackground = true;
+                t.Start();
+
+                // 取词内部要试 5 条通道，每条都有超时；给足 6 秒再判失败
+                for (int i = 0; i < 120 && t.IsAlive; i++) DoEvents(50);
+            }
+
+            GrabSelection();
+
+            /* 偶发空结果的补救。
+             *
+             * 取词是"跟正在运行的系统抢剪贴板"：机器忙、剪贴板被别的程序
+             * 短暂占用、或者窗口在取词途中丢了前台，都会空手而归 ——
+             * 这不是功能坏了。给一次重试（并重新激活窗口），
+             * 免得偶然的假失败把自检结论带偏。 */
+            if (string.IsNullOrEmpty(gotFromSta))
+            {
+                win.Activate();
+                box.Focus();
+                DoEvents(250);
+                GrabSelection();
+            }
+
             string got = gotFromSta;
             Check("能取到选中文本", !string.IsNullOrEmpty(got),
                 got.Length == 0 ? "(空)" : got);
