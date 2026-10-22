@@ -4288,6 +4288,47 @@ public static class SelfTest
          * 这样改"发什么键/绑哪个程序"不会把用户起的名字冲掉。 */
         Check("备注不进 spec（改参数不会冲掉名字）",
             !spec.ToArg().Contains("微信"));
+
+        /* ---------- 键帽文字的选择规则 ----------
+         *
+         * 这里曾经漏了 customKey：键帽永远显示 ShortTitle「自定义」，
+         * 用户填的备注根本没机会显示。这条断言就是盯着它。 */
+        CheckEqual("键帽文字：自定义按键用备注，不被短名盖掉",
+            UI.Views.KeysView.KeycapTitleOf("customKey", "微信", "自定义"), "微信");
+        CheckEqual("键帽文字：没备注时用应用名",
+            UI.Views.KeysView.KeycapTitleOf("customKey", "Weixin", "自定义"), "Weixin");
+        CheckEqual("键帽文字：备注和应用名都没有时才是「自定义」",
+            UI.Views.KeysView.KeycapTitleOf("customKey", "自定义", "自定义"), "自定义");
+        CheckEqual("键帽文字：普通动作仍然用短名",
+            UI.Views.KeysView.KeycapTitleOf("copy", "复制到剪贴板", "复制"), "复制");
+        CheckEqual("键帽文字：直达链接用自己算的域名",
+            UI.Views.KeysView.KeycapTitleOf("webPage", "github.com", "网址"), "github.com");
+        CheckEqual("键帽文字：输入文本用文字开头",
+            UI.Views.KeysView.KeycapTitleOf("typeText", "你好世界", "输入"), "你好世界");
+        CheckEqual("键帽文字：没有短名时原样返回",
+            UI.Views.KeysView.KeycapTitleOf("copy", "复制到剪贴板", null), "复制到剪贴板");
+
+        /* ---------- 底部按钮必须始终在可视区内 ----------
+         *
+         * 用最矮的常见窗口高度 + 内容最高的「自定义按键」面板来压：
+         * 布局没做好的话，按钮的底边会跑到视图高度之外（被卡片裁掉）。 */
+        try
+        {
+            var view = new UI.Views.KeysView();
+            foreach (var (w, h) in new[] { (900.0, 420.0), (1280.0, 700.0), (640.0, 360.0) })
+            {
+                var f = view.FooterForTest(w, h);
+                Check($"底部按钮可见（{w}×{h}）", f.Visible,
+                    $"visible={f.Visible} bottom={f.Bottom:F0} view={f.ViewHeight:F0}");
+                Check($"底部按钮没被挤出可视区（{w}×{h}）",
+                    f.ViewHeight > 0 && f.Bottom <= f.ViewHeight + 0.5,
+                    $"bottom={f.Bottom:F0} view={f.ViewHeight:F0} scroll={f.ScrollHeight:F0}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Check("底部按钮布局探针没抛异常", false, ex.Message);
+        }
     }
 
     private static void TestBrightnessMath()

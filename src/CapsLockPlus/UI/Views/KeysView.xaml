@@ -123,10 +123,17 @@
 
             <!-- 编辑面板 -->
             <Border Grid.Column="1" Style="{StaticResource Card}" Padding="18,16">
+                <!--
+                    布局：标题固定 → 中间整块可滚动 → 底部按钮固定。
+
+                    ⚠ 以前中间那几行是 Auto 高度：一旦「自定义按键」面板展开
+                    （键 / 应用 / 两个开关 / 等待 / 备注 / 提示），总高度就超过卡片，
+                    把底部的「清除绑定」「测试一下」挤出可视区，怎么滚都看不到
+                    —— 因为溢出的是 Grid 行，不是 ScrollViewer 里的内容。
+                    现在只有 3 行：中间一行是 *，内部整块滚动；按钮永远贴底。
+                -->
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
@@ -185,7 +192,11 @@
 
                     </StackPanel>
 
-                    <StackPanel Grid.Row="1" Margin="0,18,0,0">
+                    <ScrollViewer Grid.Row="1" x:Name="EditorScroll" Margin="0,18,0,0"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  PanningMode="VerticalOnly">
+                    <StackPanel>
                         <!-- ================= 普通分类：分类 + 功能 两级下拉 ================= -->
                         <Grid x:Name="NormalActionPicker">
                             <Grid.ColumnDefinitions>
@@ -550,16 +561,17 @@
                             <TextBlock x:Name="ArgHint" Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0"
                                        TextWrapping="Wrap" />
                         </StackPanel>
-                    </StackPanel>
 
-                    <StackPanel Grid.Row="2" Margin="0,16,0,0">
-                        <Border Style="{StaticResource Divider}" />
-                        <TextBlock Text="本层已绑定" Style="{StaticResource Text.Secondary}" Margin="0,4,0,8" />
-                    </StackPanel>
+                        <StackPanel Margin="0,16,0,0">
+                            <Border Style="{StaticResource Divider}" />
+                            <TextBlock Text="本层已绑定" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,4,0,8" />
+                        </StackPanel>
 
-                    <ListBox Grid.Row="3" x:Name="BoundList" Background="Transparent" BorderThickness="0"
+                    <ListBox x:Name="BoundList" Background="Transparent" BorderThickness="0"
                              ItemContainerStyle="{StaticResource RowItem}"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             MinHeight="80" MaxHeight="240"
                              SelectionChanged="OnBoundSelected">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -580,13 +592,23 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-
-                    <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Content="清除绑定" Style="{StaticResource Button.Danger}" Padding="12,6"
-                                Click="OnClearClick" />
-                        <Button Content="测试一下" Style="{StaticResource Button.Ghost}" Margin="6,0,0,0"
-                                Padding="12,6" Click="OnTestClick" ToolTip="执行一次这个功能（可能影响当前窗口）" />
                     </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- 底部操作条：固定在卡片最下方，任何窗口尺寸下都不会被挤走 -->
+                    <Border Grid.Row="2" Margin="0,10,0,0" Padding="0,10,0,0"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{DynamicResource Brush.Border}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="ClearBindButton" Content="清除绑定"
+                                    Style="{StaticResource Button.Danger}" Padding="12,6"
+                                    Click="OnClearClick" />
+                            <Button x:Name="TestBindButton" Content="测试一下"
+                                    Style="{StaticResource Button.Ghost}" Margin="6,0,0,0"
+                                    Padding="12,6" Click="OnTestClick"
+                                    ToolTip="执行一次这个功能（可能影响当前窗口）" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>

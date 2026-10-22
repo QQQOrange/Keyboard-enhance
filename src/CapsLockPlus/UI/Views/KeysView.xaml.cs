@@ -892,6 +892,29 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
+    /// 键帽上到底显示什么文字。
+    ///
+    /// 默认用 ShortTitle —— 长标题在 26px 宽的键帽里显示不全。
+    /// 但有一批动作**自己就算好了键帽文字**，它们的 ShortTitle 只是分类名之类的
+    /// 兜底，绝不能盖上去：
+    ///   · 直达链接三类 / 输入文本 / 窗口绑定 → 各自的 LabelOf（域名 / 文件夹名 / 文字开头）；
+    ///   · 自定义按键 → 备注 → 应用名 →「自定义」。
+    ///
+    /// ⚠ customKey 之前漏在这个名单外，键帽永远显示 ShortTitle「自定义」，
+    /// 用户填的备注根本没机会显示 —— 这就是"备注保存了但键帽上没生效"的根因。
+    /// 抽成纯函数是为了让自检能直接断言这个名单，不必去驱动界面。
+    /// </summary>
+    internal static string KeycapTitleOf(string actionId, string computedLabel, string? shortTitle)
+    {
+        if (string.IsNullOrWhiteSpace(shortTitle)) return computedLabel;
+        if (actionId is "winBind" or "webPage" or "openFolder"
+            or "openFile" or "typeText" or "customKey")
+            return computedLabel;
+        if (actionId.StartsWith("macro:", StringComparison.OrdinalIgnoreCase)) return computedLabel;
+        return shortTitle!;
+    }
+
+    /// <summary>
     /// 建一个键帽；被搜索过滤掉时返回 null。
     /// </summary>
     private Border? BuildKeycapEntry(string label, string keyId, string filter,
@@ -922,18 +945,9 @@ public partial class KeysView : UserControl
             actionCategory = _host?.Actions.Get(binding.Action)?.Category ?? "";
         }
 
-        // 键帽上优先用短名（长标题在 26px 宽的键帽里显示不全）
-        string keycapTitle = actionTitle;
-        if (isBound && binding != null)
-        {
-            var info = _host?.Actions.Get(binding.Action);
-            if (info != null && !string.IsNullOrWhiteSpace(info.ShortTitle)
-                && binding.Action is not ("winBind" or "webPage" or "openFolder" or "openFile" or "typeText")
-                && !binding.Action.StartsWith("macro:", StringComparison.OrdinalIgnoreCase))
-            {
-                keycapTitle = info.ShortTitle;
-            }
-        }
+        string keycapTitle = isBound && binding != null
+            ? KeycapTitleOf(binding.Action, actionTitle, _host?.Actions.Get(binding.Action)?.ShortTitle)
+            : actionTitle;
 
         bool match = filter.Length == 0 ||
                      label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
@@ -1606,6 +1620,42 @@ public partial class KeysView : UserControl
         ShowArgPanelFor("smartOpen", needsArg: false);
 
         return ActionBox.SelectedItem is ComboBoxItem { Tag: "smartOpen" };
+    }
+
+    /// <summary>
+    /// 自检用：把视图切到「自定义按键」面板（内容最高），强制布局后
+    /// 报出底部两个按钮的位置 —— 用来验证它们不会被挤出可视区。
+    ///
+    /// 为什么这条要专门测：以前中间几行是 Auto 高度，面板一展开就把
+    /// 「清除绑定」「测试一下」推到卡片外面，怎么滚都看不到
+    /// （溢出的是 Grid 行，不是 ScrollViewer 的内容，滚动条根本不出现）。
+    /// </summary>
+    public (bool Visible, double Bottom, double ViewHeight, double ScrollHeight) FooterForTest(
+        double width, double height)
+    {
+        ApplyEditorMode(EditorMode.CustomKey);
+
+        Measure(new Size(width, height));
+        Arrange(new Rect(0, 0, width, height));
+        UpdateLayout();
+
+        double bottom = 0;
+        try
+        {
+            var p = ClearBindButton.TransformToAncestor(this).Transform(new Point(0, 0));
+            bottom = p.Y + ClearBindButton.ActualHeight;
+        }
+        catch
+        {
+            // 没进可视树时 TransformToAncestor 会抛，按"不可见"处理
+        }
+
+        /* 注意用 ActualWidth/Height 而不是 IsVisible：
+         * IsVisible 要求控件挂在一个真实窗口的渲染树上，
+         * 自检里的视图是"离线"布局的，IsVisible 恒为 false，
+         * 用它判断会得到假失败。尺寸不为 0 才说明它真的被排版出来了。 */
+        bool laidOut = ClearBindButton.ActualWidth > 0 && ClearBindButton.ActualHeight > 0;
+        return (laidOut, bottom, ActualHeight, EditorScroll.ActualHeight);
     }
 
     /// <summary>
