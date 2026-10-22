@@ -111,6 +111,19 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>连续时每一步的间隔（毫秒）。默认给亮度这种"每步 1%"的动作。</summary>
     public const int RepeatIntervalMs = 45;
 
+    /// <summary>按住期间的判定周期（毫秒）。长按阈值精度依赖它。</summary>
+    private const int HoldTickActiveMs = 20;
+
+    /// <summary>
+    /// 空闲时的判定周期（毫秒）。
+    ///
+    /// 以前固定 20ms 常跑：一个托盘工具 99% 时间没人按键，却在界面线程上
+    /// 每秒醒 50 次，白耗电。空闲时降到 4 次/秒就够 —— 那时既没有长按判定
+    /// 也没有连续调节，唯一还需要的只是"万一触发键状态卡住"的自愈，
+    /// 而那只会在按住期间发生。
+    /// </summary>
+    private const int HoldTickIdleMs = 250;
+
     /// <summary>
     /// 连续调节最长持续多少秒。
     ///
@@ -276,17 +289,57 @@ public sealed class HotkeyEngine : IDisposable
         _holdTimer = new System.Windows.Threading.DispatcherTimer(
             System.Windows.Threading.DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(20),
+            Interval = TimeSpan.FromMilliseconds(HoldTickIdleMs),
         };
         _holdTimer.Tick += (_, _) => CheckHoldThreshold();
         _holdTimer.Start();
     }
 
-    /// <summary>阈值检查（计时器每 20ms 调一次；自检也可直接调）。</summary>
+    /// <summary>
+    /// 要求计时器切到"活跃周期"（20ms）。
+    ///
+    /// 调用点可能在钩子线程上，而 DispatcherTimer 只能在界面线程改 ——
+    /// 所以这里用 Send 优先级投递，下一轮立刻生效（比长按阈值 200ms 快得多）。
+    /// </summary>
+    private void RequestFastHoldTick()
+    {
+        var timer = _holdTimer;
+        if (timer == null) return;
+
+        if (timer.Dispatcher.CheckAccess())
+        {
+            ApplyFastHoldTick();
+            return;
+        }
+
+        try
+        {
+            timer.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Send,
+                new Action(ApplyFastHoldTick));
+        }
+        catch
+        {
+            // 退出过程中 Dispatcher 可能已关闭：忽略即可，反正要退了
+        }
+    }
+
+    private void ApplyFastHoldTick()
+    {
+        var timer = _holdTimer;
+        if (timer == null) return;
+        if (timer.Interval != TimeSpan.FromMilliseconds(HoldTickActiveMs))
+            timer.Interval = TimeSpan.FromMilliseconds(HoldTickActiveMs);
+        if (!timer.IsEnabled) timer.Start();
+    }
+
+    /// <summary>阈值检查（活跃期每 20ms / 空闲期每 250ms 调一次；自检也可直接调）。</summary>
     private void CheckHoldThreshold()
     {
         // 连续量重复与触发键无关，先跑它
         CheckContinuousRepeat();
+
+        // 没有任何"按住"迹象时退回空闲周期，避免空转耗电
+        RelaxHoldTickIfIdle();
 
         if (!_triggerHeld) return;
 
@@ -352,6 +405,23 @@ public sealed class HotkeyEngine : IDisposable
         int holdMs = _activeTrigger?.HoldMs ?? 200;
         if ((DateTime.Now - _triggerDownTime).TotalMilliseconds >= holdMs)
             OnHoldThresholdReached();
+    }
+
+    /// <summary>
+    /// 没有任何"正在按住"的迹象时，把计时器退回空闲周期（4 次/秒）。
+    /// 由 <see cref="CheckHoldThreshold"/> 的自愈分支与抬起处理调用。
+    /// </summary>
+    private void RelaxHoldTickIfIdle()
+    {
+        var timer = _holdTimer;
+        if (timer == null) return;
+        if (_triggerHeld) return;
+        lock (_repeatGate)
+        {
+            if (_repeats.Count > 0) return;
+        }
+        if (timer.Interval != TimeSpan.FromMilliseconds(HoldTickIdleMs))
+            timer.Interval = TimeSpan.FromMilliseconds(HoldTickIdleMs);
     }
 
     /// <summary>
@@ -1003,6 +1073,7 @@ public sealed class HotkeyEngine : IDisposable
 
         _triggerHeld = true;
         _triggerDownTime = DateTime.Now;
+        RequestFastHoldTick();
         _usedCombo = false;
         _usedOtherKey = false;
         _tapHandled = false;

@@ -259,14 +259,7 @@ public partial class KeysView : UserControl
         Restore(CategoryBoxWeb, keepWeb);
         Restore(CategoryBoxType, keepType);
 
-        static void Restore(ComboBox box, string? tag)
-        {
-            foreach (ComboBoxItem it in box.Items)
-            {
-                if (it.Tag as string == tag) { box.SelectedItem = it; return; }
-            }
-            if (box.Items.Count > 0) box.SelectedIndex = 0;
-        }
+        static void Restore(ComboBox box, string? tag) => SelectTag(box, tag, fallbackFirst: true);
 
         BuildActionBox();
     }
@@ -399,12 +392,7 @@ public partial class KeysView : UserControl
             if (info != null)
             {
                 foreach (var box in new[] { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType })
-                {
-                    foreach (ComboBoxItem it in box.Items)
-                    {
-                        if (it.Tag as string == info.Category) { box.SelectedItem = it; break; }
-                    }
-                }
+                    SelectTag(box, info.Category);
             }
 
             // ② 按分类决定用哪种编辑模式
@@ -742,10 +730,7 @@ public partial class KeysView : UserControl
                  { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType, CategoryBoxCustom })
         {
             if (ReferenceEquals(box, source)) continue;
-            foreach (ComboBoxItem it in box.Items)
-            {
-                if (it.Tag as string == tag) { box.SelectedItem = it; break; }
-            }
+            SelectTag(box, tag);
         }
     }
 
@@ -785,6 +770,22 @@ public partial class KeysView : UserControl
     }
 
     // ---------------- 键盘绘制 ----------------
+
+    /// <summary>
+    /// 在分类下拉里选中某个 Tag。
+    ///
+    /// 页面上有 5 个分类下拉（普通 / 窗口绑定 / 网页 / 直链 / 自定义），
+    /// 它们永远显示同一个分类 —— 以前每个调用点都写一遍同样的 foreach，
+    /// 改一处漏一处的风险很高，这里收成一个函数。
+    /// </summary>
+    private static void SelectTag(ComboBox box, string? tag, bool fallbackFirst = false)
+    {
+        foreach (ComboBoxItem it in box.Items)
+        {
+            if (it.Tag as string == tag) { box.SelectedItem = it; return; }
+        }
+        if (fallbackFirst && box.Items.Count > 0) box.SelectedIndex = 0;
+    }
 
     /// <summary>当前层的触发键名（用于在键盘真实位置高亮它）。</summary>
     private string? CurrentTriggerKey =>

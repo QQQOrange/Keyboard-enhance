@@ -53,8 +53,18 @@ public sealed class AppHost : IDisposable
         Settings = settings;
         _dispatcher = dispatcher;
 
-        // 同步服务的设置读取走委托，保证恢复配置后拿到的是最新引用
-        Sync = new Core.Sync.SyncService(() => Settings);
+        /* 设置序列化必须回到界面线程做（对象图只在这条线程被修改）。
+         * Core 层不引用 WPF，所以由这里把 marshal 注入进去。 */
+        SettingsStore.Marshal = action =>
+        {
+            if (_dispatcher.CheckAccess()) action();
+            else _dispatcher.BeginInvoke(action, System.Windows.Threading.DispatcherPriority.Background);
+        };
+
+        /* 同步服务的设置读取走委托，保证恢复配置后拿到的是最新引用。
+         * 第二个参数是"界面线程序列化快照"：备份与指纹会遍历整个对象图，
+         * 必须避开用户正在编辑的集合。 */
+        Sync = new Core.Sync.SyncService(() => Settings, SettingsJsonSnapshot);
 
         Clipboard = new ClipboardService
         {
@@ -285,7 +295,9 @@ public sealed class AppHost : IDisposable
     /// </summary>
     public void SaveSettings()
     {
-        SettingsStore.Save(Settings);
+        /* 防抖 400ms：参数框是逐字符触发，以前每敲一个字就序列化 + 加密 + 三次磁盘操作。
+         * 现在界面线程只记一笔，真正落盘由后台写线程在静默后完成。 */
+        SettingsStore.RequestSave(Settings);
 
         /* 防抖动：打字时每次按键都会调 SaveSettings（参数框的 TextChanged），
          * 直接同步通知会让所有页面跟着重绘，卡顿明显。
@@ -306,6 +318,41 @@ public sealed class AppHost : IDisposable
 
     private bool _settingsNotifyPending;
     private bool _settingsNotifyQueued;
+
+    /// <summary>把待保存的设置立刻落盘（退出、备份、切换加密前调用）。</summary>
+    public void FlushSettings()
+    {
+        SettingsStore.FlushPending();
+    }
+
+    /// <summary>
+    /// 在界面线程上把当前设置序列化成 JSON，供后台线程（备份/指纹）安全使用。
+    /// 后台线程自己序列化活对象时，碰到 UI 正在增删的集合会抛"集合已修改"。
+    /// </summary>
+    public string SettingsJsonSnapshot()
+    {
+        if (_dispatcher.CheckAccess())
+            return System.Text.Json.JsonSerializer.Serialize(Settings, SettingsStore.JsonOptions);
+
+        try
+        {
+            /* 带超时的 Invoke：界面线程若正卡在别处，宁可 2 秒后自己退化成
+             * 直接序列化，也不要让后台备份线程无限期挂着（更不会死锁退出流程）。 */
+            var op = _dispatcher.InvokeAsync(() =>
+                System.Text.Json.JsonSerializer.Serialize(Settings, SettingsStore.JsonOptions));
+
+            if (op.Task.Wait(TimeSpan.FromSeconds(2)) && op.Task.IsCompletedSuccessfully)
+                return op.Task.Result;
+
+            CoreLog.Warn("界面线程 2 秒内没有交出设置快照，退化为直接序列化");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("获取设置快照失败，退化为直接序列化：" + ex.Message);
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(Settings, SettingsStore.JsonOptions);
+    }
 
     public void ApplyHotkeyScheme(string scheme)
     {

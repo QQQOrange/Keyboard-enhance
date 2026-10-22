@@ -1,4 +1,4 @@
-namespace CapsLockPlus.Core.Input;
+﻿namespace CapsLockPlus.Core.Input;
 
 /// <summary>虚拟键码常量。</summary>
 public static class VK
@@ -207,6 +207,18 @@ public static class KeyName
     public static bool IsBindable(int vk) => ToName.ContainsKey(vk);
 
     public static string? NameOf(int vk) => ToName.TryGetValue(vk, out var n) ? n : null;
+
+    /// <summary>
+    /// 未知键的兜底名字：`vk0xE8` 这种形式。
+    ///
+    /// 以前遇到没收录的键（部分输入法键、厂商自定义键）直接拒绝绑定，
+    /// 用户按下去没反应也没解释。现在给它一个可存可读的名字：
+    /// <see cref="VkOf"/> 已经认得这个格式，宏录制也在用，等于原生支持。
+    /// </summary>
+    public static string GeneratedName(int vk) => $"vk0x{vk:X2}";
+
+    /// <summary>取名字：已知用标准名，未知用兜底名（永不返回 null）。</summary>
+    public static string NameOrGenerated(int vk) => NameOf(vk) ?? GeneratedName(vk);
 
     public static int? VkOf(string? name)
     {

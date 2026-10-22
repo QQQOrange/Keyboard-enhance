@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -170,9 +170,18 @@ public partial class ToastWindow : Window
 
     private void Position()
     {
-        var wa = SystemParameters.WorkArea;
         // 内容测量完再定位，避免第一次显示时尺寸还是 0
         UpdateLayout();
+
+        /* 跟随前台窗口所在显示器的右下角。
+         * 旧实现用 SystemParameters.WorkArea：只认主屏，且是系统 DPI 的 DIP，
+         * 在副屏/混缩放下会错位到屏幕外。 */
+        var fg = Core.Interop.NativeMethods.GetForegroundWindow();
+        if (Core.Windows.ScreenPlacement.Place(this,
+                Core.Windows.ScreenPlacement.Anchor.BottomRight, 10, 10, fg))
+            return;
+
+        var wa = SystemParameters.WorkArea;
         Left = wa.Right - ActualWidth - 10;
         Top = wa.Bottom - ActualHeight - 10;
     }

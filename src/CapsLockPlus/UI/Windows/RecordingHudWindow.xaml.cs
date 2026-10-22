@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Media.Animation;
 using CapsLockPlus.Core;
 
@@ -18,11 +18,20 @@ public partial class RecordingHudWindow : Window
         Loaded += (_, _) => Position();
     }
 
-    /// <summary>顶部居中。用工作区（不含任务栏）算，多显示器下跟着主屏。</summary>
+    /// <summary>
+    /// 顶部居中。按**前台窗口所在显示器**的工作区算 ——
+    /// 混 DPI 多屏下用 SystemParameters.WorkArea 会算到主屏，浮层就跑到别的屏幕上。
+    /// </summary>
     private void Position()
     {
-        var wa = SystemParameters.WorkArea;
         UpdateLayout();
+
+        var fg = Core.Interop.NativeMethods.GetForegroundWindow();
+        if (Core.Windows.ScreenPlacement.Place(this,
+                Core.Windows.ScreenPlacement.Anchor.TopCenter, marginY: 14, target: fg))
+            return;
+
+        var wa = SystemParameters.WorkArea;
         Left = wa.Left + (wa.Width - ActualWidth) / 2;
         Top = wa.Top + 14;
     }

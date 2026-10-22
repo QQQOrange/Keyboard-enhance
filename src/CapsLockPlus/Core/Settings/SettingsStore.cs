@@ -18,6 +18,36 @@ public static class SettingsStore
 
     private static readonly object Gate = new();
 
+    /* ---- 保存节流 ----------------------------------------------------------
+     *
+     * 现状：全仓 71 处调用 SaveSettings()，其中参数框的 TextChanged 是**逐字符**触发。
+     * Save() 里是"序列化 + AES + 写 tmp + 复制 bak + move"全套同步 IO，
+     * 打一个三位数就是三次，拖滑杆每 tick 一次 —— 输入卡顿与无谓磁盘写入都从这来。
+     *
+     * 现在的做法：
+     *   1. RequestSave() 只记一个"待保存"，400ms 内有新改动就顺延（防抖）；
+     *   2. 到时在**调用线程（界面线程）**上序列化成字符串 —— 对象图只在这条线程被改，
+     *      这样后台线程永远不会去枚举正在变动的集合（之前的一个偶发崩溃源）；
+     *   3. 加密与落盘交给一条后台写线程，按"后写覆盖先写"合并。
+     *
+     * 退出/恢复等关键路径仍然可以调 Save() 同步落盘。
+     */
+    private const int DebounceMs = 400;
+    private static AppSettings? _pendingSave;
+    private static System.Threading.Timer? _debounce;
+    private static string? _queuedJson;
+    private static Thread? _writerThread;
+    private static readonly AutoResetEvent WriteSignal = new(false);
+
+    /// <summary>
+    /// 把回调切到界面线程（由 AppHost 注入）。
+    ///
+    /// 序列化必须在"改对象图的那条线程"上做，否则后台线程会去枚举
+    /// 用户正在增删的 List，抛"集合已修改"。Core 层不引用 WPF，
+    /// 所以由上层注入一个 marshal 函数。
+    /// </summary>
+    public static Action<Action>? Marshal { get; set; }
+
     /// <summary>
     /// 设置文件最后写入时间（本地时间）。
     /// 启动时同步要拿它跟云端备份的修改时间比"谁新用谁"。
@@ -170,43 +200,187 @@ public static class SettingsStore
         }
     }
 
-    public static void Save(AppSettings settings)
+    /// <summary>请求保存（防抖 400ms）。界面上的高频改动都走这里。</summary>
+    public static void RequestSave(AppSettings settings)
     {
         lock (Gate)
         {
-            // 只读保护期间一律不落盘 —— 这份内存里的对象是默认值，写下去就是灾难
-            if (_dataLocked)
+            _pendingSave = settings;
+            _debounce ??= new System.Threading.Timer(_ =>
             {
-                CoreLog.Warn("设置处于只读保护状态，本次保存已跳过");
-                return;
+                Action<Action>? marshal = Marshal;
+                if (marshal != null) marshal(SaveDeferredNow);
+                else SaveDeferredNow();
+            }, null, Timeout.Infinite, Timeout.Infinite);
+
+            _debounce.Change(DebounceMs, Timeout.Infinite);
+        }
+    }
+
+    /// <summary>把当前待保存内容序列化并排队（必须在界面线程调用）。</summary>
+    private static void SaveDeferredNow()
+    {
+        AppSettings? pending;
+        lock (Gate)
+        {
+            pending = _pendingSave;
+            _pendingSave = null;
+        }
+        if (pending != null) SaveDeferred(pending);
+    }
+
+    /// <summary>
+    /// 保存但**不等落盘**：序列化（调用线程）→ 交给后台写线程。
+    ///
+    /// 界面上的高频保存走这条：加密 + 三次文件操作都在后台，
+    /// 界面线程只花一次序列化的时间。
+    /// </summary>
+    public static void SaveDeferred(AppSettings settings)
+    {
+        string? json;
+        lock (Gate) json = SerializeLocked(settings);
+        if (json == null) return;
+
+        lock (Gate) _queuedJson = json;
+        EnsureWriter();
+        WriteSignal.Set();
+    }
+
+    /// <summary>
+    /// 立刻把待保存的内容落盘（退出、切页面、用户明确点"保存"时用）。
+    /// 同步执行，保证函数返回时文件已经写好。
+    /// </summary>
+    public static void FlushPending()
+    {
+        AppSettings? pending;
+        lock (Gate)
+        {
+            pending = _pendingSave;
+            _pendingSave = null;
+            _debounce?.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+
+        if (pending != null) Save(pending);
+        else DrainWrites();
+    }
+
+    /// <summary>把已排队的写入全部落盘（同步，退出前用）。</summary>
+    public static void DrainWrites()
+    {
+        lock (Gate) DrainWritesLocked();
+    }
+
+    /// <summary>
+    /// 后台写线程：只负责"加密 + 落盘"。
+    ///
+    /// 队列里永远只留最新一份（<see cref="_queuedJson"/>）：
+    /// 用户连打十个字符，磁盘上只会留下最后一次的结果，中间态没有意义。
+    /// </summary>
+    private static void EnsureWriter()
+    {
+        if (_writerThread != null) return;
+
+        _writerThread = new Thread(() =>
+        {
+            while (true)
+            {
+                WriteSignal.WaitOne(2000);
+                DrainWrites();
             }
+        })
+        {
+            IsBackground = true,
+            Name = "CapsLockPlus.SettingsWriter",
+            Priority = ThreadPriority.BelowNormal,
+        };
+        _writerThread.Start();
+    }
 
-            try
+    /// <summary>
+    /// 同步保存：函数返回时文件已经写好。
+    /// 退出、恢复备份、切换加密这类"必须立刻落盘"的场景用它；
+    /// 界面上的普通改动请用 <see cref="RequestSave"/>。
+    /// </summary>
+    public static void Save(AppSettings settings)
+    {
+        string? json;
+        lock (Gate) json = SerializeLocked(settings);
+        if (json == null) return;
+
+        lock (Gate)
+        {
+            _queuedJson = json;      // 覆盖尚未落盘的旧内容，保证顺序
+            DrainWritesLocked();
+        }
+    }
+
+    /// <summary>
+    /// 序列化（调用线程）。返回 null 表示这次不该写盘（只读保护 / 未解锁）。
+    /// 只碰内存，不做 IO —— 所以可以放心在界面线程调用。
+    /// </summary>
+    private static string? SerializeLocked(AppSettings settings)
+    {
+        // 只读保护期间一律不落盘 —— 这份内存里的对象是默认值，写下去就是灾难
+        if (_dataLocked)
+        {
+            CoreLog.Warn("设置处于只读保护状态，本次保存已跳过");
+            return null;
+        }
+
+        if (DataVault.IsEnabled && !DataVault.IsUnlocked)
+        {
+            CoreLog.Warn("加密已启用但尚未解锁，本次保存已跳过");
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Serialize(settings, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("序列化设置失败", ex);
+            return null;
+        }
+    }
+
+    /// <summary>加密 + 原子写入（只在写线程或同步保存时执行）。</summary>
+    private static void DrainWritesLocked()
+    {
+        while (_queuedJson != null)
+        {
+            string json = _queuedJson;
+            _queuedJson = null;
+            WriteJsonLocked(json);
+        }
+    }
+
+    private static void WriteJsonLocked(string json)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDir);
+
+            // 启用了加密就写密文；没解锁时宁可保留旧文件也不写半成品
+            if (DataVault.IsEnabled)
             {
-                Directory.CreateDirectory(AppPaths.DataDir);
-                var json = JsonSerializer.Serialize(settings, JsonOptions);
-
-                // 启用了加密就写密文；没解锁时宁可保留旧文件也不写半成品
-                if (DataVault.IsEnabled)
+                if (!DataVault.IsUnlocked)
                 {
-                    if (!DataVault.IsUnlocked)
-                    {
-                        CoreLog.Warn("加密已启用但尚未解锁，本次保存已跳过");
-                        return;
-                    }
-                    json = DataVault.Encrypt(json);
+                    CoreLog.Warn("加密已启用但尚未解锁，本次保存已跳过");
+                    return;
                 }
+                json = DataVault.Encrypt(json);
+            }
 
-                var tmp = AppPaths.SettingsFile + ".tmp";
-                File.WriteAllText(tmp, json);
-                if (File.Exists(AppPaths.SettingsFile))
-                    File.Copy(AppPaths.SettingsFile, AppPaths.SettingsFile + ".bak", true);
-                File.Move(tmp, AppPaths.SettingsFile, true);
-            }
-            catch (Exception ex)
-            {
-                CoreLog.Error("保存设置失败", ex);
-            }
+            var tmp = AppPaths.SettingsFile + ".tmp";
+            File.WriteAllText(tmp, json);
+            if (File.Exists(AppPaths.SettingsFile))
+                File.Copy(AppPaths.SettingsFile, AppPaths.SettingsFile + ".bak", true);
+            File.Move(tmp, AppPaths.SettingsFile, true);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("保存设置失败", ex);
         }
     }
 

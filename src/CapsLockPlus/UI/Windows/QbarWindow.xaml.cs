@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -370,10 +370,19 @@ public partial class QbarWindow : Window
         ClearChip();
         if (!IsVisible)
         {
-            var wa = SystemParameters.WorkArea;
-            Left = wa.Left + (wa.Width - Width) / 2;
-            Top = wa.Top + wa.Height * 0.22;
             Show();
+
+            /* 定位必须在 Show 之后：这时才有 HWND，才知道该落在哪块屏。
+             * 以"前台窗口"所在显示器为准 —— 用户在副屏打字时，
+             * 面板就该出现在副屏，而不是永远弹回主屏。 */
+            var fg = Core.Interop.NativeMethods.GetForegroundWindow();
+            if (!Core.Windows.ScreenPlacement.Place(this, Core.Windows.ScreenPlacement.Anchor.UpperCenter,
+                    target: fg))
+            {
+                var wa = SystemParameters.WorkArea;
+                Left = wa.Left + (wa.Width - Width) / 2;
+                Top = wa.Top + wa.Height * 0.22;
+            }
         }
 
         /* 抢前台 + 抢输入焦点。

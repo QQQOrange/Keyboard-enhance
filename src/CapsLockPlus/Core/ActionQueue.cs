@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.IO;
 
 namespace CapsLockPlus.Core;
@@ -51,42 +51,6 @@ public sealed class ActionQueue : IDisposable
         if (_disposed) return;
         _disposed = true;
         _queue.CompleteAdding();
-    }
-}
-
-/// <summary>极简日志：写入数据目录下的 logs\app.log（数据目录见 <see cref="AppPaths"/>）。</summary>
-public static class CoreLog
-{
-    private static readonly object Gate = new();
-    private static string? _path;
-
-    public static string LogPath => _path ??= Path.Combine(AppPaths.DataDir, "logs", "app.log");
-
-    /// <summary>控制台输出开关：带 --render / --selftest 时关闭，避免污染命令行输出。</summary>
-    public static bool EchoToConsole { get; set; }
-
-    public static void Info(string message) => Write("INFO", message, null);
-    public static void Warn(string message) => Write("WARN", message, null);
-    public static void Error(string message, Exception? ex = null) => Write("ERROR", message, ex);
-
-    private static void Write(string level, string message, Exception? ex)
-    {
-        try
-        {
-            lock (Gate)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
-                var fi = new FileInfo(LogPath);
-                if (fi.Exists && fi.Length > 2 * 1024 * 1024) fi.Delete();
-                var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [{level}] {message}";
-                if (ex != null) line += Environment.NewLine + ex;
-                File.AppendAllText(LogPath, line + Environment.NewLine);
-            }
-        }
-        catch
-        {
-            // 日志失败不能影响主流程
-        }
     }
 }
 

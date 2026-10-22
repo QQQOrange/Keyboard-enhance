@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Settings;
@@ -376,6 +376,12 @@ public partial class App : Application
         catch (Exception ex) { CoreLog.Warn("退出同步异常：" + ex.Message); }
 
         try { Host?.Dispose(); } catch { }
+
+        /* 收尾：把防抖中的设置落盘、把日志缓冲刷出去。
+         * 顺序放在 Dispose 之后 —— Dispose 里可能还会写日志。 */
+        try { SettingsStore.FlushPending(); } catch (Exception ex) { CoreLog.Warn("退出前保存设置失败：" + ex.Message); }
+        try { CoreLog.Flush(); CoreLog.Shutdown(); } catch { }
+
         SingleInstance.Release();
         base.OnExit(e);
     }

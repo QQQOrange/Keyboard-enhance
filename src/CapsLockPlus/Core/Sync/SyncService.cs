@@ -74,7 +74,29 @@ public sealed class SyncService
 
     private readonly Func<AppSettings> _settings;
 
-    public SyncService(Func<AppSettings> settings) => _settings = settings;
+    /// <summary>
+    /// @param settings 取当前设置（活对象）
+    /// @param snapshotJson 在**界面线程**把设置序列化成 JSON（可选）。
+    ///        备份/指纹这类"要遍历整个对象图"的操作必须走它：
+    ///        后台线程直接序列化活对象，碰上用户正在增删绑定会抛"集合已修改"。
+    /// </summary>
+    public SyncService(Func<AppSettings> settings, Func<string>? snapshotJson = null)
+    {
+        _settings = settings;
+        _snapshotJson = snapshotJson;
+    }
+
+    private readonly Func<string>? _snapshotJson;
+
+    /// <summary>
+    /// 取一份安全的设置 JSON：优先用界面线程给的快照，没有就退化成直接序列化
+    /// （自检/命令行等单线程场景）。
+    /// </summary>
+    private string SnapshotJson()
+    {
+        if (_snapshotJson != null) return _snapshotJson();
+        return JsonSerializer.Serialize(_settings(), SettingsStore.JsonOptions);
+    }
 
     // ---------------- 本地目录 ----------------
 
@@ -230,8 +252,7 @@ public sealed class SyncService
                 "还没设备份密码。备份一律加密，请先在「备份密码」里设一个再备份。");
 
         encrypted = true;
-        string json = JsonSerializer.Serialize(s, SettingsStore.JsonOptions);
-        return CryptoBox.Encrypt(json, password);
+        return CryptoBox.Encrypt(SnapshotJson(), password);
     }
 
     /// <summary>不抛异常版本，供自动备份这类"失败就算了"的场景用。</summary>
@@ -647,10 +668,25 @@ public sealed class SyncService
     /// </summary>
     private string StateHash()
     {
-        var snapshot = _settings().Clone();
-        snapshot.Sync.LastSyncAt = DateTime.MinValue;
-        snapshot.Sync.LastSyncInfo = "";
-        string json = JsonSerializer.Serialize(snapshot, SettingsStore.JsonOptions);
+        /* 指纹要排除 LastSyncAt / LastSyncInfo，否则每次备份后指纹都变，
+         * "没变化就跳过"形同虚设。这里直接在 JSON 上剔除这两个字段，
+         * 不再 Clone 活对象（Clone 本身就要遍历正在被 UI 修改的集合）。 */
+        string json;
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(SnapshotJson());
+            if (node?["Sync"] is System.Text.Json.Nodes.JsonObject sync)
+            {
+                sync.Remove("LastSyncAt");
+                sync.Remove("LastSyncInfo");
+            }
+            json = node?.ToJsonString() ?? "";
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("计算配置指纹失败，退化为直接序列化：" + ex.Message);
+            json = SnapshotJson();
+        }
         byte[] hash = System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(json));
         return Convert.ToHexString(hash);

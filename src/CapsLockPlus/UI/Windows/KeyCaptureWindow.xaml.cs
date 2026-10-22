@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -271,28 +271,28 @@ public partial class KeyCaptureWindow : Window
             // 有前缀键按着 → 这个键才是真正的目标键
             if (_prefixVk != 0) _prefixUsed = true;
 
-            // 非修饰键按下 = 定格组合
-            string? name = KeyName.NameOf(vk);
+            /* 非修饰键按下 = 定格组合。
+             *
+             * 未知键不再拒绝：给它一个 `vk0xXX` 的兜底名字。
+             * 键名表是白名单，输入法键 / 厂商自定义键根本不在表里，
+             * 以前用户按下去只看到"暂时不能绑定"，等于功能缺失；
+             * 而 KeyName.VkOf 早就支持这个格式（宏录制一直在用）。 */
+            string? known = KeyName.NameOf(vk);
+            string name = known ?? KeyName.GeneratedName(vk);
             var mods = ReadModifiers();
             string combo = BuildCombo(mods, name);
 
             Dispatcher.BeginInvoke(() =>
             {
                 CapturedMods = mods;
-                CapturedCombo = name == null ? null : combo;
-
-                if (name == null)
-                {
-                    PromptText.Text = $"未识别按键（VK 0x{vk:X2}）";
-                    DetailText.Text = "这个键没有内置名称，暂时不能绑定。换一个键试试。";
-                    ConfirmButton.IsEnabled = false;
-                    return;
-                }
+                CapturedCombo = combo;
 
                 PromptText.Text = combo;
-                DetailText.Text = mods == KeyModifiers.None
-                    ? $"单键 {name}　·　按「确定绑定」生效"
-                    : $"组合键 {combo}　·　按「确定绑定」生效";
+                DetailText.Text = known != null
+                    ? (mods == KeyModifiers.None
+                        ? $"单键 {name}　·　按「确定绑定」生效"
+                        : $"组合键 {combo}　·　按「确定绑定」生效")
+                    : $"未收录的键（VK 0x{vk:X2}），按 {name} 记录　·　按「确定绑定」生效";
                 ConfirmButton.IsEnabled = true;
             });
 

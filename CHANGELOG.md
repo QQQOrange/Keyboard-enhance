@@ -4,6 +4,63 @@
 
 ---
 
+## v4.4.0 — 按审视报告落地第一批优化（P0 全部 + P1/P2 重点项）
+
+上一版出了 `docs/CODE-REVIEW-2026-10-22.md`，这版把其中的 **4 个 P0 全部** 与
+**P1-3/P1-4、P2-1** 落地。原则是"只改内部实现，功能与交互不变"，1682 项自检全过。
+
+### P0-1 · 长按计时器：空闲时不再每秒醒 50 次
+- `Core/Input/HotkeyEngine.cs`：`DispatcherTimer` 拆成 **活跃 20ms / 空闲 250ms** 两档。
+  按下触发键时用 `DispatcherPriority.Send` 投递到界面线程提速（钩子线程不能直接改
+  DispatcherTimer），松开后自动回落。
+- **实测**（隔离实例，托盘模式）：空闲 10 秒 CPU **47ms**，按键操作结束后 6 秒 **0ms**；
+  以前是固定 20ms 常跑（50 次/秒）。
+
+### P0-2 · 设置保存：逐字符落盘 → 400ms 防抖 + 后台写
+- `Core/Settings/SettingsStore.cs`：新增 `RequestSave` / `SaveDeferred` / `FlushPending`。
+  序列化仍在**调用线程（界面线程）**上完成（对象图只在那儿被改），
+  加密与三次文件操作交给专门的 **BelowNormal 后台写线程**，队列只保留最新一份。
+- `UI/AppHost.cs`：`SaveSettings()` 改走防抖；新增 `FlushSettings()`；
+  `App.xaml.cs` 退出时 `FlushPending()` 兜底，不丢改动。
+
+### P0-3 · 日志：每次 3 次文件系统调用 → 1 个常开句柄
+- 新增 `Core/CoreLog.cs`（从 `ActionQueue.cs` 里搬出来，类归属修正）：
+  常开 `StreamWriter`、逐行 flush（AutoFlush）、体积用内存计数器、失败自动重开。
+- 为什么逐行 flush：实测"攒 20 行再刷"会在进程被强杀时丢掉最后那些行 ——
+  而那恰恰是最需要日志的时刻。
+
+### P0-4 · 备份/指纹：不再序列化"活"设置对象
+- `Core/Sync/SyncService.cs`：新增 `snapshotJson` 委托；`BuildBackupPayload` 与
+  `StateHash` 改用**界面线程生成的快照**（`StateHash` 用 `JsonNode` 剔除
+  `LastSyncAt/LastSyncInfo`，不再 `Clone()` 活动集合）。
+- `UI/AppHost.cs`：提供 `SettingsJsonSnapshot()`，带 2 秒超时兜底，退出流程不会死锁。
+
+### P1-4 · 未收录的按键也能绑定了
+- `Core/Input/KeyName.cs`：新增 `GeneratedName` / `NameOrGenerated`（`vk0xE8` 形式，
+  `VkOf` 本来就认）。`UI/Windows/KeyCaptureWindow.xaml.cs` 不再拒绝未知键，
+  改为"未收录的键（VK 0xXX），按 vk0xXX 记录"。
+
+### P2-1 · 浮层定位统一（混 DPI 多屏不再错位）
+- 新增 `Core/Windows/ScreenPlacement.cs`：`MonitorFromWindow` + `GetMonitorInfo`（物理像素）
+  + `GetDpiForWindow` + `SetWindowPos`。
+- 接入 `QbarWindow`（前台窗口所在屏、居中偏上）、`RecordingHudWindow`（顶部居中）、
+  `ToastWindow`（右下角）；拿不到信息时自动退回旧逻辑。
+
+### P1-3（部分）· 重复代码收敛
+- `UI/Views/KeysView.xaml.cs`：5 个分类下拉的"按 Tag 选中"逻辑从 4 处 `foreach`
+  收成一个 `SelectTag()`。
+
+### 仍待处理（已记录在审视报告里）
+空 catch 的可观测化、17 处 `MessageBox` 统一、`KeysView` 拆 partial、
+`SelfTest/RenderTools` 发布瘦身、97 处硬编码色收敛、浮层 `ShadowCard` 抽取。
+这些都属于"改动面大、需要逐页视觉验收"，放在下一批做，避免一次性引入回归。
+
+---
+
+---
+
+---
+
 ## v4.3.3 — 亮度横条逐项复刻系统音量条（位置 / 配色 / 半透明，全部实测）
 
 这版不再"参考"，而是把系统那条量出来照做。方法换了两次才准：
