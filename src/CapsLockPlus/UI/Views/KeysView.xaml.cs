@@ -230,7 +230,10 @@ public partial class KeysView : UserControl
         string? keepWeb = (CategoryBoxWeb.SelectedItem as ComboBoxItem)?.Tag as string;
         string? keepType = (CategoryBoxType.SelectedItem as ComboBoxItem)?.Tag as string;
 
-        var cats = _host.Actions.Items.Select(i => i.Category).Distinct().ToList();
+        /* 隐藏动作（openUrl / runProgram）不参与分类列表：
+         * 它们只为老配置的绑定保留执行能力，不该再出现在界面上。 */
+        var cats = _host.Actions.Items.Where(i => !i.Hidden)
+            .Select(i => i.Category).Distinct().ToList();
 
         /* 三个分类下拉填同样的内容：
          *   · CategoryBox        —— 普通模式（分类 + 功能两级）
@@ -297,7 +300,7 @@ public partial class KeysView : UserControl
         string? cat = (CategoryBox.SelectedItem as ComboBoxItem)?.Tag as string;
 
         ActionBox.Items.Clear();
-        foreach (var item in _host.Actions.Items.Where(i => i.Category == cat))
+        foreach (var item in _host.Actions.Items.Where(i => !i.Hidden && i.Category == cat))
             ActionBox.Items.Add(new ComboBoxItem { Content = item.Title, Tag = item.Id });
 
         if (ActionBox.Items.Count > 0) ActionBox.SelectedIndex = 0;
@@ -358,7 +361,7 @@ public partial class KeysView : UserControl
         }
 
         var hits = _host.Actions.Items
-            .Where(i => MatchesAction(i, filter))
+            .Where(i => !i.Hidden && MatchesAction(i, filter))
             .OrderBy(i => i.Category)
             .ThenBy(i => i.Title)
             .Take(60)
@@ -1538,7 +1541,7 @@ public partial class KeysView : UserControl
         {
             foreach (ComboBoxItem it in CategoryBox.Items)
             {
-                if (it.Tag as string == "系统")
+                if (it.Tag as string == "智能直达")
                 {
                     CategoryBox.SelectedItem = it;
                     break;

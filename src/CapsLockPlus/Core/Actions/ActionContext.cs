@@ -620,7 +620,10 @@ public sealed class ActionContext
         int? now = BrightnessService.Step(delta);
         if (now == null)
         {
-            Notify("这台显示器不支持用软件调亮度（笔记本内置屏一般可以，外接屏需开启 DDC/CI）");
+            // 说清"为什么没动"，比一句"不支持"有用得多
+            string why = BrightnessService.Diagnose();
+            CoreLog.Warn("[亮度] 调节失败：" + why);
+            Notify(why);
             return true;
         }
         Notify($"屏幕亮度 {now}%");

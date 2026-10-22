@@ -128,7 +128,7 @@ public partial class LayersView : UserControl
         // 动作下拉（带"无"选项）
         TapActionBox.Items.Clear();
         DoubleTapBox.Items.Clear();
-        foreach (var item in ActionItems())
+        foreach (var item in ActionItems(t))
         {
             TapActionBox.Items.Add(item);
             DoubleTapBox.Items.Add(new ComboBoxItem
@@ -143,11 +143,20 @@ public partial class LayersView : UserControl
         _suppress = false;
     }
 
-    private IEnumerable<ComboBoxItem> ActionItems()
+    private IEnumerable<ComboBoxItem> ActionItems(Core.Settings.TriggerKey? current = null)
     {
         yield return new ComboBoxItem { Content = "（无）", Tag = "none" };
         if (_host == null) yield break;
+
+        /* 隐藏动作（「打开网址」「运行程序」）不再列出来 —— 它们已经被
+         * 「直达链接」「智能直达」覆盖，留着只会让人纠结用哪个。
+         *
+         * 但当前触发键**已经**设成它们时必须保留这一项：
+         * 否则下拉里找不到，会显示成"（无）"，用户以为自己设丢了。 */
         foreach (var a in _host.Actions.Items
+                     .Where(i => !i.Hidden
+                                 || i.Id == current?.TapAction
+                                 || i.Id == current?.DoubleTapAction)
                      .Where(i => i.Id != "doNothing")
                      .OrderBy(i => i.Category).ThenBy(i => i.Title))
         {

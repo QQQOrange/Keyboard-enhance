@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using CapsLockPlus.Core;
@@ -141,6 +141,7 @@ public static class SelfTest
         Section("音量与亮度");
         TestVolumeCore();
         TestBrightnessMath();
+        TestToastCoalescing();
         TestDirectSearchCoversAllEngines();
         TestCopyChordEndToEnd();
         TestSelectionWatcher();
@@ -658,12 +659,23 @@ public static class SelfTest
             Check($"系统功能含 {id}", catalog.Get(id) != null);
         }
 
-        Check("「系统」分类只有打开网址 / 运行程序 / 直达链接（智能识别）",
-            catalog.Items.Where(i => i.Category == "系统")
-                .All(i => i.Id is "openUrl" or "runProgram" or "smartOpen"),
-            string.Join(",", catalog.Items.Where(i => i.Category == "系统").Select(i => i.Id)));
-        Check("「系统 → 直达链接」不带预填参数",
-            catalog.Get("smartOpen")?.NeedsArg == false);
+        /* 「智能直达」分类取代了原来的「系统」：只留一个动作。
+         *
+         * 原来的「系统」下并列着「打开网址」「运行程序」「直达链接」，
+         * 前两个要预先填死地址/程序，和「直达链接」分类里预填的
+         * 直达网址 / 直达文件夹 / 直达文件语义重复，用户不知道该在哪填。
+         * 现在预填的归「直达链接」，选中的归「智能直达」，一个动作就够。 */
+        var smart = catalog.Items.Where(i => i.Category == "智能直达").ToList();
+        CheckEqual("「智能直达」分类只有 1 个动作", smart.Count, 1);
+        CheckEqual("「智能直达」里的动作是 smartOpen", smart.FirstOrDefault()?.Id, "smartOpen");
+        Check("「智能直达」不带预填参数", catalog.Get("smartOpen")?.NeedsArg == false);
+
+        // 旧动作不能从表里删掉（老配置还绑着），但必须隐藏
+        Check("openUrl 已从界面隐藏", catalog.Get("openUrl")?.Hidden == true);
+        Check("runProgram 已从界面隐藏", catalog.Get("runProgram")?.Hidden == true);
+        Check("界面上不再有「系统」分类",
+            catalog.Items.Where(i => !i.Hidden).All(i => i.Category != "系统"),
+            string.Join(",", catalog.Items.Where(i => !i.Hidden && i.Category == "系统").Select(i => i.Id)));
 
         queue.Dispose();
     }
@@ -3086,14 +3098,12 @@ public static class SelfTest
         var cat = Core.Actions.ActionCatalog.Create(ctx);
         var so = cat.Items.FirstOrDefault(i => i.Id == "smartOpen");
         Check("动作表有 smartOpen", so != null);
-        CheckEqual("smartOpen 在「系统」分类", so?.Category, "系统");
-        CheckEqual("smartOpen 标题是「直达链接」", so?.Title, "直达链接");
+        CheckEqual("smartOpen 在「智能直达」分类", so?.Category, "智能直达");
+        CheckEqual("smartOpen 标题是「智能直达」", so?.Title, "智能直达");
         Check("smartOpen 不需要预填参数", so?.NeedsArg == false);
-        Check("「系统」分类里同时有打开网址 / 运行程序 / 直达链接",
-            cat.Items.Any(i => i.Category == "系统" && i.Id == "openUrl")
-            && cat.Items.Any(i => i.Category == "系统" && i.Id == "runProgram")
-            && so != null,
-            string.Join(",", cat.Items.Where(i => i.Category == "系统").Select(i => i.Id)));
+        Check("「智能直达」分类下没有别的可见动作",
+            cat.Items.Where(i => i.Category == "智能直达").All(i => i.Id == "smartOpen"),
+            string.Join(",", cat.Items.Where(i => i.Category == "智能直达").Select(i => i.Id)));
 
         // ---------- 2. 识别：用假文件系统，避免依赖测试机磁盘 ----------
         var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -3997,6 +4007,32 @@ public static class SelfTest
     /// 不在这里做真实写入 —— 写亮度会让屏幕闪一下，而自检要跑一千多条断言，
     /// 中间闪屏非常打扰。读取是只读的，只报一句当前通道。
     /// </summary>
+    /// <summary>
+    /// 提示消息必须「新的立刻覆盖旧的」。
+    ///
+    /// 这条直接决定手感：连按十个键时，如果每条消息都排一次调度、
+    /// 界面线程忙完依次播一遍，用户看到的就是十几次闪烁加一条过时内容 ——
+    /// 也就是用户说的"提示太慢，跟不上按键"。
+    ///
+    /// 槽位只保留最后一条、调度只安排一次，中间的自动作废。
+    /// </summary>
+    private static void TestToastCoalescing()
+    {
+        var q = new UI.Windows.ToastQueue();
+
+        Check("第一条需要安排刷新", q.Post("第一条", "info"));
+        Check("第二条不必再安排（已有安排会来取最新值）", !q.Post("第二条", "info"));
+        Check("第三条同样不必", !q.Post("第三条", "feedback"));
+
+        var got = q.Take();
+        CheckEqual("取到的是最后一条", got?.Text, "第三条");
+        CheckEqual("样式跟着最后一条走", got?.Kind, "feedback");
+        Check("取完之后槽里是空的", q.Take() == null);
+
+        Check("取空后能重新开始新一轮", q.Post("第四条", "info"));
+        CheckEqual("新一轮取到第四条", q.Take()?.Text, "第四条");
+    }
+
     private static void TestBrightnessMath()
     {
         // 0~100 量程（大多数笔记本）
@@ -4034,6 +4070,13 @@ public static class SelfTest
             $"backend={backend}, value={now}");
         if (backend != Core.Windows.BrightnessBackend.Unsupported)
             Check("支持的通道能读出亮度", now != null, $"value={now}");
+
+        /* 调不动时的提示必须能照着做。
+         * 早先只回一句"这台设备不支持"，用户没法判断是设置没开、
+         * 线材不通还是程序坏了 —— 等于没告诉。 */
+        string diag = Core.Windows.BrightnessService.Diagnose();
+        Check("调不动时给的是可操作说明（不是一句「不支持」）",
+            diag.Length >= 12, diag);
 
         // 动作表
         var settings = DefaultSettings.Create();

@@ -7,7 +7,8 @@ namespace CapsLockPlus.Core.Actions;
 /// <summary>动作的展示信息（用于按键映射界面）。</summary>
 public sealed record ActionInfo(
     string Id, string Category, string Title, string Description,
-    bool NeedsArg = false, string ArgHint = "", string ShortTitle = "")
+    bool NeedsArg = false, string ArgHint = "", string ShortTitle = "",
+    bool Hidden = false)
 {
     /// <summary>
     /// 键帽上实际显示的文字。
@@ -70,9 +71,10 @@ public sealed class ActionCatalog
     }
 
     private void Add(string id, string category, string title, string desc, Func<string, bool> handler,
-                     bool needsArg = false, string argHint = "", string shortTitle = "")
+                     bool needsArg = false, string argHint = "", string shortTitle = "",
+                     bool hidden = false)
     {
-        _items.Add(new ActionInfo(id, category, title, desc, needsArg, argHint, shortTitle));
+        _items.Add(new ActionInfo(id, category, title, desc, needsArg, argHint, shortTitle, hidden));
         _handlers[id] = handler;
         StaticTitles[id] = title;      // 供 TriggerKey.Detail 等"离线显示"用
     }
@@ -298,21 +300,37 @@ public sealed class ActionCatalog
         c.Add("lockScreen", "系统功能", "锁定屏幕", "Win+L", _ => { InputSender.Chord(0x5B, 0x4C); return true; });
         c.Add("screenshot", "系统功能", "截图", "调用系统截图工具", _ => ctx.Screenshot());
 
-        // ---------------- 系统 ----------------
-        c.Add("openUrl", "系统", "打开网址", "打开参数里的网址", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; });
-        c.Add("runProgram", "系统", "运行程序", "运行参数里的程序或命令", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.RunProgram(a); return true; });
+        // ---------------- 旧动作（不再显示，仅保留执行兼容） ----------------
+        //
+        // 「打开网址」「运行程序」从界面上撤掉了：它们的用途已经被
+        // 「直达链接」分类（预填网址/文件夹/文件）和「智能直达」分类
+        // （选中什么就开什么）完整覆盖 —— 三个入口指向同一件事，
+        // 用户只会纠结"我该在哪个分类里填地址"。
+        //
+        // 但**不能直接删掉**：老配置里可能已经绑了这两个动作，
+        // 删掉后按键会变成"未知动作"，按下去毫无反应。
+        // 所以保留执行能力、标记 Hidden，界面上不再出现。
+        c.Add("openUrl", "系统", "打开网址", "打开参数里的网址",
+            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; },
+            hidden: true);
+        c.Add("runProgram", "系统", "运行程序", "运行参数里的程序或命令",
+            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.RunProgram(a); return true; },
+            hidden: true);
 
-        /* 「直达链接」（智能识别）放在「系统」分类里，和上面两个并列。
-         *
-         * 三者都是"给一个目标就打开"，区别只在目标从哪来：
-         *   · 打开网址 / 运行程序 → 目标**预先写在参数里**
-         *   · 直达链接           → 目标来自**当前选中的文字**，按下才知道
-         *
-         * 把它放在这里而不是再造一个分类，是因为它属于"系统级打开能力"，
-         * 不是某类需要用户长期维护的配置。 */
-        c.Add("smartOpen", "系统", "直达链接",
+        // ---------------- 智能直达 ----------------
+        //
+        // 这一类只有**一个**动作：目标来自当前选中的文字，按下才知道。
+        //
+        // 早先这里叫「系统」，下面并列着「打开网址」「运行程序」「直达链接」三项。
+        // 但前两项都要预先填好固定地址/程序，和「直达链接」分类里
+        // 预填的直达网址 / 直达文件夹 / 直达文件**语义完全重复** ——
+        // 用户看到两个地方都能填网址，不知道该用哪个。
+        //
+        // 现在是：预填的归「直达链接」分类（那里有专用面板、能写备注），
+        // 选中的归「智能直达」分类（这里一个动作就够）。
+        c.Add("smartOpen", "智能直达", "智能直达",
             "先选中一段文字再按这个键：是网址就用浏览器打开，是文件夹就用资源管理器打开，是文件就用默认程序打开",
-            _ => ctx.SmartOpen());
+            _ => ctx.SmartOpen(), shortTitle: "智能直达");
 
         // ---------------- 直达链接 ----------------
         //

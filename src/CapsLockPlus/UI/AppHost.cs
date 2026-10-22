@@ -96,12 +96,17 @@ public sealed class AppHost : IDisposable
         Engine.CapsHeldChanged += held => _dispatcher.BeginInvoke(() => CapsHeldChanged?.Invoke(held));
         // 反馈模式：每次组合键触发都在屏幕上闪一下动作名，
         // 便于确认“按键到底有没有被识别”。
-        Engine.ActionTriggered += action => _dispatcher.BeginInvoke(() =>
+        //
+        // 这里**不再**套一层 BeginInvoke：ToastWindow 内部会自己调度到界面线程，
+        // 并且只保留最新一条。外面再套一层的话，连按时会排出一长串回调，
+        // 每个都去改同一条窗口 —— 等于把"覆盖"退化成"排队覆盖"，
+        // 界面线程忙时看起来就是提示慢半拍。
+        Engine.ActionTriggered += action =>
         {
             if (!Settings.Global.ShowActionFeedback) return;
             string title = Actions.Get(action)?.Title ?? action;
             ToastWindow.Show(title, "feedback");
-        });
+        };
 
         WireEvents();
 
@@ -224,7 +229,9 @@ public sealed class AppHost : IDisposable
     public void Notify(string message)
     {
         if (string.IsNullOrWhiteSpace(message) || !Settings.Global.ShowToast) return;
-        _dispatcher.BeginInvoke(() => ToastWindow.Show(message));
+        /* 直接交给 ToastWindow：它内部会调度到界面线程，且只显示最新一条。
+         * 连按音量键时，前一条还没画出来就被后一条顶掉，不会积压。 */
+        ToastWindow.Show(message);
     }
 
     public void ToggleEnabled() => SetEnabled(!Engine.Enabled);

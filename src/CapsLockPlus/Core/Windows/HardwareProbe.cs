@@ -76,15 +76,16 @@ public static class HardwareProbe
         W("");
         W("=== 亮度 ===");
 
-        var backend = BrightnessService.Backend;
-        W($"通道：{BrightnessService.BackendName}");
+        foreach (var line in BrightnessService.Describe()) W(line);
 
         int? bright = BrightnessService.Get();
         if (bright == null)
         {
             W("✗ 这台设备两条通道都不通（WMI 与 DDC/CI 都读不到）");
             W("  · 笔记本内置屏一般走 WMI，若不可用通常是显卡驱动没装好；");
-            W("  · 外接屏需要在显示器菜单里把 DDC/CI 打开。");
+            W("  · 外接屏需要在显示器菜单里把 DDC/CI 打开；");
+            W("  · AMD 显卡驱动里的「自定义颜色」会抢占 DDC/CI，需要关掉；");
+            W("  · 走 VGA/DVI 或经过扩展坞的 HDMI/DP，可能不支持 DDC/CI。");
             problems++;
         }
         else
@@ -101,10 +102,43 @@ public static class HardwareProbe
 
                 // DDC/CI 有延迟，等显示器把新值稳定下来再读
                 System.Threading.Thread.Sleep(350);
-                W($"回读：{BrightnessService.Get()}%");
+                int after = BrightnessService.Get() ?? -1;
+                W($"回读：{after}%");
+                if (ok && Math.Abs(after - target) > 1)
+                {
+                    W($"  ⚠ 写入与回读不一致：显像管没接受这个值（差 {Math.Abs(after - target)}%）");
+                    problems++;
+                }
 
                 int? down = BrightnessService.Step(-10);
                 W($"再 -10% → {down}%");
+
+                /* 动作链路：上面测的是服务层，这里从动作表调一次，
+                 * 确认「按键 → 动作目录 → 参数解析 → 亮度服务」整条链也通。
+                 * 曾经出过"服务能调、但动作参数解析成 0"的问题。 */
+                var settings = Core.Settings.DefaultSettings.Create();
+                var ctx = new Core.Actions.ActionContext
+                {
+                    Settings = () => settings,
+                    Clipboard = new Core.Actions.ClipboardService(),
+                    Windows = new Core.Actions.WindowActions(),
+                    WindowBindings = new Core.Actions.WindowBindingService(settings),
+                    Mouse = new Core.Actions.MouseService(),
+                    Notify = n => W($"  [提示] {n}"),
+                };
+                var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+                W("动作链路：调用「亮度 +」……");
+                int beforeInvoke = BrightnessService.Get() ?? -1;
+                cat.Invoke("brightnessUp", "");
+                System.Threading.Thread.Sleep(350);
+                int afterInvoke = BrightnessService.Get() ?? -1;
+                W($"  {beforeInvoke}% → {afterInvoke}%");
+                if (afterInvoke <= beforeInvoke)
+                {
+                    W("  ⚠ 动作执行后亮度没有上升，调用链有问题");
+                    problems++;
+                }
             }
             finally
             {

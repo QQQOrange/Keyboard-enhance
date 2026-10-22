@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Management;
 using System.Runtime.InteropServices;
@@ -48,10 +48,34 @@ public static class BrightnessService
     /// <summary>DDC/CI 里"亮度"的 VCP 代码（VESA MCCS 标准）。</summary>
     private const byte VcpBrightness = 0x10;
 
+    /// <summary>
+    /// 相邻两次 DDC/CI 写入的最小间隔（毫秒）。
+    ///
+    /// DDC/CI 走 I²C，显示器固件处理一条命令要几十毫秒，间隔太密会被**直接丢弃**，
+    /// 表现就是"连按几下只有第一下生效"。Twinkle Tray 也是按 VCP 码做节流的。
+    /// 60ms 是"不丢命令"和"连按跟得上"之间的折中。
+    /// </summary>
+    private const int DdcMinGapMs = 60;
+
+    private static long _lastDdcWriteTick;
+
     /// <summary>上次成功读写的亮度（-1 = 还不知道）。</summary>
     private static int _last = -1;
 
+    /// <summary>上次同步 <see cref="_last"/> 的时刻，用于判断缓存还新不新鲜。</summary>
+    private static long _lastSyncTick;
+
+    /// <summary>记下已知亮度，并盖上时间戳。</summary>
+    private static void SetLast(int value)
+    {
+        _last = value;
+        _lastSyncTick = Environment.TickCount64;
+    }
+
     private static BrightnessBackend _backend = BrightnessBackend.Unknown;
+
+    /// <summary>上次探测失败的时刻（用来决定什么时候再试一次）。</summary>
+    private static long _probeFailTick;
 
     private static readonly object Gate = new();
 
@@ -88,14 +112,21 @@ public static class BrightnessService
             ProbeLocked();
             percent = Math.Clamp(percent, 0, 100);
 
+            /* 主通道失败时切到另一条再试一次。
+             *
+             * 为什么需要兜底：WMI 那套接口存在"读得到、写不进"的机型
+             * （驱动暴露了 CurrentBrightness 但 WmiSetBrightness 无效果），
+             * 反过来 DDC/CI 也会在显示器从休眠唤醒后短暂失效。
+             * 只试一条就放弃，用户看到的就是"按了没反应"。 */
             bool ok = _backend switch
             {
-                BrightnessBackend.Wmi => WmiSet(percent),
-                BrightnessBackend.Ddc => DdcSet(percent),
+                BrightnessBackend.Wmi => WmiSet(percent) || DdcTrySet(percent),
+                BrightnessBackend.Ddc => DdcTrySet(percent) || WmiSet(percent),
                 _ => false,
             };
 
-            if (ok) _last = percent;
+            if (ok) SetLast(percent);
+            else CoreLog.Warn($"[亮度] 写入 {percent}% 失败（通道 {BackendName}）");
             return ok;
         }
     }
@@ -111,7 +142,18 @@ public static class BrightnessService
             ProbeLocked();
             if (_backend == BrightnessBackend.Unsupported) return null;
 
-            int cur = _last >= 0 ? _last : (ReadLocked() ?? -1);
+            /* 先读真实值，读不到才用缓存。
+             *
+             * 为什么不像音量那样直接用缓存：显示器上通常还有自己的实体按键，
+             * 用户很可能刚用显示器菜单调过亮度。缓存这时是过期的，
+             * 按"亮度 +"会跳到一个和眼前画面无关的值。
+             * 读一次 DDC 约 50~100ms，单次按键完全承受得住。
+             *
+             * 但**连按**时不能再读：一次读 + 一次写 + 一次回读已经 250ms 左右，
+             * 每下都先读一遍会让"按五下"变成一秒多才走完，手感发黏。
+             * 1.5 秒内的连续按键认为没人来得及去按显示器实体键，直接用缓存推算。 */
+            bool fresh = _last >= 0 && Environment.TickCount64 - _lastSyncTick < 1500;
+            int cur = fresh ? _last : (ReadLocked() ?? (_last >= 0 ? _last : -1));
             if (cur < 0) return null;
 
             int target = Math.Clamp(cur + delta, 0, 100);
@@ -130,6 +172,53 @@ public static class BrightnessService
         {
             ProbeLocked();
             return _backend != BrightnessBackend.Unsupported;
+        }
+    }
+
+    /// <summary>
+    /// 调不动时给一句**能照着做**的说明。
+    ///
+    /// 泛泛一句"不支持"没有用：用户不知道是设备不行、设置没开，还是线材问题。
+    /// 这里按当前探测到的事实分类回答 —— 没找到屏 / 找到屏但没响应 / 命令被丢。
+    /// </summary>
+    public static string Diagnose()
+    {
+        lock (Gate)
+        {
+            ProbeLocked();
+
+            if (_backend == BrightnessBackend.Unsupported)
+                return "没找到能调亮度的显示器：外接屏要在显示器菜单里把 DDC/CI 打开（有的型号叫「显示器控制」），笔记本内置屏需要显卡驱动正常";
+
+            if (_backend == BrightnessBackend.Ddc)
+            {
+                int n = _ddc?.Count ?? 0;
+                if (n == 0) return "没找到支持 DDC/CI 的显示器，请确认显示器菜单里的 DDC/CI 已开启";
+                return $"显示器（{_ddc![0].Description}）没有响应亮度命令 —— 常见于 HDMI 转接器 / KVM / 扩展坞不透传 DDC，换直连试试";
+            }
+
+            return "亮度命令没有生效，请把日志里的「[亮度]」几行发出来";
+        }
+    }
+
+    /// <summary>
+    /// 列出探测到的通道与显示器，供 <c>--hwtest</c> 输出与问题排查。
+    /// 用户报"亮度调不了"时，这几行能直接说明是没找到屏、还是找到了写不进。
+    /// </summary>
+    public static IReadOnlyList<string> Describe()
+    {
+        lock (Gate)
+        {
+            ProbeLocked();
+            var list = new List<string> { "通道：" + BackendName };
+            if (_backend == BrightnessBackend.Wmi) list.Add("WMI：内置屏");
+
+            if (_ddc != null)
+            {
+                for (int i = 0; i < _ddc.Count; i++)
+                    list.Add($"DDC 屏{i + 1}：{_ddc[i].Description}，量程 0~{_ddc[i].Max}");
+            }
+            return list;
         }
     }
 
@@ -172,6 +261,22 @@ public static class BrightnessService
 
     private static void ProbeLocked()
     {
+        /* 「不支持」这个结论**不能永久缓存**。
+         *
+         * 探测失败常常是暂时的：程序随开机自启时显示器还没初始化完、
+         * 显示器正在休眠、刚切完输入源、显卡驱动还没起来。
+         * 旧写法一旦探测失败就把 _backend 钉死在 Unsupported，
+         * 之后整个会话都返回"这台显示器不支持" —— 用户看到的就是
+         * "亮度功能压根没实现"，只有重启程序才可能好。
+         *
+         * 现在隔 5 秒允许重探一次，睡眠唤醒 / 重新插线之后能自己恢复。 */
+        if (_backend == BrightnessBackend.Unsupported)
+        {
+            if (Environment.TickCount64 - _probeFailTick < 5000) return;
+            ReleaseDdcLocked();
+            _backend = BrightnessBackend.Unknown;
+        }
+
         if (_backend != BrightnessBackend.Unknown) return;
 
         // WMI 读一次比 DDC 快，先试它
@@ -190,6 +295,7 @@ public static class BrightnessService
         }
 
         _backend = BrightnessBackend.Unsupported;
+        _probeFailTick = Environment.TickCount64;
         CoreLog.Warn("[亮度] 两条通道都不可用（设备不支持或未开启 DDC/CI）");
     }
 
@@ -216,7 +322,7 @@ public static class BrightnessService
                     if (v != null)
                     {
                         int val = Convert.ToInt32(v);
-                        _last = val;
+                        SetLast(val);
                         return val;
                     }
                 }
@@ -268,6 +374,7 @@ public static class BrightnessService
     {
         public IntPtr Handle;
         public uint Max;
+        public string Description = "";
     }
 
     private static List<DdcMonitor>? _ddc;
@@ -300,14 +407,31 @@ public static class BrightnessService
                             IntPtr h = Marshal.ReadIntPtr(buf, i * stride);
                             if (h == IntPtr.Zero) continue;
 
+                            /* 描述紧跟在句柄后面，是 128 个 wchar 的定长字段。
+                             *
+                             * 必须按长度读再手工截到第一个 \0：PtrToStringUni 带长度
+                             * 的版本不会在 \0 处停下，会把字段后面的堆垃圾一起读进来，
+                             * 日志里就变成「Generic PnP Monitor 紈ጲ翽…」这种乱码。 */
+                            string desc = "";
+                            try
+                            {
+                                string raw = Marshal.PtrToStringUni(
+                                    IntPtr.Add(buf, i * stride + IntPtr.Size), 128) ?? "";
+                                int z = raw.IndexOf('\0');
+                                desc = (z >= 0 ? raw[..z] : raw).Trim();
+                            }
+                            catch { }
+
                             // 读一次亮度：能读出 max 才说明这台屏支持 VCP 0x10
-                            if (GetVCPFeatureAndVCPFeatureReply(h, VcpBrightness, out _, out _, out uint max)
+                            if (GetVCPFeatureAndVCPFeatureReply(h, VcpBrightness, out _, out uint cur, out uint max)
                                 && max > 0)
                             {
-                                _ddc.Add(new DdcMonitor { Handle = h, Max = max });
+                                _ddc.Add(new DdcMonitor { Handle = h, Max = max, Description = desc });
+                                CoreLog.Info($"[亮度] 发现 DDC 屏：{desc}，量程 0~{max}，当前 {cur}（{FromVcp(cur, max)}%）");
                             }
                             else
                             {
+                                CoreLog.Info($"[亮度] 跳过 {desc}：不支持 VCP 0x10 亮度");
                                 DestroyPhysicalMonitor(h);   // 不支持亮度，立刻还回去
                             }
                         }
@@ -340,10 +464,33 @@ public static class BrightnessService
                 && max > 0)
             {
                 int pct = FromVcp(cur, max);
-                if (pct >= 0) { _last = pct; return pct; }
+                if (pct >= 0) { SetLast(pct); return pct; }
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 写 DDC，并且**回读确认**，失败时重建句柄再试一次。
+    ///
+    /// 为什么要回读：<c>SetVCPFeature</c> 返回 TRUE 只代表命令交给了驱动，
+    /// 显示器固件完全可能把这条命令丢掉（I²C 忙、两条命令间隔太密、
+    /// 显示器刚从休眠醒来）。这时程序"以为成功了"，用户看到的却是屏幕
+    /// 一点没变 —— 这是亮度调节最典型的假成功。所以写完必须读回来，
+    /// 值真的变了才算数，没变就再写一次（最多 3 次）。
+    ///
+    /// 句柄什么时候会失效：显示器休眠/唤醒、切输入源、拔插线缆、
+    /// 显卡驱动重启。表现为之后所有写入都返回 false —— 而用户那边的感受
+    /// 只是"亮度键忽然不管用了"。重建一次就能恢复，不必重启程序。
+    /// </summary>
+    private static bool DdcTrySet(int percent)
+    {
+        if (!DdcEnsureLocked()) return false;
+        if (DdcSet(percent)) return true;
+
+        CoreLog.Warn("[亮度] DDC 写入未生效，重新枚举显示器后重试一次");
+        ReleaseDdcLocked();
+        return DdcEnsureLocked() && DdcSet(percent);
     }
 
     private static bool DdcSet(int percent)
@@ -351,19 +498,62 @@ public static class BrightnessService
         if (!DdcEnsureLocked()) return false;
         var monitors = _ddc!;
 
-        bool any = false;
-        foreach (var m in monitors)
+        int before = DdcReadLocked() ?? -1;
+
+        /* 已经就是这个亮度：不必再写。
+         * 少了这个短路，回读值不会变，会被下面的逻辑误判成"写入被丢弃"，
+         * 白重试三次还报失败。 */
+        if (before == percent) { SetLast(percent); return true; }
+
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            try
+            // 相邻命令留出间隔，否则显示器固件会丢掉后面几条
+            ThrottleDdcLocked();
+
+            bool any = false;
+            for (int i = 0; i < monitors.Count; i++)
             {
-                if (SetVCPFeature(m.Handle, VcpBrightness, ToVcp(percent, m.Max))) any = true;
+                var m = monitors[i];
+                try
+                {
+                    uint value = ToVcp(percent, m.Max);
+                    bool ok = SetVCPFeature(m.Handle, VcpBrightness, value);
+                    if (ok) any = true;
+                    CoreLog.Info($"[亮度] DDC 屏{i + 1}（{m.Description}）写 {percent}%，" +
+                                 $"VCP={value}/{m.Max} → {(ok ? "已发送" : "失败")}");
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("[亮度] DDC 写入失败：" + ex.Message);
+                }
             }
-            catch (Exception ex)
+            if (!any) return false;
+
+            // 显示器处理命令要时间，读太早会读到旧值
+            System.Threading.Thread.Sleep(60);
+
+            int after = DdcReadLocked() ?? -1;
+            if (after >= 0 && after != before)
             {
-                CoreLog.Warn("[亮度] DDC 写入失败：" + ex.Message);
+                SetLast(after);
+                if (attempt > 1) CoreLog.Info($"[亮度] 第 {attempt} 次写入才真正生效");
+                return true;
             }
+
+            CoreLog.Warn($"[亮度] 写完回读仍是 {after}%，命令被显示器丢弃，重试 {attempt}/3");
         }
-        return any;
+
+        return false;
+    }
+
+    /// <summary>把两次 DDC 写入拉开到 <see cref="DdcMinGapMs"/> 以上。</summary>
+    private static void ThrottleDdcLocked()
+    {
+        if (_lastDdcWriteTick == 0) { _lastDdcWriteTick = Environment.TickCount64; return; }
+
+        long gap = Environment.TickCount64 - _lastDdcWriteTick;
+        if (gap < DdcMinGapMs) System.Threading.Thread.Sleep((int)(DdcMinGapMs - gap));
+        _lastDdcWriteTick = Environment.TickCount64;
     }
 
     private static void ReleaseDdcLocked()
