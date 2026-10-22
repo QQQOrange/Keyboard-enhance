@@ -422,12 +422,17 @@ public sealed class ActionContext
     public static Action<string>? OpenFolderInterceptForTest { get; set; }
 
     /// <summary>
-    /// 在文件资源管理器里打开一个文件夹。
+    /// 在文件资源管理器里打开一个文件夹，并把它带到**最前面**。
     ///
     /// 为什么交给 shell（UseShellExecute）而不是 `explorer.exe "路径"`：
     ///   · 路径里有空格 / 中文 / 方括号时，命令行引号很容易拼错；
     ///   · 用 shell 打开目录是系统标准行为，OneDrive、库、快捷方式都能认；
     ///   · 顺带支持 `%USERPROFILE%`、`~`、`shell:Downloads` 这些写法。
+    ///
+    /// 为什么还要额外做"置前"：我们是从后台按下快捷键的，前台是别的程序，
+    /// Windows 的前台锁定会把新开的资源管理器窗口压在任务栏 ——
+    /// 用户看到的就是"文件夹在后台打开了"。具体做法见
+    /// <see cref="Windows.WindowService.OpenFolderInForeground"/>。
     ///
     /// 路径不存在时给明确提示，而不是静默失败 ——
     /// 用户最怕的就是"按了没反应，也不知道为什么"。
@@ -450,7 +455,7 @@ public sealed class ActionContext
                 Notify($"文件夹不存在：{target}");
                 return;
             }
-            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            CapsLockPlus.Core.Windows.WindowService.OpenFolderInForeground(target);
         }
         catch (Exception ex) { Notify(UiText.Failed("打开文件夹", ex.Message)); }
     }

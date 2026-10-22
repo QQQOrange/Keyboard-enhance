@@ -83,6 +83,9 @@ public static class SelfTest
         Section("窗口绑定");
         TestWindowBindings();
 
+        Section("打开文件夹");
+        TestFolderLeafName();
+
         Section("窗口激活与最小化");
         TestWindowActivateAndMinimize();
 
@@ -6185,6 +6188,25 @@ public static class SelfTest
         }
         eng.Dispose();
         queue.Dispose();
+    }
+
+    /// <summary>
+    /// 「打开文件夹后把窗口带到前台」用的文件夹名识别。
+    ///
+    /// 为什么要单独测：这个名子用来在"explorer 复用已有窗口"时认人
+    /// （窗口标题就是当前文件夹名）。盘符根目录、尾部斜杠这些写法
+    /// 一不小心就取出空串，结果是"永远认不出、永远不置前" ——
+    /// 但功能看起来又是"打开了"，很难发现。
+    /// </summary>
+    private static void TestFolderLeafName()
+    {
+        CheckEqual("普通路径取末级", Core.Windows.WindowService.LeafNameOf(@"D:\a\b"), "b");
+        CheckEqual("尾部反斜杠也能取", Core.Windows.WindowService.LeafNameOf(@"D:\a\b\"), "b");
+        CheckEqual("尾部正斜杠也能取", Core.Windows.WindowService.LeafNameOf("D:/a/b/"), "b");
+        CheckEqual("盘符根目录用盘符", Core.Windows.WindowService.LeafNameOf(@"C:\"), "C");
+        CheckEqual("正斜杠盘符根目录", Core.Windows.WindowService.LeafNameOf("D:/"), "D");
+        CheckEqual("空字符串不抛异常", Core.Windows.WindowService.LeafNameOf(""), "");
+        CheckEqual("中文路径", Core.Windows.WindowService.LeafNameOf(@"D:\项目\文档"), "文档");
     }
 
     /// <summary>窗口激活与最小化：验证「按一次弹出、再按一次最小化」这两个动作。</summary>

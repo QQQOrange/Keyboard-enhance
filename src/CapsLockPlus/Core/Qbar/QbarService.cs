@@ -482,10 +482,9 @@ public sealed class QbarService
         {
             if (Directory.Exists(path))
             {
-                Process.Start(new ProcessStartInfo("explorer.exe", path)
-                {
-                    UseShellExecute = false,
-                });
+                // 和"直达文件夹"共用同一套逻辑：打开后把窗口带到前台，
+                // 否则面板一收起，用户看到的就是任务栏闪一下（窗口在后台）。
+                Core.Windows.WindowService.OpenFolderInForeground(path);
                 return;
             }
         }

@@ -1,6 +1,8 @@
 ﻿using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using CapsLockPlus.Core.Interop;
 using static CapsLockPlus.Core.Interop.NativeMethods;
@@ -459,5 +461,138 @@ public static class WindowService
         if (idx < 0) idx = 0;
         int next = backward ? (idx - 1 + same.Count) % same.Count : (idx + 1) % same.Count;
         return Activate(same[next].Handle);
+    }
+
+    // ================= 打开文件夹并把窗口带到前台 =================
+
+    /// <summary>资源管理器主窗口的类名。</summary>
+    private const string ExplorerWindowClass = "CabinetWClass";
+
+    /// <summary>AllowSetForegroundWindow 的 "any process" 特殊值。</summary>
+    private const uint ASFW_ANY = 0xFFFFFFFF;
+
+    /// <summary>
+    /// 在资源管理器里打开文件夹，并保证**它出现在最前面**。
+    ///
+    /// 为什么需要专门做这件事：
+    ///   按下直达链接的键时，前台是别的程序；我们用 ShellExecute 拉起 explorer 后，
+    ///   Windows 的前台锁定（ForegroundLockTimeout）会把新窗口压在任务栏闪烁 ——
+    ///   用户看到的就是"文件夹在后台打开了"，还得自己去点任务栏。
+    ///
+    /// 做法分两步：
+    ///   1. 启动前 <c>AllowSetForegroundWindow(ASFW_ANY)</c>，
+    ///      把"可以抢前台"的许可交给接下来启动的进程（这一步最有效，
+    ///      很多情况下 explorer 自己就正确置前了）；
+    ///   2. 启动后异步等窗口出现，再用 <see cref="ForceForeground"/> 兜底
+    ///      （它会挂前台线程输入队列，必要时临时解除前台锁定）。
+    ///
+    /// 异步的原因：explorer 冷启动可能要几百毫秒，**不能**在动作队列线程上等 ——
+    /// 那会把后面的按键动作全堵住（按住连发时体感就是"卡住"）。
+    /// </summary>
+    public static void OpenFolderInForeground(string path)
+    {
+        // 记下"打开之前"已有哪些资源管理器窗口，用来识别新出现的那个
+        var before = SnapshotExplorerWindows();
+
+        AllowSetForegroundWindow(ASFW_ANY);
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
+        string leaf = LeafNameOf(path);
+        Task.Run(() => WaitAndActivateFolder(before, leaf));
+    }
+
+    /// <summary>文件夹名（用于在"复用已有窗口"时按标题认人）。</summary>
+    internal static string LeafNameOf(string path)
+    {
+        try
+        {
+            string p = path.TrimEnd('\\', '/');
+            string leaf = Path.GetFileName(p);
+            // 盘符根目录（C:\）的 GetFileName 是空串，用盘符代替
+            return leaf.Length > 0 ? leaf : p.TrimEnd(':');
+        }
+        catch { return ""; }
+    }
+
+    private static HashSet<IntPtr> SnapshotExplorerWindows()
+    {
+        var set = new HashSet<IntPtr>();
+        EnumWindows((h, _) =>
+        {
+            if (IsWindowVisible(h) && ClassNameOf(h) == ExplorerWindowClass) set.Add(h);
+            return true;
+        }, IntPtr.Zero);
+        return set;
+    }
+
+    /// <summary>
+    /// 等资源管理器窗口出现并把它拉到前台；最多等 <paramref name="timeoutMs"/>。
+    ///
+    /// 两种情况都要覆盖：
+    ///   · <b>新窗口</b>：打开前没有的 CabinetWClass 句柄出现了 → 就是它；
+    ///   · <b>复用已有窗口</b>：explorer 把现成的窗口导航到新路径（不开新窗），
+    ///     此时按标题里的文件夹名认人 —— 认不出就**不动**，
+    ///     宁可没置前，也不要切到不相干的窗口上。
+    /// </summary>
+    private static void WaitAndActivateFolder(HashSet<IntPtr> before, string leaf, int timeoutMs = 3000)
+    {
+        long deadline = Environment.TickCount64 + timeoutMs;
+        int tries = 0;
+        bool warnedNewWindow = false;
+
+        /* 两种目标（新窗口 / 复用的窗口）都**在循环里重试**。
+         *
+         * 曾经只在循环结束后做一次标题匹配 —— 结果很看运气：
+         * explorer 正忙的时候那一次 SetForegroundWindow 被拒，就彻底放弃了，
+         * 用户看到的就是"有时在前台、有时在后台"。
+         *
+         * 另外 ForceForeground(allowUnlockTimeout: true) 会临时改全局的前台锁定
+         * 超时并广播 WM_SETTINGCHANGE，代价明显，不能每 70ms 试一次：
+         * 前几轮用普通方式，之后每 4 轮才动一次"强制解锁"。 */
+        while (Environment.TickCount64 < deadline)
+        {
+            tries++;
+            bool hard = tries % 4 == 0;
+
+            foreach (var h in SnapshotExplorerWindows())
+            {
+                if (before.Contains(h)) continue;
+                if (ForceForeground(h, allowUnlockTimeout: hard))
+                {
+                    CoreLog.Info($"[打开文件夹] 新窗口已置前（0x{h.ToInt64():X}，第 {tries} 次尝试）");
+                    return;
+                }
+                if (!warnedNewWindow)
+                {
+                    warnedNewWindow = true;
+                    CoreLog.Info($"[打开文件夹] 新窗口已出现，正在尝试置前（0x{h.ToInt64():X}）");
+                }
+            }
+
+            if (leaf.Length > 0)
+            {
+                foreach (var w in EnumerateTopLevel())
+                {
+                    if (!string.Equals(w.ClassName, ExplorerWindowClass, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (!w.Title.Contains(leaf, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (ForceForeground(w.Handle, allowUnlockTimeout: hard))
+                    {
+                        CoreLog.Info($"[打开文件夹] 复用窗口已置前：{w.Title}（第 {tries} 次尝试）");
+                        return;
+                    }
+                }
+            }
+
+            Thread.Sleep(70);
+        }
+
+        var titles = EnumerateTopLevel()
+            .Where(w => string.Equals(w.ClassName, ExplorerWindowClass, StringComparison.OrdinalIgnoreCase))
+            .Select(w => w.Title)
+            .ToList();
+
+        CoreLog.Warn($"[打开文件夹] 没能置前（{timeoutMs}ms 内试了 {tries} 次；" +
+                     $"现有资源管理器窗口：{(titles.Count == 0 ? "无" : string.Join(" | ", titles))}）");
     }
 }

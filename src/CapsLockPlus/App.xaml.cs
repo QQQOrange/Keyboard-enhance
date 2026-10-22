@@ -71,6 +71,64 @@ public partial class App : Application
         }
 #endif
 
+        /* 诊断：打开一个文件夹并报告它有没有到前台。
+         *
+         * 用法：KeyboardEnhance.exe --reveal "D:\某个文件夹"
+         *
+         * 为什么要这个入口：用户在后台按了直达文件夹，窗口却压在任务栏 ——
+         * 这类问题只能"真的开一次、看前台是谁"才能确认。
+         * 有了它就不必去注入按键（那会误触正在用的实例的绑定）。
+         * 结果同时写到 reveal.txt，方便在没有控制台时查看。 */
+        int revealIndex = Array.FindIndex(e.Args,
+            a => a.Equals("--reveal", StringComparison.OrdinalIgnoreCase));
+        if (revealIndex >= 0 && revealIndex + 1 < e.Args.Length)
+        {
+            string folder = e.Args[revealIndex + 1];
+            var lines = new List<string>();
+
+            try
+            {
+                var beforeFg = Core.Windows.WindowService.ForegroundInfo();
+                lines.Add($"打开前的前台：{beforeFg?.Title} [{beforeFg?.ClassName}] {beforeFg?.ExeName}");
+
+                bool exists = Directory.Exists(folder);
+                lines.Add($"目标文件夹：{folder}（存在：{exists}）");
+                if (!exists)
+                {
+                    lines.Add("结论：路径不存在，无法测试");
+                }
+                else
+                {
+                    Core.Windows.WindowService.OpenFolderInForeground(folder);
+                    Thread.Sleep(2500);       // 等 explorer 起来并完成置前
+
+                    var fg = Core.Windows.WindowService.ForegroundInfo();
+                    lines.Add($"打开后的前台：{fg?.Title} [{fg?.ClassName}] {fg?.ExeName}");
+
+                    bool onTop = fg != null &&
+                                 string.Equals(fg.ClassName, "CabinetWClass", StringComparison.OrdinalIgnoreCase);
+                    lines.Add(onTop
+                        ? "结论：资源管理器窗口已在前台 ✓"
+                        : "结论：前台不是资源管理器 ✗");
+                }
+            }
+            catch (Exception ex)
+            {
+                lines.Add("异常：" + ex);
+            }
+
+            foreach (string line in lines) Console.WriteLine(line);
+            try
+            {
+                File.WriteAllText(Path.Combine(AppPaths.DataDir, "reveal.txt"),
+                    string.Join(Environment.NewLine, lines));
+            }
+            catch { /* 预期内：探测/重试型，失败即视为无结果 */ }
+
+            Environment.Exit(0);
+            return;
+        }
+
         /* 硬件自检：真的调一次音量与亮度再还原。
          * 用来区分"代码没生效"和"这台设备不支持" —— 用户报
          * 音量/亮度按键没反应时，让他跑这个看输出。 */
