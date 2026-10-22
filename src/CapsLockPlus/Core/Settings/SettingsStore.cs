@@ -112,6 +112,15 @@ public static class SettingsStore
                                     && !DataVault.LooksEncrypted(File.ReadAllText(AppPaths.SettingsFile));
 
                 if (migrated || needsEncrypt) Save(s);
+
+                /* 顺手清掉明文副本（.bak / .broken / .tmp）。
+                 *
+                 * 每次都清而不是只在"用户改密码"时清：数据目录可能刚被迁移过，
+                 * 老目录里的明文 .bak 会跟着搬进来；程序也可能在崩溃时留下明文 .tmp。
+                 * 只要加密是开着的，这些文件就不该存在于磁盘上。 */
+                if (DataVault.IsEnabled && DataVault.IsUnlocked)
+                    DataVault.PurgePlaintextCopies(AppPaths.SettingsFile);
+
                 return s;
             }
             catch (Exception ex)

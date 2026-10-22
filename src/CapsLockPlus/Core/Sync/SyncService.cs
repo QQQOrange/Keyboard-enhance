@@ -53,7 +53,15 @@ public sealed class SyncService
     public const string LegacyExtension = ".clpbak";
 
     /// <summary>exe 同级新建的备份文件夹名。</summary>
-    public const string BackupFolderName = "KeyboardEnhance 备份";
+    public const string BackupFolderName = "KeyboardEnhance Back";
+
+    /// <summary>
+    /// 改名前的备份文件夹名。
+    ///
+    /// 只在迁移时用：第一次用新版启动时，把这个目录里的备份搬到
+    /// <see cref="BackupFolderName"/> 下，用户不会"备份忽然不见了"。
+    /// </summary>
+    public const string LegacyBackupFolderName = "KeyboardEnhance 备份";
 
     /// <summary>默认保留份数。</summary>
     public const int DefaultKeep = 10;
@@ -117,6 +125,7 @@ public sealed class SyncService
             File.WriteAllText(probe, "1");
             File.Delete(probe);
             BackupDirIsFallback = false;
+            MigrateLegacyBackups(primary);
             return primary;
         }
         catch (Exception e)
@@ -125,7 +134,59 @@ public sealed class SyncService
             BackupDirIsFallback = true;
             string fallback = Path.Combine(AppPaths.DataDir, "backups");
             Directory.CreateDirectory(fallback);
+            MigrateLegacyBackups(fallback);
             return fallback;
+        }
+    }
+
+    /// <summary>
+    /// 把老位置的备份搬进新目录。
+    ///
+    /// 三个来源：
+    ///   * exe 同级的老文件夹 `KeyboardEnhance 备份`（v3.9.8 及以前）；
+    ///   * 数据目录下的 `backups`（更早版本，那时备份还放 %LocalAppData%）；
+    ///   * 上面两个目录的子目录不递归 —— 备份都是平铺的。
+    ///
+    /// **只搬、不删源文件之外的东西**：目标已有同名文件就跳过（保留新的），
+    /// 源目录空了才顺手删掉，不留一堆空文件夹。
+    /// </summary>
+    private static void MigrateLegacyBackups(string target)
+    {
+        try
+        {
+            string legacyApp = Path.Combine(AppPaths.AppDir, LegacyBackupFolderName);
+            string legacyData = Path.Combine(AppPaths.DataDir, "backups");
+
+            foreach (string src in new[] { legacyApp, legacyData })
+            {
+                if (!Directory.Exists(src)) continue;
+                if (Path.GetFullPath(src).TrimEnd('\\')
+                    .Equals(Path.GetFullPath(target).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) continue;
+
+                int moved = 0;
+                foreach (string file in Directory.EnumerateFiles(src))
+                {
+                    string name = Path.GetFileName(file);
+                    if (!IsBackupName(name)) continue;
+                    string dest = Path.Combine(target, name);
+                    if (File.Exists(dest)) continue;
+                    try { File.Move(file, dest); moved++; } catch { }
+                }
+
+                if (moved > 0)
+                    CoreLog.Info($"[备份] 从 {src} 搬了 {moved} 份备份到 {target}");
+
+                // 只删空目录，非空说明里面还有别的东西，留着
+                try
+                {
+                    if (!Directory.EnumerateFileSystemEntries(src).Any()) Directory.Delete(src);
+                }
+                catch { }
+            }
+        }
+        catch (Exception e)
+        {
+            CoreLog.Warn("[备份] 迁移老备份目录失败：" + e.Message);
         }
     }
 

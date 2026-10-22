@@ -10,7 +10,7 @@ using Microsoft.Win32;
 namespace CapsLockPlus.UI.Views;
 
 /// <summary>
-/// 「同步与备份」页：WebDAV 自动同步 + 明文导入导出。
+/// 「同步与备份」页：WebDAV 自动同步 + 加密/明文导入导出。
 /// </summary>
 public partial class BackupView : UserControl
 {
@@ -53,10 +53,34 @@ public partial class BackupView : UserControl
             ? Visibility.Visible
             : Visibility.Collapsed;
         RefreshLocalSummary();
+        RefreshDataLocation();
 
         SyncStatus.Text = s.LastSyncAt == DateTime.MinValue
             ? "还没同步过"
             : $"上次同步：{s.LastSyncAt:yyyy-MM-dd HH:mm}　{s.LastSyncInfo}";
+    }
+
+    /// <summary>
+    /// 数据目录 + 加密状态。
+    ///
+    /// 用户要求"所有用户数据都加密"，那就得能当场看到它到底加没加密 ——
+    /// 只说一句"已加密"是不够的，要指出是哪种算法、密钥怎么来的。
+    /// </summary>
+    private void RefreshDataLocation()
+    {
+        DataDirText.Text = AppPaths.DataDir + "\n" + AppPaths.DataDirNote;
+
+        if (!DataVault.IsEnabled)
+        {
+            DataEncText.Text = "⚠ 本地数据还是明文 —— 设一个「备份密码」就会立刻转成密文（AES-256-GCM）。";
+            DataEncText.Foreground = PrivateFg;
+            return;
+        }
+
+        DataEncText.Text = DataVault.IsUnlocked
+            ? "✓ 本地数据已加密（AES-256-GCM，密钥由备份密码派生）"
+            : "✓ 本地数据已加密，但本次会话还没解锁 —— 修改不会被保存，解锁后恢复正常。";
+        DataEncText.Foreground = (Brush)FindResource("Brush.TextTertiary");
     }
 
     /// <summary>本地备份的一句话概况。</summary>
@@ -196,23 +220,11 @@ public partial class BackupView : UserControl
     /// 清掉可能残留的明文副本。
     ///
     /// settings.json.bak 是"上一次保存前的副本"，启用加密之前写下的那些
-    /// 就是明文 —— 留着等于把加密白做了。
+    /// 就是明文 —— 留着等于把加密白做了。实现挪到 DataVault，
+    /// 这样启动时也能顺手清一遍（不只是"用户点了密码框"那一刻）。
     /// </summary>
-    private static void RemovePlaintextBackups()
-    {
-        foreach (var suffix in new[] { ".bak", ".broken", ".tmp" })
-        {
-            try
-            {
-                string p = AppPaths.SettingsFile + suffix;
-                if (!File.Exists(p)) continue;
-                string text = File.ReadAllText(p);
-                if (!DataVault.LooksEncrypted(text) && text.TrimStart().StartsWith('{'))
-                    File.Delete(p);
-            }
-            catch { }
-        }
-    }
+    private static void RemovePlaintextBackups() =>
+        DataVault.PurgePlaintextCopies(AppPaths.SettingsFile);
 
     private void ShowVaultStatus(string text, bool ok)
     {
@@ -441,6 +453,15 @@ public partial class BackupView : UserControl
         GroupList.ItemsSource = _groups;
     }
 
+    /// <summary>导出模式切换：加密 / 明文。</summary>
+    private void OnExportModeChanged(object sender, RoutedEventArgs e)
+    {
+        bool enc = ExportEncryptedBox.IsChecked == true;
+        ExportModeHint.Text = enc
+            ? "用备份密码加密，含网盘密码 / 备份密码 / 翻译密钥等全部字段。换台机器导入时输入同一个密码即可。"
+            : "不加密，任何人拿到都能读。为免泄露，会剔除网盘密码与备份密码 —— 适合直接发给别人。";
+    }
+
     private void OnExportClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
@@ -453,32 +474,56 @@ public partial class BackupView : UserControl
             return;
         }
 
-        // 勾了隐私项就再确认一次 —— 这个文件是明文的，可能要被发给别人
-        var priv = _groups.Where(g => g.Checked && g.Private).Select(g => g.Name).ToList();
-        if (priv.Count > 0)
+        bool encrypted = ExportEncryptedBox.IsChecked == true;
+        string password = _host.Settings.Sync.BackupPassword ?? "";
+
+        if (encrypted && string.IsNullOrWhiteSpace(password))
         {
+            var go = MessageBox.Show(Window.GetWindow(this),
+                "还没有「备份密码」，没法加密导出。\n\n" +
+                "可以先去上面的「备份密码」里设一个（本地数据也会一起变成密文），\n" +
+                "或者关掉「加密导出」改用明文导出。",
+                "需要先设密码", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (go == MessageBoxResult.OK) BackupPassBox.Focus();
+            return;
+        }
+
+        // 明文导出才需要提醒：文件谁拿到都能读
+        if (!encrypted)
+        {
+            var priv = _groups.Where(g => g.Checked && g.Private).Select(g => g.Name).ToList();
+            string extra = priv.Count > 0
+                ? $"\n\n你勾了隐私内容：\n　{string.Join("\n　", priv)}\n（这些组的密码类字段仍会被剔除）"
+                : "";
             var ok = MessageBox.Show(Window.GetWindow(this),
-                $"你勾选了隐私内容：\n\n　{string.Join("\n　", priv)}\n\n" +
-                "导出的文件是**明文**的，谁拿到都能读到这些内容。\n确定要继续吗？",
-                "导出隐私内容", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                "这次是**明文导出**，谁拿到文件都能读到内容。" + extra + "\n\n确定要继续吗？",
+                "明文导出", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
             if (ok != MessageBoxResult.OK) return;
         }
 
         var dlg = new SaveFileDialog
         {
-            Title = "导出按键增强配置（明文）",
-            FileName = $"按键增强配置({DateTime.Now:yyyy-MM-dd HH-mm-ss}){ExportImport.Extension}",
-            Filter = $"按键增强明文配置|*{ExportImport.Extension}|JSON|*.json",
+            Title = encrypted ? "导出配置（加密）" : "导出配置（明文）",
+            FileName = $"KeyboardEnhance配置({DateTime.Now:yyyy-MM-dd HH-mm-ss}){ExportImport.Extension}",
+            Filter = $"KeyboardEnhance 配置|*{ExportImport.Extension}|所有文件|*.*",
             InitialDirectory = SyncService.BackupDir,
         };
         if (dlg.ShowDialog() != true) return;
 
         try
         {
-            int n = ExportImport.WritePlain(dlg.FileName, _host.Settings, selected);
-            _host.Notify($"已导出（明文，{n} 个设置项，可直接发给别人导入）");
-            ShowImportResult($"已导出到：{dlg.FileName}\n共 {n} 个设置项，包含 {selected.Count} 个分组。\n" +
-                             "这是明文文件，可以直接发给别人导入。", true);
+            int n = encrypted
+                ? ExportImport.WriteEncrypted(dlg.FileName, _host.Settings, selected, password)
+                : ExportImport.WritePlain(dlg.FileName, _host.Settings, selected);
+
+            string what = encrypted
+                ? $"已导出（加密，{n} 个设置项，含全部字段）"
+                : $"已导出（明文，{n} 个设置项，已剔除密码）";
+            _host.Notify(what);
+            ShowImportResult($"已导出到：{dlg.FileName}\n共 {n} 个设置项，包含 {selected.Count} 个分组。\n"
+                             + (encrypted
+                                 ? "文件是密文，导入时需要同一个备份密码。"
+                                 : "这是明文文件，可以直接发给别人导入（密码类字段已剔除）。"), true);
         }
         catch (Exception ex)
         {
@@ -495,15 +540,43 @@ public partial class BackupView : UserControl
 
         var dlg = new OpenFileDialog
         {
-            Title = "导入按键增强配置（明文）",
-            Filter = $"按键增强明文配置|*{ExportImport.Extension}|JSON|*.json|所有文件|*.*",
+            Title = "导入配置（加密或明文）",
+            Filter = $"KeyboardEnhance 配置|*{ExportImport.Extension}|所有文件|*.*",
             InitialDirectory = SyncService.BackupDir,
         };
         if (dlg.ShowDialog() != true) return;
 
         try
         {
-            var (groups, data) = ExportImport.ReadPlain(dlg.FileName);
+            string text = File.ReadAllText(dlg.FileName);
+            string password = _host.Settings.Sync.BackupPassword ?? "";
+
+            List<string> groups;
+            System.Text.Json.Nodes.JsonObject data;
+            try
+            {
+                (groups, data) = ExportImport.Parse(text, password);
+            }
+            catch (BackupPasswordException)
+            {
+                /* 这份导出是别的密码加密的（或者本地还没设密码）。
+                 * 不能直接失败 —— 让他输一次密码继续，和恢复备份的体验保持一致。 */
+                var prompt = new UI.Windows.PasswordPromptWindow(
+                    pass =>
+                    {
+                        try { ExportImport.Parse(text, pass); return true; }
+                        catch { return false; }
+                    },
+                    "这份导出是加密的",
+                    "请输入导出它时用的备份密码。",
+                    "用这个密码导入")
+                {
+                    Owner = Window.GetWindow(this),
+                };
+                if (prompt.ShowDialog() != true) return;
+                (groups, data) = ExportImport.Parse(text, prompt.Password ?? "");
+            }
+
             if (groups.Count == 0)
             {
                 ShowImportResult("这份导出里没有认得的分组，可能来自别的版本。", false);

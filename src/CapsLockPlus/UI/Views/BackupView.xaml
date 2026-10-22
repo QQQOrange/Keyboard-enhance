@@ -120,7 +120,7 @@
                     <StackPanel>
                         <TextBlock Text="本地备份" Style="{StaticResource Text.H2}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="备份就放在软件旁边的「KeyboardEnhance 备份」文件夹里，拷走整个文件夹就带走了软件和全部备份。" />
+                                   Text="备份就放在软件旁边的「KeyboardEnhance Back」文件夹里，拷走整个文件夹就带走了软件和全部备份。" />
 
                         <Border Margin="0,12,0,0" Padding="12,10" CornerRadius="10"
                                 Background="{DynamicResource Brush.SurfaceAlt}"
@@ -133,6 +133,20 @@
                                            TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#E5484D"
                                            Visibility="Collapsed"
                                            Text="软件目录不可写，备份已改放到数据目录。" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,10,0,0" Padding="12,10" CornerRadius="10"
+                                Background="{DynamicResource Brush.SurfaceAlt}"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="用户数据目录" Style="{StaticResource Text.Tertiary}"
+                                           FontSize="11" />
+                                <TextBlock x:Name="DataDirText" Style="{StaticResource Text.Mono}"
+                                           FontSize="11.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Foreground="{DynamicResource Brush.TextSecondary}" />
+                                <TextBlock x:Name="DataEncText" Style="{StaticResource Text.Tertiary}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0" />
                             </StackPanel>
                         </Border>
 
@@ -207,14 +221,25 @@
                     <StackPanel>
                         <TextBlock Text="导出配置" Style="{StaticResource Text.H2}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="导出的是**明文**文件（方便发给别人导入），所以不加密；也正因为是明文，凭据类内容一律不导出。" />
+                                   Text="勾了哪一组，就导出那一组的**全部内容**。默认加密导出，文件本身是密文；只有关掉加密时才会剔除密码类字段（那种文件可以直接发给别人）。" />
 
-                        <!-- 硬性脱敏说明：红色 -->
-                        <Border Margin="0,10,0,0" Padding="10,8" CornerRadius="8"
-                                Background="#22E5484D" BorderBrush="#55E5484D" BorderThickness="1">
-                            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#E5484D"
-                                       Text="永远不会导出的内容：WebDAV 密码、备份密码、本地加密密钥。即使勾了「同步与备份设置」也只带地址和用户名。" />
-                        </Border>
+                        <!-- 导出模式 -->
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="加密导出" Style="{StaticResource Text.Body}" />
+                                <TextBlock x:Name="ExportModeHint" Style="{StaticResource Text.Tertiary}"
+                                           TextWrapping="Wrap" Margin="0,3,0,0"
+                                           Text="用备份密码加密，含网盘密码 / 备份密码 / 翻译密钥等全部字段。换台机器导入时输入同一个密码即可。" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1" x:Name="ExportEncryptedBox"
+                                      Style="{StaticResource ToggleSwitch}"
+                                      IsChecked="True" VerticalAlignment="Center"
+                                      Click="OnExportModeChanged" />
+                        </Grid>
 
                         <ItemsControl x:Name="GroupList" Margin="0,14,0,0">
                             <ItemsControl.ItemTemplate>
@@ -239,7 +264,7 @@
                                                             CornerRadius="5" Background="#22E5484D"
                                                             BorderBrush="#55E5484D" BorderThickness="1"
                                                             Visibility="{Binding PrivateVisibility}">
-                                                        <TextBlock Text="隐私 · 默认不导出" FontSize="10.5"
+                                                        <TextBlock Text="隐私 · 默认不勾" FontSize="10.5"
                                                                    FontWeight="SemiBold"
                                                                    Foreground="#E5484D" />
                                                     </Border>
@@ -273,7 +298,7 @@
                     <StackPanel>
                         <TextBlock Text="导入配置" Style="{StaticResource Text.H2}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="只能导入**明文**导出文件；加密备份请用上面的「从备份恢复…」。&#x0a;导入是合并式的：只覆盖导出文件里包含的那些项。" />
+                                   Text="加密导出和明文导出都能导入（加密的会问你要密码）。&#x0a;导入是合并式的：只覆盖导出文件里包含的那些项。" />
 
                         <Button Content="选择文件导入…" Style="{StaticResource Button.Base}" Padding="16,8"
                                 Margin="0,14,0,0" HorizontalAlignment="Left" Click="OnImportClick" />

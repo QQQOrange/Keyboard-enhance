@@ -72,6 +72,7 @@ public static class SelfTest
 
         Section("设置存取");
         TestSettings();
+        TestDataLocationAndEncryptedExport();
 
         Section("旧版 ini 迁移");
         TestLegacyImport();
@@ -535,6 +536,161 @@ public static class SelfTest
 
         // 图标缓存
         Check("内置图标文件已生成", File.Exists(IconUrls.Baidu), IconUrls.Baidu);
+    }
+
+    /// <summary>
+    /// 数据目录必须**跟着软件走**，迁移要只搬用户数据，加密导出要带全字段。
+    ///
+    /// 这三条都是"用户看不见但一错就很难受"的地方：
+    ///   · 数据留在 %LocalAppData% → 拷走软件文件夹等于没拷配置；
+    ///   · 迁移时把 logs / backups 一起搬 → 新目录塞满诊断垃圾，
+    ///     而且备份会散落在两处；
+    ///   · 加密导出还偷偷剔除密码 → 换台机器恢复完还得重填一遍。
+    /// </summary>
+    private static void TestDataLocationAndEncryptedExport()
+    {
+        // ---------- 目录约定 ----------
+        CheckEqual("用户数据目录名", AppPaths.DataFolderName, "KeyboardEnhance Data");
+        CheckEqual("备份目录名", Core.Sync.SyncService.BackupFolderName, "KeyboardEnhance Back");
+        Check("老备份目录名仍有记录（迁移要用）",
+            Core.Sync.SyncService.LegacyBackupFolderName.Length > 0,
+            Core.Sync.SyncService.LegacyBackupFolderName);
+
+        /* 自检为了不碰真实数据，会用 CAPSLOCKPLUS_DATA 指到临时目录 ——
+         * 那种情况下"在软件旁边"当然不成立，跳过而不是判失败。 */
+        bool envOverride = !string.IsNullOrWhiteSpace(
+            Environment.GetEnvironmentVariable("CAPSLOCKPLUS_DATA"));
+        Check("数据目录在软件旁边（环境变量覆盖 / 回落时跳过）",
+            envOverride || AppPaths.DataDirIsFallback
+            || AppPaths.DataDir.StartsWith(AppPaths.AppDir, StringComparison.OrdinalIgnoreCase),
+            $"data={AppPaths.DataDir} app={AppPaths.AppDir} "
+            + $"override={envOverride} fallback={AppPaths.DataDirIsFallback}");
+
+        // ---------- 迁移：拷什么、不拷什么 ----------
+        string root = Path.Combine(AppPaths.DataDir, "selftest-migrate");
+        string from = Path.Combine(root, "old");
+        string to = Path.Combine(root, "new");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(from, "icons"));
+            Directory.CreateDirectory(Path.Combine(from, "logs"));
+            Directory.CreateDirectory(Path.Combine(from, "backups"));
+
+            File.WriteAllText(Path.Combine(from, "settings.json"), "old-settings");
+            File.WriteAllText(Path.Combine(from, "vault.json"), "vault");
+            File.WriteAllText(Path.Combine(from, "vault.cache"), "cache");
+            File.WriteAllText(Path.Combine(from, "settings.json.tmp"), "tmp");
+            File.WriteAllText(Path.Combine(from, "selftest.log"), "log");
+            File.WriteAllText(Path.Combine(from, "icons", "a.svg"), "<svg/>");
+            File.WriteAllText(Path.Combine(from, "logs", "app.log"), "log");
+            File.WriteAllText(Path.Combine(from, "backups", "x.clpbak"), "bak");
+
+            int n = AppPaths.CopyTreeForTest(from, to);
+
+            Check("迁移带上了设置", File.Exists(Path.Combine(to, "settings.json")));
+            Check("迁移带上了加密元数据", File.Exists(Path.Combine(to, "vault.json")));
+            Check("迁移带上了密钥缓存", File.Exists(Path.Combine(to, "vault.cache")));
+            Check("迁移带上了图标", File.Exists(Path.Combine(to, "icons", "a.svg")));
+            Check("迁移不拷日志", !Directory.Exists(Path.Combine(to, "logs")));
+            Check("迁移不拷备份（备份目录单独搬）", !Directory.Exists(Path.Combine(to, "backups")));
+            Check("迁移不拷临时文件", !File.Exists(Path.Combine(to, "settings.json.tmp")));
+            Check("迁移不拷自检产物", !File.Exists(Path.Combine(to, "selftest.log")));
+            CheckEqual("迁移数不含被跳过的文件", n, 4);   // settings / vault.json / vault.cache / icons
+
+            // 再跑一次：目标已有的文件绝不能被旧数据盖掉
+            File.WriteAllText(Path.Combine(to, "settings.json"), "new-settings");
+            AppPaths.CopyTreeForTest(from, to);
+            CheckEqual("迁移不覆盖目标已有文件",
+                File.ReadAllText(Path.Combine(to, "settings.json")), "new-settings");
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+
+        // ---------- 导出：勾了哪组就是哪组的全部字段 ----------
+        var s = DefaultSettings.Create();
+        s.Sync.WebDavUrl = "https://dav.example.com/dav/";
+        s.Sync.WebDavUser = "me@example.com";
+        s.Sync.WebDavPass = "SuperSecretDavPass";
+        s.Sync.BackupPassword = "SuperSecretBackupPass";
+        s.Translate.AppSecret = "SuperSecretTranslateKey";
+
+        var all = Core.Sync.ExportImport.Groups.Select(g => g.Id).ToList();
+
+        // 明文模式：仍然剔除凭据（这条老行为不能退）
+        var (plainText, _) = Core.Sync.ExportImport.Build(s, all);
+        Check("明文导出不含网盘密码", !plainText.Contains("SuperSecretDavPass"));
+        Check("明文导出不含备份密码", !plainText.Contains("SuperSecretBackupPass"));
+
+        // 加密模式：勾了就带全部字段
+        var (fullText, _) = Core.Sync.ExportImport.Build(s, all, includeSecrets: true);
+        Check("加密导出带上网盘密码", fullText.Contains("SuperSecretDavPass"));
+        Check("加密导出带上备份密码", fullText.Contains("SuperSecretBackupPass"));
+        Check("加密导出带上翻译密钥", fullText.Contains("SuperSecretTranslateKey"));
+
+        // ---------- 落盘 + 回读（真实文件） ----------
+        string dir = Path.Combine(AppPaths.DataDir, "selftest-export-enc");
+        string file = Path.Combine(dir, "enc" + Core.Sync.ExportImport.Extension);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            int n = Core.Sync.ExportImport.WriteEncrypted(file, s, all, "export-pw");
+            Check("加密导出写出了文件", File.Exists(file) && new FileInfo(file).Length > 0);
+            Check("加密导出的文件确实是密文",
+                Core.Sync.CryptoBox.LooksEncrypted(File.ReadAllText(file)));
+            Check("加密导出写入了设置项", n > 0, n.ToString());
+
+            var (groups, data) = Core.Sync.ExportImport.ReadPlain(file, "export-pw");
+            Check("加密导出能读回来", groups.Count == all.Count, $"{groups.Count}/{all.Count}");
+
+            var dst = DefaultSettings.Create();
+            Core.Sync.ExportImport.Apply(dst, groups, data);
+            CheckEqual("加密导出能恢复网盘地址", dst.Sync.WebDavUrl, "https://dav.example.com/dav/");
+            CheckEqual("加密导出能恢复网盘密码", dst.Sync.WebDavPass, "SuperSecretDavPass");
+            CheckEqual("加密导出能恢复备份密码", dst.Sync.BackupPassword, "SuperSecretBackupPass");
+
+            // 密码不对 → 必须报"密码问题"，而不是"文件坏了"
+            bool passwordRejected = false;
+            try { Core.Sync.ExportImport.ReadPlain(file, "wrong-pw"); }
+            catch (Core.Sync.BackupPasswordException) { passwordRejected = true; }
+            Check("加密导出用错密码会被判为密码问题", passwordRejected);
+
+            bool emptyRejected = false;
+            try { Core.Sync.ExportImport.ReadPlain(file, ""); }
+            catch (Core.Sync.BackupPasswordException) { emptyRejected = true; }
+            Check("加密导出没密码时提示要密码", emptyRejected);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+
+        /* ---------- 明文副本必须清掉 ----------
+         *
+         * `.bak` 是上次保存前的副本。启用加密前写下的那份是明文，
+         * 和正牌设置长得一模一样 —— 用户拷走文件夹时根本不会注意。
+         * 但**密文**副本要留着：那是有效的回退点。 */
+        string purgeDir = Path.Combine(AppPaths.DataDir, "selftest-purge");
+        string settingsFile = Path.Combine(purgeDir, "settings.json");
+        Directory.CreateDirectory(purgeDir);
+        try
+        {
+            File.WriteAllText(settingsFile, "{\"clpVault\":1}");
+            File.WriteAllText(settingsFile + ".bak", "{\"Keys\":[]}");        // 明文 → 删
+            File.WriteAllText(settingsFile + ".tmp", "{\"clpVault\":1}");     // 密文 → 留
+            File.WriteAllText(settingsFile + ".broken", "这不是 JSON");        // 非 JSON → 留
+
+            int removed = DataVault.PurgePlaintextCopies(settingsFile);
+            CheckEqual("只删明文副本", removed, 1);
+            Check("明文 .bak 被删掉", !File.Exists(settingsFile + ".bak"));
+            Check("密文 .tmp 保留", File.Exists(settingsFile + ".tmp"));
+            Check("非 JSON 的 .broken 保留", File.Exists(settingsFile + ".broken"));
+        }
+        finally
+        {
+            try { Directory.Delete(purgeDir, true); } catch { }
+        }
     }
 
     private static void TestSettings()
@@ -1238,12 +1394,20 @@ public static class SelfTest
             victim.Sync.WebDavUrl, "https://my-own/dav/");
         CheckEqual("只勾 keys 时无法塞入翻译密钥", victim.Translate.AppSecret, "stolen" == victim.Translate.AppSecret ? "stolen" : victim.Translate.AppSecret);
 
-        // ---- 明文导入必须拒绝加密备份 ----
+        /* ---- 加密导出：现在**能**导入了（要给密码），但密码不对必须报密码问题 ----
+         *
+         * 老行为是"明文导入一律拒绝加密文件"。用户后来要求加密导出能带走全部字段，
+         * 那导入侧就得跟着支持 —— 否则导出的东西自己读不回来。
+         * 关键是不能把"密码不对"退化成"文件坏了"，否则用户会去怀疑文件。 */
         string encrypted = Core.Sync.CryptoBox.Encrypt(text, "pw");
-        bool rejected = false;
-        try { Core.Sync.ExportImport.Parse(encrypted); }
-        catch (InvalidOperationException e) { rejected = e.Message.Contains("加密"); }
-        Check("明文导入拒绝加密备份", rejected);
+        var (encGroups, _) = Core.Sync.ExportImport.Parse(encrypted, "pw");
+        Check("加密导出能被正确密码导入", encGroups.Count == 1 && encGroups[0] == "keys",
+            string.Join(",", encGroups));
+
+        bool wrongPw = false;
+        try { Core.Sync.ExportImport.Parse(encrypted, "not-the-pw"); }
+        catch (Core.Sync.BackupPasswordException) { wrongPw = true; }
+        Check("加密导出用错密码被判为密码问题", wrongPw);
 
         // ---- 没有 kind 字段的（整份备份）也要拒 ----
         bool noKind = false;

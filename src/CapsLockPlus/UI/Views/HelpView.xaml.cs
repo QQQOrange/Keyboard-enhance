@@ -183,7 +183,9 @@ public partial class HelpView : UserControl
         AddSection("⑧ 剪贴板与同步", new[]
         {
             "内置 10 组独立剪贴板（Caps+C / Caps+V 那一套），与系统剪贴板分开。",
-            "「同步与备份」支持 WebDAV：可以把整套配置同步到网盘，也能导入导出明文/加密文件。",
+            "所有用户数据都在软件旁边的「KeyboardEnhance Data」文件夹里，备份在「KeyboardEnhance Back」里 —— 拷走整个文件夹就带走了软件和全部数据。",
+            "本地数据一律加密（AES-256-GCM），密钥由「备份密码」派生；没设密码时是明文，设了会立刻转成密文。",
+            "「同步与备份」支持 WebDAV：可以把整套配置同步到网盘，也能导入导出。导出默认加密、含全部字段；关掉加密则是明文，会剔除密码类字段。",
         });
 
         AddSection("⑨ 常见问题", new[]

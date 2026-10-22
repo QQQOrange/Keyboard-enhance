@@ -20,22 +20,25 @@ public sealed record ExportGroup(
     bool DefaultChecked);
 
 /// <summary>
-/// 明文配置的按项导出 / 导入。
+/// 配置的按项导出 / 导入。
 ///
 /// 与「备份」的分工（照搬 QuickSearch 的结论）：
 ///   * **备份**：整份配置 + 加密，恢复时全量覆盖，走 WebDAV 同步；
-///   * **导出**：挑几项 + 不加密，可直接发给别人导入，是合并式的。
+///   * **导出**：挑几项 + 合并式导入，用来在机器之间搬配置。
 ///
-/// 把两者塞进同一个格式会立刻出乱子：同一个键在备份里是"整份替换"，
-/// 在导出里是"只换这一项"。格式不分，语义就没法分。
-/// 所以导出文件带 `kind: "clp-config"`，导入时靠它区分，
-/// 并且**明确拒绝**加密备份（不是"试一下能不能解"，是"这不是明文导出格式"）。
+/// 导出有两种模式：
+///   * **加密导出（默认）**：用备份密码加密，**勾了哪组就导出那组的全部字段**，
+///     包括网盘密码、翻译密钥 —— 文件本身是密文，泄露风险由加密承担；
+///   * **明文导出**：为了"直接发给别人"这种场景，剔除凭据类字段。
+///
+/// 导入侧靠内容自动识别（<see cref="CryptoBox.LooksEncrypted"/>），
+/// 加密的和明文的都能读，用户不用记"这份是哪种"。
 /// </summary>
 public static class ExportImport
 {
     public const string ExportKind = "clp-config";
 
-    /// <summary>导出文件的默认扩展名。用独立后缀，一眼看出是能给人的明文。</summary>
+    /// <summary>导出文件的默认扩展名。加密与明文共用，导入时按内容判断。</summary>
     public const string Extension = ".clpconf";
 
     /// <summary>导入文件大小上限（超过直接拒绝，避免把内存吃光）。</summary>
@@ -83,18 +86,20 @@ public static class ExportImport
             new[] { nameof(AppSettings.Translate) },
             Private: true, DefaultChecked: false),
 
-        new("syncSettings", "同步与备份设置", "WebDAV 地址、用户名，以及备份保留策略。密码类字段永远不导出",
+        new("syncSettings", "同步与备份设置", "WebDAV 地址、用户名、备份保留策略；加密导出时含密码",
             new[] { nameof(AppSettings.Sync) },
             Private: true, DefaultChecked: false),
     };
 
     /// <summary>
-    /// **永远不导出**的字段（`属性.子属性`）。
+    /// **明文导出**时永远不写的字段（`属性.子属性`）。
     ///
-    /// 导出是明文、且默认设计成"可以直接发给别人"，
-    /// 那么凭据类字段就不能靠"用户别勾"来保证安全 ——
-    /// 总有人会点「全选」。这里做成硬约束：
-    /// 即便勾了「同步与备份设置」，也只带地址和用户名。
+    /// 只在明文模式下生效：明文文件的设计前提是"可以直接发给别人"，
+    /// 那么凭据就不能靠"用户别勾"来保证安全 —— 总有人会点「全选」。
+    ///
+    /// 加密导出**不走这张表**：文件是 AES-256-GCM 密文，
+    /// 勾了「同步与备份设置」就该把网盘密码一起带走，
+    /// 否则换台机器恢复完还得重新填一遍，等于没导出。
     /// </summary>
     public static readonly string[] NeverExport =
     {
@@ -102,7 +107,7 @@ public static class ExportImport
         "Sync.BackupPassword",
     };
 
-    /// <summary>把不该出门的字段从导出数据里摘掉。</summary>
+    /// <summary>把不该出门的字段从**明文**导出数据里摘掉。</summary>
     internal static void Sanitize(JsonObject data)
     {
         foreach (string path in NeverExport)
@@ -131,8 +136,12 @@ public static class ExportImport
     /// <summary>
     /// 按勾选的组生成导出内容。返回 (文件文本, 写进去的设置项个数)。
     /// </summary>
+    /// <param name="includeSecrets">
+    /// true = 勾了哪组就导出那组的**全部**字段（加密导出用）；
+    /// false = 剔除 <see cref="NeverExport"/> 里的凭据（明文导出用）。
+    /// </param>
     public static (string Text, int KeyCount) Build(AppSettings settings,
-        IEnumerable<string> selectedGroups)
+        IEnumerable<string> selectedGroups, bool includeSecrets = false)
     {
         var ids = selectedGroups.ToList();
         var allow = AllowKeys(ids);
@@ -157,13 +166,14 @@ public static class ExportImport
             ["data"] = data,
         };
 
-        // 明文文件 + 可能发给别人 = 凭据类字段一律摘掉
-        Sanitize(data);
+        // 只有明文导出才脱敏：加密导出的安全性由加密本身保证，
+        // 摘掉密码会让"换台机器恢复"变成"还得重新填一遍"。
+        if (!includeSecrets) Sanitize(data);
 
         return (file.ToJsonString(WriteOpts), data.Count);
     }
 
-    /// <summary>把勾选的组写成一份明文文件。返回写进去的设置项个数。</summary>
+    /// <summary>把勾选的组写成一份**明文**文件（会剔除凭据）。返回写进去的设置项个数。</summary>
     public static int WritePlain(string path, AppSettings settings,
         IEnumerable<string> selectedGroups)
     {
@@ -173,22 +183,50 @@ public static class ExportImport
         return count;
     }
 
+    /// <summary>
+    /// 把勾选的组写成一份**加密**文件：勾了哪组就是那组的全部字段。
+    /// 返回写进去的设置项个数。
+    /// </summary>
+    public static int WriteEncrypted(string path, AppSettings settings,
+        IEnumerable<string> selectedGroups, string password)
+    {
+        if (string.IsNullOrWhiteSpace(password))
+            throw new InvalidOperationException(
+                "加密导出需要密码 —— 先在「备份密码」里设一个，或改成明文导出");
+
+        var (text, count) = Build(settings, selectedGroups, includeSecrets: true);
+        File.WriteAllText(path, CryptoBox.Encrypt(text, password), System.Text.Encoding.UTF8);
+        CoreLog.Info($"已导出加密配置：{path}（{count} 个设置项）");
+        return count;
+    }
+
     // ---------------- 导入 ----------------
 
     /// <summary>
-    /// 读一份明文导出。
+    /// 读一份导出文件（加密或明文都行）。
     ///
     /// 三道闸，全部是"宁可拒绝也别冲掉用户配置"：
-    ///   1. **加密备份直接拒**（导入只支持明文，加密的请走备份页）；
+    ///   1. **加密内容先解密**：口令不对就抛 <see cref="BackupPasswordException"/>，
+    ///      让界面去问密码 —— 不能把密文当坏 JSON 报个看不懂的错；
     ///   2. `kind` 必须是 clp-config —— 整份备份没有这个字段，照样拒
-    ///      （全量恢复是备份页的事，明文导入不该悄悄变成全量覆盖）；
+    ///      （全量恢复是备份页的事，按项导入不该悄悄变成全量覆盖）；
     ///   3. `items` 必须是字符串数组，`data` 必须是非空对象。
     /// </summary>
-    public static (List<string> Groups, JsonObject Data) Parse(string text)
+    /// <param name="password">解密口令；null = 用当前设置里的备份密码（由调用方决定）。</param>
+    public static (List<string> Groups, JsonObject Data) Parse(string text, string? password = null)
     {
         if (CryptoBox.LooksEncrypted(text))
-            throw new InvalidOperationException(
-                "这是加密备份，明文导入用不了 —— 请到「同步与备份」页恢复，或让导出方导出明文");
+        {
+            try
+            {
+                text = CryptoBox.Decrypt(text, password ?? "");
+            }
+            catch (Exception e)
+            {
+                // 统一成"密码问题"，界面据此弹密码框重试
+                throw new BackupPasswordException(e.Message, e);
+            }
+        }
 
         JsonNode? node;
         try
@@ -224,13 +262,13 @@ public static class ExportImport
         return (known, data);
     }
 
-    /// <summary>从文件读一份明文导出。</summary>
-    public static (List<string> Groups, JsonObject Data) ReadPlain(string path)
+    /// <summary>从文件读一份导出（加密或明文）。</summary>
+    public static (List<string> Groups, JsonObject Data) ReadPlain(string path, string? password = null)
     {
         var info = new FileInfo(path);
         if (info.Length > MaxBytes)
             throw new InvalidOperationException("文件超过 32MB，确认选对了吗");
-        return Parse(File.ReadAllText(path, System.Text.Encoding.UTF8));
+        return Parse(File.ReadAllText(path, System.Text.Encoding.UTF8), password);
     }
 
     /// <summary>

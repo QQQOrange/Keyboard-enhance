@@ -128,6 +128,42 @@ public static class DataVault
     }
 
     /// <summary>
+    /// 删掉设置文件旁边可能残留的**明文**副本（`.bak` / `.broken` / `.tmp`）。
+    ///
+    /// 为什么必须做：`.bak` 是"上次保存前的副本"。启用加密之前写下的那份就是明文，
+    /// 留在同一个目录里等于把加密白做了 —— 而且它长得和正牌设置一模一样，
+    /// 用户拷走整个文件夹时根本不会注意到。
+    ///
+    /// 只删确认是明文 JSON 的那些；已经是密文的副本保留（那是有效的回退点）。
+    /// 返回删了几个。
+    /// </summary>
+    public static int PurgePlaintextCopies(string settingsFile)
+    {
+        int removed = 0;
+        foreach (string suffix in new[] { ".bak", ".broken", ".tmp" })
+        {
+            try
+            {
+                string path = settingsFile + suffix;
+                if (!File.Exists(path)) continue;
+
+                string text = File.ReadAllText(path);
+                if (LooksEncrypted(text)) continue;          // 密文副本留着
+                if (!text.TrimStart().StartsWith('{')) continue;   // 不是 JSON，别乱删
+
+                File.Delete(path);
+                removed++;
+                CoreLog.Info($"[加密] 已删除明文副本 {Path.GetFileName(path)}");
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Warn("[加密] 清理明文副本失败：" + ex.Message);
+            }
+        }
+        return removed;
+    }
+
+    /// <summary>
     /// 尝试用 DPAPI 缓存解锁（日常启动走这条）。
     /// 缓存不存在 / 换了用户 / 换机器 → 返回 false，由上层提示输密码。
     /// </summary>
