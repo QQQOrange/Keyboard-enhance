@@ -60,6 +60,9 @@ public sealed class HotkeyEngine : IDisposable
     private int _lastRepeatVk = -1;
     private DateTime _lastRepeatTime = DateTime.MinValue;
 
+    /// <summary>连续多少轮计时器都读到"触发键已松开"（用于防采样抖动）。</summary>
+    private int _physicallyUpTicks;
+
     /// <summary>
     /// 双击触发键的判定窗口（毫秒）。
     ///
@@ -122,6 +125,7 @@ public sealed class HotkeyEngine : IDisposable
         _swallowedDown.Clear();
         _swallowedUp.Clear();
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
+        _physicallyUpTicks = 0;
     }
 
     /// <summary>是否正处于某个触发键的按住状态。</summary>
@@ -201,11 +205,109 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>阈值检查（计时器每 20ms 调一次；自检也可直接调）。</summary>
     private void CheckHoldThreshold()
     {
-        if (!_triggerHeld || _layerActive) return;
-        var trigger = _activeTrigger;
-        if (trigger == null) return;
-        if ((DateTime.Now - _triggerDownTime).TotalMilliseconds >= trigger.HoldMs)
+        if (!_triggerHeld) return;
+
+        /* ---- 自愈：抬起事件丢了 ----
+         *
+         * 钩子并不是万无一失的：切到 UAC 安全桌面、远程桌面接管、
+         * 系统因超时把钩子静默摘掉再重装、睡眠唤醒……这些窗口里
+         * **抬起事件会永久丢失**。此时 `_triggerHeld` 卡在 true，
+         * 下一次按触发键会被当成"自动重复"直接忽略（见 OnTriggerDown），
+         * 用户看到的就是"触发键偶尔按了没反应，再按一次又好了"。
+         *
+         * 每 20ms 拿物理按键状态核对一次，比等下一次按键去猜要可靠得多。
+         * 注意：这里**必须**用 PhysDownFamily —— 触发键可能是右 Alt，
+         * 而系统/驱动可能只报通用码 0x12。 */
+        if (_activeTriggerVk != -1 && !PhysDownFamily(_activeTriggerVk))
+        {
+            /* 连续 3 次（约 60ms）都读不到按下才认账。
+             *
+             * 单次采样可能抖：`GetAsyncKeyState` 在切桌面、UAC 提示、
+             * 远程会话切换的瞬间会短暂返回"没按下"。若一抖就复位，
+             * 用户正按着触发键进层会被莫名取消 —— 那是比原 bug 更糟的体验。 */
+            if (++_physicallyUpTicks >= 3)
+            {
+                CoreLog.Warn($"触发键 0x{_activeTriggerVk:X2} 物理上已松开但没收到抬起事件，复位状态");
+                ResetTriggerState("抬起事件丢失");
+            }
+            return;
+        }
+
+        _physicallyUpTicks = 0;
+        if (_layerActive) return;
+
+        /* 触发键配置读不到（按住期间被用户禁用 / 列表被重建）时，
+         * 用默认阈值继续，而不是把这次按下丢掉 —— 用户不会知道
+         * "因为你在按的时候改了设置，所以这次不算"。 */
+        int holdMs = _activeTrigger?.HoldMs ?? 200;
+        if ((DateTime.Now - _triggerDownTime).TotalMilliseconds >= holdMs)
             OnHoldThresholdReached();
+    }
+
+    /// <summary>
+    /// 物理按键状态查询（可注入，供自检模拟）。
+    ///
+    /// 不注入时读真实的 <c>GetAsyncKeyState</c>；但**钩子没跑**时一律返回
+    /// true（"当作按着"），这样自检里的 SimulateKey 不会被物理状态校验误伤。
+    /// </summary>
+    internal Func<int, bool>? PhysicalDownProbe { get; set; }
+
+    private bool PhysicalChecksActive => PhysicalDownProbe != null || _hook.IsRunning;
+
+    private bool PhysDown(int vk)
+    {
+        if (PhysicalDownProbe != null) return PhysicalDownProbe(vk);
+        if (!_hook.IsRunning) return true;      // 自检：没有真实硬件，不做校验
+        return (GetAsyncKeyState(vk) & 0x8000) != 0;
+    }
+
+    /// <summary>同一个物理键的所有可能编码（左右专用码 + 通用码）。</summary>
+    private static int[] FamilyCodes(int vk) => vk switch
+    {
+        VK.LControl or VK.RControl or 0x11 => new[] { 0xA2, 0xA3, 0x11 },
+        VK.LShift or VK.RShift or 0x10 => new[] { 0xA0, 0xA1, 0x10 },
+        VK.LMenu or VK.RMenu or 0x12 => new[] { 0xA4, 0xA5, 0x12 },
+        _ => new[] { vk },
+    };
+
+    /// <summary>这个键（含同族编码）此刻是否被物理按住。</summary>
+    private bool PhysDownFamily(int vk)
+    {
+        foreach (int code in FamilyCodes(vk))
+            if (PhysDown(code)) return true;
+        return false;
+    }
+
+    /// <summary>两个键码是否属于同一个修饰键家族（左/右/通用都算）。</summary>
+    private static bool SameFamily(int a, int b)
+    {
+        if (a == -1 || b == -1) return false;
+        return FamilyCodes(a).Intersect(FamilyCodes(b)).Any();
+    }
+
+    /// <summary>
+    /// 用物理状态校正修饰键标记。
+    ///
+    /// 为什么需要：`_ctrlDown` 这类标记只要漏掉一次抬起（钩子重装、
+    /// 切桌面、另一个程序抢焦点导致 up 被吞），就会**一直**是 true。
+    /// 之后层内每次按键都被拼成 `caps_ctrl_xxx`，用户绑的 `caps_q`
+    /// 永远查不到 —— 表现就是"触发键进层了，但层里的键全都不灵"，
+    /// 而且会一直坏到程序重启。物理状态是唯一的真相来源。
+    ///
+    /// ⚠ 触发键本身若是修饰键（右 Alt 当触发键），物理上它当然是按着的，
+    /// 但绝不能算进 combo，否则又回到 caps_lalt_q 的老问题。
+    /// </summary>
+    private void SyncModifierFlagsWithPhysical()
+    {
+        if (!PhysicalChecksActive) return;
+
+        int skip = _triggerHeld ? _activeTriggerVk : -1;
+
+        if (!SameFamily(skip, VK.LControl)) _ctrlDown = PhysDownFamily(VK.LControl);
+        if (!SameFamily(skip, VK.LShift)) _shiftDown = PhysDownFamily(VK.LShift);
+        if (!SameFamily(skip, VK.LMenu)) _laltDown = PhysDownFamily(VK.LMenu);
+        if (!SameFamily(skip, VK.LWin)) _lwinDown = PhysDownFamily(VK.LWin);
+        if (!SameFamily(skip, VK.RWin)) _rwinDown = PhysDownFamily(VK.RWin);
     }
 
     /// <summary>仅供自检：手动跑一次阈值检查，不依赖计时器。</summary>
@@ -621,8 +723,25 @@ public sealed class HotkeyEngine : IDisposable
          * 这里必须先把这个键的修饰键状态清掉 —— 触发键若是右 Alt / 右 Ctrl，
          * 重复的 down 会把 `_laltDown` 又置成 true（上面虽然拦了一道，
          * 但状态可能被其它路径写脏，这里再兜一次底），
-         * 层内绑定就会被拼成 caps_lalt_xxx 而永远查不到。 */
-        if (_triggerHeld) { ClearModifierFlag(vk); return; }
+         * 层内绑定就会被拼成 caps_lalt_xxx 而永远查不到。
+         *
+         * ⚠ 但"按住"这个判断本身可能是假的：上一次的抬起事件如果丢了，
+         * `_triggerHeld` 会卡在 true，于是**这一次真实的按下被当成自动重复
+         * 直接吞掉** —— 用户感受到的就是"触发键偶尔按一下没反应"。
+         * 所以先拿物理状态核对：这个键现在其实没被按住 → 按全新按下处理。 */
+        if (_triggerHeld)
+        {
+            if (_activeTriggerVk != -1 && !PhysDownFamily(_activeTriggerVk))
+            {
+                CoreLog.Warn($"触发键 0x{_activeTriggerVk:X2} 的上次抬起事件丢失，按新按下处理");
+                ResetTriggerState("抬起事件丢失（按下时发现）");
+            }
+            else
+            {
+                ClearModifierFlag(vk);
+                return;      // 真的自动重复
+            }
+        }
 
         /* ⚠ 先确定是哪个触发键，**再**清零修饰键状态。
          *
@@ -635,7 +754,16 @@ public sealed class HotkeyEngine : IDisposable
         _usedCombo = false;
         _usedOtherKey = false;
         _tapHandled = false;
-        _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
+        _physicallyUpTicks = 0;
+
+        /* 只清**自己**的修饰键标记，不能把五个全清。
+         *
+         * 早先这里是 `_laltDown = _lwinDown = ... = false` ——
+         * 用户先按住 Shift 再按触发键时，Shift 明明还按着，
+         * 却被这一行抹掉了，层内的 caps_shift_xxx 绑定全部查不到。
+         * 而 Shift 的 down 早就放行给了系统，用户以为自己在按 Shift。 */
+        ClearModifierFlag(vk);
+
         _swallowedDown.Clear();
         _swallowedUp.Clear();
 
@@ -802,6 +930,11 @@ public sealed class HotkeyEngine : IDisposable
         string? keyName = KeyName.NameOf(vk);
         if (keyName == null) return false;   // 不认识的功能键，放行
 
+        /* 用物理状态校正一遍修饰键标记再拼 combo。
+         * 漏掉一次修饰键抬起事件就会让整层的组合键永久错位
+         * （全部拼成 caps_ctrl_xxx），这里是唯一的纠偏机会。 */
+        SyncModifierFlagsWithPhysical();
+
         var settings = _settings();
 
         /* ---- 子层键：可以是任意物理键（Tab / CapsLock / F13…） ----
@@ -950,6 +1083,9 @@ public sealed class HotkeyEngine : IDisposable
     private void OnWheel(int direction, bool shift, bool ctrl)
     {
         if (!_triggerHeld || !_layerActive || !Enabled || Suspended) return;
+
+        // 滚轮事件不走 OnKeyEvent，修饰键状态同样要用物理状态校正
+        SyncModifierFlagsWithPhysical();
         if (!_laltDown) return;
         var settings = _settings();
         string combo = direction > 0 ? "caps_lalt_wheelUp" : "caps_lalt_wheelDown";

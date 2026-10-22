@@ -33,7 +33,7 @@
                            TextWrapping="Wrap" Margin="14,0,14,0" />
 
                 <TextBox Grid.Column="2" x:Name="FilterBox" Style="{StaticResource TextBox.Base}" Width="220"
-                         Height="36" VerticalContentAlignment="Center" TextChanged="OnFilterChanged"
+                         MinHeight="36" VerticalContentAlignment="Center" TextChanged="OnFilterChanged"
                          ToolTip="筛选按键或功能" />
             </Grid>
         </Border>

@@ -1,7 +1,7 @@
-<Window x:Class="CapsLockPlus.UI.Windows.SubLayerEditorWindow"
+﻿<Window x:Class="CapsLockPlus.UI.Windows.SubLayerEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="层内子层设置" Width="560" Height="620"
+        Title="层内子层设置" Width="560" Height="620" MinWidth="460" MinHeight="420"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
         Background="{DynamicResource Brush.Surface}"
         Foreground="{DynamicResource Brush.TextPrimary}">
@@ -43,9 +43,14 @@
                                             Style="{StaticResource Button.Base}" Padding="10,6"
                                             Click="OnPickKeyClick" Tag="{Binding}" />
 
-                                    <!-- 自定义名字 -->
+                                    <!-- 自定义名字。
+                                         这里**不写 Height 也不写 MinHeight**，用 TextBox.Base 的
+                                         MinHeight=38：Padding 10,6 + 边框 1，内容区 = 38-14 = 24px，
+                                         比一行字（约 20px）高，任何 DPI 都不会裁字。
+                                         早先写死 Height=34，内容区只剩 20px —— 表现为
+                                         "只看到字符上半部分，下半部分被边框切掉"。 -->
                                     <TextBox Grid.Column="1" Style="{StaticResource TextBox.Base}"
-                                             Height="34" VerticalContentAlignment="Center"
+                                             VerticalContentAlignment="Center"
                                              Margin="8,0,8,0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                              ToolTip="留空则用键名自身" />
 

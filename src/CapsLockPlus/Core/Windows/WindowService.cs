@@ -164,6 +164,107 @@ public static class WindowService
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
+    /// <summary>
+    /// 强行把窗口抢到前台并拿到键盘焦点 —— 用于"面板弹出后必须能立刻打字"。
+    ///
+    /// 为什么普通 <c>SetForegroundWindow</c> 不够：
+    /// 热键触发时前台还是用户正在用的那个程序，我们并不是前台进程，
+    /// Windows 的**前台锁定**（默认 2000ms 内只允许前台进程自己换前台）
+    /// 会直接拒绝这次调用。而 <c>Window.Show()</c> / <c>Activate()</c>
+    /// 内部就是调它 —— 失败时窗口照样显示（Topmost 还在最上面），
+    /// 但键盘焦点仍留在原来的程序里，于是"面板出来了，打字却打在别处"。
+    ///
+    /// 三步，逐级加强：
+    ///   1. <c>SetForegroundWindow</c>（碰运气，前台正好是我们时有效）；
+    ///   2. <c>AttachThreadInput</c> 挂到当前前台线程上再抢 —— 这一步能过掉
+    ///      大部分限制，因为输入队列共享后被当成同一个线程；
+    ///   3. 仍失败则**临时**把前台锁定超时置 0 再抢，然后立刻还原
+    ///      （AutoHotkey 的 #WinActivateForce 用的就是这招）。
+    ///
+    /// 第 3 步会动一个全局系统设置，所以只在最后才用，并且用 finally 还原。
+    /// </summary>
+    public static bool ForceForeground(IntPtr hwnd, bool allowUnlockTimeout = false)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return false;
+        if (GetForegroundWindow() == hwnd) return true;
+
+        if (IsIconic(hwnd)) ShowWindowAsync(hwnd, SW_RESTORE);
+
+        // ① 直接抢
+        if (SetForegroundWindow(hwnd) && GetForegroundWindow() == hwnd) return true;
+
+        // ② 挂到前台线程上再抢
+        uint fgThread = GetWindowThreadProcessId(GetForegroundWindow(), out _);
+        uint curThread = GetCurrentThreadId();
+        bool attached = false;
+        try
+        {
+            if (fgThread != 0 && curThread != 0 && fgThread != curThread)
+                attached = AttachThreadInput(curThread, fgThread, true);
+
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            if (GetForegroundWindow() == hwnd)
+            {
+                SetFocus(hwnd);
+                return true;
+            }
+        }
+        catch { }
+        finally
+        {
+            if (attached) AttachThreadInput(curThread, fgThread, false);
+        }
+
+        /* ③ 临时解除前台锁定。
+         *
+         * 这一步会广播 WM_SETTINGCHANGE 给所有窗口，开销明显，
+         * 所以做成**显式开关**：调用方确认前两步反复失败后再打开，
+         * 不能每次重试都做一遍。 */
+        return allowUnlockTimeout && ForceForegroundUnlocking(hwnd);
+    }
+
+    /// <summary>这个窗口此刻是不是系统的前台窗口。</summary>
+    public static bool ForegroundIs(IntPtr hwnd) =>
+        hwnd != IntPtr.Zero && GetForegroundWindow() == hwnd;
+
+    /// <summary>临时把前台锁定超时置 0 抢焦点，随后还原（最后手段）。</summary>
+    private static bool ForceForegroundUnlocking(IntPtr hwnd)
+    {
+        uint old = 0;
+        bool changed = false;
+        try
+        {
+            if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, out old, 0))
+            {
+                // SET 的值放在 uiParam，pvParam 必须为 NULL
+                SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
+                changed = true;
+            }
+
+            SetForegroundWindow(hwnd);
+            bool ok = GetForegroundWindow() == hwnd;
+            if (ok) SetFocus(hwnd);
+            return ok;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            // 无论成败都要还原：这是全局设置，改完不还会影响所有程序
+            if (changed)
+            {
+                try
+                {
+                    SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, old, IntPtr.Zero, SPIF_SENDCHANGE);
+                }
+                catch { }
+            }
+        }
+    }
+
     public static void Minimize(IntPtr hwnd) => ShowWindowAsync(hwnd, SW_MINIMIZE);
     public static void Restore(IntPtr hwnd) => ShowWindowAsync(hwnd, SW_RESTORE);
 

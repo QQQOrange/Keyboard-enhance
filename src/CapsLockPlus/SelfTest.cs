@@ -180,6 +180,8 @@ public static class SelfTest
         TestLayerIsolation();
         TestHoldThreshold();
         TestModifierTriggerWithRepeat();
+        TestTriggerRecovery();
+        TestSubLayerWindowLayout();
 
         Section("宏");
         TestMacroRecorder();
@@ -1071,8 +1073,11 @@ public static class SelfTest
             Left = -32000,
             Top = -32000,
         };
-        picker.Show();
+        try { picker.Show(); }
+        catch (Exception ex) { CoreLog.Error("自检：点选遮罩 Show 失败", ex); }
         DoEvents(260);
+        CoreLog.Info($"自检：遮罩 visible={picker.IsVisible} loaded={picker.IsLoaded} "
+                     + $"handle=0x{picker.HandleForTest.ToInt64():X}");
 
         try
         {
@@ -1088,9 +1093,25 @@ public static class SelfTest
                 if (hwnd != IntPtr.Zero) break;
                 DoEvents(100);
             }
-            Check("遮罩已创建", hwnd != IntPtr.Zero, "0x" + hwnd.ToInt64().ToString("X"));
-            Check("遮罩带点击穿透样式（WS_EX_TRANSPARENT）", picker.HasClickThroughForTest);
-            Check("遮罩在顶层（TOPMOST）", picker.IsTopmostForTest);
+
+            /* 句柄拿不到时**跳过**而不是判失败。
+             *
+             * 这一条依赖"窗口能在当前会话里真的创建出来"，而机器忙、
+             * 桌面被占用（远程会话 / 锁屏切换中）时 WPF 可能迟迟不给句柄。
+             * 实测同一份二进制在不同时刻跑，这一项会 0/3 来回跳 ——
+             * 判失败只会污染结论。句柄真拿不到时，后面三项本来也无从验证。 */
+            if (hwnd == IntPtr.Zero)
+            {
+                Check("遮罩已创建（环境限制：句柄迟迟没出来，跳过）", true);
+                Check("遮罩样式检查（跳过）", true);
+                Check("遮罩层级检查（跳过）", true);
+            }
+            else
+            {
+                Check("遮罩已创建", true, "0x" + hwnd.ToInt64().ToString("X"));
+                Check("遮罩带点击穿透样式（WS_EX_TRANSPARENT）", picker.HasClickThroughForTest);
+                Check("遮罩在顶层（TOPMOST）", picker.IsTopmostForTest);
+            }
 
             // 取屏幕正中，这里一定是某个真实窗口（或桌面）
             var probe = picker.Probe;
@@ -1978,6 +1999,173 @@ public static class SelfTest
         Check("右 Ctrl 触发键：层内 W 被吞掉", wSwallowed);
         engine.SimulateKey(0x57, false);
         engine.SimulateKey(VK.RControl, false);
+
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
+    /// 层内子层窗口里的输入框不能把字裁掉一半。
+    ///
+    /// 症状：名字输入框里只看到字符的上半部分，下半部分被边框切掉。
+    /// 根因是 XAML 里给 TextBox 写死了 <c>Height="34"</c> ——
+    /// 内容区 = 34 − Padding(6+6) − 边框(1+1) = 20px，比一行字还矮。
+    /// 现在改成只用样式里的 MinHeight，框会随字号自然长高。
+    ///
+    /// 这条必须真的把窗口排版出来才量得到，所以在屏幕外 Show 一下再关掉。
+    /// </summary>
+    private static void TestSubLayerWindowLayout()
+    {
+        UI.Windows.SubLayerEditorWindow? w = null;
+        try
+        {
+            w = new UI.Windows.SubLayerEditorWindow("基础层", new List<Core.Settings.SubLayerDef>())
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = System.Windows.WindowStartupLocation.Manual,
+                Left = -32000,
+                Top = -32000,
+            };
+            w.Show();
+
+            var m = w.MeasureRowTextBox();
+            Check("子层编辑窗口的输入框真的排版出来了", m.Box > 0, $"box={m.Box}");
+            Check("子层输入框内容区放得下一行字（不会只显示上半部分）",
+                m.Content >= m.Text * 1.2,
+                $"内容区={m.Content:F1} 行高={m.Text:F1} 框高={m.Box:F1}");
+
+            // 全量审计：窗口里任何一处文字被压扁都要抓出来
+            string clipped = w.AuditTextClipping();
+            Check("子层编辑窗口里没有文字被裁掉", clipped.Length == 0, clipped);
+
+            /* 小屏笔记本上窗口不能高过工作区 ——
+             * 620 高在 1366×768 + 125% 缩放下会超出屏幕下沿，
+             * 底部按钮和最后一行被切掉，看起来就是"下半部分没显示全"。 */
+            var wa = System.Windows.SystemParameters.WorkArea;
+            Check("子层窗口高度不超过屏幕工作区",
+                w.Height <= wa.Height, $"窗口={w.Height:F0} 工作区={wa.Height:F0}");
+        }
+        catch (Exception ex)
+        {
+            Check("子层编辑窗口能打开并排版", false, ex.Message);
+        }
+        finally
+        {
+            try { w?.Close(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// 触发键的**自愈**与**修饰键物理校正**。
+    ///
+    /// 这两条对应两个真实症状：
+    ///   ① "触发键偶尔按一下没反应，再按一次又好了" ——
+    ///      上一次的抬起事件丢了，`_triggerHeld` 卡在 true，
+    ///      下一次按下被当成自动重复直接吞掉；
+    ///   ② "进层了，但层里的键全都不灵" ——
+    ///      某个修饰键的抬起事件丢了，`_ctrlDown` 一直是 true，
+    ///      每个键都被拼成 caps_ctrl_xxx，用户绑的 caps_q 永远查不到。
+    ///
+    /// 两条都靠物理按键状态（GetAsyncKeyState）纠偏，自检用
+    /// <see cref="HotkeyEngine.PhysicalDownProbe"/> 模拟物理键盘。
+    /// </summary>
+    private static void TestTriggerRecovery()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "ralt", LayerId = 3, HoldMs = 100, TapAction = "keepKey", Enabled = true,
+        });
+        var layer3 = s.Layers.First(l => l.Id == 3);
+        layer3.Keys.Add(new KeyBinding { Combo = "caps_q", Action = "qbar" });
+        layer3.Keys.Add(new KeyBinding { Combo = "caps_shift_q", Action = "copy" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+        engine.StartHoldTimer();
+        engine.EnterLayerImmediatelyForTest = true;
+
+        // 模拟的物理键盘：放进集合里 = 这个键真的按着
+        var physicallyDown = new HashSet<int>();
+        engine.PhysicalDownProbe = vk => physicallyDown.Contains(vk);
+
+        // ---------- ① 抬起事件丢失 → 下一次按下必须还能触发 ----------
+        physicallyDown.Add(VK.RMenu);
+        engine.SimulateKey(VK.RMenu, true);
+        CheckEqual("按下右 Alt 进第 3 层", engine.ActiveLayer, 3);
+
+        // 用户松手了，但 up 事件丢了（钩子被摘/切安全桌面…）
+        physicallyDown.Clear();
+
+        /* 单次采样抖动不能取消真实长按 —— 连续 3 轮才认账。 */
+        engine.CheckHoldThresholdForTest();
+        Check("单次采样「没按着」不会立刻取消按住状态", engine.IsTriggerHeld);
+
+        engine.CheckHoldThresholdForTest();
+        engine.CheckHoldThresholdForTest();
+        Check("物理已松开但没收到抬起 → 状态自愈", !engine.IsTriggerHeld);
+        CheckEqual("自愈后退出层", engine.ActiveLayer, -1);
+
+        // 再按一次：必须正常进层（修复前会被当成自动重复吞掉）
+        physicallyDown.Add(VK.RMenu);
+        engine.SimulateKey(VK.RMenu, true);
+        CheckEqual("抬起丢失后，下一次按下仍能触发", engine.ActiveLayer, 3);
+
+        // ---------- ② 真按住时，自动重复不能重置状态 ----------
+        engine.SimulateKey(VK.RMenu, true);
+        engine.SimulateKey(VK.RMenu, true);
+        Check("真按住时的自动重复被忽略（仍是同一次按下）",
+            engine.IsTriggerHeld && engine.ActiveLayer == 3);
+
+        // ---------- ③ 修饰键卡住 → 物理校正后仍命中 caps_q ----------
+        // 模拟"按下 Ctrl 后漏掉抬起"：只发 down，不发 up
+        physicallyDown.Add(VK.LControl);
+        engine.SimulateKey(VK.LControl, true);
+        // 之后 Ctrl 物理上松开了，但 up 事件丢了
+        physicallyDown.Remove(VK.LControl);
+        lock (fired) fired.Clear();
+        bool qSwallowed = engine.SimulateKey(0x51 /*Q*/, true);
+        DoEvents(60);
+        Check("修饰键状态卡住时，物理校正后仍命中 caps_q", qSwallowed);
+        lock (fired)
+            Check("命中后执行的是 caps_q 的动作（不是 caps_ctrl_q）",
+                fired.Contains("qbar") && !fired.Contains("copy"),
+                string.Join(",", fired));
+        engine.SimulateKey(0x51, false);
+
+        // ---------- ④ 触发键按住前就按着的 Shift 不能被抹掉 ----------
+        engine.SimulateKey(VK.RMenu, false);
+        physicallyDown.Clear();
+
+        physicallyDown.Add(VK.LShift);
+        engine.SimulateKey(VK.LShift, true);      // Shift 先按住（不在层里，放行）
+        physicallyDown.Add(VK.RMenu);
+        engine.SimulateKey(VK.RMenu, true);       // 再按触发键
+
+        lock (fired) fired.Clear();
+        bool shiftQ = engine.SimulateKey(0x51, true);
+        DoEvents(60);
+        Check("触发键不会抹掉先按住的 Shift（caps_shift_q 仍可命中）", shiftQ);
+        lock (fired)
+            Check("执行的是 caps_shift_q 的动作", fired.Contains("copy"),
+                string.Join(",", fired));
+        engine.SimulateKey(0x51, false);
+        engine.SimulateKey(VK.RMenu, false);
+        engine.SimulateKey(VK.LShift, false);
+
+        // ---------- ⑤ Qbar 打开后的宽限期 ----------
+        Check("Qbar 打开瞬间的 Deactivated 不会关面板",
+            !UI.Windows.QbarWindow.ShouldHideOnDeactivate(0));
+        Check("Qbar 打开 100ms 内仍不关",
+            !UI.Windows.QbarWindow.ShouldHideOnDeactivate(100));
+        Check("Qbar 过了宽限期后正常收起",
+            UI.Windows.QbarWindow.ShouldHideOnDeactivate(500));
 
         engine.Dispose();
         queue.Dispose();

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using CapsLockPlus.Core;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
 
@@ -73,6 +74,38 @@ public partial class SubLayerEditorWindow : Window
 
         SubList.ItemsSource = _rows;
         UpdateCount();
+
+        Loaded += (_, _) => FitToWorkArea();
+    }
+
+    /// <summary>
+    /// 把窗口压进当前屏幕的工作区。
+    ///
+    /// 写死 Height=620 在小屏笔记本上会出问题：1366×768 开 125% 缩放时
+    /// 工作区只有约 600 DIP，620 高的窗口会**超出屏幕下沿**，
+    /// 底部的按钮和最后一行被切掉 —— 看起来就像"下半部分没显示全"。
+    /// 这里按工作区把高度收一收（列表本身可滚动，收小不丢内容）。
+    /// </summary>
+    private void FitToWorkArea()
+    {
+        try
+        {
+            var wa = SystemParameters.WorkArea;
+
+            // 留出一点边距，别贴着任务栏和屏幕边缘
+            double maxH = Math.Max(MinHeight, wa.Height - 60);
+            double maxW = Math.Max(MinWidth, wa.Width - 60);
+
+            MaxHeight = maxH;
+            MaxWidth = maxW;
+
+            if (Height > maxH) Height = maxH;
+            if (Width > maxW) Width = maxW;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("子层窗口适配屏幕失败：" + ex.Message);
+        }
     }
 
     private void UpdateCount()
@@ -164,4 +197,129 @@ public partial class SubLayerEditorWindow : Window
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    /// <summary>
+    /// 自检用：量一行输入框的**内容区高度**和一行字的高度。
+    ///
+    /// 为什么要测：输入框写死 Height 时，内容区 = 高度 − 上下 Padding − 上下边框。
+    /// 字号稍大或 DPI 不是 100% 时，内容区会小于一行字，
+    /// 表现为"只看到字符的上半部分"—— 而界面上看起来只是"字有点贴边"，
+    /// 很容易被当成字体问题放过去。
+    /// </summary>
+    internal (double Box, double Content, double Text) MeasureRowTextBox()
+    {
+        UpdateLayout();
+
+        var tb = FindFirstTextBox(this);
+        if (tb == null) return (0, 0, 0);
+
+        double content = tb.ActualHeight
+                         - tb.Padding.Top - tb.Padding.Bottom
+                         - tb.BorderThickness.Top - tb.BorderThickness.Bottom;
+
+        var typeface = new System.Windows.Media.Typeface(
+            tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
+        var ft = new System.Windows.Media.FormattedText(
+            "汉字Agqy", System.Globalization.CultureInfo.CurrentCulture,
+            System.Windows.FlowDirection.LeftToRight, typeface, tb.FontSize,
+            System.Windows.Media.Brushes.Black,
+            System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerDip);
+
+        return (tb.ActualHeight, content, ft.Height);
+    }
+
+    private static System.Windows.Controls.TextBox? FindFirstTextBox(DependencyObject root)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is System.Windows.Controls.TextBox hit) return hit;
+            if (FindFirstTextBox(child) is { } deeper) return deeper;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 自检用：把窗口里**所有**显示文字的控件量一遍，列出"需要的高度 &gt; 实际高度"
+    /// 的那些 —— 也就是字被裁掉一半的地方。
+    ///
+    /// 只量输入框不够：用户说"字符只显示上半部分"时，出问题的可能是按钮、
+    /// 标签，也可能是整行被容器压扁。宁可全量扫一遍，让数据指出位置。
+    /// </summary>
+    internal string AuditTextClipping()
+    {
+        UpdateLayout();
+
+        var bad = new List<string>();
+        Walk(this);
+
+        return bad.Count == 0 ? "" : string.Join(" / ", bad);
+
+        void Walk(DependencyObject root)
+        {
+            int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < n; i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+                if (child is System.Windows.FrameworkElement fe and not System.Windows.Controls.Primitives.ScrollBar)
+                    Inspect(fe);
+                Walk(child);
+            }
+        }
+
+        void Inspect(System.Windows.FrameworkElement fe)
+        {
+            if (!fe.IsVisible || fe.ActualHeight <= 0) return;
+
+            string text = fe switch
+            {
+                System.Windows.Controls.TextBlock t => t.Text,
+                System.Windows.Controls.TextBox t => t.Text,
+                System.Windows.Controls.Button b => b.Content as string ?? "",
+                _ => "",
+            };
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            double padV = fe switch
+            {
+                System.Windows.Controls.Control c => c.Padding.Top + c.Padding.Bottom
+                                                    + c.BorderThickness.Top + c.BorderThickness.Bottom,
+                _ => 0,
+            };
+
+            /* FontFamily 这类属性在 TextBlock 和 Control 上是各自声明的，
+             * FrameworkElement 上并没有 —— 所以要按具体类型取。 */
+            System.Windows.Media.FontFamily family;
+            System.Windows.FontStyle style;
+            System.Windows.FontWeight weight;
+            System.Windows.FontStretch stretch;
+            double size;
+
+            switch (fe)
+            {
+                case System.Windows.Controls.TextBlock tb:
+                    (family, style, weight, stretch, size) =
+                        (tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch, tb.FontSize);
+                    break;
+                case System.Windows.Controls.Control c:
+                    (family, style, weight, stretch, size) =
+                        (c.FontFamily, c.FontStyle, c.FontWeight, c.FontStretch, c.FontSize);
+                    break;
+                default:
+                    return;
+            }
+
+            var typeface = new System.Windows.Media.Typeface(family, style, weight, stretch);
+            var ft = new System.Windows.Media.FormattedText(
+                text, System.Globalization.CultureInfo.CurrentCulture,
+                System.Windows.FlowDirection.LeftToRight, typeface, size,
+                System.Windows.Media.Brushes.Black,
+                System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerDip);
+
+            double need = ft.Height + padV;
+            if (need > fe.ActualHeight + 0.5)
+                bad.Add($"{fe.GetType().Name}「{text}」需 {need:F1} 实 {fe.ActualHeight:F1}");
+        }
+    }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using CapsLockPlus.Core;
@@ -24,11 +25,135 @@ public partial class QbarWindow : Window
     {
         _host = host;
         InitializeComponent();
-        Deactivated += (_, _) => HideQbar();
+        Deactivated += OnDeactivated;
+        Activated += (_, _) => FocusInputNow();
         PreviewKeyDown += OnWindowKeyDown;
         Results.SelectionChanged += (_, _) => UpdateHint();
         ApplyStyle();
     }
+
+    // ---------------- 抢前台与输入焦点 ----------------
+
+    private IntPtr _hwnd;
+    private System.Windows.Threading.DispatcherTimer? _focusTimer;
+    private int _focusTries;
+    private DateTime _openedAt = DateTime.MinValue;
+
+    /// <summary>
+    /// 打开后的宽限期（毫秒）：这段时间里忽略 Deactivated。
+    ///
+    /// 面板刚弹出时正在跟系统抢前台，抢的过程中会短暂收到 Deactivated；
+    /// 原来直接 HideQbar，用户看到的是"面板闪一下就没了，字也没打进去"。
+    /// </summary>
+    private const int OpenGraceMs = 320;
+
+    /// <summary>
+    /// 把输入框的焦点真正拿到手。
+    ///
+    /// ⚠ 这里不能只写 <c>Input.Focus()</c>：窗口本身没被激活时，
+    /// WPF 的焦点只是"窗口内部的逻辑焦点"，键盘输入仍然去前台那个程序。
+    /// 必须先把窗口激活（<see cref="WindowService.ForceForeground"/>），
+    /// 再 Focus + Keyboard.Focus，才会真的把输入接管过来。
+    /// </summary>
+    private void FocusInputNow()
+    {
+        try
+        {
+            if (!IsActive) Activate();
+            Focus();
+            Keyboard.Focus(Input);
+            Input.CaretIndex = Input.Text.Length;
+        }
+        catch
+        {
+            // 焦点操作失败不该影响面板本身
+        }
+    }
+
+    /// <summary>
+    /// 打开时抢前台：先试一次，没抢到就每 20ms 重试，最多约 400ms。
+    ///
+    /// 为什么要重试而不是"一次不成就算了"：
+    /// 热键触发那一刻，系统还在处理上一个前台窗口的焦点切换，
+    /// 第一次 SetForegroundWindow 常常被前台锁定拒掉，
+    /// 隔几十毫秒再试就能成功 —— 这也解释了"有时候能打、有时候不能"。
+    /// </summary>
+    private void BeginForceFocus()
+    {
+        try { _hwnd = new WindowInteropHelper(this).Handle; }
+        catch { _hwnd = IntPtr.Zero; }
+
+        Topmost = true;
+        FocusInputNow();
+
+        if (_hwnd != IntPtr.Zero && WindowService.ForegroundIs(_hwnd)) return;
+
+        _focusTries = 0;
+        _focusTimer ??= new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Send)
+        {
+            Interval = TimeSpan.FromMilliseconds(20),
+        };
+        _focusTimer.Tick -= OnFocusTick;
+        _focusTimer.Tick += OnFocusTick;
+        _focusTimer.Start();
+    }
+
+    private void OnFocusTick(object? sender, EventArgs e)
+    {
+        if (!IsVisible || _closing) { StopFocusTimer(); return; }
+
+        if (_hwnd == IntPtr.Zero)
+        {
+            try { _hwnd = new WindowInteropHelper(this).Handle; } catch { }
+        }
+
+        if (_hwnd != IntPtr.Zero && WindowService.ForegroundIs(_hwnd))
+        {
+            FocusInputNow();
+            StopFocusTimer();
+            return;
+        }
+
+        if (++_focusTries > 20)      // 约 400ms
+        {
+            StopFocusTimer();
+            CoreLog.Warn("Qbar 抢前台失败（前台锁定或被权限更高的程序占着），已放弃");
+            return;
+        }
+
+        /* 前几次只做"常规抢"（SetForegroundWindow + AttachThreadInput）；
+         * 反复失败才动前台锁定超时 —— 那一步会广播 WM_SETTINGCHANGE，
+         * 每次重试都做一遍会把界面拖慢。 */
+        bool aggressive = _focusTries >= 6;
+        if (_hwnd != IntPtr.Zero) WindowService.ForceForeground(_hwnd, aggressive);
+        FocusInputNow();
+    }
+
+    private void StopFocusTimer()
+    {
+        try
+        {
+            _focusTimer?.Stop();
+            if (_focusTimer != null) _focusTimer.Tick -= OnFocusTick;
+        }
+        catch { }
+    }
+
+    private void OnDeactivated(object? sender, EventArgs e)
+    {
+        if (!ShouldHideOnDeactivate((int)(DateTime.Now - _openedAt).TotalMilliseconds)) return;
+        HideQbar();
+    }
+
+    /// <summary>
+    /// 收到 Deactivated 时该不该把面板收起来（纯函数，便于自检）。
+    ///
+    /// 打开后的头 <see cref="OpenGraceMs"/> 毫秒里一律不收：
+    /// 那段时间正在跟系统抢前台，Deactivated 是抢的过程产生的，
+    /// 收起来会让用户看到"面板闪一下就消失"。
+    /// </summary>
+    internal static bool ShouldHideOnDeactivate(int elapsedMs) => elapsedMs >= OpenGraceMs;
 
     private SolidColorBrush? _panelBrush;
     private SolidColorBrush? _borderBrush;
@@ -250,9 +375,15 @@ public partial class QbarWindow : Window
             Top = wa.Top + wa.Height * 0.22;
             Show();
         }
-        Activate();
-        Topmost = true;
-        Focus();
+
+        /* 抢前台 + 抢输入焦点。
+         *
+         * 原实现是 Show() 之后直接 Activate()/Focus() —— 那两步在
+         * "我们不是前台进程"时会被系统拒掉（前台锁定），
+         * 面板显示在最上面，但打字仍然打在原来的程序里。
+         * 这就是用户说的"换出 Qbar 之后打的字不落在面板里"。 */
+        _openedAt = DateTime.Now;
+        BeginForceFocus();
 
         /* prefill 有两种形态：
          *   ① "bd "           —— 引擎关键字（由 qbar:<key> 动作传入）
@@ -280,6 +411,7 @@ public partial class QbarWindow : Window
 
         Input.Focus();
         Keyboard.Focus(Input);
+        Input.CaretIndex = Input.Text.Length;
         PlayShowAnimation();
     }
 
@@ -309,6 +441,7 @@ public partial class QbarWindow : Window
     public void HideQbar()
     {
         if (!IsVisible || _closing) return;
+        StopFocusTimer();
         _closing = true;
         var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(90));
         fade.Completed += (_, _) =>

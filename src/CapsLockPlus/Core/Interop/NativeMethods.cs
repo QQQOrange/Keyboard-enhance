@@ -147,6 +147,28 @@ public static class NativeMethods
     public static extern bool BringWindowToTop(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern IntPtr SetFocus(IntPtr hWnd);
+
+    /* 前台锁定超时：Windows 默认 2000ms 内不允许非前台进程抢焦点，
+     * 这正是"面板弹出来了但打字进不去"的根因。
+     *
+     * 用法有坑：
+     *   · GET 把值写进 out uint；
+     *   · SET 的值放在 **uiParam**，pvParam 必须为 NULL。
+     * 临时置 0 抢到焦点后立刻还原（见 WindowService.ForceForeground）。 */
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam,
+        out uint pvParam, uint fWinIni);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam,
+        IntPtr pvParam, uint fWinIni);
+
+    public const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
+    public const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
+    public const uint SPIF_SENDCHANGE = 0x0002;
+
+    [DllImport("user32.dll")]
     public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
