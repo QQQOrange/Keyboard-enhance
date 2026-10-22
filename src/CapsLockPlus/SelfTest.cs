@@ -4953,21 +4953,24 @@ public static class SelfTest
         CheckEqual("进度条越界会被夹住（上）", UI.Windows.OsdWindow.ScaleForTest(180), 1.0);
         CheckEqual("进度条越界会被夹住（下）", UI.Windows.OsdWindow.ScaleForTest(-20), 0.0);
 
-        // 位置：水平居中，垂直落在任务栏偏上（尺寸见 OsdWindow.xaml：248×52）
+        /* 位置：水平居中，紧贴任务栏上方（和 Windows 自己的横条同一个区域）。
+         * 尺寸取 OsdWindow.DesignWidth/Height，避免两处写死后对不上。 */
+        double ow = UI.Windows.OsdWindow.DesignWidth;
+        double oh = UI.Windows.OsdWindow.DesignHeight;
         var wa = new System.Windows.Rect(0, 0, 1920, 1040);
-        var (osdLeft, osdTop) = UI.Windows.OsdWindow.PositionForTest(wa, 248, 52);
-        CheckEqual("横条水平居中", osdLeft, (1920 - 248) / 2.0);
-        Check("横条在屏幕下半部分（不是正中）", osdTop > 1040 * 0.7, $"top={osdTop}");
-        Check("横条不压到工作区底边", osdTop + 52 < 1040, $"bottom={osdTop + 52}");
+        var (osdLeft, osdTop) = UI.Windows.OsdWindow.PositionForTest(wa, ow, oh);
+        CheckEqual("横条水平居中", osdLeft, (1920 - ow) / 2.0);
+        Check("横条在屏幕下半部分（不是正中）", osdTop > 1040 * 0.85, $"top={osdTop}");
+        Check("横条不压到工作区底边", osdTop + oh < 1040, $"bottom={osdTop + oh}");
+        Check("横条离任务栏够近（≤ 48 DIP，不再悬在半空）",
+            1040 - (osdTop + oh) <= 48, $"gap={1040 - (osdTop + oh)}");
 
-        /* 尺寸必须"小"：原来 368×98 太占地方，遮住的内容比它本身还多。
-         * 这里钉住上限，避免以后改样式时又改回去。 */
-        Check("亮度横条足够紧凑（宽 ≤ 280）",
-            UI.Windows.OsdWindow.DesignWidth <= 280,
-            $"{UI.Windows.OsdWindow.DesignWidth}");
-        Check("亮度横条足够扁（高 ≤ 64）",
-            UI.Windows.OsdWindow.DesignHeight <= 64,
-            $"{UI.Windows.OsdWindow.DesignHeight}");
+        /* 尺寸必须"小"：368×98 → 248×52 → 208×44，
+         * 一路往 Windows 自带音量条的体量靠。这里钉住范围，避免以后又改回去。 */
+        Check("亮度横条够紧凑（宽 180~220）", ow is >= 180 and <= 220, $"{ow}");
+        Check("亮度横条够扁（高 38~48）", oh is >= 38 and <= 48, $"{oh}");
+        Check("横条长宽比接近 Windows 音量条（4~5.5 : 1）",
+            ow / oh is >= 4 and <= 5.5, $"{ow / oh:F2}");
 
         // 连续量动作：按住要一直执行，所以必须认得出来
         Check("音量+ 属于连续量", HotkeyEngine.IsContinuous("volumeUp"));
@@ -5096,10 +5099,37 @@ public static class SelfTest
 
             Check("浅色模式下横条是浅底", lightCard > 0.70, $"亮度={lightCard:F2}");
             Check("深色模式下横条是深底", darkCard < 0.30, $"亮度={darkCard:F2}");
-            Check("浅色模式下文字与底色对比够（不是白字白底）",
-                lightRange > 0.45, $"对比幅度={lightRange:F2}");
-            Check("深色模式下文字与底色对比够",
-                darkRange > 0.45, $"对比幅度={darkRange:F2}");
+            Check("浅色模式下画面里有明显的前景（不是一片纯色）",
+                lightRange > 0.15, $"对比幅度={lightRange:F2}");
+            Check("深色模式下画面里有明显的前景（不是一片纯色）",
+                darkRange > 0.15, $"对比幅度={darkRange:F2}");
+
+            /* 配色必须**两边都是蓝色系**：
+             *
+             * 用户明确要求"白天蓝、夜里也别变白"。上一版深色主题的进度条
+             * 和数字都是 #F4F6FA（近白），夜里看着刺眼、也和白天的蓝断成两套。
+             * 这里直接按画刷断言：蓝色通道必须明显压过红/绿。 */
+            UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Light);
+            string lCard = BrushColor("Brush.OsdCard");
+            string lText = BrushColor("Brush.OsdText");
+            string lFill = BrushColor("Brush.OsdFill");
+
+            UI.Theme.ThemeManager.Apply(UI.Theme.ThemeManager.Mode.Dark);
+            string dCard = BrushColor("Brush.OsdCard");
+            string dText = BrushColor("Brush.OsdText");
+            string dFill = BrushColor("Brush.OsdFill");
+
+            Check("浅色模式：进度条是蓝色系（不是白色）", IsBlueish(lFill), lFill);
+            Check("深色模式：进度条是蓝色系（不是白色）", IsBlueish(dFill), dFill);
+            Check("浅色模式：图标与数字是蓝色系", IsBlueish(lText), lText);
+            Check("深色模式：图标与数字是蓝色系", IsBlueish(dText), dText);
+
+            /* 对比度按 WCAG 算：文字对小字要 ≥ 4.5:1。
+             * 蓝色比白色暗，凭肉眼看不出"够不够"，只能算。 */
+            double lc = ContrastRatio(lText, lCard);
+            double dc = ContrastRatio(dText, dCard);
+            Check("浅色模式：文字与底色对比 ≥ 4.5:1", lc >= 4.5, $"对比={lc:F2}:1");
+            Check("深色模式：文字与底色对比 ≥ 4.5:1", dc >= 4.5, $"对比={dc:F2}:1");
         }
         catch (Exception ex)
         {
@@ -5109,6 +5139,47 @@ public static class SelfTest
         {
             UI.Theme.ThemeManager.Apply(saved);
         }
+    }
+
+    /// <summary>颜色是不是"蓝色系"（蓝通道明显压过红/绿，且整体够亮）。</summary>
+    private static bool IsBlueish(string hex)
+    {
+        var (r, g, b) = ParseRgb(hex);
+        return b >= 0.55 && b - r >= 0.15 && b - g >= 0.05;
+    }
+
+    /// <summary>"#AARRGGBB" / "#RRGGBB" → 0~1 的 RGB。</summary>
+    private static (double R, double G, double B) ParseRgb(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return (0, 0, 0);
+        string s = hex.TrimStart('#');
+        if (s.Length == 8) s = s[2..];
+        if (s.Length != 6) return (0, 0, 0);
+        try
+        {
+            return (Convert.ToInt32(s[..2], 16) / 255.0,
+                    Convert.ToInt32(s.Substring(2, 2), 16) / 255.0,
+                    Convert.ToInt32(s.Substring(4, 2), 16) / 255.0);
+        }
+        catch { return (0, 0, 0); }
+    }
+
+    private static double RelativeLuminance(double c)
+        => c <= 0.03928 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
+
+    private static double LuminanceOf(string hex)
+    {
+        var (r, g, b) = ParseRgb(hex);
+        return 0.2126 * RelativeLuminance(r)
+             + 0.7152 * RelativeLuminance(g)
+             + 0.0722 * RelativeLuminance(b);
+    }
+
+    /// <summary>WCAG 对比度：(亮+0.05)/(暗+0.05)，1~21。</summary>
+    private static double ContrastRatio(string fg, string bg)
+    {
+        double a = LuminanceOf(fg), b = LuminanceOf(bg);
+        return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
     }
 
     /// <summary>

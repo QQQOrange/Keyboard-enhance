@@ -31,8 +31,19 @@ public sealed class HotkeyEngine : IDisposable
     private readonly Func<AppSettings> _settings;
     private readonly Func<string, string, bool> _invoke;
 
-    private readonly HashSet<int> _swallowedDown = new();
-    private readonly HashSet<int> _swallowedUp = new();
+    /* ---- 两个线程同时摸的状态：必须用线程安全的容器 ----
+     *
+     * 键盘钩子跑在**它自己的线程**上（带消息循环），而"长按判定 / 连续重复"
+     * 跑在界面线程的计时器上。这两条线程都会读写下面这两个集合：
+     *   · 钩子线程：按下时 Add、抬起时 Remove（还决定要不要吞掉这个键）；
+     *   · 界面线程：每 20ms 检查"这个键还按着吗"（Contains）。
+     *
+     * 早先用 HashSet：并发读写可能让内部结构错乱（运气不好会死循环或漏键），
+     * 表现就是"偶尔有个键一直不响应"这种极难复现的问题。
+     * ConcurrentDictionary 的 Add / TryRemove / ContainsKey 都是原子的，
+     * 不需要额外加锁，也不会在钩子回调里制造争用。 */
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _swallowedDown = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _swallowedUp = new();
 
     // 当前被按住的触发键（同一时刻只认定一个，避免冲突）
     private int _activeTriggerVk = -1;
@@ -86,6 +97,12 @@ public sealed class HotkeyEngine : IDisposable
         public DateTime NextAt = DateTime.MinValue;
     }
 
+    /* 连续重复的"账本"。
+     *
+     * 写入在**钩子线程**（按下 / 抬起），读取在**界面线程**（20ms 计时器）。
+     * 字典本身不是线程安全的，所以两边都过 <see cref="_repeatGate"/>；
+     * 计时器那侧先取快照、在锁外执行动作，钩子回调里不会等它。 */
+    private readonly object _repeatGate = new();
     private readonly Dictionary<int, RepeatState> _repeats = new();
 
     /// <summary>按住多久之后开始连续（毫秒）。</summary>
@@ -355,7 +372,14 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     private void CheckContinuousRepeat()
     {
-        if (_repeats.Count == 0) return;
+        /* 取一份快照再遍历：字典可能正被钩子线程改（用户松开 / 又按下另一个键），
+         * 直接遍历会抛"集合已修改"。快照只复制几个引用，开销可以忽略。 */
+        KeyValuePair<int, RepeatState>[] snapshot;
+        lock (_repeatGate)
+        {
+            if (_repeats.Count == 0) return;
+            snapshot = _repeats.ToArray();
+        }
 
         if (!Enabled || Suspended)
         {
@@ -374,9 +398,9 @@ public sealed class HotkeyEngine : IDisposable
          *
          * `_swallowedDown` 是我们自己在按下时加、收到抬起时删的，
          * 它才真正代表"用户还按着"。 */
-        foreach (var (vk, state) in _repeats)
+        foreach (var (vk, state) in snapshot)
         {
-            if (!_swallowedDown.Contains(vk))
+            if (!_swallowedDown.ContainsKey(vk))
             {
                 (expired ??= new List<int>()).Add(vk);
                 continue;
@@ -431,15 +455,24 @@ public sealed class HotkeyEngine : IDisposable
         if (expired != null)
         {
             // 遍历中不能改字典，攒起来最后一起删
-            foreach (int vk in expired) _repeats.Remove(vk);
+            lock (_repeatGate)
+            {
+                foreach (int vk in expired) _repeats.Remove(vk);
+            }
         }
     }
 
     /// <summary>松开某个键 → 只停它自己的连续调节。</summary>
-    private void StopContinuousRepeat(int vk) => _repeats.Remove(vk);
+    private void StopContinuousRepeat(int vk)
+    {
+        lock (_repeatGate) _repeats.Remove(vk);
+    }
 
     /// <summary>全部停掉（暂停 / 复位 / 禁用时用）。</summary>
-    private void ClearContinuousRepeat() => _repeats.Clear();
+    private void ClearContinuousRepeat()
+    {
+        lock (_repeatGate) _repeats.Clear();
+    }
 
     /// <summary>
     /// 是否"按住应该连续变化"的动作（音量 / 亮度）。
@@ -834,7 +867,7 @@ public sealed class HotkeyEngine : IDisposable
         }
 
         // 抬起的修饰键也从吞掉集合里移除，避免残留
-        if (!down) _swallowedUp.Remove(vk);
+        if (!down) _swallowedUp.TryRemove(vk, out _);
     }
 
     /// <summary>
@@ -1125,25 +1158,25 @@ public sealed class HotkeyEngine : IDisposable
         if (vk is VK.LMenu or VK.RMenu or 0x12)
         {
             _laltDown = true;
-            _swallowedUp.Add(vk);
+            _swallowedUp.TryAdd(vk, 0);
             return true;
         }
         if (vk is VK.LWin or VK.RWin)
         {
             if (vk == VK.LWin) _lwinDown = true; else _rwinDown = true;
-            _swallowedUp.Add(vk);
+            _swallowedUp.TryAdd(vk, 0);
             return true;
         }
         if (vk is VK.LControl or VK.RControl or 0x11)
         {
             _ctrlDown = true;
-            _swallowedUp.Add(vk);
+            _swallowedUp.TryAdd(vk, 0);
             return true;
         }
         if (vk is VK.LShift or VK.RShift or 0x10)
         {
             _shiftDown = true;
-            _swallowedUp.Add(vk);
+            _swallowedUp.TryAdd(vk, 0);
             return true;
         }
 
@@ -1167,7 +1200,7 @@ public sealed class HotkeyEngine : IDisposable
         if (string.IsNullOrEmpty(_subLayerKeyDown) && IsSubLayerKey(settings, keyName))
         {
             _subLayerKeyDown = keyName;
-            _swallowedUp.Add(vk);
+            _swallowedUp.TryAdd(vk, 0);
             return true;
         }
 
@@ -1197,7 +1230,7 @@ public sealed class HotkeyEngine : IDisposable
         string arg = binding.Arg;
 
         bool canRepeat = settings.Global.RepeatWhenHeld && IsRepeatable(action);
-        bool isRepeat = _swallowedDown.Contains(vk);
+        bool isRepeat = _swallowedDown.ContainsKey(vk);
         if (isRepeat)
         {
             /* 连续量动作由引擎自己的计时器驱动，系统的自动重复一律吞掉。
@@ -1210,8 +1243,8 @@ public sealed class HotkeyEngine : IDisposable
         }
 
         _lastRepeatVk = vk;
-        _swallowedDown.Add(vk);
-        _swallowedUp.Add(vk);
+        _swallowedDown.TryAdd(vk, 0);
+        _swallowedUp.TryAdd(vk, 0);
         _usedCombo = true;
 
         _queue.Post(() =>
@@ -1232,7 +1265,7 @@ public sealed class HotkeyEngine : IDisposable
          * 松开其中一个就把另一条也停了）。 */
         if (IsContinuous(action))
         {
-            _repeats[vk] = new RepeatState
+            var state = new RepeatState
             {
                 Action = action,
                 /* 连续重复明确传 1：动作自己就知道"这一步要细调"。
@@ -1243,6 +1276,7 @@ public sealed class HotkeyEngine : IDisposable
                 StartedAt = DateTime.Now,
                 NextAt = DateTime.Now.AddMilliseconds(RepeatDelayMs),
             };
+            lock (_repeatGate) _repeats[vk] = state;
         }
 
         return true;
@@ -1251,8 +1285,8 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>层模式下松开某个键。返回 true 表示吞掉。</summary>
     private bool OnKeyUpInLayer(int vk)
     {
-        bool swallow = _swallowedUp.Remove(vk);
-        _swallowedDown.Remove(vk);
+        bool swallow = _swallowedUp.TryRemove(vk, out _);
+        _swallowedDown.TryRemove(vk, out _);
 
         // 松开就停：只停这个键，其它还按着的连续键照旧
         StopContinuousRepeat(vk);

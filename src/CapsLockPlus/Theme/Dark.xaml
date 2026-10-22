@@ -51,13 +51,15 @@
     <SolidColorBrush x:Key="Brush.KeycapShadow" Color="{DynamicResource Color.KeycapShadow}" />
 
     <!-- 亮度横条（OSD）。
-         深色主题 = 深底浅字，和 Windows 自己的音量条一个观感。
+         深色主题也走**蓝色系**（不再用白色）：白在暗底上太扎眼，
+         和 Windows 那条偏灰白的横条也不像。这里用一组"压暗但够亮"的蓝，
+         进度条深一点、文字亮一点，暗底下对比度约 5.5:1。
          这几个键两套主题里都必须有，否则横条会退化成默认黑色/透明。 -->
     <SolidColorBrush x:Key="Brush.OsdCard" Color="#F0181B21" />
-    <SolidColorBrush x:Key="Brush.OsdCardBorder" Color="#33FFFFFF" />
-    <SolidColorBrush x:Key="Brush.OsdTrack" Color="#38FFFFFF" />
-    <SolidColorBrush x:Key="Brush.OsdFill" Color="#F4F6FA" />
-    <SolidColorBrush x:Key="Brush.OsdText" Color="#F4F6FA" />
+    <SolidColorBrush x:Key="Brush.OsdCardBorder" Color="#335B8DFF" />
+    <SolidColorBrush x:Key="Brush.OsdTrack" Color="#333A4E75" />
+    <SolidColorBrush x:Key="Brush.OsdFill" Color="#3A76E8" />
+    <SolidColorBrush x:Key="Brush.OsdText" Color="#5C8DFF" />
 
     <LinearGradientBrush x:Key="Brush.WindowGradient" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#11151C" Offset="0" />

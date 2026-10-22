@@ -100,6 +100,14 @@ public static class BrightnessService
     private static readonly object TinyGate = new();
     private static readonly object HwGate = new();
 
+    /// <summary>
+    /// 叫醒推进线程。
+    ///
+    /// 目标没变时推进线程在 WaitOne 上睡着（不占 CPU），
+    /// 用户一按键就 Set() 把它立刻叫起来 —— 既省电又不拖延迟。
+    /// </summary>
+    private static readonly AutoResetEvent Wake = new(false);
+
     private static long _lastDdcWriteTick;
 
     /// <summary>上次成功读写的亮度（-1 = 还不知道）。</summary>
@@ -223,6 +231,7 @@ public static class BrightnessService
          * 这里**绝对不能**调用任何硬件方法：后台线程正在写 DDC 时
          * 会占着 HwGate 一百多毫秒，按键等它就会排队，
          * 排到"调完亮度再按音量完全没反应"。 */
+        int? fast = null;
         lock (TinyGate)
         {
             if (_supported == 0) return null;
@@ -230,8 +239,16 @@ public static class BrightnessService
             {
                 _target = Math.Clamp(_target + delta, 0, 100);
                 _lastUserTouchTick = Environment.TickCount64;
-                return _target;
+                fast = _target;
             }
+        }
+
+        if (fast is int ready)
+        {
+            /* 目标变了就叫醒推进线程。
+             * 放在锁外面：Wait/Set 是内核调用，持锁做没必要。 */
+            Wake.Set();
+            return ready;
         }
 
         // 慢路径：本次启动的第一次按键才需要读一次真实亮度当起点
@@ -246,6 +263,7 @@ public static class BrightnessService
         }
 
         EnsurePump();
+        Wake.Set();
         return result;
     }
 
@@ -260,6 +278,7 @@ public static class BrightnessService
             _lastUserTouchTick = Environment.TickCount64;
         }
         EnsurePump();
+        Wake.Set();
         return true;
     }
 
@@ -308,7 +327,9 @@ public static class BrightnessService
             _lastSyncTick = Environment.TickCount64;
             _supported = 1;
             _settleMisses = 0;
+            _lastUserTouchTick = Environment.TickCount64;
         }
+        Wake.Set();
         return true;
     }
 
@@ -364,21 +385,26 @@ public static class BrightnessService
                 supported = _supported;
             }
 
-            if (supported != 1 || target < 0) { Thread.Sleep(40); continue; }
+            // 没活干就睡着等（不是轮询）：按键时 Wake.Set() 会立刻叫醒
+            if (supported != 1 || target < 0) { Wake.WaitOne(500); continue; }
 
             if (cur < 0)
             {
                 int? read;
                 lock (HwGate) read = ReadLocked();
                 if (read is int r) PublishLast(r);
-                else Thread.Sleep(120);
+                else Wake.WaitOne(150);
                 continue;
             }
 
             if (cur == target)
             {
+                /* 已经追上目标。这里**不能**继续 25ms 醒一次 ——
+                 * 那样即使没人调亮度，后台线程每秒也要醒 40 次，
+                 * 白白耗电（笔记本上尤其明显）。改成等事件，
+                 * 只有"目标变了"或"到点回读校验"才醒。 */
                 SettleVerify(target);
-                Thread.Sleep(25);
+                Wake.WaitOne(SettleVerifyMs);
                 continue;
             }
 
@@ -392,7 +418,7 @@ public static class BrightnessService
             catch (Exception e)
             {
                 CoreLog.Warn("[亮度] 平滑推进出错：" + e.Message);
-                Thread.Sleep(250);
+                Wake.WaitOne(250);
                 continue;
             }
 
@@ -400,13 +426,13 @@ public static class BrightnessService
             {
                 PublishLast(next);
                 lock (TinyGate) _settleMisses = 0;
-                Thread.Sleep(FastGapMs);
+                Wake.WaitOne(FastGapMs);
             }
             else
             {
                 // 写不进去：留给下一次探测 / 换通道，别死循环刷屏
                 lock (TinyGate) _lastSyncTick = Environment.TickCount64;
-                Thread.Sleep(150);
+                Wake.WaitOne(300);
             }
         }
     }
@@ -546,6 +572,9 @@ public static class BrightnessService
             _supported = -1;
             _settleMisses = 0;
         }
+
+        // 推进线程可能正睡在 WaitOne 上：叫醒它重新判断（不然要等超时）
+        Wake.Set();
     }
 
     // ================= 百分比 ↔ VCP 值换算（纯函数，自检直接断言） =================

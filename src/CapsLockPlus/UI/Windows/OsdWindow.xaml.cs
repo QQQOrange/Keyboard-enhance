@@ -37,13 +37,22 @@ public partial class OsdWindow : Window
     /// <summary>
     /// 横条尺寸（DIP）。代码里定死，不依赖 XAML 上的值 ——
     /// 尺寸会同时参与物理像素定位计算，两处写死迟早对不上。
-    /// 248×52 是"看得清 + 不挡内容"的折中：原来 368×98 遮得太多。
+    ///
+    /// 208×44（约 4.7:1）参照 Windows 自带音量条的体量：那条是横长条，
+    /// 高度只有字高的两倍出头。上一版 248×52 在 200% 缩放下显得又宽又厚，
+    /// 挡住的内容比它本身还多。
     /// </summary>
-    public const double DesignWidth = 248;
-    public const double DesignHeight = 52;
+    public const double DesignWidth = 208;
+    public const double DesignHeight = 44;
 
-    /// <summary>距工作区底边的距离（DIP）。避开通栏，落在"任务栏偏上"。</summary>
-    private const double BottomGap = 96;
+    /// <summary>
+    /// 距工作区底边的距离（DIP）。
+    ///
+    /// Windows 11 的音量 / 亮度横条就贴在任务栏上方一点点，
+    /// 之前留 96 太靠上了，看起来像悬在屏幕中间。
+    /// 28 是"压在任务栏上沿、又不贴着边"的位置。
+    /// </summary>
+    private const double BottomGap = 28;
 
     /// <summary>淡入时间。太慢会觉得"迟钝"，太快会闪。</summary>
     private const int FadeInMs = 80;

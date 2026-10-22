@@ -134,16 +134,24 @@ public partial class ToastWindow : Window
         // 反馈类提示停留短一些，普通提示长一些
         int holdMs = Card.Padding.Left < 14 ? 900 : 1800;
 
-        _timer?.Stop();
-        _timer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        /* 复用一个计时器。
+         *
+         * 早先每次提示都 new 一个 DispatcherTimer 再挂 Tick ——
+         * 连按音量键时每秒能弹好几条，等于每秒造几个计时器对象，
+         * 每个都要注册进 Dispatcher 的计时器表再摘掉，纯属浪费。
+         * 计时器只跟"当前这条提示"有关，重设 Interval 就够了。 */
+        if (_timer == null)
         {
-            Interval = TimeSpan.FromMilliseconds(holdMs),
-        };
-        _timer.Tick += (_, _) =>
-        {
-            _timer!.Stop();
-            FadeOutAndHide();
-        };
+            _timer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher);
+            _timer.Tick += (_, _) =>
+            {
+                _timer!.Stop();
+                FadeOutAndHide();
+            };
+        }
+
+        _timer.Stop();
+        _timer.Interval = TimeSpan.FromMilliseconds(holdMs);
         _timer.Start();
     }
 

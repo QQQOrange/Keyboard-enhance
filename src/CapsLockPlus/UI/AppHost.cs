@@ -214,6 +214,18 @@ public sealed class AppHost : IDisposable
             catch (Exception ex) { CoreLog.Warn("亮度通道预热失败：" + ex.Message); }
         });
 
+        /* 音频接口必须在**动作队列这条 STA 线程**上建。
+         *
+         * COM 指针是 apartment 绑定的，让界面线程（设置页要显示"系统步进"）
+         * 抢先创建的话，动作队列之后就在跨线程用别人的指针 —— 未定义行为。
+         * 这里开机就在队列上问一次，把归属线程和步进缓存定下来，
+         * 顺便让第一次按音量键少一次建枚举器的开销。 */
+        _queue.Post(() =>
+        {
+            try { Core.Windows.VolumeService.StepPercent(); }
+            catch (Exception ex) { CoreLog.Warn("音频接口预热失败：" + ex.Message); }
+        });
+
         CoreLog.Info($"{AppInfo.ProductName} 已启动（管理员：{ElevationHelper.IsElevated}）");
     }
 

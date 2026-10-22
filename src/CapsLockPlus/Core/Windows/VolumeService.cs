@@ -29,8 +29,25 @@ public static class VolumeService
     private static IAudioEndpointVolume? _endpoint;
     private static bool _warned;
 
+    /* ---- COM 对象是" apartment 绑定"的，只能在家里用 ----
+     *
+     * `_endpoint` 是在**第一次调用它的那条 STA 线程**上创建的（正常情况下
+     * 就是动作队列线程）。自定义 COM 接口没有注册代理/存根，
+     * 换一条线程直接用它 = 未定义行为：轻则报错、重则崩进程。
+     *
+     * 实际情况：设置页要显示"系统音量步进"，那是界面线程；
+     * 如果它先碰到 COM，动作队列之后就在用别人家的接口指针。
+     * 所以这里记下宿主线程，别家线程只允许读缓存值。 */
+    private static int _comThreadId;
+
+    /// <summary>系统音量"一步"是多少（缓存，0 = 还没问过）。</summary>
+    private static int _stepCache;
+
     /// <summary>逐次加/减的默认步进（百分点）。和常见音量脚本的 ±5 对齐。</summary>
     public const int DefaultStep = 5;
+
+    /// <summary>问不到系统步进时的保守值（绝大多数机器的音量是 50 档）。</summary>
+    public const int FallbackSysStep = 2;
 
     /// <summary>这台机器能不能读写主音量（没有输出设备时为 false）。</summary>
     public static bool IsSupported() => Endpoint() != null;
@@ -84,20 +101,41 @@ public static class VolumeService
     /// 用来让系统 OSD 显示的数字和真实音量完全一致：先把音量退到
     /// 目标值前一档，再让 shell 走一步，正好落在目标值上。
     /// </summary>
+    /// <summary>
+    /// 系统音量"一步"是多少个百分点（通常 2%，即 50 档）。
+    ///
+    /// 用来让设置页的下限和"补偿发几次键"都与系统一致。
+    ///
+    /// **可以在界面线程调用**：缓存命中直接返回；缓存没命中且当前不是
+    /// COM 的宿主线程时，返回保守值 <see cref="FallbackSysStep"/>，
+    /// 绝不在别人的线程上碰那个接口指针（见 <see cref="_comThreadId"/>）。
+    /// 真正的刷新发生在动作队列线程上（启动时预热一次）。
+    /// </summary>
     public static int StepPercent()
     {
-        var ep = Endpoint();
-        if (ep == null) return 2;
+        int cached = Volatile.Read(ref _stepCache);
+        if (cached > 0) return cached;
 
+        int owner = Volatile.Read(ref _comThreadId);
+        if (owner != 0 && owner != Environment.CurrentManagedThreadId)
+            return FallbackSysStep;
+
+        var ep = Endpoint();
+        if (ep == null) return FallbackSysStep;
+
+        int step = FallbackSysStep;
         try
         {
-            if (ep.GetVolumeStepInfo(out _, out uint stepCount) != 0 || stepCount == 0) return 2;
-            return Math.Max(1, (int)Math.Round(100.0 / stepCount));
+            if (ep.GetVolumeStepInfo(out _, out uint stepCount) == 0 && stepCount > 0)
+                step = Math.Max(1, (int)Math.Round(100.0 / stepCount));
         }
         catch
         {
-            return 2;
+            step = FallbackSysStep;
         }
+
+        Volatile.Write(ref _stepCache, step);
+        return step;
     }
 
     /// <summary>
@@ -188,16 +226,36 @@ public static class VolumeService
                 try { Marshal.ReleaseComObject(_endpoint); } catch { }
                 _endpoint = null;
             }
+            // 归属线程与步进缓存一起作废：下次在新线程上重建时重新问
+            Volatile.Write(ref _comThreadId, 0);
+            Volatile.Write(ref _stepCache, 0);
         }
     }
 
     private static IAudioEndpointVolume? Endpoint()
     {
-        if (_endpoint != null) return _endpoint;
+        /* 已经在别的线程上建好了：**别把指针交给调用方**。
+         *
+         * 自定义 COM 接口没有跨 apartment 的代理，换线程使用是未定义行为
+         * （轻则调用失败，重则整个进程挂掉）。返回 null 让上层走降级路径
+         * （音量照旧由系统音量键处理，只是少了回读校验），
+         * 比"偶尔崩一次"好得多。 */
+        if (_endpoint != null)
+        {
+            return Volatile.Read(ref _comThreadId) == Environment.CurrentManagedThreadId
+                ? _endpoint
+                : null;
+        }
 
         lock (Gate)
         {
-            if (_endpoint != null) return _endpoint;
+            // 并发下被别人抢先建好：同样只在宿主线程上交付
+            if (_endpoint != null)
+            {
+                return Volatile.Read(ref _comThreadId) == Environment.CurrentManagedThreadId
+                    ? _endpoint
+                    : null;
+            }
 
             IMMDeviceEnumerator? enumerator = null;
             IMMDevice? device = null;
@@ -215,6 +273,9 @@ public static class VolumeService
                     return null;
 
                 _endpoint = volume;
+                // 记下宿主线程：只有这条线程能再用这个指针
+                Volatile.Write(ref _comThreadId, Environment.CurrentManagedThreadId);
+                Volatile.Write(ref _stepCache, 0);
                 return _endpoint;
             }
             catch (Exception ex)

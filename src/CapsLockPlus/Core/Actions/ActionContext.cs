@@ -634,6 +634,9 @@ public sealed class ActionContext
     /// </summary>
     private double _volumeRemainder;
 
+    /// <summary>上一次调节的方向（+1 加 / -1 减 / 0 还没调过）。</summary>
+    private int _volumeDirection;
+
     public bool ChangeVolume(int delta)
     {
         /* 音量走**系统音量键**（VK_VOLUME_UP / DOWN）。
@@ -653,6 +656,20 @@ public sealed class ActionContext
          * 前台程序吞掉。单次调节时回读一次音量，没变就改用音频引擎直接调，
          * 音量照样会变（只是没有横条，比"按了没反应"好得多）。 */
         int sysStep = Math.Max(1, VolumeService.StepPercent());
+
+        /* 换方向时把"欠账"清掉。
+         *
+         * 余数补偿是为了"设 5% 就长期平均 5%"：设 5（系统 2%）时
+         * 这次发 2 次键（4%）、下次补 3 次（6%）。
+         * 但用户加完马上又减时，那 1% 的欠账会跟着跑到反方向去 ——
+         * 来回按几下音量会慢慢往回漂。方向一变就重新起算最稳妥。 */
+        int direction = Math.Sign(delta);
+        if (direction != 0 && direction != _volumeDirection)
+        {
+            _volumeRemainder = 0;
+            _volumeDirection = direction;
+        }
+
         var (taps, rem) = PlanVolumeTaps(Math.Abs(delta), sysStep, _volumeRemainder);
         _volumeRemainder = rem;
 
@@ -695,7 +712,9 @@ public sealed class ActionContext
             return true;
         }
 
-        CoreLog.Info($"[音量] {after}%（系统横条）");
+        // 读不到当前音量（设备刚切换 / 非宿主线程）时只报"已发送"，别打出一个空百分号
+        if (after is int now2) CoreLog.Info($"[音量] {now2}%（系统横条）");
+        else CoreLog.Info("[音量] 已发送系统音量键（这次读不到当前音量）");
         return true;
     }
 
