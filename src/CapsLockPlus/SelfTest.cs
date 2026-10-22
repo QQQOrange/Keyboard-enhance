@@ -2025,7 +2025,13 @@ public static class SelfTest
 
         // 触发键物理按下 → 之后模拟"读数抖成没按下"
         bool triggerDown = true;
-        engine.PhysicalDownProbe = vk => vk is 0xA4 or 0xA5 or 0x12 && triggerDown;
+        bool upDown = false;      // 层内的上箭头究竟按着没有
+        engine.PhysicalDownProbe = vk => vk switch
+        {
+            0xA4 or 0xA5 or 0x12 => triggerDown,
+            0x26 => upDown,
+            _ => false,
+        };
 
         engine.SimulateKey(VK.RMenu, true);
         CheckEqual("右 Alt 进第 1 层", engine.ActiveLayer, 1);
@@ -2051,6 +2057,18 @@ public static class SelfTest
         Check("第二次按键仍然执行绑定动作", times >= 2, $"执行了 {times} 次");
 
         engine.SimulateKey(VK.Up, false);
+
+        /* 长按连续调节期间同样不能被自愈打断：
+         * 连续重复本身就是"用户还按着"的证据，它会持续刷新活动时间。 */
+        triggerDown = false;
+        upDown = true;                             // 上箭头真按着
+        engine.SimulateKey(VK.Up, true);           // 按住不放
+        DoEvents(700);                             // 跨过 400ms 静默门槛
+        for (int i = 0; i < 10; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
+        Check("长按连续调节期间不会被自愈打断", engine.IsTriggerHeld);
+        upDown = false;
+        engine.SimulateKey(VK.Up, false);
+        DoEvents(80);
 
         /* 真正的抬起丢失（切桌面 / 远程接管）里用户是**完全没在按键**的：
          * 静默超过门槛之后，自愈必须照常生效，否则触发键会永久卡住。 */

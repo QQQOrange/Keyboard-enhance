@@ -380,6 +380,14 @@ public sealed class HotkeyEngine : IDisposable
         string action = _repeatAction;
         string arg = _repeatArg;
 
+        /* 连续调节本身就是"用户还在按住"的证据，当然算按键活动。
+         *
+         * 不更新的话，长按 400ms 后就没有活动记录了：如果此时
+         * `GetAsyncKeyState(触发键)` 恰好读不准（注入媒体键、CapsLock
+         * 这类被系统特殊处理的键），自愈会把整个层复位 ——
+         * 表现是"按住音量键正在涨，突然就不涨了，而且层也没了"。 */
+        _lastKeyActivity = now;
+
         _repeatNextAt = now.AddMilliseconds(RepeatIntervalFor(action));
         _queue.Post(() =>
         {
