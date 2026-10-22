@@ -299,14 +299,22 @@ public static class SettingsStore
     /// </summary>
     private static void EnsureWriter()
     {
-        if (_writerThread != null) return;
+        /* 判断"线程还活着"而不是"句柄非空"。
+         *
+         * 同一个坑在亮度服务里刚踩过（非空句柄 + 已死线程 = 永远不重建，
+         * 之后所有写入都石沉大海）。这里用 IsAlive 兜住：万一写线程因为
+         * 磁盘满 / 权限变更之类的意外退出，下一次保存还能重新拉起它。 */
+        if (_writerThread is { IsAlive: true }) return;
 
         _writerThread = new Thread(() =>
         {
             while (true)
             {
                 WriteSignal.WaitOne(2000);
-                DrainWrites();
+
+                // 兜底：DrainWrites 内部已逐处 try/catch，但别让线程真死掉
+                try { DrainWrites(); }
+                catch (Exception ex) { CoreLog.Error("设置写入线程出错（已继续运行）", ex); }
             }
         })
         {

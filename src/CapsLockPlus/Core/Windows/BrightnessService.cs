@@ -823,6 +823,10 @@ public static class BrightnessService
     /// <summary>物理显示器句柄开出来就一直拿着：每次重新枚举要 100ms 以上。</summary>
     private static bool DdcEnsureLocked()
     {
+        /* 注意：空列表也算"已枚举过"，这里不重试 —— 重试由 ProbeLocked 负责
+         * （它会在 5 秒节流后 ReleaseDdcLocked 再重新枚举）。
+         * 如果哪天别处需要一个"强制重探"的入口，请走 Reset()，不要把这里改成
+         * 每次调用都枚举：每次枚举要开一遍物理显示器句柄，代价是几十毫秒。 */
         if (_ddc != null) return _ddc.Count > 0;
 
         _ddc = new List<DdcMonitor>();
