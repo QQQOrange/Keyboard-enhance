@@ -137,6 +137,10 @@ public static class SelfTest
         TestSubLayers();
         TestDirectSearch();
         TestTypeTextAction();
+
+        Section("音量与亮度");
+        TestVolumeCore();
+        TestBrightnessMath();
         TestDirectSearchCoversAllEngines();
         TestCopyChordEndToEnd();
         TestSelectionWatcher();
@@ -3882,6 +3886,174 @@ public static class SelfTest
         // 超长文本被截断而不是拒发（2000 上限）
         string longText = new string('a', 5000);
         Check("超长文本不抛异常", ctx.TypeText(longText));
+    }
+
+    /// <summary>
+    /// 音量：这次把「模拟媒体键」换成了 Core Audio（IAudioEndpointVolume）。
+    ///
+    /// 分两层验：
+    ///   ① 纯换算（夹取、浮点→百分比）—— 不需要声卡，任何机器都能断言；
+    ///   ② 真实读写 —— 这台机器有播放设备时，写一个值、回读、再还原。
+    ///
+    /// ② 必须做，否则"接口写错了但编译通过"这种问题只能等用户发现：
+    /// COM 接口的方法顺序错位不会报编译错，表现是调用失败或写进乱七八糟的值。
+    /// 过程中先静音，避免自检把音量推到 70% 时突然出声。
+    /// </summary>
+    private static void TestVolumeCore()
+    {
+        // ---------- ① 边界换算 ----------
+        CheckEqual("音量 50+5 → 55", Core.Windows.VolumeService.TargetPercent(50, 5), 55);
+        CheckEqual("音量 98+5 → 封顶 100", Core.Windows.VolumeService.TargetPercent(98, 5), 100);
+        CheckEqual("音量 2-5 → 保底 0", Core.Windows.VolumeService.TargetPercent(2, -5), 0);
+        CheckEqual("音量 100+5 → 仍是 100", Core.Windows.VolumeService.TargetPercent(100, 5), 100);
+        CheckEqual("音量 0-5 → 仍是 0", Core.Windows.VolumeService.TargetPercent(0, -5), 0);
+
+        CheckEqual("0.65 → 65%", Core.Windows.VolumeService.ToPercent(0.65f), 65);
+        CheckEqual("0.6499999 → 65%（不能舍成 64）", Core.Windows.VolumeService.ToPercent(0.6499999f), 65);
+        CheckEqual("1.0 → 100%", Core.Windows.VolumeService.ToPercent(1f), 100);
+        CheckEqual("0 → 0%", Core.Windows.VolumeService.ToPercent(0f), 0);
+
+        // ---------- ② 真实读写 + 还原 ----------
+        int? before = Core.Windows.VolumeService.Get();
+        if (before == null)
+        {
+            Check("（环境限制）没有可用的播放设备，跳过真实音量读写", true);
+            return;
+        }
+
+        bool? muteBefore = Core.Windows.VolumeService.GetMute();
+        try
+        {
+            Core.Windows.VolumeService.SetMute(true);   // 测试期间不出声
+
+            int target = before.Value >= 50 ? 30 : 70;
+            bool written = Core.Windows.VolumeService.Set(target);
+            Check($"音量能写入 {target}%", written);
+            if (written)
+            {
+                int after = Core.Windows.VolumeService.Get() ?? -1;
+                /* 允许 ±1：声卡会把 0.30 量化成最接近的一档，
+                 * 0~100 的整数百分比回读通常精确，少数驱动有 1% 偏差。 */
+                Check($"回读音量 ≈ {target}%（实际 {after}%）", Math.Abs(after - target) <= 1,
+                    $"before={before}, after={after}");
+
+                int? stepped = Core.Windows.VolumeService.Step(5);
+                Check("音量 +5 有回读值", stepped != null, $"stepped={stepped}");
+                CheckEqual("Step 返回的就是当前值", stepped ?? -1,
+                    Core.Windows.VolumeService.Get() ?? -1);
+
+                // 再减回去，确认双向都通
+                int? back = Core.Windows.VolumeService.Step(-5);
+                Check("音量 -5 有回读值", back != null, $"back={back}");
+            }
+
+            if (muteBefore != null)
+            {
+                Core.Windows.VolumeService.SetMute(!muteBefore.Value);
+                Check("静音状态可切换", Core.Windows.VolumeService.GetMute() == !muteBefore.Value);
+            }
+        }
+        finally
+        {
+            Core.Windows.VolumeService.Set(before.Value);
+            if (muteBefore != null) Core.Windows.VolumeService.SetMute(muteBefore.Value);
+        }
+
+        CheckEqual("音量已还原", Core.Windows.VolumeService.Get() ?? -1, before.Value);
+
+        // ---------- ③ 动作表归位 ----------
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        foreach (string id in new[] { "volumeUp", "volumeDown", "volumeMute" })
+        {
+            var it = cat.Items.FirstOrDefault(i => i.Id == id);
+            Check($"动作 {id} 在「系统功能」", it?.Category == "系统功能",
+                string.Join(",", cat.Items.Where(i => i.Category == "系统功能").Select(i => i.Id)));
+            Check($"动作 {id} 不需要参数", it?.NeedsArg != true);
+        }
+
+        // 音量动作不能再退回"模拟媒体键"：那是这次要修的根因
+        var up = cat.Items.FirstOrDefault(i => i.Id == "volumeUp");
+        var down = cat.Items.FirstOrDefault(i => i.Id == "volumeDown");
+        Check("音量动作走 Core Audio（描述里写的是系统音量）",
+            up?.Description.Contains("系统音量") == true &&
+            down?.Description.Contains("系统音量") == true,
+            $"up={up?.Description} / down={down?.Description}");
+    }
+
+    /// <summary>
+    /// 亮度：WMI 与 DDC/CI 两套量程换算。
+    ///
+    /// 不在这里做真实写入 —— 写亮度会让屏幕闪一下，而自检要跑一千多条断言，
+    /// 中间闪屏非常打扰。读取是只读的，只报一句当前通道。
+    /// </summary>
+    private static void TestBrightnessMath()
+    {
+        // 0~100 量程（大多数笔记本）
+        CheckEqual("0~100：60 → 60%", Core.Windows.BrightnessService.FromVcp(60, 100), 60);
+        // 0~255 量程（不少外接屏）
+        CheckEqual("0~255：128 → 50%", Core.Windows.BrightnessService.FromVcp(128, 255), 50);
+        // 0~1000 量程（少数专业屏）
+        CheckEqual("0~1000：250 → 25%", Core.Windows.BrightnessService.FromVcp(250, 1000), 25);
+        CheckEqual("max=0 无法换算", Core.Windows.BrightnessService.FromVcp(10, 0), -1);
+
+        CheckEqual("50% → 0~255 的 128", Core.Windows.BrightnessService.ToVcp(50, 255), 128u);
+        CheckEqual("100% → 满量程", Core.Windows.BrightnessService.ToVcp(100, 255), 255u);
+        CheckEqual("0% → 0", Core.Windows.BrightnessService.ToVcp(0, 255), 0u);
+        CheckEqual("超过 100 按满算", Core.Windows.BrightnessService.ToVcp(150, 255), 255u);
+        CheckEqual("负数按 0 算", Core.Windows.BrightnessService.ToVcp(-20, 255), 0u);
+
+        // 往返：百分比 → 原始值 → 百分比，误差不超过 1
+        bool roundTripOk = true;
+        foreach (uint max in new uint[] { 100, 255, 1000 })
+        {
+            foreach (int pct in new[] { 0, 10, 25, 50, 75, 100 })
+            {
+                int back = Core.Windows.BrightnessService.FromVcp(
+                    Core.Windows.BrightnessService.ToVcp(pct, max), max);
+                if (Math.Abs(back - pct) > 1) roundTripOk = false;
+            }
+        }
+        Check("亮度换算往返误差 ≤ 1%", roundTripOk);
+
+        // 只读探测：这台机器走哪条通道（不支持也是合法结果，不能算失败）
+        var backend = Core.Windows.BrightnessService.Backend;
+        int? now = Core.Windows.BrightnessService.Get();
+        Check($"亮度通道：{Core.Windows.BrightnessService.BackendName}",
+            backend != Core.Windows.BrightnessBackend.Unknown,
+            $"backend={backend}, value={now}");
+        if (backend != Core.Windows.BrightnessBackend.Unsupported)
+            Check("支持的通道能读出亮度", now != null, $"value={now}");
+
+        // 动作表
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+
+        foreach (string id in new[] { "brightnessUp", "brightnessDown" })
+        {
+            var it = cat.Items.FirstOrDefault(i => i.Id == id);
+            Check($"动作 {id} 在「系统功能」", it?.Category == "系统功能");
+            Check($"动作 {id} 标明需要显示器支持", it?.Description.Contains("DDC/CI") == true);
+        }
     }
 
     /// <summary>

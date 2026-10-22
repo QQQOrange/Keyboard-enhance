@@ -263,21 +263,32 @@ public sealed class ActionCatalog
         c.Add("mediaNext", "系统功能", "下一首", "媒体键：跳到下一首", _ => Send(0xB0));
         c.Add("mediaPlayPause", "系统功能", "播放 / 暂停", "媒体键：播放或暂停", _ => Send(0xB3), shortTitle: "播放");
         c.Add("mediaStop", "系统功能", "停止播放", "媒体键：停止", _ => Send(0xB2));
-        c.Add("volumeUp", "系统功能", "音量 +", "音量加一档", a => SendRepeat(0xAF, a), shortTitle: "音量+");
-        c.Add("volumeDown", "系统功能", "音量 -", "音量减一档", a => SendRepeat(0xAE, a), shortTitle: "音量-");
-        c.Add("volumeMute", "系统功能", "静音", "静音开关切换", _ => Send(0xAD));
+        /* 音量：直接调 Core Audio（IAudioEndpointVolume），不再模拟媒体键。
+         *
+         * 旧的 `SendRepeat(0xAF, …)` 依赖系统 shell 分发 VK_VOLUME_UP，
+         * 在键盘过滤驱动 / 远程会话 / 前台程序抢媒体键的机器上会静默失效，
+         * 用户看到的现象就是"按了完全没反应"。现在走音频引擎，成功与否当场可知，
+         * 还能回读真实音量显示百分比。参数可改步进（默认 5%）。 */
+        c.Add("volumeUp", "系统功能", "音量 +",
+            "把系统音量提高 5%（参数可改步进，例如填 10）",
+            a => ctx.ChangeVolume(VolumeStep(a)), shortTitle: "音量+");
+        c.Add("volumeDown", "系统功能", "音量 -",
+            "把系统音量降低 5%（参数可改步进）",
+            a => ctx.ChangeVolume(-VolumeStep(a)), shortTitle: "音量-");
+        c.Add("volumeMute", "系统功能", "静音", "静音 / 取消静音（切换）",
+            _ => ctx.ToggleMute(), shortTitle: "静音");
 
         c.Add("openCalculator", "系统功能", "打开计算器",
             "打开 Windows 自带的计算器",
             _ => { ctx.RunProgram("calc.exe"); return true; }, shortTitle: "计算器");
 
-        /* 亮度：走 WMI。台式机外接屏大多不支持，这时给明确提示 ——
+        /* 亮度：WMI（内置屏）→ DDC/CI（外接屏）。两条都不通时给明确提示 ——
          * 用户按了没反应会以为按键坏了。 */
         c.Add("brightnessUp", "系统功能", "亮度 +",
-            "屏幕亮度提高 10%（需要设备支持）",
+            "屏幕亮度提高 10%（参数可改步进；外接屏需开启 DDC/CI）",
             a => ctx.ChangeBrightness(10 * ParseInt(a, 1)), shortTitle: "亮+");
         c.Add("brightnessDown", "系统功能", "亮度 -",
-            "屏幕亮度降低 10%（需要设备支持）",
+            "屏幕亮度降低 10%（参数可改步进；外接屏需开启 DDC/CI）",
             a => ctx.ChangeBrightness(-10 * ParseInt(a, 1)), shortTitle: "亮-");
 
         c.Add("openExplorer", "系统功能", "打开文件资源管理器",
@@ -391,6 +402,10 @@ public sealed class ActionCatalog
     private static bool SendCtrlRepeat(int vk, string arg) { for (int i = 0; i < ParseInt(arg, 1); i++) InputSender.Ctrl(vk); return true; }
     private static bool SendShiftRepeat(int vk, string arg) { for (int i = 0; i < ParseInt(arg, 1); i++) InputSender.Shift(vk); return true; }
     private static bool SendCtrlShiftRepeat(int vk, string arg) { for (int i = 0; i < ParseInt(arg, 1); i++) InputSender.CtrlShift(vk); return true; }
+
+    /// <summary>音量步进：默认 5%，参数可以覆盖（允许 1~100）。</summary>
+    private static int VolumeStep(string? arg)
+        => int.TryParse(arg, out var v) ? Math.Clamp(v, 1, 100) : Core.Windows.VolumeService.DefaultStep;
 
     internal static int ParseInt(string? s, int fallback)
         => int.TryParse(s, out var v) ? Math.Clamp(v, 1, 200) : fallback;

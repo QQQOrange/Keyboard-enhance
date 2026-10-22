@@ -21,6 +21,7 @@ public partial class App : Application
 
         bool isSelfTest = e.Args.Any(a => a.Equals("--selftest", StringComparison.OrdinalIgnoreCase));
         bool isDiag = e.Args.Any(a => a.Equals("--diag", StringComparison.OrdinalIgnoreCase));
+        bool isHwTest = e.Args.Any(a => a.Equals("--hwtest", StringComparison.OrdinalIgnoreCase));
 
         /* 测试类模式一律"干跑"：只走逻辑，不真的往系统里发按键。
          *
@@ -54,6 +55,25 @@ public partial class App : Application
             catch (Exception ex)
             {
                 CoreLog.Error("自检异常", ex);
+                code = 2;
+            }
+            Environment.Exit(code);
+            return;
+        }
+
+        /* 硬件自检：真的调一次音量与亮度再还原。
+         * 用来区分"代码没生效"和"这台设备不支持" —— 用户报
+         * 音量/亮度按键没反应时，让他跑这个看输出。 */
+        if (isHwTest)
+        {
+            int code;
+            try
+            {
+                code = Core.Windows.HardwareProbe.Run();
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error("硬件自检异常", ex);
                 code = 2;
             }
             Environment.Exit(code);

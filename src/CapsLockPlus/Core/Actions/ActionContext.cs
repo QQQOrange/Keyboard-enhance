@@ -573,17 +573,54 @@ public sealed class ActionContext
     }
 
     /// <summary>
-    /// 调整屏幕亮度（WMI）。<paramref name="delta"/> 为正=调亮，为负=调暗。
+    /// 调整主音量（Core Audio API）。<paramref name="delta"/> 为正=加，为负=减。
     ///
-    /// 台式机外接屏一般没有这条 WMI 接口 —— 那种情况下必须**明确告诉用户**
-    /// "这台设备不支持"，否则按了没反应会被当成按键坏了。
+    /// 不再模拟 VK_VOLUME_UP/DOWN：那条路在有键盘过滤驱动、远程会话、
+    /// 或前台程序抢走媒体键的机器上会静默失效（用户看到的就是"按了没反应"）。
+    /// 直接调音频引擎既能保证生效，也能拿到真实值显示百分比。
+    /// </summary>
+    public bool ChangeVolume(int delta)
+    {
+        int? now = VolumeService.Step(delta);
+        if (now == null)
+        {
+            Notify("没有找到可用的播放设备，音量调不了");
+            return true;
+        }
+
+        // 静音时调音量不会有声音，顺手提示一句，免得用户以为又没生效
+        string suffix = VolumeService.GetMute() == true ? "（静音中）" : "";
+        Notify($"音量 {now}%{suffix}");
+        return true;
+    }
+
+    /// <summary>切换系统静音。</summary>
+    public bool ToggleMute()
+    {
+        bool? muted = VolumeService.ToggleMute();
+        if (muted == null)
+        {
+            Notify("没有找到可用的播放设备，静音切不了");
+            return true;
+        }
+        Notify(muted.Value ? "已静音" : "已取消静音");
+        return true;
+    }
+
+    /// <summary>
+    /// 调整屏幕亮度。<paramref name="delta"/> 为正=调亮，为负=调暗。
+    ///
+    /// 两条通道（见 <see cref="BrightnessService"/>）：
+    ///   · 笔记本内置屏 → WMI，快且不闪；
+    ///   · 台式机外接屏 → DDC/CI，直接跟显示器对话。
+    /// 两条都不通时**明确告诉用户**能力不支持，否则按了没反应会被当成按键坏了。
     /// </summary>
     public bool ChangeBrightness(int delta)
     {
         int? now = BrightnessService.Step(delta);
         if (now == null)
         {
-            Notify("这台设备不支持用软件调亮度（常见于台式机外接显示器）");
+            Notify("这台显示器不支持用软件调亮度（笔记本内置屏一般可以，外接屏需开启 DDC/CI）");
             return true;
         }
         Notify($"屏幕亮度 {now}%");
