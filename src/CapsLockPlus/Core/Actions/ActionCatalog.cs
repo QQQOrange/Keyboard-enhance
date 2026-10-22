@@ -361,6 +361,28 @@ public sealed class ActionCatalog
             a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenFile(a); return true; },
             needsArg: true);
 
+        // ---------------- 自定义按键 ----------------
+        //
+        // 这一类只有一个动作，参数全在 Arg 里的 JSON（见 CustomKeySpec）。
+        //
+        // 它解决的是"把某个键转发给某个常驻程序"这件事：
+        // 例如把 F13 绑给微信 —— 按下时先确认微信在跑（没跑就先拉起来），
+        // 再把 F13 发过去。以前这个能力散在「窗口绑定」里，
+        // 而窗口绑定只管"切过去"，管不了"切过去再按一下某个键"。
+        //
+        // 为什么不做成参数框里的纯文本：一个动作要记住"键 + 应用 + 两个开关"，
+        // 纯文本既不好解析也不好给用户编辑，所以给这一类配了专用面板（见 KeysView），
+        // Arg 只是它的序列化形式。
+        c.Add("customKey", "自定义按键", "发送按键到应用",
+            "先确认绑定的应用在运行（没运行就先启动），再把设定的键发给它",
+            a =>
+            {
+                var r = CustomKeyRunner.Run(CustomKeySpec.FromArg(a));
+                if (!string.IsNullOrWhiteSpace(r.Message)) ctx.Notify(r.Message);
+                return r.Ok;
+            },
+            needsArg: false, shortTitle: "自定义");
+
         // ---------------- 输入文本 ----------------
         //
         // 把一段预设文字直接打到**当前焦点所在的输入框**里。

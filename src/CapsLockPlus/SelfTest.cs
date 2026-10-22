@@ -138,6 +138,9 @@ public static class SelfTest
         TestDirectSearch();
         TestTypeTextAction();
 
+        Section("自定义按键");
+        TestCustomKey();
+
         Section("音量与亮度");
         TestVolumeCore();
         TestBrightnessMath();
@@ -1270,10 +1273,25 @@ public static class SelfTest
         CheckEqual("裸域名补协议",
             Core.Sync.WebDavClient.NormalizeInput("dav.jianguoyun.com/dav"),
             "https://dav.jianguoyun.com/dav/");
+        /* 云端子目录名：用**可执行文件名**，不是显示名。
+         * 显示名是「按键增强 / Keyboard Enhance」，带空格和中文，
+         * 当目录名既不好打也不好排在网盘里。 */
+        CheckEqual("云端子目录用可执行文件名",
+            Core.Sync.WebDavClient.DefaultSubdir, "KeyboardEnhance");
+        Check("云端子目录里没有空格", !Core.Sync.WebDavClient.DefaultSubdir.Contains(' '));
+
         // 已知网盘根地址会自动补子目录（发请求时用 NormalizeBase）
         CheckEqual("已知根地址补子目录",
             Core.Sync.WebDavClient.NormalizeBase("https://dav.jianguoyun.com/dav/"),
-            "https://dav.jianguoyun.com/dav/CapsLockPlus/");
+            "https://dav.jianguoyun.com/dav/KeyboardEnhance/");
+
+        // 老配置里存的是「根地址 + 旧子目录」，必须还原成纯根地址，否则会多套一层
+        CheckEqual("老配置里的旧子目录会被剥掉",
+            Core.Sync.WebDavClient.NormalizeInput("https://dav.jianguoyun.com/dav/CapsLockPlus/"),
+            "https://dav.jianguoyun.com/dav/");
+        CheckEqual("新子目录同样会被剥掉",
+            Core.Sync.WebDavClient.NormalizeInput("https://dav.jianguoyun.com/dav/KeyboardEnhance/"),
+            "https://dav.jianguoyun.com/dav/");
         // 配置里存的是纯根地址（不含子目录）
         CheckEqual("配置里不存子目录",
             Core.Sync.WebDavClient.NormalizeInput("https://dav.jianguoyun.com/dav/CapsLockPlus/"),
@@ -4133,6 +4151,134 @@ public static class SelfTest
 
         Check("取空后能重新开始新一轮", q.Post("第四条", "info"));
         CheckEqual("新一轮取到第四条", q.Take()?.Text, "第四条");
+    }
+
+    /// <summary>
+    /// 「自定义按键」：参数编解码 + 组合键解析 + 执行流程（启动 / 发送 / 各种失败）。
+    ///
+    /// 执行流程全部用注入点拦截，不真的启动程序、不真的按键 ——
+    /// 自检要能在任何机器上跑，不能因为"这台机器没装微信"就失败。
+    /// </summary>
+    private static void TestCustomKey()
+    {
+        // ---------- 参数编解码 ----------
+        var spec = new CustomKeySpec
+        {
+            Key = "ctrl_shift_k",
+            AppPath = @"C://Tools//Weixin//Weixin.exe",
+            RunAsAdmin = true,
+            BringFront = true,
+            WaitAfterLaunchMs = 0,      // 自检别真等 900ms
+        };
+        var back = CustomKeySpec.FromArg(spec.ToArg());
+        CheckEqual("自定义按键：键能往返", back.Key, spec.Key);
+        CheckEqual("自定义按键：应用能往返", back.AppPath, spec.AppPath);
+        Check("自定义按键：管理员标志能往返", back.RunAsAdmin);
+        Check("自定义按键：切前台标志能往返", back.BringFront);
+        CheckEqual("自定义按键：等待时间能往返", back.WaitAfterLaunchMs, spec.WaitAfterLaunchMs);
+        CheckEqual("自定义按键：默认等待 900ms（与 QuickSearch 一致）",
+            new CustomKeySpec().WaitAfterLaunchMs, 900);
+        Check("自定义按键：切前台默认关闭（与 QuickSearch 一致）",
+            !new CustomKeySpec().BringFront);
+        CheckEqual("自定义按键：进程名取自文件名", back.ProcessName, "Weixin");
+        Check("自定义按键：填齐了才算就绪", back.IsReady);
+
+        Check("自定义按键：空参数不炸", !CustomKeySpec.FromArg("").IsReady);
+        Check("自定义按键：坏 JSON 不炸", !CustomKeySpec.FromArg("{oops").IsReady);
+        CheckEqual("自定义按键：手填纯键名也认", CustomKeySpec.FromArg("f13").Key, "f13");
+        Check("自定义按键：只填键不算就绪", !CustomKeySpec.FromArg("f13").IsReady);
+
+        // ---------- 组合键解析 ----------
+        var (mods, vk) = CustomKeyRunner.ResolveCombo("ctrl_shift_k");
+        CheckEqual("组合键解析出两个修饰键", mods.Length, 2);
+        Check("组合键解析出 Ctrl", mods.Contains(VK.Control));
+        Check("组合键解析出 Shift", mods.Contains(VK.Shift));
+        CheckEqual("组合键解析出主键 K", vk, 0x4B);
+
+        var (noMods, f13Vk) = CustomKeyRunner.ResolveCombo("f13");
+        CheckEqual("单键没有修饰键", noMods.Length, 0);
+        Check("F13 能解析出虚拟键码", f13Vk != 0, $"vk={f13Vk}");
+
+        // ---------- 执行 ----------
+        var empty = CustomKeyRunner.Run(new CustomKeySpec());
+        Check("没设键 → 明确报错而不是静默", !empty.Ok && empty.Message.Contains("键"),
+            empty.Message);
+
+        bool launched = false;
+        string? sent = null;
+        try
+        {
+            // 没在运行 → 先启动，再发键
+            CustomKeyRunner.IsRunningForTest = _ => false;
+            CustomKeyRunner.LaunchForTest = _ => { launched = true; return true; };
+            CustomKeyRunner.FindWindowForTest = _ => (IntPtr)0x1234;
+            CustomKeyRunner.SendForTest = c => sent = c;
+
+            var r1 = CustomKeyRunner.Run(back);
+            Check("应用没在运行时会先启动", launched);
+            Check("启动后把键发出去了", sent == back.Key, sent ?? "(null)");
+            Check("结果说明里提到已启动", r1.Ok && r1.Message.Contains("已启动"), r1.Message);
+
+            // 已在运行 → 不重复启动，直接发
+            launched = false;
+            sent = null;
+            CustomKeyRunner.IsRunningForTest = _ => true;
+            var r2 = CustomKeyRunner.Run(back);
+            Check("已在运行时不重复启动", !launched);
+            Check("已在运行时照样把键发出去", sent == back.Key, sent ?? "(null)");
+            Check("结果说明里提到已在运行", r2.Ok && r2.Message.Contains("已在运行"), r2.Message);
+
+            // 启动失败
+            launched = false;
+            sent = null;
+            CustomKeyRunner.IsRunningForTest = _ => false;
+            CustomKeyRunner.LaunchForTest = _ => false;
+            var r3 = CustomKeyRunner.Run(back);
+            Check("启动失败要说清楚", !r3.Ok && r3.Message.Contains("失败"), r3.Message);
+            Check("启动失败时不发键", sent == null);
+
+            // 启动成功但等不到窗口
+            CustomKeyRunner.LaunchForTest = _ => true;
+            CustomKeyRunner.FindWindowForTest = _ => IntPtr.Zero;
+            sent = null;
+            var r4 = CustomKeyRunner.Run(back);
+            Check("等不到窗口时不发键", sent == null);
+            Check("等不到窗口要说明", r4.Message.Contains("没等到"), r4.Message);
+        }
+        finally
+        {
+            CustomKeyRunner.IsRunningForTest = null;
+            CustomKeyRunner.LaunchForTest = null;
+            CustomKeyRunner.FindWindowForTest = null;
+            CustomKeyRunner.SendForTest = null;
+        }
+
+        // ---------- 动作表 ----------
+        var settings = DefaultSettings.Create();
+        var ctx = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = _ => { },
+        };
+        var cat = Core.Actions.ActionCatalog.Create(ctx);
+        var info = cat.Get("customKey");
+        Check("动作表有 customKey", info != null);
+        CheckEqual("customKey 归在「自定义按键」分类", info?.Category, "自定义按键");
+        Check("「自定义按键」分类下只有它一个动作",
+            cat.Items.Count(i => i.Category == "自定义按键") == 1,
+            string.Join(",", cat.Items.Where(i => i.Category == "自定义按键").Select(i => i.Id)));
+
+        // ---------- 键帽标签 ----------
+        CheckEqual("键帽标签：有备注用备注",
+            UI.Views.KeysView.CustomKeyLabelOf("微信", back), "微信");
+        CheckEqual("键帽标签：没备注用应用名",
+            UI.Views.KeysView.CustomKeyLabelOf("", back), "Weixin");
+        CheckEqual("键帽标签：都没有时兜底",
+            UI.Views.KeysView.CustomKeyLabelOf("", new CustomKeySpec()), "自定义");
     }
 
     private static void TestBrightnessMath()

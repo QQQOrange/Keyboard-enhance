@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
 using KeyBinding = CapsLockPlus.Core.Settings.KeyBinding;
@@ -243,11 +244,13 @@ public partial class KeysView : UserControl
         CategoryBox.Items.Clear();
         CategoryBoxWinBind.Items.Clear();
         CategoryBoxWeb.Items.Clear();
+        CategoryBoxCustom.Items.Clear();
         foreach (var cat in cats)
         {
             CategoryBox.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
             CategoryBoxWinBind.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
             CategoryBoxWeb.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
+            CategoryBoxCustom.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
             CategoryBoxType.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
         }
 
@@ -282,6 +285,14 @@ public partial class KeysView : UserControl
 
     /// <summary>「输入文本」分类（只要一个多行文本框）。</summary>
     private const string TypeTextCategory = "输入文本";
+
+    /// <summary>
+    /// 「自定义按键」分类：把某个键发给某个常驻程序。
+    ///
+    /// 这个分类只有一个动作（customKey），参数是 CustomKeySpec 的 JSON。
+    /// 面板里能设"发什么键 / 发给哪个应用 / 是否管理员启动 / 是否切前台"。
+    /// </summary>
+    private const string CustomKeyCategory = "自定义按键";
 
     /// <summary>「直达链接」下的三个动作 ID。</summary>
     private const string LinkUrlAction = "webPage";
@@ -442,6 +453,8 @@ public partial class KeysView : UserControl
         WebPage,
         /// <summary>输入文本：分类 + 多行文本框。</summary>
         TypeText,
+        /// <summary>自定义按键：分类 + 键 / 应用 / 两个开关。</summary>
+        CustomKey,
     }
 
     /// <summary>根据分类名判断该用哪种模式。</summary>
@@ -450,6 +463,7 @@ public partial class KeysView : UserControl
         WinBindCategory => EditorMode.WinBind,
         WebPageCategory => EditorMode.WebPage,
         TypeTextCategory => EditorMode.TypeText,
+        CustomKeyCategory => EditorMode.CustomKey,
         _ => EditorMode.Normal,
     };
 
@@ -471,6 +485,7 @@ public partial class KeysView : UserControl
         WinBindPicker.Visibility = mode == EditorMode.WinBind ? Visibility.Visible : Visibility.Collapsed;
         WebPagePicker.Visibility = mode == EditorMode.WebPage ? Visibility.Visible : Visibility.Collapsed;
         TypeTextPicker.Visibility = mode == EditorMode.TypeText ? Visibility.Visible : Visibility.Collapsed;
+        CustomKeyPicker.Visibility = mode == EditorMode.CustomKey ? Visibility.Visible : Visibility.Collapsed;
 
         WinBindPanel.Visibility = mode == EditorMode.WinBind ? Visibility.Visible : Visibility.Collapsed;
 
@@ -490,6 +505,11 @@ public partial class KeysView : UserControl
             case EditorMode.TypeText:
                 ActionDesc.Text = "填一段文字：按这个键就把它直接输入到当前光标处。";
                 RefreshTypeTextField();
+                break;
+            case EditorMode.CustomKey:
+                ActionDesc.Text = "先把要发送的键和应用绑好。按这个键时会先看应用在不在运行："
+                                + "在运行就直接把键发过去，没运行就先把它拉起来再发。";
+                RefreshCustomKeyPanel();
                 break;
         }
     }
@@ -537,6 +557,10 @@ public partial class KeysView : UserControl
             else if (mode == EditorMode.TypeText)
             {
                 EnsureActionForCategory("typeText");
+            }
+            else if (mode == EditorMode.CustomKey)
+            {
+                EnsureCustomKeyAction();
             }
         }
         finally
@@ -705,11 +729,13 @@ public partial class KeysView : UserControl
             var s when ReferenceEquals(s, CategoryBoxWinBind) => (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string,
             var s when ReferenceEquals(s, CategoryBoxWeb) => (CategoryBoxWeb.SelectedItem as ComboBoxItem)?.Tag as string,
             var s when ReferenceEquals(s, CategoryBoxType) => (CategoryBoxType.SelectedItem as ComboBoxItem)?.Tag as string,
+            var s when ReferenceEquals(s, CategoryBoxCustom) => (CategoryBoxCustom.SelectedItem as ComboBoxItem)?.Tag as string,
             _ => SelectedCategory,
         };
         if (tag == null) return;
 
-        foreach (var box in new[] { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType })
+        foreach (var box in new[]
+                 { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType, CategoryBoxCustom })
         {
             if (ReferenceEquals(box, source)) continue;
             foreach (ComboBoxItem it in box.Items)
@@ -1472,6 +1498,7 @@ public partial class KeysView : UserControl
             "winBind" => EditorMode.WinBind,
             "webPage" or "openFolder" or "openFile" => EditorMode.WebPage,   // 直达链接的三种类型
             "typeText" => EditorMode.TypeText,
+            "customKey" => EditorMode.CustomKey,
             _ => EditorMode.Normal,
         };
         ApplyEditorMode(mode);
@@ -1582,6 +1609,43 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
+    /// 仅供渲染：把界面切到「自定义按键」面板，好截一张图确认各个控件都画出来了。
+    /// </summary>
+    public bool ShowCustomKeyForRender()
+    {
+        if (_host == null) return false;
+
+        _suppressEvents = true;
+        try
+        {
+            foreach (ComboBoxItem it in CategoryBox.Items)
+            {
+                if (it.Tag as string == CustomKeyCategory)
+                {
+                    CategoryBox.SelectedItem = it;
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+
+        ApplyEditorMode(EditorMode.CustomKey);
+        SaveCustomSpec(new CustomKeySpec
+        {
+            Key = "ctrl+shift+k",
+            AppPath = @"C://Program Files//Tencent//Weixin//Weixin.exe",
+            RunAsAdmin = false,
+            BringFront = false,
+            WaitAfterLaunchMs = 900,
+        });
+
+        return CustomKeyPicker.Visibility == Visibility.Visible;
+    }
+
+    /// <summary>
     /// 仅供渲染：把界面切到「窗口绑定」模式，好截一张图确认按钮和卡片都画出来了。
     /// </summary>
     public bool ShowWinBindPanelForRender()
@@ -1641,6 +1705,10 @@ public partial class KeysView : UserControl
         if (id == "typeText")
             return TypeTextLabelOf(binding.Note, binding.Arg);
 
+        // 自定义按键：备注优先，否则用绑定的应用名（"微信"比"发送按键到应用"好认）
+        if (id == "customKey")
+            return CustomKeyLabelOf(binding.Note, CustomKeySpec.FromArg(binding.Arg));
+
         if (id.StartsWith("macro:", StringComparison.OrdinalIgnoreCase))
         {
             string t = _host?.Actions.Get(id)?.Title ?? id;
@@ -1652,7 +1720,6 @@ public partial class KeysView : UserControl
         return _host?.Actions.Get(id)?.Title ?? id;
     }
 
-    /// <summary>
     /// <summary>
     /// 直达文件夹在键帽上的标签：备注优先，否则用文件夹名。
     ///
@@ -2326,59 +2393,207 @@ public partial class KeysView : UserControl
         return "+ " + string.Join(" + ", parts);
     }
 
-    private void OnCustomKeyClick(object sender, RoutedEventArgs e)
+    // ---------------- 自定义按键面板 ----------------
+
+    /// <summary>
+    /// 选了「自定义按键」分类时，把当前键的动作切成 customKey。
+    ///
+    /// ⚠ 只在"不是 customKey"时才改，绝不动已有的参数 ——
+    /// 用户在这个分类里反复点来点去，不能把他填好的键和应用冲掉。
+    /// </summary>
+    private void EnsureCustomKeyAction()
+    {
+        if (_host == null) return;
+        var binding = FindInCurrentLayer(CurrentCombo());
+        if (binding != null && binding.Action == "customKey") return;
+        EnsureActionForCategory("customKey");
+    }
+
+    /// <summary>当前键的「自定义按键」参数（没绑这一类就返回空参数）。</summary>
+    private CustomKeySpec CurrentCustomSpec()
+    {
+        var b = FindInCurrentLayer(CurrentCombo());
+        return b != null && b.Action == "customKey"
+            ? CustomKeySpec.FromArg(b.Arg)
+            : new CustomKeySpec();
+    }
+
+    /// <summary>
+    /// 保存参数到当前键。
+    ///
+    /// 注意这里**只动这一个绑定**，不碰 _layer / _selectedKey / 其它层 ——
+    /// 早先那版捕获完会顺手改掉当前层内修饰键和选中键，
+    /// 结果整个视图跳到一个空的修饰子层，看起来像"所有绑定都被清空了"。
+    /// </summary>
+    private void SaveCustomSpec(CustomKeySpec spec)
     {
         if (_host == null) return;
 
-        /* 把当前配置的触发键交给捕获窗口。
-         *
-         * 触发键（默认 CapsLock）不是修饰键，如果不告诉捕获窗口，
-         * 按 Caps+J 时会被录成 capslock 本身 —— 用户就永远绑不到 J，
-         * 表现正是"自定义按键绑不了已有的按键"。
-         *
-         * 兜底把 CapsLock 也加进去：万一用户把触发键删了，
-         * 键盘上那个键依旧是大家习惯的"前缀"。
-         */
+        string combo = CurrentCombo();
+        var binding = FindInCurrentLayer(combo);
+        if (binding == null)
+        {
+            binding = new KeyBinding { Combo = combo };
+            CurrentLayerKeys.Add(binding);
+        }
+
+        binding.Action = "customKey";
+        binding.Arg = spec.ToArg();
+        _host.SaveSettings();
+
+        BuildKeyboard();          // 键帽上的名字要跟着变
+        RefreshCustomKeyPanel();
+    }
+
+    /// <summary>把面板刷成当前绑定的内容。</summary>
+    private void RefreshCustomKeyPanel()
+    {
+        if (_host == null || CustomKeyPicker == null) return;
+
+        var spec = CurrentCustomSpec();
+
+        _suppressEvents = true;
+        CustomAppBox.Text = spec.AppPath;
+        CustomAdminBox.IsChecked = spec.RunAsAdmin;
+        CustomMainWindowBox.IsChecked = spec.BringFront;
+        CustomWaitBox.Text = spec.WaitAfterLaunchMs.ToString();
+        _suppressEvents = false;
+
+        // 捕获到的键：没设时把按钮文案留着，设了就显示成键帽
+        bool hasKey = !string.IsNullOrWhiteSpace(spec.Key);
+        CustomKeyBadge.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed;
+        CustomKeyBadgeText.Text = hasKey ? CustomKeyRunner.ComboDisplay(spec.Key) : "";
+        CustomKeyCaptureButton.Content = hasKey ? "重新设置…" : "按下要发送的键…";
+
+        // 应用状态：路径存不存在直接说，别等按下去才报错
+        if (string.IsNullOrWhiteSpace(spec.AppPath))
+        {
+            CustomAppStatus.Text = "";
+        }
+        else if (File.Exists(spec.AppPath))
+        {
+            CustomAppStatus.Text = $"已找到：{Path.GetFileName(spec.AppPath)}（进程名 {spec.ProcessName}）";
+        }
+        else if (!spec.AppPath.Contains('\\') && !spec.AppPath.Contains('/'))
+        {
+            // 只填了 exe 名字：靠进程名匹配，也能用
+            CustomAppStatus.Text = $"按进程名「{spec.ProcessName}」匹配（没有填完整路径）";
+        }
+        else
+        {
+            CustomAppStatus.Text = "这个路径现在不存在 —— 按下去会启动失败";
+        }
+
+        CustomKeyHint.Text = spec.IsReady
+            ? $"按这个键时：先看「{spec.ProcessName}」在不在运行 —— "
+              + "在运行就直接把键发过去；没运行就先启动它（"
+              + (spec.RunAsAdmin ? "以管理员身份" : "普通权限")
+              + "），等窗口出来再发键。"
+            : "还差：" + (hasKey ? "" : "「要发送的键」")
+              + (!hasKey && string.IsNullOrWhiteSpace(spec.AppPath) ? " 和 " : "")
+              + (string.IsNullOrWhiteSpace(spec.AppPath) ? "「绑定应用」" : "");
+    }
+
+    /// <summary>捕获"要发送的键"。</summary>
+    private void OnCustomKeyCapture(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var spec = CurrentCustomSpec();
+        var dlg = new UI.Windows.KeyCaptureWindow
+        {
+            Owner = Window.GetWindow(this),
+            PrefixKeys = TriggerPrefixKeys(),
+        };
+        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
+
+        /* 存**完整组合键**（含修饰键），发送时原样重放。
+         * 这里刻意不碰 _layer / _selectedKey：捕获的是"要发出去的键"，
+         * 跟"当前在编辑键盘上的哪个键"是两件事。 */
+        spec.Key = dlg.CapturedCombo;
+        SaveCustomSpec(spec);
+        ShowBindStatus($"已设置要发送的键：{CustomKeyRunner.ComboDisplay(spec.Key)}");
+    }
+
+    /// <summary>当前配置的触发键（捕获时要告诉捕获窗口，免得把前缀键录成目标键）。</summary>
+    private HashSet<int> TriggerPrefixKeys()
+    {
         var prefixes = new HashSet<int>();
+        if (_host == null) return prefixes;
+
         foreach (var t in _host.Settings.Triggers)
         {
             if (string.IsNullOrWhiteSpace(t.Key)) continue;
             if (KeyName.VkOf(t.Key) is int vk && vk != 0) prefixes.Add(vk);
         }
         if (KeyName.VkOf("capslock") is int caps && caps != 0) prefixes.Add(caps);
+        return prefixes;
+    }
 
-        var dlg = new UI.Windows.KeyCaptureWindow
+    private void OnCustomAppChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        var spec = CurrentCustomSpec();
+        spec.AppPath = CustomAppBox.Text.Trim();
+        SaveCustomSpec(spec);
+    }
+
+    private void OnBrowseCustomApp(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Owner = Window.GetWindow(this),
-            PrefixKeys = prefixes,
+            Title = "选择要绑定的程序",
+            Filter = "程序 (*.exe)|*.exe|所有文件 (*.*)|*.*",
+            CheckFileExists = true,
         };
-        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
+        if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
 
-        // 捕获结果直接把"层内修饰键 + 主键"设进当前编辑状态，
-        // 于是组合键与单键走的是同一条路径，不会再出现"录了却没绑上"。
-        string key = dlg.CapturedKey ?? dlg.CapturedCombo;
-        _layer = dlg.CapturedMods;
-        // 子层按钮的选中态必须跟着 _layer 走，否则会显示"直接按"被选中、
-        // 实际编辑的却是 Ctrl+Shift 子层，两处对不上。
-        _subLayerKey = LayerKeyOf(_layer);
+        var spec = CurrentCustomSpec();
+        spec.AppPath = dlg.FileName;
+        SaveCustomSpec(spec);
+        ShowBindStatus($"已绑定应用：{Path.GetFileName(dlg.FileName)}");
+    }
 
-        SelectKey(key);
-        UpdateLayerButtons();     // 让子层按钮高亮跟上来
+    private void OnCustomAdminChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        var spec = CurrentCustomSpec();
+        spec.RunAsAdmin = CustomAdminBox.IsChecked == true;
+        SaveCustomSpec(spec);
+    }
 
-        /* 这个键原来绑过东西 → 说清楚"同名会改绑"，
-         * 而不是让用户以为"这个键被占用了所以绑不上"。 */
-        var existing = FindInCurrentLayer(CurrentCombo());
-        if (existing is { IsBound: true })
-        {
-            string was = DescribeActionOf(existing);
-            ShowBindStatus($"「{KeyName.Display(key)}」原来绑的是「{was}」—— 在右边选新功能就会改绑它");
-            ActionDesc.Text = $"已选中「{KeyName.Display(key)}」{ModifierText(_layer)}" +
-                              $"（{CurrentCombo()}）。这个键已有绑定，选新功能即可改绑。";
-            return;
-        }
+    private void OnCustomMainWindowChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        var spec = CurrentCustomSpec();
+        spec.BringFront = CustomMainWindowBox.IsChecked == true;
+        SaveCustomSpec(spec);
+    }
 
-        ActionDesc.Text = $"已选中「{KeyName.Display(key)}」{ModifierText(_layer)}" +
-                          $"（{CurrentCombo()}），在右边选一个功能即可绑定。";
+    /// <summary>
+    /// 「启动后等多久再发键」。
+    ///
+    /// 边打字边落盘，但**不合法就不落盘** —— 清空输入框时 TextChanged 会先来一个
+    /// 空串，这时候把 0 写进去会把用户原来的 900 冲掉；等用户真的输入数字再写。
+    /// </summary>
+    private void OnCustomWaitChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        if (!int.TryParse(CustomWaitBox.Text.Trim(), out int ms)) return;
+
+        var spec = CurrentCustomSpec();
+        spec.WaitAfterLaunchMs = Math.Clamp(ms, 0, 10000);
+        SaveCustomSpec(spec);
+    }
+
+    /// <summary>键帽上显示什么：备注 → 应用名 → "自定义"。</summary>
+    internal static string CustomKeyLabelOf(string? note, CustomKeySpec spec)
+    {
+        if (!string.IsNullOrWhiteSpace(note)) return note.Trim();
+        string proc = spec.ProcessName;
+        if (proc.Length > 0) return proc.Length <= 8 ? proc : proc[..8] + "…";
+        return "自定义";
     }
 
     private void OnResetClick(object sender, RoutedEventArgs e)

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -53,8 +53,28 @@ public sealed class WebDavStatusException : InvalidOperationException
 /// </summary>
 public sealed class WebDavClient
 {
-    /// <summary>软件在网盘下用的子目录名。</summary>
-    public const string DefaultSubdir = "CapsLockPlus";
+    /// <summary>
+    /// 软件在网盘下用的子目录名。
+    ///
+    /// 用**可执行文件名**（KeyboardEnhance）而不是显示名：
+    ///   * 显示名是「按键增强 / Keyboard Enhance」，带空格和中文，
+    ///     当目录名既不好打也不好排在网盘里；
+    ///   * 和 exe、备份扩展名 `.keyboardenhance` 保持一致，一眼能对上是同一个东西；
+    ///   * 大小写敏感的服务（部分自建 WebDAV）也不会因为大小写变体建出两个目录。
+    ///
+    /// 早先用的是改名前的老名字 CapsLockPlus，老用户网盘里可能还留着那个目录，
+    /// 见 <see cref="LegacySubdir"/> 的处理。
+    /// </summary>
+    public const string DefaultSubdir = "KeyboardEnhance";
+
+    /// <summary>
+    /// 改名前的子目录名。
+    ///
+    /// 只用于两件事：把老配置里"根地址 + 旧子目录"还原成纯根地址；
+    /// 以及在探测时提醒用户"旧目录里还有备份"。
+    /// 新上传一律走 <see cref="DefaultSubdir"/>。
+    /// </summary>
+    public const string LegacySubdir = "CapsLockPlus";
 
     /// <summary>稳定文件名：永远指向最新一份备份，方便下载时不必列目录。</summary>
     public const string LatestFile = "keyboardenhance-latest.keyboardenhance";
@@ -87,11 +107,13 @@ public sealed class WebDavClient
         if (!s.Contains("://", StringComparison.Ordinal)) s = "https://" + s;
         if (!s.EndsWith('/')) s += "/";
 
-        // 还原「已知根地址 + 默认子目录」
-        string suffix = DefaultSubdir + "/";
-        if (s.Length > suffix.Length &&
-            s.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+        // 还原「已知根地址 + 默认子目录」（新老名字都要认，否则老配置会多套一层）
+        foreach (string sub in new[] { DefaultSubdir, LegacySubdir })
         {
+            string suffix = sub + "/";
+            if (s.Length <= suffix.Length) continue;
+            if (!s.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+
             string prefix = s[..^suffix.Length];
             if (KnownRoots.Any(r => r.Equals(prefix, StringComparison.OrdinalIgnoreCase)))
                 return prefix;
@@ -102,7 +124,7 @@ public sealed class WebDavClient
     /// <summary>
     /// 整理成「一定是目录、且带软件子目录」的形态 —— 真正发请求时用它。
     ///
-    /// 只填了已知网盘根地址时补上 CapsLockPlus/ 子目录；
+    /// 只填了已知网盘根地址时补上 KeyboardEnhance/ 子目录；
     /// 用户自己填了任意层级路径（如 /dav/我的备份/）则原样保留，不再多套一层。
     /// </summary>
     public static string NormalizeBase(string raw)
@@ -181,7 +203,7 @@ public sealed class WebDavClient
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Basic", token);
         }
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("CapsLockPlus/1.6");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("KeyboardEnhance/1.6");
         return client;
     }
 

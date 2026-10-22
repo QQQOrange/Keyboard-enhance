@@ -1,4 +1,4 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.BackupView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.BackupView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource Font.Ui}">
@@ -20,7 +20,7 @@
                     <TextBlock Text="服务器地址" Style="{StaticResource Text.Secondary}" Margin="0,16,0,6" />
                     <TextBox x:Name="UrlBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                              VerticalContentAlignment="Center" TextChanged="OnUrlChanged" />
-                    <TextBlock Text="例：https://dav.jianguoyun.com/dav/　（只填到 dav/ 即可；软件会在里面建一个 CapsLockPlus/ 子目录，点「测连接」时如果还没有会当场建好）"
+                    <TextBlock Text="例：https://dav.jianguoyun.com/dav/　（只填到 dav/ 即可；软件会在里面建一个 KeyboardEnhance/ 子目录，点「测连接」时如果还没有会当场建好）"
                                Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0" />
 
                     <Grid Margin="0,14,0,0">

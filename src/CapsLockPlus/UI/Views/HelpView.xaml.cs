@@ -154,6 +154,14 @@ public partial class HelpView : UserControl
             "智能识别支持带协议的网址、裸域名、盘符路径、UNC 网络路径、环境变量路径，以及 file:/// 开头的地址；选中普通句子时会明确告诉你「这不是链接」，不会乱开浏览器。",
         });
 
+        AddSection("⑤b 自定义按键", new[]
+        {
+            "分类选「自定义按键」：设一个要发送的键 + 一个应用。按这个键时先看应用在不在运行 —— 在运行就直接把键发过去，没运行就先启动它、等窗口出来再发。",
+            "典型用法：把 F13 绑给微信，按一下就切到微信并按 F13；或者把某个键绑给常驻的笔记软件，按下去直接在里面触发它的快捷键。",
+            "「以管理员身份启动」只在需要拉起这个程序时生效，会弹一次 UAC；程序本来就在跑时不受影响。",
+            "「启动主窗口」开：把应用窗口切到前台再发键，最可靠，但会抢走当前焦点。关：不抢焦点、直接把键投递给那个窗口；个别程序会忽略后台按键，那时请打开这一项。",
+        });
+
         AddSection("⑥ 直接搜索", new[]
         {
             "分类选「直接搜索」，再挑一个搜索引擎（百度、知乎、B站、Google…）。",
@@ -285,7 +293,7 @@ public partial class HelpView : UserControl
         string[] order =
         {
             "光标移动", "选择", "编辑", "剪贴板", "面板", "窗口", "窗口绑定",
-            "智能直达", "直达链接", "宏", "鼠标", "系统功能", "基础",
+            "智能直达", "直达链接", "自定义按键", "宏", "鼠标", "系统功能", "基础",
         };
         foreach (var cat in order)
         {
@@ -321,6 +329,15 @@ public partial class HelpView : UserControl
     private static string DescribeBinding(Core.Settings.KeyBinding binding, Core.Actions.ActionInfo info)
     {
         string id = binding.Action ?? "";
+
+        if (id == "customKey")
+        {
+            var spec = Core.Actions.CustomKeySpec.FromArg(binding.Arg);
+            if (!spec.IsReady) return "自定义按键（还没配好）";
+            return $"把 {Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key)} 发给 {spec.ProcessName}"
+                 + (spec.RunAsAdmin ? "（需要时以管理员身份启动）" : "")
+                 + (spec.BringFront ? "，会先切到前台" : "");
+        }
 
         if (id == "winBind" && !string.IsNullOrWhiteSpace(binding.Arg))
         {

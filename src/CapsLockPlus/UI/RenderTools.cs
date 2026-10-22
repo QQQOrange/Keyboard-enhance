@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -98,6 +98,20 @@ public static class RenderTools
                 {
                     CoreLog.Warn("渲染智能直达失败：" + ex.Message);
                 }
+                // 自定义按键面板：确认"键 / 应用 / 两个开关 / 提示"都画出来了
+                try
+                {
+                    if (kv.ShowCustomKeyForRender())
+                    {
+                        Pump(200);
+                        Save(main, Path.Combine(outDir, "keys-customkey.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染自定义按键失败：" + ex.Message);
+                }
+
                 kv.ResetRenderState();
                 Pump(120);
             }

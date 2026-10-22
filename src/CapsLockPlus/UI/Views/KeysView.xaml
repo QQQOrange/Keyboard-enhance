@@ -183,15 +183,6 @@
                             </Popup>
                         </Grid>
 
-                        <!-- 自定义按键：键盘上没有的键也能绑。
-                             以前这里还并排放着「Caps + Q」的键帽示意，
-                             纯属重复 —— 下面那张键盘图上已经把当前键高亮出来了，
-                             多一行只是占地方。 -->
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button Content="自定义按键…" Style="{StaticResource Button.Base}"
-                                    Padding="12,6" Click="OnCustomKeyClick"
-                                    ToolTip="绑定键盘上不存在的键（例如小键盘、媒体键、浏览器键等）" />
-                        </StackPanel>
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Margin="0,18,0,0">
@@ -365,6 +356,115 @@
 
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
                                        Text="支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。填了备注就显示备注，否则显示文字开头几个字。" />
+                        </StackPanel>
+
+                        <!-- ================= 自定义按键 =================
+                             选了「自定义按键」分类后，下面换成这个面板。
+
+                             这个分类解决的是"把某个键转发给某个常驻程序"：
+                             先确认程序在跑（没跑就先拉起来），再把设定的键发过去。
+
+                             ⚠ 这里的"按键"只是**要发送的键**，不是导航用的 ——
+                             捕获它不会改变左边键盘的选中状态。
+                             以前那个独立的「自定义按键…」按钮会顺手改掉
+                             当前层/当前键，导致整个视图跳到一个空的修饰子层，
+                             看起来像"所有绑定都没了"。现在改成参数，不再动视图。
+                        -->
+                        <StackPanel x:Name="CustomKeyPicker" Visibility="Collapsed">
+                            <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                            <ComboBox x:Name="CategoryBoxCustom" Style="{StaticResource ComboBox.Base}"
+                                      Width="150" HorizontalAlignment="Left"
+                                      SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
+
+                            <TextBlock Text="要发送的键" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,14,0,7" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="CustomKeyCaptureButton" Content="按下要发送的键…"
+                                        Style="{StaticResource Button.Base}" Padding="14,8"
+                                        Click="OnCustomKeyCapture"
+                                        ToolTip="点一下，然后在键盘上按你想发给应用的键（支持 Ctrl / Shift / Alt 组合）" />
+                                <Border x:Name="CustomKeyBadge" Style="{StaticResource Keycap}"
+                                        Padding="12,6" Margin="10,0,0,0" Visibility="Collapsed">
+                                    <TextBlock x:Name="CustomKeyBadgeText" Text="" FontSize="12.5"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Brush.Accent}" />
+                                </Border>
+                            </StackPanel>
+
+                            <TextBlock Text="绑定应用" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,14,0,7" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="CustomAppBox" Style="{StaticResource TextBox.Base}"
+                                         MinHeight="36" VerticalContentAlignment="Center"
+                                         TextChanged="OnCustomAppChanged"
+                                         ToolTip="要接收这个键的程序，例如 C:\Program Files\Tencent\Weixin\Weixin.exe" />
+                                <Button Grid.Column="1" Content="浏览…"
+                                        Style="{StaticResource Button.Base}" Padding="12,6" Margin="8,0,0,0"
+                                        Click="OnBrowseCustomApp"
+                                        ToolTip="从资源管理器里挑一个 exe" />
+                            </Grid>
+                            <TextBlock x:Name="CustomAppStatus" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" Margin="0,6,0,0" />
+
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="以管理员身份启动" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                               Margin="0,3,0,0"
+                                               Text="仅在需要拉起这个程序时生效，会弹一次 UAC 确认。程序本来就在跑时不受影响。" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" x:Name="CustomAdminBox"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center" Click="OnCustomAdminChanged" />
+                            </Grid>
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="把应用主窗口切到前台" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                               Margin="0,3,0,0"
+                                               Text="关（默认）：不动它的窗口，按键直接交给系统 —— 应用把这个键注册成全局热键时，在后台也能收到。&#x0a;开：先把它的主窗口切到前台再发键，适合「这个键只在它被激活时才有意义」。会抢走你当前的焦点。" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" x:Name="CustomMainWindowBox"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center" Click="OnCustomMainWindowChanged" />
+                            </Grid>
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="启动后等多久再发键" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                               Margin="0,3,0,0"
+                                               Text="窗口出现不代表能收键盘（程序还在加载界面）。大型软件常常 900 毫秒不够，可以调大；小工具可以调小甚至填 0。" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                            VerticalAlignment="Center">
+                                    <TextBox x:Name="CustomWaitBox" Style="{StaticResource TextBox.Base}"
+                                             Width="76" MinHeight="34" VerticalContentAlignment="Center"
+                                             TextAlignment="Center" TextChanged="OnCustomWaitChanged" />
+                                    <TextBlock Text="毫秒" Style="{StaticResource Text.Tertiary}"
+                                               VerticalAlignment="Center" Margin="8,0,0,0" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock x:Name="CustomKeyHint" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" Margin="0,12,0,0" />
                         </StackPanel>
 
                         <TextBlock x:Name="ActionDesc" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
