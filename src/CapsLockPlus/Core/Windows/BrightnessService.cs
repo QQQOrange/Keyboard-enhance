@@ -79,6 +79,18 @@ public static class BrightnessService
 
     private static readonly object Gate = new();
 
+    /* ---- 目标值 + 后台平滑推进 ----
+     *
+     * DDC/CI 写一次 50~150ms、读一次 50~100ms。在按键路径上同步做，
+     * 一个动作就是 250ms —— 用户体感就是"按了没反应"。
+     *
+     * 现在按键只改这个**目标值**并立刻刷横条，硬件由一条后台线程
+     * 一点点追上去。效果和 Windows 音量横条一样：按键立刻有反馈，
+     * 屏幕亮度在后面平滑地爬。
+     */
+    private static int _target = -1;
+    private static Thread? _pump;
+
     /// <summary>当前使用的通道（界面提示 / 自检用）。</summary>
     public static BrightnessBackend Backend
     {
@@ -165,6 +177,115 @@ public static class BrightnessService
         }
     }
 
+    /// <summary>当前目标亮度（-1 表示还没有建立）。</summary>
+    public static int Target
+    {
+        get { lock (Gate) return _target; }
+    }
+
+    /// <summary>
+    /// 在**目标亮度**上加减，立刻返回新目标（不等硬件）。
+    ///
+    /// 这是给按键用的：调用方拿到返回值就能刷横条，
+    /// 真正的硬件写入交给后台线程。
+    /// </summary>
+    public static int? AddTarget(int delta)
+    {
+        lock (Gate)
+        {
+            ProbeLocked();
+            if (_backend == BrightnessBackend.Unsupported) return null;
+
+            if (_target < 0)
+            {
+                int? cur = ReadLocked() ?? (_last >= 0 ? _last : -1);
+                if (cur == null || cur < 0) return null;
+                _target = cur.Value;
+            }
+
+            _target = Math.Clamp(_target + delta, 0, 100);
+            EnsurePumpLocked();
+            return _target;
+        }
+    }
+
+    /// <summary>把目标直接设成某个绝对亮度（界面拖动 / 恢复时用）。</summary>
+    public static bool SetTarget(int percent)
+    {
+        lock (Gate)
+        {
+            ProbeLocked();
+            if (_backend == BrightnessBackend.Unsupported) return false;
+            _target = Math.Clamp(percent, 0, 100);
+            EnsurePumpLocked();
+            return true;
+        }
+    }
+
+    private static void EnsurePumpLocked()
+    {
+        if (_pump != null) return;
+        _pump = new Thread(PumpLoop)
+        {
+            IsBackground = true,
+            Name = "brightness-pump",
+            Priority = ThreadPriority.BelowNormal,
+        };
+        _pump.Start();
+    }
+
+    /// <summary>
+    /// 后台把实际亮度一步步推向目标。
+    ///
+    /// 每步最多 4%：太小追不上按键速度（按住时目标每秒涨 22%），
+    /// 太大看起来就是一跳。所以取值让"每步 / 步耗时 ≈ 30%/秒"，
+    /// 略快于按键增速，长按时不会落后。
+    ///
+    /// 这里不额外读硬件 —— <c>Set</c> 内部已经维护 <c>_last</c>，
+    /// 每步再读一次会把速度砍一半。
+    /// </summary>
+    private static void PumpLoop()
+    {
+        const int StepSize = 4;
+
+        while (true)
+        {
+            try
+            {
+                int target;
+                lock (Gate)
+                {
+                    if (_backend == BrightnessBackend.Unsupported) return;
+                    target = _target;
+                }
+
+                if (target < 0) { Thread.Sleep(30); continue; }
+
+                int cur;
+                lock (Gate) cur = _last;
+
+                if (cur < 0)
+                {
+                    int? read = Get();
+                    if (read == null) { Thread.Sleep(80); continue; }
+                    cur = read.Value;
+                }
+
+                if (cur == target) { Thread.Sleep(20); continue; }
+
+                int diff = target - cur;
+                int step = Math.Sign(diff) * Math.Min(StepSize, Math.Abs(diff));
+                Set(cur + step);      // 内部会更新 _last
+                Thread.Sleep(6);
+            }
+            catch (Exception e)
+            {
+                CoreLog.Warn("[亮度] 平滑推进出错：" + e.Message);
+                Thread.Sleep(250);
+            }
+        }
+    }
+
     /// <summary>这台机器是否支持软件调亮度（用于界面提示 / 自检）。</summary>
     public static bool IsSupported()
     {
@@ -233,6 +354,7 @@ public static class BrightnessService
             ReleaseDdcLocked();
             _backend = BrightnessBackend.Unknown;
             _last = -1;
+            _target = -1;
         }
     }
 

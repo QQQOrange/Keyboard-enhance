@@ -591,19 +591,14 @@ public sealed class ActionContext
     /// 或前台程序抢走媒体键的机器上会静默失效（用户看到的就是"按了没反应"）。
     /// 直接调音频引擎既能保证生效，也能拿到真实值显示百分比。
     /// </summary>
-    /* ---- 连发细调 ----
+    /* ---- 单次 vs 连发：靠参数区分，不靠时间猜 ----
      *
-     * 短按一下按绑定里的步进走（默认 2%），按住连发时每步只走 1%。
+     * delta 的语义很明确：
+     *   · 单次按键 → 设置里的幅度（音量默认 5%、亮度默认 10%）；
+     *   · 按住连发 → 引擎固定传 1，表示"这一步只走 1%"。
      *
-     * 为什么要分开：用户要的是"按住就一条线地涨"，如果每 45ms 走 2%，
-     * 一秒就是 44%，屏幕上的横条是一跳一跳的；改成 1% 才是平滑滑动。
-     * 反过来短按也只走 1% 又太肉 —— 按十次才涨 10%。
-     * 用"距上次调用的间隔"判断是连发还是单次，不需要额外参数。 */
-    private DateTime _lastVolumeAt = DateTime.MinValue;
-    private DateTime _lastBrightnessAt = DateTime.MinValue;
-
-    /// <summary>两次调用间隔小于这个值就当成"按住连发"（毫秒）。</summary>
-    private const int BurstWindowMs = 120;
+     * 早先用"距上次调用的时间差"去猜，调度一抖就猜错 ——
+     * 长按中途突然跳一大格，看起来一格一格地顿。 */
 
     /// <summary>
     /// 按设定幅度算出这次要发几次系统音量键。
@@ -641,9 +636,6 @@ public sealed class ActionContext
 
     public bool ChangeVolume(int delta)
     {
-        bool burst = (DateTime.Now - _lastVolumeAt).TotalMilliseconds < BurstWindowMs;
-        _lastVolumeAt = DateTime.Now;
-
         /* 音量走**系统音量键**（VK_VOLUME_UP / DOWN）。
          *
          * 这是唯一能同时做到两件事的路：
@@ -658,25 +650,21 @@ public sealed class ActionContext
          * 兜底：极少数机器上媒体键会被键盘过滤驱动 / 远程会话 / 抢媒体键的
          * 前台程序吞掉。单次调节时回读一次音量，没变就改用音频引擎直接调
          * （此时没有系统横条，退回自绘一条，保证用户看得到反馈）。 */
-        /* 一次调多少：单次按用户设的幅度，按住连发时按系统步进细调。
+        /* 一次调多少：单次走设置里的幅度，按住连发时 delta 是 1。
          *
          * 连发不能按用户幅度：设 10% 时按住就是 10% × 14 次/秒 = 140%/秒，
          * 一眨眼就到底，完全没有"线性"的手感。 */
         int sysStep = Math.Max(1, VolumeService.StepPercent());
-        int taps;
-        if (burst)
-        {
-            taps = 1;
-        }
-        else
-        {
-            (taps, _volumeRemainder) = PlanVolumeTaps(Math.Abs(delta), sysStep, _volumeRemainder);
-        }
+        var (taps, rem) = PlanVolumeTaps(Math.Abs(delta), sysStep, _volumeRemainder);
+        _volumeRemainder = rem;
+
+        // 细调（连发）不做回读校验：每次等 40ms 会把节奏拖垮
+        bool fine = Math.Abs(delta) <= sysStep;
 
         int? before = VolumeService.Get();
         InputSender.Tap(delta > 0 ? VK.VolumeUp : VK.VolumeDown, taps);
 
-        if (burst) return true;      // 连发时不校验：每次等 40ms 会把节奏拖垮
+        if (fine) return true;
 
         int? after = before;
         for (int i = 0; i < 4 && before is int b0; i++)
@@ -747,13 +735,15 @@ public sealed class ActionContext
     /// </summary>
     public bool ChangeBrightness(int delta)
     {
-        int step = delta;
-        if ((DateTime.Now - _lastBrightnessAt).TotalMilliseconds < BurstWindowMs)
-            step = Math.Sign(delta);
-        _lastBrightnessAt = DateTime.Now;
-
-        int? now = BrightnessService.Step(step);
-        if (now == null)
+        /* 只改**目标值**，不等硬件。
+         *
+         * DDC/CI 写一次要 50~150ms，读一次 50~100ms —— 在按键路径上同步做，
+         * 一个动作 250ms，用户体感就是"按了没反应"，按住连发还会互相排队。
+         * 所以这里先把目标定下来、立刻刷横条（跟手），
+         * 真正的硬件写入交给 BrightnessService 里的后台线程一步步追，
+         * 看起来就是亮度在平滑爬升 —— 和 Windows 音量横条一个路数。 */
+        int? target = BrightnessService.AddTarget(delta);
+        if (target == null)
         {
             // 说清"为什么没动"，比一句"不支持"有用得多
             string why = BrightnessService.Diagnose();
@@ -765,8 +755,10 @@ public sealed class ActionContext
         /* 亮度横条只能自己画：Windows 的亮度 OSD 只对内置屏存在
          * （那条是 OEM 驱动画的），外接屏走 DDC/CI 时系统根本不知道值变了。
          * 横条样式与音量那条一致，位置也一样。 */
-        UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Brightness, now.Value);
-        CoreLog.Info($"[亮度] {now}%");
+        UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Brightness, target.Value);
+
+        // 连续调节时每 45ms 一条会把日志刷爆，只在"单次"时记
+        if (Math.Abs(delta) > 1) CoreLog.Info($"[亮度] 目标 {target}%");
         return true;
     }
 

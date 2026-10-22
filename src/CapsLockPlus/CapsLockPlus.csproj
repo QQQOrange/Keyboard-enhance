@@ -8,15 +8,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <!-- 只有一个 exe。.NET 运行时由发布包自带（SelfContained），
-         用户双击就能跑，不需要装任何东西，也就不需要"启动器"这种第二形态。 -->
+    <!-- 只有一个 exe（框架依赖）。.NET 10 桌面运行时需要另行安装，
+         下载地址见 README 顶部与每次的 Release 说明。
+         不再拆"启动器 + 主程序"两个文件 —— 用户不知道该点哪个。 -->
     <AssemblyName>KeyboardEnhance</AssemblyName>
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>4.2.2</Version>
-    <FileVersion>4.2.2.0</FileVersion>
-    <AssemblyVersion>4.2.2.0</AssemblyVersion>
+    <Version>4.2.3</Version>
+    <FileVersion>4.2.3.0</FileVersion>
+    <AssemblyVersion>4.2.3.0</AssemblyVersion>
     <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
     <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达链接（网址/文件夹/文件）、独立剪贴板、宏与多图层</Description>
@@ -38,11 +39,12 @@
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishSingleFile>true</PublishSingleFile>
 
-    <!-- 自带运行时：这是"只有一个版本、双击就能开"的前提。
-         代价是体积变大（压缩后约 70MB），换来的是任何 Windows 机器上
-         都不需要预装 .NET，也就不会出现"点了没反应"。 -->
-    <SelfContained>true</SelfContained>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- 框架依赖：体积最小（约 5MB），但运行前必须装 .NET 10 桌面运行时。
+         缺了它双击不会有任何界面 —— 这是这个方案唯一的代价，
+         所以 README / Release 说明里必须把依赖和下载地址写在最前面。 -->
+    <SelfContained>false</SelfContained>
+    <!-- 注意：EnableCompressionInSingleFile 只在自带运行时时有效，
+         框架依赖模式下 SDK 会直接报 NETSDK1176，所以这里不能开。 -->
     <!-- 自带的运行时不需要 ICU：中文排序/大小写走 NLS，能省 30MB -->
     <InvariantGlobalization>false</InvariantGlobalization>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

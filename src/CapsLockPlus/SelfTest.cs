@@ -2072,8 +2072,8 @@ public static class SelfTest
 
         /* 真正的抬起丢失（切桌面 / 远程接管）里用户是**完全没在按键**的：
          * 静默超过门槛之后，自愈必须照常生效，否则触发键会永久卡住。 */
-        DoEvents(520);
-        for (int i = 0; i < 12; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
+        DoEvents(1150);       // 等过 1 秒静默门槛
+        for (int i = 0; i < 16; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
         Check("静默一段时间后自愈照常生效", !engine.IsTriggerHeld);
 
         engine.PhysicalDownProbe = null;
@@ -2258,8 +2258,8 @@ public static class SelfTest
         /* 自愈现在要求"用户已经静默一段时间"——
          * 连按层内按键时绝不复位（v4.2.1 修的那个 bug）。
          * 所以这里要先等过静默门槛，再喂几轮检查。 */
-        DoEvents(460);
-        for (int i = 0; i < 10; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
+        DoEvents(1100);       // 等过 1 秒静默门槛
+        for (int i = 0; i < 16; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
         Check("物理已松开但没收到抬起 → 状态自愈", !engine.IsTriggerHeld);
         CheckEqual("自愈后退出层", engine.ActiveLayer, -1);
 

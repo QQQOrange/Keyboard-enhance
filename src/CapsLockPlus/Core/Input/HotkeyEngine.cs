@@ -71,7 +71,7 @@ public sealed class HotkeyEngine : IDisposable
      * 节奏取 380ms 起播、45ms 一步（约 22 步/秒）：
      * 配合每次 1% 的细调，看起来是一条平滑的滑条。 */
     private int _repeatVk = -1;
-    private int _repeatUpTicks;
+    private DateTime _repeatStartedAt = DateTime.MinValue;
     private string _repeatAction = "";
     private string _repeatArg = "";
     private DateTime _repeatNextAt = DateTime.MinValue;
@@ -81,6 +81,15 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>连续时每一步的间隔（毫秒）。默认给亮度这种"每步 1%"的动作。</summary>
     public const int RepeatIntervalMs = 45;
+
+    /// <summary>
+    /// 连续调节最长持续多少秒。
+    ///
+    /// 这是"抬起事件丢失"的最后一道保险：钩子没收到 up 时，
+    /// 连续调节会一直跑下去。正常人按住不会超过十秒，
+    /// 到点强制收手，既不会无限涨，也不会误伤长按。
+    /// </summary>
+    public const int MaxContinuousSeconds = 10;
 
     /// <summary>
     /// 音量用的间隔：比亮度疏一点。
@@ -280,20 +289,24 @@ public sealed class HotkeyEngine : IDisposable
              * 里用户是**完全没在按键**的，所以"静默 400ms"这个门槛
              * 既能保住自愈能力，又不会误伤连按。 */
             var now = DateTime.Now;
-            bool busyTyping = (now - _lastKeyActivity).TotalMilliseconds < 400;
-            bool justInjected = (now - InputSender.LastInjectAt).TotalMilliseconds < 500;
+            /* 门槛取 1 秒（不是 400ms）。
+             *
+             * 这个门槛只防"误判"，而误判的代价是**层突然消失**，
+             * 比"自愈晚 1 秒生效"严重得多。用户慢慢点也能落在窗口内。 */
+            bool busyTyping = (now - _lastKeyActivity).TotalMilliseconds < 1000;
+            bool justInjected = (now - InputSender.LastInjectAt).TotalMilliseconds < 800;
             if (busyTyping || justInjected)
             {
                 _physicallyUpTicks = 0;
                 return;
             }
 
-            /* 连续 8 次（约 160ms）都读不到按下才认账。
+            /* 连续 12 次（约 240ms）都读不到按下才认账。
              *
              * 单次采样可能抖：`GetAsyncKeyState` 在切桌面、UAC 提示、
              * 远程会话切换的瞬间会短暂返回"没按下"。若一抖就复位，
              * 用户正按着触发键进层会被莫名取消 —— 那是比原 bug 更糟的体验。 */
-            if (++_physicallyUpTicks >= 8)
+            if (++_physicallyUpTicks >= 12)
             {
                 CoreLog.Warn($"触发键 0x{_activeTriggerVk:X2} 物理上已松开但没收到抬起事件，复位状态");
                 ResetTriggerState("抬起事件丢失");
@@ -354,25 +367,24 @@ public sealed class HotkeyEngine : IDisposable
 
         /* ---- 兜底：抬起事件丢了 ----
          *
-         * 这时 `_swallowedDown` 会一直留着，用户松手了音量还在涨。
-         * 但要等"没有注入、且连续 8 轮读不到物理按下"才认账 ——
-         * 连续调节期间每 70ms 都在注入按键，此时物理读数不可信。 */
+         * 主判据是 `_swallowedDown`（钩子收到 up 才会删），它足够可靠。
+         * 真正的风险是钩子**收不到** up（切桌面 / 远程接管 / 睡眠唤醒），
+         * 那时它一直留着，用户松手了音量还在涨。
+         *
+         * 这里不用物理读数做兜底 —— 理由有两条：
+         *   · 亮度动作根本不注入按键，`GetAsyncKeyState` 对这类"只改内部状态"
+         *     的键没有参考价值；
+         *   · 注入媒体键时读数也会短暂失真，反而会把正在长按的用户打断
+         *     （v4.2.1 / v4.2.2 连续踩过两次）。
+         *
+         * 改用"最长持续时间"：正常人按住不会超过十秒，超过就认为
+         * 抬起事件丢了，强制收手。既不会无限涨，也不会误伤长按。 */
         var now = DateTime.Now;
-        bool justInjected = (now - InputSender.LastInjectAt).TotalMilliseconds < 600;
-        if (!PhysDownFamily(_repeatVk))
+        if ((now - _repeatStartedAt).TotalSeconds > MaxContinuousSeconds)
         {
-            /* 只有"没在注入 + 连续 8 轮都读不到"才算真的松开了。
-             * 其它情况一律当作还按着 —— 这里绝不能 return，
-             * 否则注入期间会每 20ms 空转一次，长按就永远不动。 */
-            if (!justInjected && ++_repeatUpTicks >= 8)
-            {
-                ClearContinuousRepeat();
-                return;
-            }
-        }
-        else
-        {
-            _repeatUpTicks = 0;
+            CoreLog.Warn($"连续调节已持续 {MaxContinuousSeconds} 秒，强制停止（抬起事件可能丢了）");
+            ClearContinuousRepeat();
+            return;
         }
 
         if (now < _repeatNextAt) return;
@@ -403,7 +415,7 @@ public sealed class HotkeyEngine : IDisposable
     private void ClearContinuousRepeat()
     {
         _repeatVk = -1;
-        _repeatUpTicks = 0;
+        _repeatStartedAt = DateTime.MinValue;
         _repeatAction = "";
         _repeatArg = "";
         _repeatNextAt = DateTime.MinValue;
@@ -1197,7 +1209,12 @@ public sealed class HotkeyEngine : IDisposable
         {
             _repeatVk = vk;
             _repeatAction = action;
-            _repeatArg = arg;
+            /* 连续重复明确传 1：动作自己就知道"这一步要细调"。
+             *
+             * 以前靠"距上次调用的时间差"去猜是不是连发，结果调度一抖
+             * 就会猜错 —— 长按中途突然跳一大格，看起来一格一格地顿。 */
+            _repeatArg = "1";
+            _repeatStartedAt = DateTime.Now;
             _repeatNextAt = DateTime.Now.AddMilliseconds(RepeatDelayMs);
         }
 

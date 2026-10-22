@@ -4,7 +4,18 @@
 > 重写成**原生 Windows 11 桌面程序**：功能一个不少，但所有设置都能在图形界面里点点点完成，
 > 再也不用去手改 `CapsLock+settings.ini`。
 
-**版本 v4.2.2** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件，免安装任何运行时**
+**版本 v4.2.3** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 4.8 MB** ｜ **依赖 .NET 10 桌面运行时**
+
+> ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
+>
+> 本程序**不自带运行时**（所以只有 4.8 MB）。没有它双击**不会有任何反应**，
+> 也不会报错 —— 请先装好再启动：
+>
+> **下载地址**：<https://dotnet.microsoft.com/download/dotnet/10.0>
+>
+> 在页面里选 **.NET Desktop Runtime 10.0.x → Windows → x64**，下载后一路"下一步"。
+>
+> 对照检查：`桌面运行时 · Windows · x64`（不是 ASP.NET，也不是 x86）。
 
 ![快速上手](docs/screenshots/guide.png)
 
@@ -12,14 +23,20 @@
 
 ## 一、下载与安装
 
-### 1. 下载
+### 1. 装 .NET 10 桌面运行时（只需一次）
+
+必装项，见上面那条提示。装完后可以在命令行确认：
+
+```
+dotnet --list-runtimes | findstr WindowsDesktop
+:: 应能看到 Microsoft.WindowsDesktop.App 10.0.x
+```
+
+### 2. 下载并放置程序
 
 到 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases) 页面下载
-**`KeyboardEnhance.exe`**（约 70MB）。
+**`KeyboardEnhance.exe`**（约 4.8 MB），放到任意目录。
 
-### 2. 放到任意目录，双击运行
-
-**只有一个文件**，不需要安装、不需要预先装 .NET、不需要解压配套文件。
 运行时会自动在它旁边建两个文件夹：
 
 ```
@@ -30,9 +47,9 @@ KeyboardEnhance Back\     本地备份
 
 拷走整个文件夹就带走了软件和全部数据。
 
-> 为什么这么大：**.NET 运行时已经打包进 exe 里**。
-> 以前的做法是"要求用户先装运行时"，没装的人双击就没反应；
-> 现在宁可文件大一点，也不要让任何人卡在第一步。
+> **为什么只有 4.8 MB**：界面框架和 .NET 运行时都由系统里那份提供。
+> 代价是你得先装它；好处是程序本体极小、每次更新下载也快。
+
 
 ### 3. 运行
 

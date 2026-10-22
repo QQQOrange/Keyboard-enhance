@@ -6,8 +6,8 @@
 # 还原 & 构建
 dotnet build src\CapsLockPlus\CapsLockPlus.csproj
 
-# 单文件发布（自带运行时 + 压缩，约 70 MB）
-dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:EnableCompressionInSingleFile=true -o dist
+# 单文件发布（框架依赖，约 4.8 MB；运行前需装 .NET 10 桌面运行时）
+dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:PublishReadyToRun=true -o dist
 ```
 
 > **只有一个 exe**。曾经拆成"启动器 + 主程序"两个文件来解决
