@@ -293,6 +293,7 @@ public partial class LayersView : UserControl
         {
             _editing.HoldMs = Math.Clamp(ms, 50, 2000);
             _host.SaveSettings();
+            RefreshRows();
         }
     }
 
@@ -301,6 +302,7 @@ public partial class LayersView : UserControl
         if (_host == null || _suppress || _editing == null) return;
         _editing.HoldOnOtherKey = HoldOnOtherBox.IsChecked == true;
         _host.SaveSettings();
+        RefreshRows();
     }
 
     private void OnTapActionChanged(object sender, SelectionChangedEventArgs e)
@@ -309,6 +311,7 @@ public partial class LayersView : UserControl
         if (TapActionBox.SelectedItem is not ComboBoxItem { Tag: string tag }) return;
         _editing.TapAction = tag == "none" ? "" : tag;
         _host.SaveSettings();
+        RefreshRows();
     }
 
     private void OnDoubleTapActionChanged(object sender, SelectionChangedEventArgs e)
@@ -317,6 +320,25 @@ public partial class LayersView : UserControl
         if (DoubleTapBox.SelectedItem is not ComboBoxItem { Tag: string tag }) return;
         _editing.DoubleTapAction = tag == "none" ? "" : tag;
         _host.SaveSettings();
+        RefreshRows();
+    }
+
+    /// <summary>
+    /// 让左侧列表重画一遍。
+    ///
+    /// 列表项直接绑 <see cref="TriggerKey"/> 上的只读属性（Detail 里带着
+    /// 短按动作和阈值），而 TriggerKey 没有实现 INotifyPropertyChanged ——
+    /// 改完设置不重画的话，列表上永远显示**改之前**的内容：
+    /// 用户把短按改成「保留按键原功能」，列表却还写着"无"，
+    /// 看起来就像设置没保存。这个坑真实存在过。
+    ///
+    /// 用 Items.Refresh() 而不是重建 ItemsSource：重建会清掉选中项，
+    /// 右侧编辑区会跟着跳回第一条。
+    /// </summary>
+    private void RefreshRows()
+    {
+        if (TriggerList.ItemsSource == null) return;
+        TriggerList.Items.Refresh();
     }
 
     private void OnEditLayerKeys(object sender, RoutedEventArgs e)

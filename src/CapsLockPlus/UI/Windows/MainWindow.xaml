@@ -33,11 +33,12 @@
 
                 <!-- 品牌 -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="18,20,12,18">
-                    <Border Width="40" Height="40" CornerRadius="11" Background="{DynamicResource Brush.BrandGradient}">
-                        <TextBlock Text="&#xE7E6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   FontSize="19" Foreground="White" HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
-                    </Border>
+                    <!-- 这里的图标必须和 exe / 任务栏上的应用图标**完全一致**。
+                         以前用 Segoe 图标字体的键盘 glyph 配渐变底，
+                         跟应用程序图标 (Assets/app.ico) 根本不是一个东西。 -->
+                    <Image Width="40" Height="40" VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           Source="pack://application:,,,/Assets/app.png" />
                     <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="按键增强" Style="{StaticResource Text.H3}" />
                         <TextBlock Text="Keyboard Enhance · Win11 x64" Style="{StaticResource Text.Tertiary}" Margin="0,1,0,0" />

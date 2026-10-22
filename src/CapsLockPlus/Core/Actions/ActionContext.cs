@@ -322,6 +322,73 @@ public sealed class ActionContext
     }
 
     /// <summary>
+    /// 仅供自检：拦截"打开文件夹"，免得测试真的弹出资源管理器。
+    /// 置为 null 时走真实的 Process.Start。
+    /// </summary>
+    public static Action<string>? OpenFolderInterceptForTest { get; set; }
+
+    /// <summary>
+    /// 在文件资源管理器里打开一个文件夹。
+    ///
+    /// 为什么交给 shell（UseShellExecute）而不是 `explorer.exe "路径"`：
+    ///   · 路径里有空格 / 中文 / 方括号时，命令行引号很容易拼错；
+    ///   · 用 shell 打开目录是系统标准行为，OneDrive、库、快捷方式都能认；
+    ///   · 顺带支持 `%USERPROFILE%`、`~`、`shell:Downloads` 这些写法。
+    ///
+    /// 路径不存在时给明确提示，而不是静默失败 ——
+    /// 用户最怕的就是"按了没反应，也不知道为什么"。
+    /// </summary>
+    public void OpenFolder(string path)
+    {
+        string target = ExpandFolderPath(path);
+        if (target.Length == 0) return;
+
+        if (OpenFolderInterceptForTest != null)
+        {
+            OpenFolderInterceptForTest(target);
+            return;
+        }
+
+        try
+        {
+            if (!Directory.Exists(target))
+            {
+                Notify($"文件夹不存在：{target}");
+                return;
+            }
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (Exception ex) { Notify("打开文件夹失败：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 把用户填的文件夹路径整理成可以直接交给 shell 的形式：
+    /// 去引号、去尾部反斜杠以外还支持 %ENV%、~ 与 shell: 前缀。
+    /// 抽成静态是为了让自检能直接验，不必真的打开资源管理器。
+    /// </summary>
+    public static string ExpandFolderPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        string p = path.Trim().Trim('"').Trim();
+        if (p.Length == 0) return "";
+
+        // shell: 开头的虚拟路径（shell:Downloads / shell:Startup…）原样交给系统
+        if (p.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)) return p;
+
+        p = Environment.ExpandEnvironmentVariables(p);
+
+        if (p == "~")
+            p = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        else if (p.StartsWith("~/") || p.StartsWith("~\\"))
+            p = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), p[2..]);
+
+        // 统一分隔符，去掉末尾多余的 \（"C:\" 这种根目录要保留）
+        p = p.Replace('/', '\\');
+        if (p.Length > 3 && p.EndsWith('\\')) p = p.TrimEnd('\\');
+        return p;
+    }
+
+    /// <summary>
     /// 运行一个程序或命令。
     /// 注意不要用 "cmd /c start" 去绕——那样会闪出一个控制台窗口，
     /// 而且带空格路径的引号处理很容易出错。这里直接交给 shell 执行。

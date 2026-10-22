@@ -1,4 +1,4 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource Font.Ui}">
@@ -269,9 +269,9 @@
                                        Text="点选窗口：鼠标变成准星，点哪个窗口就绑哪个程序。&#x0a;选择程序文件：从资源管理器挑一个 exe（程序没在运行也能绑）。" />
                         </StackPanel>
 
-                        <!-- ================= 直达网页：网址 + 备注 =================
-                             同样不显示"功能"下拉 —— 选了「直达网页」分类后，
-                             要填的就是这两样东西。
+                        <!-- ================= 直达链接：网址 / 文件夹 + 备注 =================
+                             选了「直达链接」分类后，下面换成这个面板：
+                             先选类型（网址 / 文件夹），再填目标，备注可选。
                         -->
                         <StackPanel x:Name="WebPagePicker" Visibility="Collapsed">
                             <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
@@ -279,10 +279,39 @@
                                       Width="150" HorizontalAlignment="Left"
                                       SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
 
-                            <TextBlock Text="网址" Style="{StaticResource Text.Secondary}" Margin="0,14,0,7" />
-                            <TextBox x:Name="WebUrlBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                                     VerticalContentAlignment="Center" TextChanged="OnWebUrlChanged"
-                                     ToolTip="例如 https://github.com；不带 http 也会自动补全" />
+                            <TextBlock Text="链接类型" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,14,0,7" />
+                            <StackPanel Orientation="Horizontal">
+                                <!-- 只放文字、不放图标字体：E774 这类 globe 字形在
+                                     部分 Win10 的 Fluent Icons 里是空白/方框，
+                                     与其赌字体，不如让两个按钮靠样式区分选中态。 -->
+                                <Button x:Name="LinkKindUrlButton" Content="直达网址"
+                                        Style="{StaticResource Button.Base}"
+                                        Padding="18,8" MinWidth="96" Click="OnLinkKindUrl"
+                                        ToolTip="按这个键用默认浏览器打开网址" />
+                                <Button x:Name="LinkKindFolderButton" Content="直达文件夹"
+                                        Style="{StaticResource Button.Base}"
+                                        Padding="18,8" MinWidth="108" Margin="8,0,0,0"
+                                        Click="OnLinkKindFolder"
+                                        ToolTip="按这个键在文件资源管理器里打开文件夹" />
+                            </StackPanel>
+
+                            <TextBlock x:Name="LinkTargetLabel" Text="网址"
+                                       Style="{StaticResource Text.Secondary}" Margin="0,14,0,7" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="WebUrlBox" Style="{StaticResource TextBox.Base}"
+                                         MinHeight="36" VerticalContentAlignment="Center"
+                                         TextChanged="OnWebUrlChanged"
+                                         ToolTip="例如 https://github.com；不带 http 也会自动补全" />
+                                <Button Grid.Column="1" x:Name="BrowseFolderButton" Content="浏览…"
+                                        Style="{StaticResource Button.Base}" Padding="12,6" Margin="8,0,0,0"
+                                        Visibility="Collapsed" Click="OnBrowseFolder"
+                                        ToolTip="从资源管理器里挑一个文件夹" />
+                            </Grid>
 
                             <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
                                        Margin="0,12,0,7" />
@@ -294,7 +323,7 @@
                                 <TextBox Grid.Column="0" x:Name="WebNoteBox" Style="{StaticResource TextBox.Base}"
                                          MinHeight="36" VerticalContentAlignment="Center"
                                          TextChanged="OnWebNoteChanged"
-                                         ToolTip="给这个网址起个好记的名字，会显示在键帽上" />
+                                         ToolTip="给这个链接起个好记的名字，会显示在键帽上" />
                                 <Button Grid.Column="1" x:Name="FetchTitleButton" Content="重新取标题"
                                         Style="{StaticResource Button.Base}" Padding="12,6" Margin="8,0,0,0"
                                         Click="OnFetchTitleClick"
@@ -302,8 +331,9 @@
                             </Grid>
                             <TextBlock x:Name="WebFetchStatus" Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,6,0,0" />
-                            <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                       Text="填完网址会自动抓取网页标题作为备注，不满意可以直接改。备注会显示在键帽上，切到这一层就能看到。" />
+                            <TextBlock x:Name="LinkHint" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="填网址时会自动抓网页标题当备注（不满意可以改）；填文件夹时默认用文件夹名。备注会显示在键帽上。" />
                         </StackPanel>
 
                         <!-- ================= 输入文本 =================

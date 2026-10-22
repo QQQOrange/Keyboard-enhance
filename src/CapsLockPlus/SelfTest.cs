@@ -168,6 +168,7 @@ public static class SelfTest
         TestLayers();
         TestLayerIsolation();
         TestHoldThreshold();
+        TestModifierTriggerWithRepeat();
 
         Section("宏");
         TestMacroRecorder();
@@ -818,7 +819,18 @@ public static class SelfTest
 
         try
         {
-            var hwnd = picker.HandleForTest;
+            /* 句柄要等窗口真正创建出来。
+             *
+             * WPF 的 Show() 之后句柄本来就该有了，但机器忙 / 正在跑渲染时
+             * 偶尔会晚一两百毫秒 —— 之前直接断言，结果偶发 4 项失败，
+             * 看起来像功能坏了。这里给足 1.2 秒并轮询，稳定得多。 */
+            IntPtr hwnd = IntPtr.Zero;
+            for (int i = 0; i < 12; i++)
+            {
+                hwnd = picker.HandleForTest;
+                if (hwnd != IntPtr.Zero) break;
+                DoEvents(100);
+            }
             Check("遮罩已创建", hwnd != IntPtr.Zero, "0x" + hwnd.ToInt64().ToString("X"));
             Check("遮罩带点击穿透样式（WS_EX_TRANSPARENT）", picker.HasClickThroughForTest);
             Check("遮罩在顶层（TOPMOST）", picker.IsTopmostForTest);
@@ -1580,6 +1592,91 @@ public static class SelfTest
 
         e2.Dispose();
         q2.Dispose();
+    }
+
+    /// <summary>
+    /// **修饰键当触发键**：右 Alt / 右 Ctrl 按住时的自动重复不能把自己
+    /// 算成"按住的修饰键"，否则层内绑定全部查不到。
+    ///
+    /// 用户报的现象：把右 Alt 设成触发键绑第 3 层，层里配了自定义键，
+    /// 按右 Alt 再按那个键 —— 一点反应都没有，按键还是原功能。
+    ///
+    /// 根因：按住右 Alt 超过约 500ms 后系统开始发自动重复的 down，
+    /// 每个 down 都会把 `_laltDown` 置 true；而 `OnTriggerDown` 对重复
+    /// 事件早退（不清状态）。于是层内按 Q 拼出来的是 `caps_lalt_q`，
+    /// 用户绑的却是 `caps_q` —— 查不到就放行，看起来就是"完全没生效"。
+    /// 按住越久越必然复现，正好对应"有时候行有时候不行"。
+    /// </summary>
+    private static void TestModifierTriggerWithRepeat()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;      // 只留右 Alt，排除 CapsLock 干扰
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "ralt",
+            LayerId = 3,
+            HoldMs = 100,
+            TapAction = "keepKey",
+            Enabled = true,
+        });
+        s.Layers.First(l => l.Id == 3).Keys.Add(
+            new KeyBinding { Combo = "caps_q", Action = "qbar" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+        engine.StartHoldTimer();
+        engine.EnterLayerImmediatelyForTest = true;   // 不依赖真实时间
+
+        // ① 按下右 Alt → 立刻进第 3 层
+        engine.SimulateKey(VK.RMenu, true);
+        CheckEqual("右 Alt 作触发键进第 3 层", engine.ActiveLayer, 3);
+        CheckEqual("激活的触发键是右 Alt", engine.ActiveTriggerKey, "ralt");
+
+        // ② 自动重复：按住超过 500ms 后系统每 30~50ms 发一次 down
+        for (int i = 0; i < 4; i++) engine.SimulateKey(VK.RMenu, true);
+
+        // ③ 层内按 Q：必须命中 caps_q
+        bool swallowed = engine.SimulateKey(0x51 /*Q*/, true);
+        Check("右 Alt 触发键：层内 Q 被吞掉（没被拼成 caps_lalt_q）", swallowed);
+        engine.SimulateKey(0x51, false);
+        DoEvents(80);
+        lock (fired)
+            Check("右 Alt 触发键：层内 Q 执行了绑定动作", fired.Contains("qbar"),
+                string.Join(",", fired));
+
+        // ④ 松开右 Alt → 退出层
+        engine.SimulateKey(VK.RMenu, false);
+        CheckEqual("松开右 Alt 后退出层", engine.ActiveLayer, -1);
+
+        /* ⑤ 有些键盘/驱动只发通用 Alt 码 0x12，也有"按下 0xA5、抬起 0x12"
+         *    的混发情况 —— 触发键判定与松手判定都要认。 */
+        engine.SimulateKey(0x12, true);
+        CheckEqual("通用 Alt 码也能触发右 Alt 触发键", engine.ActiveLayer, 3);
+        engine.SimulateKey(0x12, false);
+        CheckEqual("通用 Alt 码抬起也能退出层", engine.ActiveLayer, -1);
+        Check("混发后不残留按住状态", !engine.IsTriggerHeld);
+
+        // ⑥ 右 Ctrl / 右 Shift 同理（左右专用码与通用码互认）
+        s.Triggers.Clear();
+        s.Triggers.Add(new TriggerKey { Key = "rctrl", LayerId = 4, HoldMs = 100, Enabled = true });
+        s.Layers.First(l => l.Id == 4).Keys.Add(
+            new KeyBinding { Combo = "caps_w", Action = "esc" });
+        engine.SimulateKey(VK.RControl, true);
+        engine.SimulateKey(VK.RControl, true);        // 自动重复
+        engine.SimulateKey(VK.RControl, true);
+        CheckEqual("右 Ctrl 作触发键进第 4 层", engine.ActiveLayer, 4);
+        bool wSwallowed = engine.SimulateKey(0x57 /*W*/, true);
+        Check("右 Ctrl 触发键：层内 W 被吞掉", wSwallowed);
+        engine.SimulateKey(0x57, false);
+        engine.SimulateKey(VK.RControl, false);
+
+        engine.Dispose();
+        queue.Dispose();
     }
 
     /// <summary>
@@ -2820,16 +2917,28 @@ public static class SelfTest
 
         string? opened = null;
         Core.Actions.ActionContext.OpenUrlInterceptForTest = u => opened = u;
+        string? openedFolder = null;
+        Core.Actions.ActionContext.OpenFolderInterceptForTest = p => openedFolder = p;
         try
         {
             var cat = Core.Actions.ActionCatalog.Create(ctx);
 
-            // 1. 动作存在且在正确分类
+            // 1. 两个动作都在「直达链接」分类下
             var wp = cat.Items.FirstOrDefault(i => i.Id == "webPage");
             Check("动作表有 webPage", wp != null,
-                string.Join(",", cat.Items.Where(i => i.Category == "直达网页").Select(i => i.Id)));
-            CheckEqual("webPage 在「直达网页」分类", wp?.Category, "直达网页");
+                string.Join(",", cat.Items.Where(i => i.Category == "直达链接").Select(i => i.Id)));
+            CheckEqual("webPage 在「直达链接」分类", wp?.Category, "直达链接");
+            CheckEqual("webPage 标题是「直达网址」", wp?.Title, "直达网址");
             Check("webPage 需要参数（网址）", wp?.NeedsArg == true);
+
+            var of = cat.Items.FirstOrDefault(i => i.Id == "openFolder");
+            Check("动作表有 openFolder", of != null);
+            CheckEqual("openFolder 在「直达链接」分类", of?.Category, "直达链接");
+            CheckEqual("openFolder 标题是「直达文件夹」", of?.Title, "直达文件夹");
+            Check("openFolder 需要参数（路径）", of?.NeedsArg == true);
+            Check("「直达链接」分类下只有这两个动作",
+                cat.Items.Count(i => i.Category == "直达链接") == 2,
+                string.Join(",", cat.Items.Where(i => i.Category == "直达链接").Select(i => i.Id)));
 
             // 2. 执行时把规范化后的网址传出去
             cat.Invoke("webPage", "https://example.com");
@@ -2840,10 +2949,19 @@ public static class SelfTest
             Check("不带协议的网址被补成 https",
                 opened != null && opened.StartsWith("https://github.com", StringComparison.Ordinal),
                 opened ?? "(null)");
+
+            // 3. openFolder 把路径整理后交出去（引号 / 环境变量 / ~ 都要处理）
+            cat.Invoke("openFolder", "\"C:\\Windows\"");
+            CheckEqual("执行 openFolder 去掉包裹引号", openedFolder, @"C:\Windows");
+
+            openedFolder = null;
+            cat.Invoke("openFolder", "  ");
+            Check("空路径不执行打开", openedFolder == null);
         }
         finally
         {
             Core.Actions.ActionContext.OpenUrlInterceptForTest = null;
+            Core.Actions.ActionContext.OpenFolderInterceptForTest = null;
         }
 
         // 3. Note 字段能存能读，空值不序列化
@@ -2879,6 +2997,26 @@ public static class SelfTest
             Core.Actions.UrlUtil.LabelOf("公司后台", "https://example.com"), "公司后台");
         CheckEqual("无备注用域名",
             Core.Actions.UrlUtil.LabelOf("", "https://x.com/a/b"), "x.com");
+
+        // 6. 直达文件夹：路径展开 + 键帽标签
+        CheckEqual("去掉包裹引号", Core.Actions.ActionContext.ExpandFolderPath("\"D:\\Work\"") , @"D:\Work");
+        CheckEqual("正斜杠归一", Core.Actions.ActionContext.ExpandFolderPath("D:/Work/A"), @"D:\Work\A");
+        CheckEqual("去掉尾部反斜杠", Core.Actions.ActionContext.ExpandFolderPath(@"D:\Work\"), @"D:\Work");
+        CheckEqual("盘符根目录保留", Core.Actions.ActionContext.ExpandFolderPath(@"D:\"), @"D:\");
+        CheckEqual("空输入返回空串", Core.Actions.ActionContext.ExpandFolderPath("   "), "");
+        Check("shell: 虚拟路径原样保留",
+            Core.Actions.ActionContext.ExpandFolderPath("shell:Downloads")
+                .Equals("shell:Downloads", StringComparison.OrdinalIgnoreCase));
+        Check("~ 展开成用户目录",
+            !Core.Actions.ActionContext.ExpandFolderPath("~").Contains('~'),
+            Core.Actions.ActionContext.ExpandFolderPath("~"));
+
+        CheckEqual("文件夹有备注用备注",
+            UI.Views.KeysView.FolderLabelOf("项目", @"D:\Work\2026\项目文档"), "项目");
+        CheckEqual("文件夹无备注用文件夹名",
+            UI.Views.KeysView.FolderLabelOf("", @"D:\Work\项目文档"), "项目文档");
+        CheckEqual("文件夹名为空时兜底",
+            UI.Views.KeysView.FolderLabelOf("", ""), "文件夹");
     }
 
     /// <summary>
@@ -3617,16 +3755,26 @@ public static class SelfTest
             box.SelectAll();
             DoEvents(350);
 
-            bool fg = WindowService.Foreground ==
-                new System.Windows.Interop.WindowInteropHelper(win).Handle;
-            Check("测试窗口已在前台", fg, fg ? "ok" : "不在前台");
+            /* 前台焦点可能被别的程序抢着：Windows 只允许"当前拥有前台的进程"
+             * 或者用户刚操作过的进程抢焦点。机器上正在跑别的东西时，
+             * 这里偶尔抢不到 —— 抢不到就**跳过**取词验证，别报成失败
+             * （之前这种情况会让整轮自检飘红，看起来像功能坏了）。 */
+            var winHandle = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+            bool fg = false;
+            for (int i = 0; i < 6; i++)
+            {
+                if (WindowService.Foreground == winHandle) { fg = true; break; }
+                win.Activate();
+                box.Focus();
+                DoEvents(120);
+            }
 
             if (!fg)
             {
-                Check("跳过：窗口未获焦点", true);
+                Check("（环境限制）窗口没抢到前台焦点，跳过取词验证", true);
                 return;
             }
-
+            Check("测试窗口已在前台", true);
             /* 必须在 **STA 线程**调用：Clipboard 是 OLE 组件，
              * 在 MTA 线程上会抛「必须先将当前线程设置为单个线程单元(STA)模式」。 */
             string gotFromSta = "";

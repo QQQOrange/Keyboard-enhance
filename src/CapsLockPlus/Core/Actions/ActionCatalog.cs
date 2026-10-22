@@ -37,6 +37,29 @@ public sealed class ActionCatalog
 
     public IReadOnlyList<ActionInfo> Items => _items;
 
+    /// <summary>
+    /// 动作 ID → 中文标题的全静态表。
+    ///
+    /// 为什么需要一张静态表：触发键的「短按动作」要在列表里显示成人话
+    /// （"保留按键原功能"而不是 `keepKey`），而那个显示属性在
+    /// `TriggerKey`（Core.Settings）上，拿不到某次运行时构造的
+    /// <see cref="ActionCatalog"/> 实例。
+    ///
+    /// 早先 `TriggerKey.Detail` 里写死了一个 switch，只覆盖
+    /// toggleCapsLock / esc / qbar / doNothing 四个 —— 用户把短按改成
+    /// 「保留按键原功能」后，列表上显示的却是 "无"，
+    /// 让人以为设置没保存成功。现在改成查这张表，新增动作自动就有名字。
+    /// </summary>
+    private static readonly Dictionary<string, string> StaticTitles =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>按 ID 取动作的中文标题（不存在时返回 null）。</summary>
+    public static string? TitleOf(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        return StaticTitles.TryGetValue(id, out var title) ? title : null;
+    }
+
     public ActionInfo? Get(string id) => _items.FirstOrDefault(i => i.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
     public bool Invoke(string id, string arg)
@@ -51,6 +74,7 @@ public sealed class ActionCatalog
     {
         _items.Add(new ActionInfo(id, category, title, desc, needsArg, argHint, shortTitle));
         _handlers[id] = handler;
+        StaticTitles[id] = title;      // 供 TriggerKey.Detail 等"离线显示"用
     }
 
     public static ActionCatalog Create(ActionContext ctx)
@@ -267,17 +291,23 @@ public sealed class ActionCatalog
         c.Add("openUrl", "系统", "打开网址", "打开参数里的网址", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; });
         c.Add("runProgram", "系统", "运行程序", "运行参数里的程序或命令", a => { if (!string.IsNullOrWhiteSpace(a)) ctx.RunProgram(a); return true; });
 
-        // ---------------- 直达网页 ----------------
+        // ---------------- 直达链接 ----------------
         //
-        // 和「系统 → 打开网址」的区别只在**界面**：选了「直达网页」分类后，
-        // 界面会换成"网址 + 备注"两个输入框（见 KeysView），备注还能显示在键帽上。
-        // 动作本身完全一样 —— 用默认浏览器打开。
+        // 这一类下面有两个动作：打开网址 / 打开文件夹。
+        // 选了「直达链接」分类后，界面会换成"类型 + 目标 + 备注"的专用面板
+        // （见 KeysView），备注还能显示在键帽上。
         //
-        // 单独建一个动作而不是复用 openUrl，是因为界面要根据分类切换到专用面板，
-        // 复用的话用户在「系统」分类里选「打开网址」就不会出现备注框。
-        c.Add("webPage", "直达网页", "打开网页",
+        // 为什么单独建动作而不是复用「系统 → 打开网址」：
+        // 界面要根据分类切换到专用面板，复用的话用户在「系统」分类里
+        // 选「打开网址」就看不到备注框，也不会出现文件夹那一套。
+        c.Add("webPage", "直达链接", "直达网址",
             "用默认浏览器打开这个网址；可以加备注，备注会显示在键帽上",
             a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; },
+            needsArg: true);
+
+        c.Add("openFolder", "直达链接", "直达文件夹",
+            "在文件资源管理器里打开这个文件夹；可以加备注，备注会显示在键帽上",
+            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenFolder(a); return true; },
             needsArg: true);
 
         // ---------------- 输入文本 ----------------

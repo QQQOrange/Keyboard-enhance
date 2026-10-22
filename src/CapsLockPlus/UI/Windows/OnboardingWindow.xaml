@@ -26,11 +26,12 @@
                     </Border.Background>
                     <Grid>
                         <StackPanel VerticalAlignment="Center" Margin="30,0">
-                            <Border Width="64" Height="64" CornerRadius="18" Background="#33FFFFFF"
+                            <!-- 与侧栏、exe 用同一张应用图标（淡白描边勾出轮廓） -->
+                            <Border CornerRadius="16" BorderThickness="1" BorderBrush="#4DFFFFFF"
                                     HorizontalAlignment="Left">
-                                <TextBlock Text="&#xE7E6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                           FontSize="30" Foreground="White" HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
+                                <Image Width="64" Height="64"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       Source="pack://application:,,,/Assets/app.png" />
                             </Border>
                             <TextBlock Text="按键增强" FontSize="30" FontWeight="SemiBold" Foreground="White"
                                        Margin="0,22,0,0" />

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -12,9 +12,9 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>3.8.0</Version>
-    <FileVersion>3.8.0.0</FileVersion>
-    <AssemblyVersion>3.8.0.0</AssemblyVersion>
+    <Version>3.9.0</Version>
+    <FileVersion>3.9.0.0</FileVersion>
+    <AssemblyVersion>3.9.0.0</AssemblyVersion>
     <Product>按键增强 Keyboard Enhance</Product>
     <Company>QQQOrange</Company>
     <Description>键盘增强工具：任意键绑定功能、光标移动与选择、快速搜索面板、窗口绑定、直达网页、独立剪贴板、宏与多图层</Description>
@@ -42,6 +42,10 @@
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
+    <!-- 应用图标（512×512 PNG）。界面里的品牌区统一用它，
+         不再用 Segoe 图标字体的 glyph —— 那和 exe 上的图标完全是两回事，
+         用户一眼就看出"里面这个图标跟外面那个不一样"。 -->
+    <Resource Include="Assets\app.png" />
     <!-- 内置引擎图标（由 QuickSearch 的图标库转换而来，见 tools/qs_gen.py）。
          以 Resource 形式打包进程序，运行时不依赖磁盘或网络。 -->
     <Resource Include="Assets\engine-icons\*.png" />

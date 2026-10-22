@@ -338,8 +338,20 @@ public sealed class HotkeyEngine : IDisposable
          *
          * 这里在**每个按键事件**上同步修饰键状态，
          * 保证判定触发键时读到的是最新状态。
-         * 抬起时也要清，否则松开 Ctrl 后状态会残留。 */
-        UpdateModifierState(vk, down);
+         * 抬起时也要清，否则松开 Ctrl 后状态会残留。
+         *
+         * ⚠ **触发键自己绝不能算"按住的修饰键"**。
+         *
+         * 把「右 Alt」设成触发键时，按住期间 Windows 会不断发来处理自动重复的
+         * down 事件（长按 500ms 后开始，每 30~50ms 一次）。如果照样记进
+         * `_laltDown`，层内每次按键都会被拼成 `caps_lalt_q` —— 而用户绑的是
+         * `caps_q`，于是查不到绑定、按键原样放行。
+         * 表现就是"右 Alt 当触发键，层里的绑定全都不生效，按键还是原功能"，
+         * 而且**按住时间越长越必然出现**（自动重复一定已经开始了）。
+         *
+         * 同理，Ctrl / Shift / Win 做触发键时也会踩到这条。 */
+        if (!(_triggerHeld && vk == _activeTriggerVk))
+            UpdateModifierState(vk, down);
 
         // ---- 1. 这个键是不是触发键？ ----
         if (IsTrigger(settings, vk))
@@ -419,7 +431,12 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     private readonly record struct TriggerMatch(int Vk)
     {
-        public bool Matches(int vk) => vk == Vk;
+        /// <summary>
+        /// 用 <see cref="SameKey"/> 而不是直接比大小：
+        /// 有些驱动发通用修饰码（0x12），有些发左右专用码（0xA5），
+        /// 触发键配置里写的又是其中一种 —— 只比大小会"配置对了却按不出来"。
+        /// </summary>
+        public bool Matches(int vk) => SameKey(Vk, vk);
     }
 
     private List<TriggerMatch> TriggerMatchList(AppSettings s)
@@ -500,6 +517,56 @@ public sealed class HotkeyEngine : IDisposable
     }
 
     /// <summary>
+    /// 把某个键对应的修饰键标记清零（不管它当前是什么状态）。
+    ///
+    /// 专供"触发键本身就是修饰键"的场景：右 Alt 按住期间的自动重复
+    /// 不能把自己算成"按住的 Alt"，否则层内绑定全部查不到。
+    /// </summary>
+    private void ClearModifierFlag(int vk)
+    {
+        switch (vk)
+        {
+            case VK.LControl or VK.RControl or 0x11:
+                _ctrlDown = false;
+                break;
+            case VK.LShift or VK.RShift or 0x10:
+                _shiftDown = false;
+                break;
+            case VK.LMenu or VK.RMenu or 0x12:
+                _laltDown = false;
+                break;
+            case VK.LWin:
+                _lwinDown = false;
+                break;
+            case VK.RWin:
+                _rwinDown = false;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 两个键码是否指同一个物理键。
+    ///
+    /// 修饰键有三种写法：左右专用码（0xA4 / 0xA5）、通用码（0x12）。
+    /// 不同键盘 / 驱动 / 远程桌面会话发的并不一致 ——
+    /// 触发键配的是 "ralt"（0xA5），某些环境却只发 0x12，
+    /// 或者按下发专用码、抬发送通用码。
+    ///
+    /// 只做**同一修饰键内部**的等价：左 Alt 和右 Alt 仍然互不相等，
+    /// 用户想分别绑两个键的需求不受影响。
+    /// </summary>
+    private static bool SameKey(int a, int b) => a == b || (a, b) switch
+    {
+        (0x12, 0xA4) or (0xA4, 0x12) => true,       // Alt   ↔ 左 Alt
+        (0x12, 0xA5) or (0xA5, 0x12) => true,       // Alt   ↔ 右 Alt
+        (0x11, 0xA2) or (0xA2, 0x11) => true,       // Ctrl  ↔ 左 Ctrl
+        (0x11, 0xA3) or (0xA3, 0x11) => true,       // Ctrl  ↔ 右 Ctrl
+        (0x10, 0xA0) or (0xA0, 0x10) => true,       // Shift ↔ 左 Shift
+        (0x10, 0xA1) or (0xA1, 0x10) => true,       // Shift ↔ 右 Shift
+        _ => false,
+    };
+
+    /// <summary>
     /// 这个键是不是当前层配置的子层键（且不是修饰键）。
     ///
     /// 只处理"非修饰键"的子层键；Ctrl/Shift/Alt/Win 由上面的分支单独记录，
@@ -549,7 +616,13 @@ public sealed class HotkeyEngine : IDisposable
 
     private void OnTriggerDown(AppSettings s, int vk)
     {
-        if (_triggerHeld) return;              // 自动重复
+        /* 自动重复：按住触发键时系统会反复发 down。
+         *
+         * 这里必须先把这个键的修饰键状态清掉 —— 触发键若是右 Alt / 右 Ctrl，
+         * 重复的 down 会把 `_laltDown` 又置成 true（上面虽然拦了一道，
+         * 但状态可能被其它路径写脏，这里再兜一次底），
+         * 层内绑定就会被拼成 caps_lalt_xxx 而永远查不到。 */
+        if (_triggerHeld) { ClearModifierFlag(vk); return; }
 
         /* ⚠ 先确定是哪个触发键，**再**清零修饰键状态。
          *
@@ -581,7 +654,12 @@ public sealed class HotkeyEngine : IDisposable
 
     private void OnTriggerUp(AppSettings s, int vk)
     {
-        if (!_triggerHeld || vk != _activeTriggerVk) return;
+        /* 先清掉自己的修饰键标记：触发键是修饰键时（右 Alt / 右 Ctrl），
+         * 抬起绝不能被当成"释放了一个层内修饰键"。 */
+        ClearModifierFlag(vk);
+
+        // 允许"按下 0xA5、抬起 0x12"这种混发（见 SameKey）
+        if (!_triggerHeld || !SameKey(vk, _activeTriggerVk)) return;
         _triggerHeld = false;
 
         // 层内触发过绑定 / 进过层 → 这一按不算短按

@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CapsLockPlus.Core.Input;
@@ -134,7 +134,7 @@ public partial class HelpView : UserControl
             "左半是完整 108 键键盘：点任意键即可编辑它的功能，修改立刻生效。",
             "深蓝色键帽 = 已绑定功能；浅蓝色 = 未绑定。键帽上方的小字是**功能分类**，中间是功能名，下方是键名。",
             "右侧「编辑绑定」顶部的搜索框可以按功能名、分类、宏名、网址快速找到要绑的功能。",
-            "「分类」决定功能下拉里显示哪一类；「窗口绑定」「直达网页」这两类会换成专用的选择界面。",
+            "「分类」决定功能下拉里显示哪一类；「窗口绑定」「直达链接」「输入文本」这三类会换成专用的编辑界面。",
         });
 
         AddSection("④ 窗口绑定", new[]
@@ -144,11 +144,12 @@ public partial class HelpView : UserControl
             "exe 名不一定是软件名（idea64.exe 是 IDEA），可以在「显示名称」里改成你认得的名字。",
         });
 
-        AddSection("⑤ 直达网页", new[]
+        AddSection("⑤ 直达链接", new[]
         {
-            "分类选「直达网页」后填网址即可，按该键用默认浏览器打开。",
-            "网址写成 github.com 也行，会自动补 https://。",
-            "填完网址会自动抓取网页标题作为备注；不满意可以改，备注会显示在键帽上。",
+            "分类选「直达链接」后先选类型：「直达网址」用默认浏览器打开，「直达文件夹」在资源管理器里打开。",
+            "网址写成 github.com 也行，会自动补 https://；填完会自动抓网页标题当备注。",
+            "文件夹可以点「浏览…」直接挑，也支持 %USERPROFILE%\\Desktop、~\\Downloads、shell:Downloads 这些写法。",
+            "备注会显示在键帽上；不写备注时，网址显示域名、文件夹显示文件夹名。",
         });
 
         AddSection("⑥ 直接搜索", new[]
@@ -282,7 +283,7 @@ public partial class HelpView : UserControl
         string[] order =
         {
             "光标移动", "选择", "编辑", "剪贴板", "面板", "窗口", "窗口绑定",
-            "直达网页", "宏", "鼠标", "系统", "基础",
+            "直达链接", "宏", "鼠标", "系统", "基础",
         };
         foreach (var cat in order)
         {
@@ -329,6 +330,10 @@ public partial class HelpView : UserControl
 
         if (id == "webPage")
             return "打开 " + Core.Actions.UrlUtil.LabelOf(binding.Note, binding.Arg);
+
+        // 直达文件夹：说清"打开的是哪个目录"，目录名比整条路径好认
+        if (id == "openFolder")
+            return "打开文件夹 " + UI.Views.KeysView.FolderLabelOf(binding.Note, binding.Arg);
 
         return binding.Arg.Length > 0
             ? $"{info.Description}（参数 {binding.Arg}）"

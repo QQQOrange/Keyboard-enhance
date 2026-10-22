@@ -312,14 +312,20 @@ public sealed class TriggerKey
     {
         get
         {
-            string tap = string.IsNullOrEmpty(TapAction) ? "无" : TapAction switch
-            {
-                "toggleCapsLock" => "切换大小写",
-                "esc" => "Esc",
-                "qbar" => "打开 Qbar",
-                "doNothing" => "无",
-                _ => TapAction,
-            };
+            /* 短按动作的名字从**动作表**里取，不再写死 switch。
+             *
+             * 之前只映射了 toggleCapsLock / esc / qbar / doNothing 四个，
+             * 用户把短按改成「保留按键原功能」（keepKey）后，
+             * 列表上显示的是动作 ID 甚至"无"，看起来像设置没生效。 */
+            string tap;
+            if (TapAction == "doNothing")
+                tap = "无";
+            else if (string.IsNullOrEmpty(TapAction))
+                // 空值在引擎里的语义就是"补发原键"，等价于 keepKey
+                tap = "保留原功能";
+            else
+                tap = Actions.ActionCatalog.TitleOf(TapAction) ?? TapAction;
+
             string hold = HoldOnOtherKey ? "一按别的键就进层" : $"长按 {HoldMs}ms 进层";
             return $"{hold}　·　短按：{tap}";
         }

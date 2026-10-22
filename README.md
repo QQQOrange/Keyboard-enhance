@@ -1,10 +1,10 @@
-# CapsLock+（QQQOrange）
+﻿# CapsLock+（QQQOrange）
 
 > 把 [wo52616111/capslock-plus](https://github.com/wo52616111/capslock-plus) 的 AutoHotkey 脚本，
 > 重写成**原生 Windows 11 桌面程序**：功能一个不少，但所有设置都能在图形界面里点点点完成，
 > 再也不用去手改 `CapsLock+settings.ini`。
 
-**版本 v3.8.0** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 4.33 MB**
+**版本 v3.9.0** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 4.50 MB**
 
 ![快速上手](docs/screenshots/guide.png)
 
@@ -243,7 +243,7 @@
 | 页面 | 用途 |
 | --- | --- |
 | 快速上手 | 运行状态、按键方案、三步引导 |
-| 按键映射 | **点键盘上的任意键**即可改功能，可切基础层 / LAlt 层 / Win 层 |
+| 按键映射 | **点键盘上的任意键**即可改功能，可切基础层 / LAlt 层 / Win 层；分类里还有「直达链接」，一条绑定就能直达网址或文件夹 |
 | Qbar 面板 | 搜索指令、启动程序、常用网址、文字替换、外观与图标 |
 | 窗口绑定 | 10 个槽位（Caps+1~9 与 Caps+0）的可视化管理，支持两种绑定方式 |
 | 剪贴板 | 两个独立剪贴板的内容、最近复制历史 |
