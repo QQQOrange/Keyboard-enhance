@@ -4,7 +4,7 @@
 > 重写成**原生 Windows 11 桌面程序**：功能一个不少，但所有设置都能在图形界面里点点点完成，
 > 再也不用去手改 `CapsLock+settings.ini`。
 
-**版本 v3.9.6** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 4.50 MB**
+**版本 v3.9.7** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件 4.50 MB**
 
 ![快速上手](docs/screenshots/guide.png)
 

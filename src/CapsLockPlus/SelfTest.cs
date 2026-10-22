@@ -4279,6 +4279,15 @@ public static class SelfTest
             UI.Views.KeysView.CustomKeyLabelOf("", back), "Weixin");
         CheckEqual("键帽标签：都没有时兜底",
             UI.Views.KeysView.CustomKeyLabelOf("", new CustomKeySpec()), "自定义");
+        CheckEqual("键帽标签：备注两边的空格会被去掉",
+            UI.Views.KeysView.CustomKeyLabelOf("  微信  ", back), "微信");
+        CheckEqual("键帽标签：只有空白的备注当没填",
+            UI.Views.KeysView.CustomKeyLabelOf("   ", back), "Weixin");
+
+        /* 备注存在 KeyBinding.Note 上，不在 spec 里 ——
+         * 这样改"发什么键/绑哪个程序"不会把用户起的名字冲掉。 */
+        Check("备注不进 spec（改参数不会冲掉名字）",
+            !spec.ToArg().Contains("微信"));
     }
 
     private static void TestBrightnessMath()

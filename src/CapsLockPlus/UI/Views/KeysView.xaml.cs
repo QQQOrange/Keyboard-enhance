@@ -1642,6 +1642,15 @@ public partial class KeysView : UserControl
             WaitAfterLaunchMs = 900,
         });
 
+        // 备注也填一个，截图里能看到键帽上显示的是"微信"而不是进程名
+        var b = FindInCurrentLayer(CurrentCombo());
+        if (b != null)
+        {
+            b.Note = "微信";
+            _host.SaveSettings();
+            BuildKeyboard();
+        }
+
         return CustomKeyPicker.Visibility == Visibility.Visible;
     }
 
@@ -2457,6 +2466,7 @@ public partial class KeysView : UserControl
         CustomAdminBox.IsChecked = spec.RunAsAdmin;
         CustomMainWindowBox.IsChecked = spec.BringFront;
         CustomWaitBox.Text = spec.WaitAfterLaunchMs.ToString();
+        CustomNoteBox.Text = FindInCurrentLayer(CurrentCombo())?.Note ?? "";
         _suppressEvents = false;
 
         // 捕获到的键：没设时把按钮文案留着，设了就显示成键帽
@@ -2585,6 +2595,30 @@ public partial class KeysView : UserControl
         var spec = CurrentCustomSpec();
         spec.WaitAfterLaunchMs = Math.Clamp(ms, 0, 10000);
         SaveCustomSpec(spec);
+    }
+
+    /// <summary>
+    /// 备注。存在 <see cref="KeyBinding.Note"/> 上（不是 spec 里）——
+    /// 备注是"这个键叫什么"，属于绑定本身，和"发什么键给哪个程序"无关。
+    /// 键帽与已绑定列表都优先显示它。
+    /// </summary>
+    private void OnCustomNoteChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+
+        string combo = CurrentCombo();
+        var binding = FindInCurrentLayer(combo);
+        if (binding == null)
+        {
+            binding = new KeyBinding { Combo = combo, Action = "customKey" };
+            CurrentLayerKeys.Add(binding);
+        }
+
+        string note = CustomNoteBox.Text.Trim();
+        // 空备注存 null，设置文件里干脆不出现这个字段（和直达链接保持一致）
+        binding.Note = note.Length == 0 ? null : note;
+        _host.SaveSettings();
+        BuildKeyboard();          // 键帽上要立刻显示新名字
     }
 
     /// <summary>键帽上显示什么：备注 → 应用名 → "自定义"。</summary>

@@ -463,6 +463,13 @@
                                 </StackPanel>
                             </Grid>
 
+                            <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
+                                       Margin="0,14,0,7" />
+                            <TextBox x:Name="CustomNoteBox" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="36" VerticalContentAlignment="Center"
+                                     TextChanged="OnCustomNoteChanged"
+                                     ToolTip="给这个键起个好记的名字，会显示在键帽和已绑定列表里" />
+
                             <TextBlock x:Name="CustomKeyHint" Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,12,0,0" />
                         </StackPanel>
