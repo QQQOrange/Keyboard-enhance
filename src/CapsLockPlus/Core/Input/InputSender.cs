@@ -203,8 +203,157 @@ public static class InputSender
 
     private const uint MAPVK_VK_TO_VSC = 0;
 
+    /// <summary>文本输入方式。</summary>
+    public enum TextMode
+    {
+        /// <summary>
+        /// 自动（默认）：纯 ASCII 单行用**真实按键**逐字敲，其它用 Unicode 注入。
+        ///
+        /// 为什么默认改成"真实按键"：密码框（浏览器、网银控件、部分安全软件）
+        /// 会过滤掉 <c>KEYEVENTF_UNICODE</c> 这种"没有扫描码"的合成输入 ——
+        /// 表现就是"文字打不进去，但普通输入框正常"。真实按键带完整扫描码，
+        /// 和手打没有区别，这类框都认。
+        /// </summary>
+        Auto,
+
+        /// <summary>强制用真实按键（受键盘布局与输入法影响，但最像手打）。</summary>
+        Keys,
+
+        /// <summary>强制 Unicode 注入（不经过布局与输入法，中文/emoji 用它）。</summary>
+        Unicode,
+    }
+
+    /// <summary>输入任意文本。</summary>
+    public static void Text(string text, TextMode mode = TextMode.Auto)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        if (mode == TextMode.Keys || (mode == TextMode.Auto && LooksLikePlainAscii(text)))
+        {
+            if (TryTextAsKeys(text)) return;
+
+            /* 按键模拟不可用（布局映射不出来 / 没有前台窗口）时退回 Unicode。
+             * 强制 Keys 也一样退回 —— 什么都不输入比输入得"不够完美"更糟。 */
+        }
+
+        TextUnicode(text);
+    }
+
+    /// <summary>
+    /// 这段文字适不适合用"真实按键"逐字敲。
+    ///
+    /// 只放行可打印 ASCII（0x20~0x7E）且不含换行：
+    ///   · 中文/emoji 必须走 Unicode（没有对应的按键）；
+    ///   · 换行会变成 Enter，可能把表单提交掉 —— 多行一律走 Unicode 粘贴式注入。
+    /// </summary>
+    public static bool LooksLikePlainAscii(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        foreach (char ch in text)
+            if (ch < 0x20 || ch > 0x7E) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// 用真实按键逐字敲一段纯 ASCII。返回 false = 这条路走不通，调用方应改用 Unicode。
+    ///
+    /// 三个关键点：
+    ///   1. 用**前台窗口所在线程的键盘布局**做映射（<c>VkKeyScanEx</c>），
+    ///      否则德语键盘上打 `@` 会出错；
+    ///   2. 需要 Ctrl/Alt 才能打出的字符直接放弃（会干扰系统快捷键）；
+    ///   3. 敲字期间**临时摘掉输入法**，否则中文输入法会把 "abc" 拼成拼音候选框。
+    /// </summary>
+    public static bool TryTextAsKeys(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        if (!LooksLikePlainAscii(text)) return false;
+
+        IntPtr target = GetForegroundWindow();
+        if (target == IntPtr.Zero) return false;
+
+        uint tid = GetWindowThreadProcessId(target, out _);
+        IntPtr layout = tid != 0 ? GetKeyboardLayout(tid) : IntPtr.Zero;
+        if (layout == IntPtr.Zero) return false;
+
+        // 先把整段文字映射成 (虚拟键, 是否需要 Shift)，有一个映射不了就整体放弃
+        var plan = new List<(int Vk, bool Shift)>(text.Length);
+        foreach (char ch in text)
+        {
+            short scan = VkKeyScanEx(ch, layout);
+            if (scan == -1) return false;
+
+            int vk = scan & 0xFF;
+            int state = (scan >> 8) & 0xFF;
+            if (vk == 0) return false;
+            if ((state & 0x06) != 0) return false;      // 需要 Ctrl / Alt
+            plan.Add((vk, (state & 0x01) != 0));
+        }
+
+        IntPtr oldIme = SuppressIme(target);
+        try
+        {
+            const int Batch = 32;
+            for (int start = 0; start < plan.Count; start += Batch)
+            {
+                int len = Math.Min(Batch, plan.Count - start);
+                var arr = new List<INPUT>(len * 4);
+
+                for (int i = start; i < start + len; i++)
+                {
+                    var (vk, shift) = plan[i];
+                    if (shift) arr.Add(KeyInput(VK.Shift, false));
+                    arr.Add(KeyInput(vk, false));
+                    arr.Add(KeyInput(vk, true));
+                    if (shift) arr.Add(KeyInput(VK.Shift, true));
+                }
+
+                Send(arr.ToArray());
+                if (start + len < plan.Count) Thread.Sleep(6);
+            }
+        }
+        finally
+        {
+            RestoreIme(target, oldIme);
+        }
+
+        return true;
+    }
+
+    // ---------------- 输入法临时挂起 ----------------
+
+    [System.Runtime.InteropServices.DllImport("imm32.dll")]
+    private static extern IntPtr ImmAssociateContext(IntPtr hWnd, IntPtr hIMC);
+
+    /// <summary>
+    /// 临时把输入法从前台窗口上摘下来，返回原来的上下文（用于恢复）。
+    ///
+    /// 不摘的话，中文输入法会把逐字发送的字母当成拼音组合，
+    /// 屏幕上出现候选框而不是要输入的文字。
+    /// </summary>
+    private static IntPtr SuppressIme(IntPtr hwnd)
+    {
+        try
+        {
+            if (hwnd == IntPtr.Zero) return IntPtr.Zero;
+            return ImmAssociateContext(hwnd, IntPtr.Zero);
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
+    }
+
+    private static void RestoreIme(IntPtr hwnd, IntPtr old)
+    {
+        try
+        {
+            if (hwnd != IntPtr.Zero && old != IntPtr.Zero) ImmAssociateContext(hwnd, old);
+        }
+        catch { }
+    }
+
     /// <summary>输入任意文本（走 Unicode 注入，不经过键盘布局）。</summary>
-    public static void Text(string text)
+    private static void TextUnicode(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
 

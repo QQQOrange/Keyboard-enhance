@@ -1,4 +1,4 @@
-# 构建与运行（Windows 11 x64 / .NET 10）
+﻿# 构建与运行（Windows 11 x64 / .NET 10）
 
 需要 **.NET 10 SDK**（构建）与 **.NET 10 桌面运行时**（运行）。
 
@@ -62,9 +62,8 @@ src/CapsLockPlus/
 │  ├─ Icons/              图标缓存、极简 SVG 渲染器
 │  ├─ Settings/           JSON 设置、旧版 ini 迁移、开机自启
 │  ├─ Update/             检查 / 下载 / 替换更新
-│  └─ Translate/          翻译服务
 ├─ UI/                    WPF 界面
-│  ├─ Windows/            主窗口、Qbar、计算器、翻译、引导、Toast、更新提示
+│  ├─ Windows/            主窗口、Qbar、计算器、引导、Toast、更新提示
 │  ├─ Views/              9 个页面
 │  ├─ Theme/              主题、Win11 窗口外观
 │  └─ AppHost.cs          装配中心：引擎 + 托盘 + 窗口

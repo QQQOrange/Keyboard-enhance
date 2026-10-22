@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -458,7 +458,7 @@ public partial class BackupView : UserControl
     {
         bool enc = ExportEncryptedBox.IsChecked == true;
         ExportModeHint.Text = enc
-            ? "用备份密码加密，含网盘密码 / 备份密码 / 翻译密钥等全部字段。换台机器导入时输入同一个密码即可。"
+            ? "用备份密码加密，含网盘密码 / 备份密码等全部字段。换台机器导入时输入同一个密码即可。"
             : "不加密，任何人拿到都能读。为免泄露，会剔除网盘密码与备份密码 —— 适合直接发给别人。";
     }
 

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
@@ -53,7 +53,6 @@ public static class SettingsStore
 
         target.Global = copy.Global;
         target.Qbar = copy.Qbar;
-        target.Translate = copy.Translate;
         target.Sync = copy.Sync;
         target.Keys = copy.Keys;
         target.Layers = copy.Layers;
@@ -65,6 +64,13 @@ public static class SettingsStore
         target.HotStrings = copy.HotStrings;
         target.Bindings = copy.Bindings;
         target.BuiltinEnginesVersion = copy.BuiltinEnginesVersion;
+    }
+
+    /// <summary>所有绑定列表（各层的 Keys + 老的顶层 Keys）。</summary>
+    private static IEnumerable<List<KeyBinding>> AllBindingLists(AppSettings s)
+    {
+        yield return s.Keys;
+        foreach (var layer in s.Layers) yield return layer.Keys;
     }
 
     public static AppSettings Load()
@@ -382,7 +388,6 @@ public static class SettingsStore
     {
         s.Global ??= new GlobalOptions();
         s.Qbar ??= new QbarOptions();
-        s.Translate ??= new TranslateOptions();
         s.Sync ??= new SyncOptions();
         s.Keys ??= new List<KeyBinding>();
         s.Search ??= new List<QEntry>();
@@ -395,6 +400,22 @@ public static class SettingsStore
         s.Macros ??= new List<Macro>();
         s.Global.MouseSpeed = Math.Clamp(s.Global.MouseSpeed, 1, 20);
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
+
+        /* 已删除的动作：老配置里可能还绑着，统一改成"什么都不做"。
+         *
+         * 不这么做的话，按下去会提示"未知动作：translate" —— 用户不知道
+         * 是软件坏了还是功能被删了。翻译功能整块移除，这里把它清干净。 */
+        foreach (var list in AllBindingLists(s))
+        {
+            foreach (var b in list)
+            {
+                if (string.Equals(b.Action, "translate", StringComparison.OrdinalIgnoreCase))
+                {
+                    b.Action = "doNothing";
+                    b.Arg = "";
+                }
+            }
+        }
 
         /* 备份保留策略：老配置里没有这两个字段，反序列化后是 0。
          *
@@ -925,7 +946,7 @@ public static class DefaultSettings
         B("caps_dot", "selectWordRight"), B("caps_slash", "deleteToLineEnd"),
         B("caps_space", "enter"), B("caps_ralt", "doNothing"),
 
-        B("caps_f1", "openDocs"), B("caps_f2", "mathBoard"), B("caps_f3", "translate"),
+        B("caps_f1", "openDocs"), B("caps_f2", "mathBoard"), B("caps_f3", "doNothing"),
         B("caps_f4", "winTransparent"), B("caps_f5", "reload"), B("caps_f6", "winPin"),
         B("caps_f7", "doNothing"), B("caps_f8", "clipboardHistory"), B("caps_f9", "doNothing"),
         B("caps_f10", "doNothing"), B("caps_f11", "doNothing"), B("caps_f12", "toggleClipboard"),
@@ -983,7 +1004,7 @@ public static class DefaultSettings
         Set("caps_b", "moveDown", "5");
         Set("caps_m", "selectDown", "5");
         Set("caps_n", "selectWordRight");
-        Set("caps_t", "translate");
+        Set("caps_t", "doNothing");
         Set("caps_y", "moveUp", "5");
         Set("caps_z", "undoRedo");
         Set("caps_backquote", "winbindActivate9");

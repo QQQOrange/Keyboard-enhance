@@ -79,6 +79,28 @@ public static class VolumeService
     }
 
     /// <summary>
+    /// 系统音量"一步"是多少个百分点（通常是 2%，即 50 档）。
+    ///
+    /// 用来让系统 OSD 显示的数字和真实音量完全一致：先把音量退到
+    /// 目标值前一档，再让 shell 走一步，正好落在目标值上。
+    /// </summary>
+    public static int StepPercent()
+    {
+        var ep = Endpoint();
+        if (ep == null) return 2;
+
+        try
+        {
+            if (ep.GetVolumeStepInfo(out _, out uint stepCount) != 0 || stepCount == 0) return 2;
+            return Math.Max(1, (int)Math.Round(100.0 / stepCount));
+        }
+        catch
+        {
+            return 2;
+        }
+    }
+
+    /// <summary>
     /// 在当前音量上加减 <paramref name="deltaPercent"/> 个百分点。
     /// 返回值：null = 没有可用输出设备；否则是**回读到的**真实音量。
     ///

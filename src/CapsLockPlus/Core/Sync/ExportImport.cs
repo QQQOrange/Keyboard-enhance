@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Settings;
@@ -28,7 +28,7 @@ public sealed record ExportGroup(
 ///
 /// 导出有两种模式：
 ///   * **加密导出（默认）**：用备份密码加密，**勾了哪组就导出那组的全部字段**，
-///     包括网盘密码、翻译密钥 —— 文件本身是密文，泄露风险由加密承担；
+///     包括网盘密码、备份密码 —— 文件本身是密文，泄露风险由加密承担；
 ///   * **明文导出**：为了"直接发给别人"这种场景，剔除凭据类字段。
 ///
 /// 导入侧靠内容自动识别（<see cref="CryptoBox.LooksEncrypted"/>），
@@ -81,10 +81,6 @@ public static class ExportImport
         new("appearance", "外观与行为", "主题、Qbar 面板样式、鼠标速度、按键行为等",
             new[] { nameof(AppSettings.Qbar), nameof(AppSettings.Global) },
             Private: false, DefaultChecked: true),
-
-        new("apiKeys", "翻译 API 密钥", "有道 / 百度 / DeepL / 腾讯云的 AppId 与密钥。给了别人 = 把你的额度给了别人",
-            new[] { nameof(AppSettings.Translate) },
-            Private: true, DefaultChecked: false),
 
         new("syncSettings", "同步与备份设置", "WebDAV 地址、用户名、备份保留策略；加密导出时含密码",
             new[] { nameof(AppSettings.Sync) },
@@ -277,7 +273,7 @@ public static class ExportImport
     /// ⚠ 必须**按勾选的组裁剪**，不能把整份 data 原样灌进去。
     /// 否则一份 `{"kind":"clp-config","items":["appearance"],
     /// "data":{"Sync":{...攻击者的网盘地址...}}}` 就能在用户只勾了"外观"的
-    /// 情况下，把同步目标换成别人的服务器，下次启动就把含翻译密钥和备份密码的
+    /// 情况下，把同步目标换成别人的服务器，下次启动就把含网盘密码和备份密码的
     /// 整份配置推上去 —— 而用户看到的只是一次正常的明文导入。
     ///
     /// 返回实际应用了哪些组。
@@ -323,8 +319,6 @@ public static class ExportImport
                     settings.Qbar = merged.Qbar; break;
                 case nameof(AppSettings.Global):
                     settings.Global = merged.Global; break;
-                case nameof(AppSettings.Translate):
-                    settings.Translate = merged.Translate; break;
                 case nameof(AppSettings.Sync):
                     settings.Sync = merged.Sync; break;
             }

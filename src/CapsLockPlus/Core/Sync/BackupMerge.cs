@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapsLockPlus.Core.Settings;
 
@@ -16,7 +16,7 @@ namespace CapsLockPlus.Core.Sync;
 ///   * 层 / 宏 / 触发键 → 按 Id / Key；
 ///   * 搜索项、启动项、网址、热字串 → 按 Key；
 ///   * 窗口绑定 → 按 Slot；
-///   * **全局 / Qbar / 翻译 / 同步设置这类单值配置，一律保留本机** ——
+///   * **全局 / Qbar / 同步设置这类单值配置，一律保留本机** ——
 ///     尤其是 Sync：远端备份里存着别人的网盘密码和备份密码，
 ///     合并时把它灌进来，等于把同步目标换成别人的服务器。
 ///

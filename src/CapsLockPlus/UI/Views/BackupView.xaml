@@ -233,7 +233,7 @@
                                 <TextBlock Text="加密导出" Style="{StaticResource Text.Body}" />
                                 <TextBlock x:Name="ExportModeHint" Style="{StaticResource Text.Tertiary}"
                                            TextWrapping="Wrap" Margin="0,3,0,0"
-                                           Text="用备份密码加密，含网盘密码 / 备份密码 / 翻译密钥等全部字段。换台机器导入时输入同一个密码即可。" />
+                                           Text="用备份密码加密，含网盘密码 / 备份密码等全部字段。换台机器导入时输入同一个密码即可。" />
                             </StackPanel>
                             <CheckBox Grid.Column="1" x:Name="ExportEncryptedBox"
                                       Style="{StaticResource ToggleSwitch}"

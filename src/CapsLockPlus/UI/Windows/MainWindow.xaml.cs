@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
 using CapsLockPlus.UI.Theme;
@@ -93,7 +93,6 @@ public partial class MainWindow : Window
             "keys" => new KeysView(),
             "qbar" => new QbarSettingsView(),
             "clipboard" => new ClipboardView(),
-            "translate" => new TranslateSettingsView(),
             "macros" => new MacrosView(),
             "layers" => new LayersView(),
             "backup" => new BackupView(),
@@ -110,7 +109,6 @@ public partial class MainWindow : Window
             case KeysView k: k.Initialize(_host); break;
             case QbarSettingsView q: q.Initialize(_host); break;
             case ClipboardView c: c.Initialize(_host); break;
-            case TranslateSettingsView t: t.Initialize(_host); break;
             case MacrosView m: m.Initialize(_host); break;
             case LayersView lv: lv.Initialize(_host); break;
             case BackupView bv: bv.Initialize(_host); break;
@@ -157,7 +155,6 @@ public partial class MainWindow : Window
             case SettingsView s: s.Refresh(); break;
             case KeyTestView kt: kt.Refresh(); break;
             case QbarSettingsView q: q.Refresh(); break;
-            case TranslateSettingsView t: t.Refresh(); break;
             case MacrosView mv: mv.Reload(); break;
             case LayersView lvw: lvw.Reload(); break;
             case BackupView bvw: bvw.Refresh(); break;

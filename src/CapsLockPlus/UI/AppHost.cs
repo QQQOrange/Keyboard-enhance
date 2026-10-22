@@ -1,11 +1,10 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Qbar;
 using CapsLockPlus.Core.Settings;
-using CapsLockPlus.Core.Translate;
 using CapsLockPlus.Core.Update;
 using CapsLockPlus.Core.Windows;
 using CapsLockPlus.UI.Theme;
@@ -29,7 +28,6 @@ public sealed class AppHost : IDisposable
     private QbarWindow? _qbar;
     private Core.Text.SelectionWatcher? _selectionWatcher;
     private MathBoardWindow? _math;
-    private TranslateWindow? _translate;
     private ClipboardHistoryWindow? _clipHistory;
     private bool _disposed;
 
@@ -40,7 +38,6 @@ public sealed class AppHost : IDisposable
     public ClipboardService Clipboard { get; }
     public WindowBindingService Bindings { get; }
     public QbarService Qbar { get; }
-    public TranslateService Translator { get; } = new();
     public bool Enabled => Engine.Enabled;
     public bool HookAlive => Engine.IsHookAlive;
 
@@ -126,7 +123,6 @@ public sealed class AppHost : IDisposable
         Context.SettingsRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow());
         Context.HelpRequested += () => _dispatcher.BeginInvoke(() => ShowMainWindow("help"));
         Context.ClipboardHistoryRequested += () => _dispatcher.BeginInvoke(() => ShowClipboardHistory());
-        Context.TranslateRequested += () => _dispatcher.BeginInvoke(() => ShowTranslate());
         Context.ReloadRequested += () => _dispatcher.BeginInvoke(() => ReloadAll());
         Context.ToggleEnabledRequested += () => _dispatcher.BeginInvoke(() => ToggleEnabled());
         Context.ScreenshotRequested += () => _dispatcher.BeginInvoke(() => Context.Screenshot());
@@ -374,14 +370,6 @@ public sealed class AppHost : IDisposable
         if (_math is not { IsLoaded: true }) _math = new MathBoardWindow();
         _math.Show();
         _math.Activate();
-    }
-
-    public void ShowTranslate()
-    {
-        if (_translate is not { IsLoaded: true }) _translate = new TranslateWindow(this);
-        _translate.Show();
-        _translate.Activate();
-        _translate.StartWithSelection();
     }
 
     public void ShowClipboardHistory()

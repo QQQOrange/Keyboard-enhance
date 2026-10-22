@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using CapsLockPlus.Core.Input;
 
 namespace CapsLockPlus.Core.Settings;
@@ -31,7 +31,7 @@ public sealed class QEntry
     /// 这条记录是否匹配过滤词。
     ///
     /// 按**关键字 / 备注 / 内容**三个字段做大小写不敏感的包含匹配 ——
-    /// 用户记不住关键字时可以用中文备注找（"剪贴板""翻译"），
+    /// 用户记不住关键字时可以用中文备注找（"剪贴板""截图"），
     /// 也可以用网址片段找。空过滤词 = 全部匹配。
     ///
     /// 抽成静态方法是为了让自检能直接验，而不必去驱动界面控件。
@@ -133,6 +133,15 @@ public sealed class GlobalOptions
 
     /// <summary>动作执行后在屏幕右下角显示轻提示。</summary>
     public bool ShowToast { get; set; } = true;
+
+    /// <summary>
+    /// 「输入文本」用哪种方式打字：auto（默认）/ keys / unicode。
+    ///
+    /// 默认 auto = 纯 ASCII 走**真实按键**，其它走 Unicode 注入。
+    /// 密码框会过滤掉"没有扫描码"的 Unicode 合成输入，所以默认改成了真实按键；
+    /// 极少数程序反过来只认 Unicode，那种情况下在设置里改成 unicode 即可。
+    /// </summary>
+    public string TextInputMode { get; set; } = "auto";
 
     /// <summary>
     /// 是否以管理员身份启动。
@@ -603,16 +612,6 @@ public sealed class QbarOptions
     public bool ShowIcons { get; set; } = true;
 }
 
-public sealed class TranslateOptions
-{
-    /// <summary>翻译服务：youdao（有道智云）/ none。</summary>
-    public string Provider { get; set; } = "youdao";
-    public string AppId { get; set; } = "";
-    public string AppSecret { get; set; } = "";
-    public string TargetLanguage { get; set; } = "zh-CHS";
-    public bool AutoDetectSource { get; set; } = true;
-}
-
 public sealed class AppSettings
 {
     public int SchemaVersion { get; set; } = 1;
@@ -628,7 +627,6 @@ public sealed class AppSettings
 
     public GlobalOptions Global { get; set; } = new();
     public QbarOptions Qbar { get; set; } = new();
-    public TranslateOptions Translate { get; set; } = new();
     public SyncOptions Sync { get; set; } = new();
     public List<KeyBinding> Keys { get; set; } = new();
     public List<QEntry> Search { get; set; } = new();

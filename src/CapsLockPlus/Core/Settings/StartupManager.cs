@@ -77,6 +77,29 @@ public static class StartupManager
         }
     }
 
+    /// <summary>
+    /// 开机自启该指向哪个 exe。
+    ///
+    /// 优先**启动器**（KeyboardEnhance.exe）：它先检查 .NET 运行时，
+    /// 缺了会弹中文提示 —— 否则开机后什么都没发生，用户根本不知道原因。
+    /// 没有启动器（老版本 / 手工只拷了主程序）时退回当前进程。
+    /// </summary>
+    private static string PreferredLaunchPath()
+    {
+        try
+        {
+            string? dir = Path.GetDirectoryName(Environment.ProcessPath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                string launcher = Path.Combine(dir, AppInfo.LauncherName);
+                if (File.Exists(launcher)) return launcher;
+            }
+        }
+        catch { }
+
+        return Environment.ProcessPath ?? "";
+    }
+
     public static void SetEnabled(bool enabled, string? exePath = null)
     {
         try
@@ -85,7 +108,7 @@ public static class StartupManager
             if (key == null) return;
             if (enabled)
             {
-                string path = exePath ?? Environment.ProcessPath ?? "";
+                string path = exePath ?? PreferredLaunchPath();
                 if (!string.IsNullOrEmpty(path)) key.SetValue(ValueName, $"\"{path}\" --tray");
             }
             else

@@ -145,6 +145,7 @@ public static class SelfTest
         Section("音量与亮度");
         TestVolumeCore();
         TestBrightnessMath();
+        TestOsdAndTextInput();
         TestToastCoalescing();
         TestDirectSearchCoversAllEngines();
         TestCopyChordEndToEnd();
@@ -207,7 +208,6 @@ public static class SelfTest
         TestBackupPolicy();
 
         Section("翻译引擎");
-        TestTranslateProviders();
 
         Section("窗口与进程");
         TestWindows();
@@ -616,7 +616,6 @@ public static class SelfTest
         s.Sync.WebDavUser = "me@example.com";
         s.Sync.WebDavPass = "SuperSecretDavPass";
         s.Sync.BackupPassword = "SuperSecretBackupPass";
-        s.Translate.AppSecret = "SuperSecretTranslateKey";
 
         var all = Core.Sync.ExportImport.Groups.Select(g => g.Id).ToList();
 
@@ -629,7 +628,6 @@ public static class SelfTest
         var (fullText, _) = Core.Sync.ExportImport.Build(s, all, includeSecrets: true);
         Check("加密导出带上网盘密码", fullText.Contains("SuperSecretDavPass"));
         Check("加密导出带上备份密码", fullText.Contains("SuperSecretBackupPass"));
-        Check("加密导出带上翻译密钥", fullText.Contains("SuperSecretTranslateKey"));
 
         // ---------- 落盘 + 回读（真实文件） ----------
         string dir = Path.Combine(AppPaths.DataDir, "selftest-export-enc");
@@ -761,7 +759,8 @@ public static class SelfTest
                 result.Settings.FindBinding("caps_1")?.Action?.StartsWith("winbindActivate") != true,
                 result.Settings.FindBinding("caps_1")?.Action ?? "(无)");
             CheckEqual("迁移置底动作", result.Settings.FindBinding("caps_lalt_z")?.Action, "winSendToBottom");
-            CheckEqual("迁移翻译动作", result.Settings.FindBinding("caps_f3")?.Action, "translate");
+            // 翻译功能已整块移除：旧 ini 里的 keyfunc_translate 迁移成"什么都不做"
+            CheckEqual("已移除的翻译动作迁移成 doNothing", result.Settings.FindBinding("caps_f3")?.Action, "doNothing");
             Check("迁移搜索指令", result.Settings.Search.Any(s => s.Key == "bd"));
             Check("迁移程序条目", result.Settings.Run.Any(r => r.Key == "ie"));
             Check("迁移网址条目", result.Settings.Web.Any(w => w.Key == "gh"));
@@ -1241,26 +1240,6 @@ public static class SelfTest
             legacy.LayerKeys(1).Any(k => k.Combo == "caps_q"));
     }
 
-    private static void TestTranslateProviders()
-    {
-        var providers = Core.Translate.TranslateService.Providers;
-        Check("翻译引擎 >= 6 个", providers.Length >= 6, providers.Length.ToString());
-        Check("至少 2 个免密钥引擎",
-            providers.Count(p => !p.NeedsKey) >= 2,
-            providers.Count(p => !p.NeedsKey).ToString());
-        Check("所有引擎都有名称", providers.All(p => !string.IsNullOrWhiteSpace(p.Name)));
-        Check("所有引擎都有唯一 ID",
-            providers.Select(p => p.Id).Distinct().Count() == providers.Length);
-
-        // 免费引擎必须能在没有密钥的情况下工作
-        var svc = new Core.Translate.TranslateService();
-        var free = providers.First(p => !p.NeedsKey);
-        var res = svc.TranslateAsync("hello", free.Id, "", "", "zh-CHS",
-            CancellationToken.None).GetAwaiter().GetResult();
-        Check($"免费引擎（{free.Name}）可用", res.Success || res.Error.Length > 0,
-            res.Success ? "ok" : res.Error);
-    }
-
     private static void TestTextMetrics()
     {
         // 字号 14~30（Qbar 字号滑块的取值范围）都要留出余量
@@ -1368,25 +1347,20 @@ public static class SelfTest
     private static void TestExportImport()
     {
         var src = DefaultSettings.Create();
-        src.Translate.AppId = "我的AppId";
-        src.Translate.AppSecret = "我的密钥";
         src.Sync.WebDavUrl = "https://dav.example.com/dav/";
         src.Sync.BackupPassword = "同步密码";
 
         // ---- 隐私标记必须正确 ----
-        var apiKeys = Core.Sync.ExportImport.FindGroup("apiKeys");
         var syncGroup = Core.Sync.ExportImport.FindGroup("syncSettings");
         var keysGroup = Core.Sync.ExportImport.FindGroup("keys");
-        Check("翻译密钥被标为隐私", apiKeys?.Private == true);
         Check("同步设置被标为隐私", syncGroup?.Private == true);
         Check("按键映射不是隐私", keysGroup?.Private == false);
-        Check("隐私项默认不勾选", apiKeys?.DefaultChecked == false);
+        Check("隐私项默认不勾选", syncGroup?.DefaultChecked == false);
         Check("非隐私项默认勾选", keysGroup?.DefaultChecked == true);
 
         // ---- 只勾"按键映射"：导出内容不得包含任何隐私键 ----
         var (text, count) = Core.Sync.ExportImport.Build(src, new[] { "keys" });
         Check("导出的 JSON 是合法结构", text.Contains("\"kind\": \"clp-config\""));
-        Check("只勾按键映射时不包含翻译密钥", !text.Contains("我的AppId"));
         Check("只勾按键映射时不包含同步密码", !text.Contains("同步密码"));
         Check("只勾按键映射时不包含 WebDAV 地址", !text.Contains("dav.example.com"));
         Check("确实写入了设置项", count > 0, count.ToString());
@@ -1398,14 +1372,12 @@ public static class SelfTest
         int beforeKeys = dst.Keys.Count;
         Core.Sync.ExportImport.Apply(dst, groups, data);
         Check("导入后按键映射被替换", dst.Keys.Count > 0, $"{beforeKeys} -> {dst.Keys.Count}");
-        CheckEqual("导入不碰翻译密钥（没勾）", dst.Translate.AppId, "");
         CheckEqual("导入不碰同步设置（没勾）", dst.Sync.WebDavUrl, "");
 
         // ---- 关键安全属性：文件里塞了隐私键，但没勾对应组，也不能生效 ----
         var evil = """
         {"kind":"clp-config","items":["keys"],
-         "data":{"Keys":[],"Sync":{"WebDavUrl":"https://attacker/dav/","WebDavPass":"x"},
-                 "Translate":{"AppSecret":"stolen"}}}
+         "data":{"Keys":[],"Sync":{"WebDavUrl":"https://attacker/dav/","WebDavPass":"x"}}}
         """;
         var (eg, ed) = Core.Sync.ExportImport.Parse(evil);
         var victim = DefaultSettings.Create();
@@ -1413,7 +1385,7 @@ public static class SelfTest
         Core.Sync.ExportImport.Apply(victim, eg, ed);
         CheckEqual("只勾 keys 时无法改掉 WebDAV 地址（防投毒）",
             victim.Sync.WebDavUrl, "https://my-own/dav/");
-        CheckEqual("只勾 keys 时无法塞入翻译密钥", victim.Translate.AppSecret, "stolen" == victim.Translate.AppSecret ? "stolen" : victim.Translate.AppSecret);
+        CheckEqual("只勾 keys 时无法改掉备份密码", victim.Sync.BackupPassword, "");
 
         /* ---- 加密导出：现在**能**导入了（要给密码），但密码不对必须报密码问题 ----
          *
@@ -1622,7 +1594,7 @@ public static class SelfTest
         remote.Sync.BackupPassword = "别人的备份密码";
         var rl1 = remote.Layers.First(l => l.Id == 1);
         rl1.Keys.Clear();
-        rl1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_q", Action = "translate" });
+        rl1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_q", Action = "copy" });
         rl1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_e", Action = "qbar" });
 
         var (merged, added, replaced) =
@@ -1630,7 +1602,7 @@ public static class SelfTest
         var ml1 = merged.Layers.First(l => l.Id == 1);
         var q = ml1.Keys.FirstOrDefault(k => k.Combo == "caps_q");
 
-        Check("合并后同名组合键被远端覆盖", q?.Action == "translate", q?.Action ?? "缺失");
+        Check("合并后同名组合键被远端覆盖", q?.Action == "copy", q?.Action ?? "缺失");
         Check("合并后远端独有的键被加进来", ml1.Keys.Any(k => k.Combo == "caps_e"));
         Check("合并后本地独有的键仍在", ml1.Keys.Any(k => k.Combo == "caps_w"));
         Check("合并计数：新增 1 项", added == 1, added.ToString());
@@ -3769,7 +3741,10 @@ public static class SelfTest
 
         // 可执行文件名**刻意**保持 KeyboardEnhance.exe：
         // 改了会让已注册的开机自启、快捷方式全部失效。
-        CheckEqual("可执行文件名保持不变", AppInfo.ExeName, "KeyboardEnhance.exe");
+        /* 主程序改名成 .App 了：同目录的 KeyboardEnhance.exe 是启动器
+         * （net48，负责检查 .NET 10 运行时）。两者名字不能混。 */
+        CheckEqual("主程序文件名", AppInfo.ExeName, "KeyboardEnhance.App.exe");
+        CheckEqual("启动器文件名", AppInfo.LauncherName, "KeyboardEnhance.exe");
 
         // 版本号
         var ver = typeof(AppInfo).Assembly.GetName().Version;
@@ -4680,6 +4655,55 @@ public static class SelfTest
         catch (Exception ex)
         {
             Check("底部按钮布局探针没抛异常", false, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// OSD（音量/亮度横条）与「输入文本」方式。
+    ///
+    /// 这两条对应两个真实问题：
+    ///   · 音量能调但不弹系统横条 —— 因为系统横条是 explorer 处理
+    ///     WM_APPCOMMAND 时画的，跟音频 API 无关；
+    ///   · 密码框打不进字 —— Unicode 注入没有扫描码，被安全输入框过滤掉。
+    /// </summary>
+    private static void TestOsdAndTextInput()
+    {
+        // ---------- OSD ----------
+        // APPCOMMAND 编号放在 lParam 的高 16 位，写错位置 shell 就不认
+        CheckEqual("音量+ 的 APPCOMMAND 在 lParam 高 16 位",
+            Core.Windows.ShellOsd.VolumeLParam(true), 0x0A << 16);
+        CheckEqual("音量- 的 APPCOMMAND 在 lParam 高 16 位",
+            Core.Windows.ShellOsd.VolumeLParam(false), 0x09 << 16);
+
+        // 音量"一步"必须是正数，否则 OSD 对齐那套算法会算出 pre == target
+        int step = Core.Windows.VolumeService.StepPercent();
+        Check("系统音量步进是正数", step >= 1, $"step={step}");
+
+        // ---------- 输入文本方式 ----------
+        Check("纯 ASCII 走真实按键", InputSender.LooksLikePlainAscii("Abc123!@#"));
+        Check("带空格也算", InputSender.LooksLikePlainAscii("hello world"));
+        Check("中文不算纯 ASCII", !InputSender.LooksLikePlainAscii("你好"));
+        Check("emoji 不算纯 ASCII", !InputSender.LooksLikePlainAscii("a😀"));
+        Check("换行不算（会被当成回车提交表单）",
+            !InputSender.LooksLikePlainAscii("line1\nline2"));
+        Check("制表符不算", !InputSender.LooksLikePlainAscii("a\tb"));
+        Check("空串不算", !InputSender.LooksLikePlainAscii(""));
+
+        // 设置默认值：老配置里没有这个字段，反序列化后必须是 auto
+        CheckEqual("输入文本方式默认 auto", DefaultSettings.Create().Global.TextInputMode, "auto");
+
+        // 三种方式都不能抛异常（DryRun 下不会真的打字）
+        try
+        {
+            InputSender.Text("abc", InputSender.TextMode.Auto);
+            InputSender.Text("中文", InputSender.TextMode.Auto);
+            InputSender.Text("abc", InputSender.TextMode.Keys);
+            InputSender.Text("abc", InputSender.TextMode.Unicode);
+            Check("三种输入方式都能跑通（干跑）", true);
+        }
+        catch (Exception ex)
+        {
+            Check("三种输入方式都能跑通（干跑）", false, ex.Message);
         }
     }
 

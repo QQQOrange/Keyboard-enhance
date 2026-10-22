@@ -1,4 +1,4 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource Font.Ui}">
@@ -181,6 +181,26 @@
                             <ComboBoxItem Content="切换大小写（默认）" Tag="toggleCapsLock" />
                             <ComboBoxItem Content="发送 Esc" Tag="esc" />
                             <ComboBoxItem Content="什么都不做" Tag="doNothing" />
+                        </ComboBox>
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="输入文本方式" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="「输入文本」怎么把文字打进光标处。密码框打不进去时，改用「真实按键」—— 它带完整扫描码，和手打没区别。"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="TextInputBox" Style="{StaticResource ComboBox.Base}"
+                                  SelectionChanged="OnTextInputModeChanged">
+                            <ComboBoxItem Content="自动（推荐）" Tag="auto" />
+                            <ComboBoxItem Content="真实按键" Tag="keys" />
+                            <ComboBoxItem Content="Unicode 注入" Tag="unicode" />
                         </ComboBox>
                     </Grid>
 

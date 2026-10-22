@@ -251,15 +251,6 @@ public static class RenderTools
         count++;
         math.Close();
 
-        // 翻译窗口
-        var tr = new TranslateWindow(host) { ShowInTaskbar = false, Left = -32000, Top = -32000 };
-        tr.Show();
-        Pump(240);
-        Save(tr, Path.Combine(outDir, "translate.png"));
-        if (DiagnosticsRequested) DumpTextBoxMetrics(tr, Path.Combine(outDir, "metrics-win-translate.txt"), "翻译窗口");
-        count++;
-        tr.Close();
-
         // 剪贴板历史
         var clip = new ClipboardHistoryWindow(host) { ShowInTaskbar = false, Left = -32000, Top = -32000 };
         clip.Show();

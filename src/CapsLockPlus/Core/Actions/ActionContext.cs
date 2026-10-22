@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using CapsLockPlus.Core.Input;
@@ -11,7 +11,7 @@ namespace CapsLockPlus.Core.Actions;
 
 /// <summary>
 /// 动作执行上下文：把“功能”与“界面”解耦。
-/// 需要弹窗的动作（Qbar、计算器、翻译……）只发出请求事件，由界面层接管，
+/// 需要弹窗的动作（Qbar、计算器……）只发出请求事件，由界面层接管，
 /// 这样核心逻辑可以在没有界面的自检里单独跑。
 /// </summary>
 public sealed class ActionContext
@@ -28,7 +28,6 @@ public sealed class ActionContext
     public event Action? SettingsRequested;
     public event Action? HelpRequested;
     public event Action? ClipboardHistoryRequested;
-    public event Action? TranslateRequested;
     public event Action? ReloadRequested;
     public event Action? ToggleEnabledRequested;
     public event Action? ScreenshotRequested;
@@ -46,7 +45,6 @@ public sealed class ActionContext
     public void RequestHelp() => HelpRequested?.Invoke();
     public void RequestOpenMacros() => MacrosRequested?.Invoke();
     public void RequestOpenClipboardHistory() => ClipboardHistoryRequested?.Invoke();
-    public void RequestTranslate() => TranslateRequested?.Invoke();
     public void RequestReload() => ReloadRequested?.Invoke();
     public void RequestToggleEnabled() => ToggleEnabledRequested?.Invoke();
     public void RequestScreenshot() => ScreenshotRequested?.Invoke();
@@ -228,7 +226,21 @@ public sealed class ActionContext
             // 太长会有明显延迟（逐字符发送），限制一下避免误操作
             const int maxLen = 2000;
             string payload = text.Length > maxLen ? text[..maxLen] : text;
-            InputSender.Text(payload);
+
+            /* 输入方式跟着设置走：
+             *   auto（默认）→ 纯 ASCII 用真实按键（密码框认这个），其它 Unicode；
+             *   keys        → 强制真实按键；
+             *   unicode     → 强制 Unicode 注入。
+             * 老配置里没有这个字段，反序列化后是默认值 auto，行为即"修好密码框"。 */
+            string mode = Settings().Global.TextInputMode ?? "auto";
+            var input = mode.ToLowerInvariant() switch
+            {
+                "keys" => InputSender.TextMode.Keys,
+                "unicode" => InputSender.TextMode.Unicode,
+                _ => InputSender.TextMode.Auto,
+            };
+
+            InputSender.Text(payload, input);
         }
         catch (Exception ex)
         {
@@ -581,22 +593,51 @@ public sealed class ActionContext
     /// </summary>
     public bool ChangeVolume(int delta)
     {
-        int? now = VolumeService.Step(delta);
-        if (now == null)
+        int? current = VolumeService.Get();
+        if (current == null)
         {
             Notify("没有找到可用的播放设备，音量调不了");
             return true;
         }
 
-        // 静音时调音量不会有声音，顺手提示一句，免得用户以为又没生效
-        string suffix = VolumeService.GetMute() == true ? "（静音中）" : "";
-        Notify($"音量 {now}%{suffix}");
+        int target = VolumeService.TargetPercent(current.Value, delta);
+
+        /* 优先走"系统 OSD"那条路：把命令发给任务栏，
+         * 由 explorer 自己调音量并画出屏幕中下方那条横条 ——
+         * 效果和直接按键盘音量键完全一样。
+         *
+         * 直接调 Core Audio 是**不会**弹 OSD 的：那条横条是 shell 处理
+         * WM_APPCOMMAND 时画的，跟音频 API 没有关系。这正是
+         * "音量能调、但看不到横条"的原因。
+         *
+         * explorer 不响应时（精简系统 / 第三方外壳）退回静默设置 + 自绘横条。 */
+        bool nativeOsd = ShellOsd.SetVolume(target, delta);
+
+        int? now = VolumeService.Get() ?? target;
+        if (nativeOsd)
+        {
+            // 系统横条已经在屏幕上了，再弹一条自己的提示等于重复打扰
+            CoreLog.Info($"[音量] {now}%（系统 OSD）");
+            return true;
+        }
+
+        /* 任务栏没响应（精简系统 / 第三方外壳）时只发一条文字提示 ——
+         * 不自己画横条：用户要的是系统那条，仿制的反而容易混淆。 */
+        Notify(VolumeService.GetMute() == true ? $"音量 {now}%（静音中）" : $"音量 {now}%");
         return true;
     }
 
     /// <summary>切换系统静音。</summary>
     public bool ToggleMute()
     {
+        // 同样优先交给 shell：这样才有系统的静音 OSD
+        bool? viaShell = ShellOsd.ToggleMute();
+        if (viaShell != null)
+        {
+            Notify(viaShell.Value ? "已静音" : "已取消静音");
+            return true;
+        }
+
         bool? muted = VolumeService.ToggleMute();
         if (muted == null)
         {
@@ -626,6 +667,18 @@ public sealed class ActionContext
             Notify(why);
             return true;
         }
+
+        /* 亮度横条同样是**系统自带**的：shell 的浮层宿主（NativeHWNDHost）
+         * 收到 SHELLHOOK 注册消息就会画出那个太阳图标 + 滑条。
+         * 详见 ShellOsd.ShowBrightnessOsd —— 直接调 WMI/DDC 是不会弹的。 */
+        bool nativeOsd = ShellOsd.ShowBrightnessOsd();
+        if (nativeOsd)
+        {
+            CoreLog.Info($"[亮度] {now}%（系统 OSD）");
+            return true;
+        }
+
+        // 叫不出系统浮层时只发文字提示，不自己画横条
         Notify($"屏幕亮度 {now}%");
         return true;
     }

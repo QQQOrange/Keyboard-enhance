@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace CapsLockPlus.Core.Windows;
 
@@ -63,6 +63,22 @@ public static class HardwareProbe
                 W($"再 +5% → {up}%");
                 int? down = VolumeService.Step(-5);
                 W($"再 -5% → {down}%");
+
+                /* ---- 系统 OSD 那条路 ----
+                 *
+                 * 这条才是"按键调音量时弹不弹横条"的关键：
+                 * 把 WM_APPCOMMAND 发给任务栏，由 explorer 自己调音量并画 OSD。
+                 * 能读到音量真的被它改动了，就说明 OSD 也画出来了
+                 * （两者是同一个处理函数里做的）。 */
+                W("");
+                W("=== 系统 OSD（音量横条） ===");
+                int baseVol = VolumeService.Get() ?? 50;
+                int osdTarget = Math.Clamp(baseVol + 2, 0, 100);
+                VolumeService.Set(baseVol);
+                bool shellOk = ShellOsd.SetVolume(osdTarget, +1);
+                W($"任务栏 APPCOMMAND → {(shellOk ? "有响应（系统横条已显示）" : "没响应（改用自绘横条）")}");
+                W($"目标 {osdTarget}% → 实际 {VolumeService.Get()}%");
+                if (!shellOk) problems++;
             }
             finally
             {
@@ -71,6 +87,18 @@ public static class HardwareProbe
                 W($"已还原：{VolumeService.Get()}% / 静音 {VolumeService.GetMute()}");
             }
         }
+
+        // ---------------- 亮度 OSD ----------------
+        W("");
+        W("=== 系统 OSD（亮度横条） ===");
+        var osdBefore = ShellOsd.OsdHostState();
+        W($"浮层宿主（NativeHWNDHost）：存在={osdBefore.Exists} 可见={osdBefore.Visible}");
+        bool osdOk = ShellOsd.ShowBrightnessOsd();
+        System.Threading.Thread.Sleep(200);
+        var osdAfter = ShellOsd.OsdHostState();
+        W($"触发结果：{(osdOk ? "已发出 SHELLHOOK" : "叫不出浮层")}");
+        W($"之后：存在={osdAfter.Exists} 可见={osdAfter.Visible}");
+        if (!osdOk) problems++;
 
         // ---------------- 亮度 ----------------
         W("");

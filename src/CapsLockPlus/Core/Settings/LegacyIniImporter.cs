@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -70,7 +70,7 @@ public static class LegacyIniImporter
         ["keyfunc_qbar"] = "qbar",
         ["keyfunc_mathboard"] = "mathBoard",
         ["keyfunc_tabscript"] = "tabScript",
-        ["keyfunc_translate"] = "translate",
+        ["keyfunc_translate"] = "doNothing",
         ["keyfunc_opencpasdocs"] = "openDocs",
         ["keyfunc_reload"] = "reload",
         ["keyfunc_winpin"] = "winPin",
@@ -209,12 +209,6 @@ public static class LegacyIniImporter
                 Key = StripComment(kv.Key), Value = kv.Value, Comment = ExtractComment(kv.Key),
             }).ToList();
             hs = settings.HotStrings.Count;
-        }
-
-        if (sections.TryGetValue("TTranslate", out var tt))
-        {
-            if (tt.TryGetValue("appPaidID", out var id) && !id.Contains("xxx")) settings.Translate.AppId = id.Trim();
-            if (tt.TryGetValue("appPaidKey", out var key2) && !key2.Contains("xxx")) settings.Translate.AppSecret = key2.Trim();
         }
 
         if (sections.TryGetValue("QStyle", out var qstyle))

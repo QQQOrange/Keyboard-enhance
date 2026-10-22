@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
@@ -41,6 +41,12 @@ public partial class SettingsView : UserControl
         {
             "esc" => 1,
             "doNothing" => 2,
+            _ => 0,
+        };
+        TextInputBox.SelectedIndex = (g.TextInputMode ?? "auto").ToLowerInvariant() switch
+        {
+            "keys" => 1,
+            "unicode" => 2,
             _ => 0,
         };
         ThemeBox.SelectedIndex = g.Theme switch
@@ -261,6 +267,22 @@ public partial class SettingsView : UserControl
         _host.Context.Mouse.Speed = v;
         MouseSpeedText.Text = $"{v}（Caps+LAlt+滚轮 可快速调整）";
         Save();
+    }
+
+    /// <summary>
+    /// 「输入文本」用哪种方式打字。
+    ///
+    /// 之所以做成设置项而不是每个绑定单独选：<c>typeText</c> 的参数就是文字本身，
+    /// 改成带模式的结构会破坏所有老配置。全局设置既能解决密码框，也不动存量数据。
+    /// </summary>
+    private void OnTextInputModeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        if (TextInputBox.SelectedItem is ComboBoxItem { Tag: string tag })
+        {
+            _host.Settings.Global.TextInputMode = tag;
+            Save();
+        }
     }
 
     private void OnTapCapsChanged(object sender, SelectionChangedEventArgs e)

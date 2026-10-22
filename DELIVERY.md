@@ -1,4 +1,4 @@
-# 交付说明 · CapsLock+ 图形版 v1.1.0
+﻿# 交付说明 · CapsLock+ 图形版 v1.1.0
 
 > 把上游 AutoHotkey 脚本重写成原生 Windows 11 桌面程序：功能对齐、全部可视化配置、性能可量化。
 > v1.1 新增：Qbar 关键字标签化（带图标）、条目自定义图标。
@@ -85,7 +85,6 @@ CapsLockPlus.exe --selftest    → exit 0
 | **`qbar-chip-run.png`** | **程序标签（无 exe 图标时用首字兜底）** |
 | `bindings.png` | 窗口绑定槽位 |
 | `clipboard.png` | 双独立剪贴板 + 历史 |
-| `translate.png` | 翻译设置 |
 | `settings.png` | 全局设置 |
 | `help.png` | 快捷键速查（按分类 + 键盘顺序） |
 | `mathboard.png` | 计算器（带历史） |
@@ -163,4 +162,3 @@ dist\CapsLockPlus.exe            # 正常启动（会请求管理员权限）
 2. 提权窗口需要本程序也提权（启动时同意 UAC 即可）
 3. 少数全屏独占游戏、自绘界面无法拦截按键
 4. Win11 的 Snap Layouts 面板不会弹出（内置了等价的贴边动作）
-5. 翻译的免密钥引擎依赖 Google 接口，网络受限时会失败（可改填有道 key）

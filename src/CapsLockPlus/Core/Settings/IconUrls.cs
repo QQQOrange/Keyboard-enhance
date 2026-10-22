@@ -1,4 +1,4 @@
-namespace CapsLockPlus.Core.Settings;
+﻿namespace CapsLockPlus.Core.Settings;
 
 /// <summary>
 /// 内置图标库：常用的搜索/网站图标以 SVG 形式随程序分发（体积只有几百字节），
@@ -96,15 +96,6 @@ public static class IconUrls
           <circle cx="24" cy="24" r="24" fill="#0084FF"/>
           <text x="24" y="30" font-family="Segoe UI, Arial" font-size="15" font-weight="700"
                 fill="#fff" text-anchor="middle">知</text>
-        </svg>
-        """);
-
-    public static readonly string Translate = Materialize("translate", """
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-          <circle cx="24" cy="24" r="24" fill="#0F9D58"/>
-          <path d="M12 16h11v2.4h-4.2c.4 2.6 1.5 5 3.2 7-1.2 1-2.6 1.8-4.1 2.4l-1-1.9c1.2-.5 2.3-1.2 3.2-2-1.3-1.6-2.2-3.5-2.6-5.5H12V16z" fill="#fff"/>
-          <path d="M22 32h2.4l1-2.6h5.2l1 2.6H34l-5-13h-2l-5 13zm4.1-4.6l1.8-4.8 1.8 4.8h-3.6z" fill="#fff"/>
-          <path d="M26 16h10v2h-10z" fill="#fff" opacity=".9"/>
         </svg>
         """);
 

@@ -1,4 +1,4 @@
-using CapsLockPlus.Core.Input;
+﻿using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Text;
 using CapsLockPlus.Core.Windows;
 
@@ -191,7 +191,6 @@ public sealed class ActionCatalog
         }
         c.Add("mathBoard", "面板", "计算器", "打开带历史记录的计算器", _ => { ctx.RequestMathBoard(); return true; });
         c.Add("tabScript", "面板", "Tab 计算 / 热字串", "把光标前的算式直接算出结果，或展开热字串", _ => ctx.RunTabScript(), shortTitle: "计算板");
-        c.Add("translate", "面板", "翻译选中文本", "调用翻译服务并显示结果", _ => { ctx.RequestTranslate(); return true; }, shortTitle: "翻译");
         c.Add("openDocs", "面板", "使用帮助", "打开内置帮助", _ => { ctx.RequestHelp(); return true; });
         c.Add("reload", "面板", "重新加载配置", "重新读取设置并重装钩子", _ => { ctx.RequestReload(); return true; }, shortTitle: "重载");
 

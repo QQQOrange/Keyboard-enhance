@@ -149,6 +149,14 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr SetFocus(IntPtr hWnd);
 
+    /* 「输入文本」用真实按键敲字时，必须按**前台窗口所在线程的键盘布局**
+     * 把字符映射成虚拟键 —— 否则德语键盘上打 @ 会变成别的字符。 */
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetKeyboardLayout(uint idThread);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern short VkKeyScanEx(char ch, IntPtr dwhkl);
+
     /* 前台锁定超时：Windows 默认 2000ms 内不允许非前台进程抢焦点，
      * 这正是"面板弹出来了但打字进不去"的根因。
      *

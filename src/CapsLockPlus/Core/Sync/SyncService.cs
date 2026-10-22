@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapsLockPlus.Core.Settings;
@@ -37,7 +37,7 @@ public sealed record LocalBackup(string Path, string Name, DateTime Time, long S
 /// 备份与 WebDAV 同步服务。
 ///
 /// 备份的几条硬规矩：
-///   * **一律加密**：备份里装着翻译密钥、网盘密码、宏、搜索记录，
+///   * **一律加密**：备份里装着网盘密码、宏、搜索记录，
 ///     没有"先明文传上去以后再说"这种选项。没设备份密码就拒绝备份；
 ///   * **落盘位置跟着软件走**：exe 同级新建 `KeyboardEnhance 备份/`，
 ///     装到 Program Files 这类只读目录时自动回落到数据目录；
