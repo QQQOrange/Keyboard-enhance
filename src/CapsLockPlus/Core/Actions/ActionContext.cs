@@ -591,60 +591,149 @@ public sealed class ActionContext
     /// 或前台程序抢走媒体键的机器上会静默失效（用户看到的就是"按了没反应"）。
     /// 直接调音频引擎既能保证生效，也能拿到真实值显示百分比。
     /// </summary>
+    /* ---- 连发细调 ----
+     *
+     * 短按一下按绑定里的步进走（默认 2%），按住连发时每步只走 1%。
+     *
+     * 为什么要分开：用户要的是"按住就一条线地涨"，如果每 45ms 走 2%，
+     * 一秒就是 44%，屏幕上的横条是一跳一跳的；改成 1% 才是平滑滑动。
+     * 反过来短按也只走 1% 又太肉 —— 按十次才涨 10%。
+     * 用"距上次调用的间隔"判断是连发还是单次，不需要额外参数。 */
+    private DateTime _lastVolumeAt = DateTime.MinValue;
+    private DateTime _lastBrightnessAt = DateTime.MinValue;
+
+    /// <summary>两次调用间隔小于这个值就当成"按住连发"（毫秒）。</summary>
+    private const int BurstWindowMs = 120;
+
+    /// <summary>
+    /// 按设定幅度算出这次要发几次系统音量键。
+    ///
+    /// 系统步进是固定的（通常 2%），设定值往往不是它的整数倍：
+    /// 设 5% 就"这次 2 次（4%）、下次 3 次（6%）"，把差的那 1% 记下来下次补。
+    /// 十次下来正好 50%，不会出现"设 5 实际调了 40"的漂移。
+    /// </summary>
+    internal static (int Taps, double Remainder) PlanVolumeTaps(
+        double want, int sysStep, double remainder)
+    {
+        sysStep = Math.Max(1, sysStep);
+        double total = Math.Max(0, want) + remainder;
+        int taps = Math.Max(1, (int)Math.Round(total / sysStep));
+        // 误差只留在一个步进之内，避免长期累积成整数倍
+        double next = Math.Clamp(total - taps * sysStep, -(sysStep - 1), sysStep - 1);
+        return (taps, next);
+    }
+
+    /// <summary>音量一次调多少（百分比，设置里可改）。</summary>
+    public int VolumeStep => Math.Clamp(Settings().Global.VolumeStep, 1, 50);
+
+    /// <summary>亮度一次调多少（百分比，设置里可改）。</summary>
+    public int BrightnessStep => Math.Clamp(Settings().Global.BrightnessStep, 1, 50);
+
+    /// <summary>
+    /// 音量步进的累计误差（百分比）。
+    ///
+    /// 系统步进是固定的（通常 2%），用户设 5% 没法一步到位 ——
+    /// 那就这一次发 2 次键（4%）、下一次发 3 次（6%），
+    /// 把差的那 1% 记下来下次补上。长期平均正好等于用户设的值，
+    /// 不会出现"调十次差了 10%"。
+    /// </summary>
+    private double _volumeRemainder;
+
     public bool ChangeVolume(int delta)
     {
-        int? current = VolumeService.Get();
-        if (current == null)
+        bool burst = (DateTime.Now - _lastVolumeAt).TotalMilliseconds < BurstWindowMs;
+        _lastVolumeAt = DateTime.Now;
+
+        /* 音量走**系统音量键**（VK_VOLUME_UP / DOWN）。
+         *
+         * 这是唯一能同时做到两件事的路：
+         *   · 音量真的变了 —— 由 shell 自己调，不是我们猜；
+         *   · Windows 弹出它自己的横条 —— 那条横条就是 shell 处理这个键时画的，
+         *     自绘永远做不出"系统那个"。
+         *
+         * 早先试过把 WM_APPCOMMAND 直接发给任务栏，那条路 explorer 有时不接
+         * （Win11 任务栏重写过），表现是"按了音量完全不动"，比没有横条更糟。
+         * 发真实按键没有这个问题：它和手按键盘走的是同一条全局热键。
+         *
+         * 兜底：极少数机器上媒体键会被键盘过滤驱动 / 远程会话 / 抢媒体键的
+         * 前台程序吞掉。单次调节时回读一次音量，没变就改用音频引擎直接调
+         * （此时没有系统横条，退回自绘一条，保证用户看得到反馈）。 */
+        /* 一次调多少：单次按用户设的幅度，按住连发时按系统步进细调。
+         *
+         * 连发不能按用户幅度：设 10% 时按住就是 10% × 14 次/秒 = 140%/秒，
+         * 一眨眼就到底，完全没有"线性"的手感。 */
+        int sysStep = Math.Max(1, VolumeService.StepPercent());
+        int taps;
+        if (burst)
         {
-            Notify("没有找到可用的播放设备，音量调不了");
+            taps = 1;
+        }
+        else
+        {
+            (taps, _volumeRemainder) = PlanVolumeTaps(Math.Abs(delta), sysStep, _volumeRemainder);
+        }
+
+        int? before = VolumeService.Get();
+        InputSender.Tap(delta > 0 ? VK.VolumeUp : VK.VolumeDown, taps);
+
+        if (burst) return true;      // 连发时不校验：每次等 40ms 会把节奏拖垮
+
+        int? after = before;
+        for (int i = 0; i < 4 && before is int b0; i++)
+        {
+            System.Threading.Thread.Sleep(18);
+            after = VolumeService.Get();
+            if (after != null && after != b0) break;
+        }
+
+        if (before is int start && (after == null || after == start))
+        {
+            CoreLog.Warn("[音量] 系统媒体键没生效，改为直接调音频引擎");
+            int? now = VolumeService.Step(delta);
+            if (now == null)
+            {
+                Notify("没有找到可用的播放设备，音量调不了");
+                return true;
+            }
+            UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Volume, now.Value);
             return true;
         }
 
-        int target = VolumeService.TargetPercent(current.Value, delta);
-
-        /* 优先走"系统 OSD"那条路：把命令发给任务栏，
-         * 由 explorer 自己调音量并画出屏幕中下方那条横条 ——
-         * 效果和直接按键盘音量键完全一样。
-         *
-         * 直接调 Core Audio 是**不会**弹 OSD 的：那条横条是 shell 处理
-         * WM_APPCOMMAND 时画的，跟音频 API 没有关系。这正是
-         * "音量能调、但看不到横条"的原因。
-         *
-         * explorer 不响应时（精简系统 / 第三方外壳）退回静默设置 + 自绘横条。 */
-        bool nativeOsd = ShellOsd.SetVolume(target, delta);
-
-        int? now = VolumeService.Get() ?? target;
-        if (nativeOsd)
-        {
-            // 系统横条已经在屏幕上了，再弹一条自己的提示等于重复打扰
-            CoreLog.Info($"[音量] {now}%（系统 OSD）");
-            return true;
-        }
-
-        /* 任务栏没响应（精简系统 / 第三方外壳）时只发一条文字提示 ——
-         * 不自己画横条：用户要的是系统那条，仿制的反而容易混淆。 */
-        Notify(VolumeService.GetMute() == true ? $"音量 {now}%（静音中）" : $"音量 {now}%");
+        CoreLog.Info($"[音量] {after}%（系统横条）");
         return true;
     }
 
     /// <summary>切换系统静音。</summary>
     public bool ToggleMute()
     {
-        // 同样优先交给 shell：这样才有系统的静音 OSD
-        bool? viaShell = ShellOsd.ToggleMute();
-        if (viaShell != null)
+        // 同样发系统静音键：这样才有系统自己的静音横条
+        bool? before = VolumeService.GetMute();
+        InputSender.Tap(VK.VolumeMute);
+
+        bool? after = before;
+        for (int i = 0; i < 4 && before != null; i++)
         {
-            Notify(viaShell.Value ? "已静音" : "已取消静音");
+            System.Threading.Thread.Sleep(18);
+            after = VolumeService.GetMute();
+            if (after != before) break;
+        }
+
+        if (before == null || after == before)
+        {
+            // 媒体键被吞了：直接切，并自绘一条提示
+            bool? muted = VolumeService.ToggleMute();
+            if (muted == null)
+            {
+                Notify("没有找到可用的播放设备，静音切不了");
+                return true;
+            }
+            int level = VolumeService.Get() ?? 0;
+            UI.Windows.OsdWindow.Show(
+                muted.Value ? UI.Windows.OsdKind.Mute : UI.Windows.OsdKind.Volume, level);
             return true;
         }
 
-        bool? muted = VolumeService.ToggleMute();
-        if (muted == null)
-        {
-            Notify("没有找到可用的播放设备，静音切不了");
-            return true;
-        }
-        Notify(muted.Value ? "已静音" : "已取消静音");
+        CoreLog.Info(after == true ? "[静音] 已静音（系统横条）" : "[静音] 已取消（系统横条）");
         return true;
     }
 
@@ -658,7 +747,12 @@ public sealed class ActionContext
     /// </summary>
     public bool ChangeBrightness(int delta)
     {
-        int? now = BrightnessService.Step(delta);
+        int step = delta;
+        if ((DateTime.Now - _lastBrightnessAt).TotalMilliseconds < BurstWindowMs)
+            step = Math.Sign(delta);
+        _lastBrightnessAt = DateTime.Now;
+
+        int? now = BrightnessService.Step(step);
         if (now == null)
         {
             // 说清"为什么没动"，比一句"不支持"有用得多
@@ -668,18 +762,11 @@ public sealed class ActionContext
             return true;
         }
 
-        /* 亮度横条同样是**系统自带**的：shell 的浮层宿主（NativeHWNDHost）
-         * 收到 SHELLHOOK 注册消息就会画出那个太阳图标 + 滑条。
-         * 详见 ShellOsd.ShowBrightnessOsd —— 直接调 WMI/DDC 是不会弹的。 */
-        bool nativeOsd = ShellOsd.ShowBrightnessOsd();
-        if (nativeOsd)
-        {
-            CoreLog.Info($"[亮度] {now}%（系统 OSD）");
-            return true;
-        }
-
-        // 叫不出系统浮层时只发文字提示，不自己画横条
-        Notify($"屏幕亮度 {now}%");
+        /* 亮度横条只能自己画：Windows 的亮度 OSD 只对内置屏存在
+         * （那条是 OEM 驱动画的），外接屏走 DDC/CI 时系统根本不知道值变了。
+         * 横条样式与音量那条一致，位置也一样。 */
+        UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Brightness, now.Value);
+        CoreLog.Info($"[亮度] {now}%");
         return true;
     }
 

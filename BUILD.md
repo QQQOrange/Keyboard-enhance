@@ -1,26 +1,31 @@
 ﻿# 构建与运行（Windows 11 x64 / .NET 10）
 
-需要 **.NET 10 SDK**（构建）与 **.NET 10 桌面运行时**（运行）。
+构建需要 **.NET 10 SDK**；**运行不需要任何运行时** —— 发布产物自带。
 
 ```powershell
 # 还原 & 构建
 dotnet build src\CapsLockPlus\CapsLockPlus.csproj
 
-# 单文件发布（框架依赖，约 1.2 MB）
-dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self-contained false -o dist
+# 单文件发布（自带运行时 + 压缩，约 70 MB）
+dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:EnableCompressionInSingleFile=true -o dist
 ```
+
+> **只有一个 exe**。曾经拆成"启动器 + 主程序"两个文件来解决
+> "没装 .NET 点了没反应"，但那让用户不知道该双击哪个 ——
+> 现在直接把运行时打进程序里，代价是体积变大。
 
 ## 自检
 
-程序内置 109 项自检，覆盖按键模型、表达式求值、Qbar 检索与标签、
-设置读写、旧版 ini 迁移、窗口与进程、输入注入、键盘钩子、组合键状态机。
+程序内置 1600+ 项自检，覆盖按键模型、表达式求值、Qbar 检索与标签、
+设置读写、旧版 ini 迁移、窗口与进程、输入注入、键盘钩子、组合键状态机、
+加密与备份、横条与连续调节。
 
 ```powershell
-dist\CapsLockPlus.exe --selftest
-type %LocalAppData%\CapsLockPlus\selftest.log
+dist\KeyboardEnhance.exe --selftest
 ```
 
-退出码 0 表示全部通过。默认数据目录为 `%LocalAppData%\CapsLockPlus`，
+退出码 0 表示全部通过。自检日志写在数据目录（默认在 exe 同级的
+`KeyboardEnhance Data`，不可写时回落 `%LocalAppData%\KeyboardEnhance`），
 可用环境变量 `CAPSLOCKPLUS_DATA` 覆盖（便于测试与截图，互不干扰）。
 
 ## 界面截图 / 回归

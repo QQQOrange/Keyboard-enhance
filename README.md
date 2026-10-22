@@ -4,7 +4,7 @@
 > 重写成**原生 Windows 11 桌面程序**：功能一个不少，但所有设置都能在图形界面里点点点完成，
 > 再也不用去手改 `CapsLock+settings.ini`。
 
-**版本 v4.1.0** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **解压即用（启动器 + 主程序）**
+**版本 v4.2.0** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件，免安装任何运行时**
 
 ![快速上手](docs/screenshots/guide.png)
 
@@ -12,43 +12,29 @@
 
 ## 一、下载与安装
 
-### 1. 装运行时（只需一次）
+### 1. 下载
 
-程序依赖 **.NET 10 桌面运行时**，它**不在本仓库里**，请到微软官网下载安装
-（不装也能双击，启动器会弹中文提示并帮你打开下载页）：
+到 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases) 页面下载
+**`KeyboardEnhance.exe`**（约 70MB）。
 
-> **下载页面**：<https://dotnet.microsoft.com/download/dotnet/10.0>
->
-> 在页面里找到 **.NET 10.0 → Desktop Runtime**，选择 **Windows x64**，
-> 也就是列表中的这一项：
->
-> `Desktop Runtime 10.0.x — Windows — x64`
->
-> 下载后双击安装，一路“下一步”即可。
+### 2. 放到任意目录，双击运行
 
-### 2. 解压运行
+**只有一个文件**，不需要安装、不需要预先装 .NET、不需要解压配套文件。
+运行时会自动在它旁边建两个文件夹：
 
-发布包 `KeyboardEnhance.zip` 里有两个文件，**必须放在同一个文件夹**：
+```
+KeyboardEnhance.exe
+KeyboardEnhance Data\     用户数据（加密）
+KeyboardEnhance Back\     本地备份
+```
 
-| 文件 | 作用 |
-| --- | --- |
-| `KeyboardEnhance.exe` | 启动器 —— 双击它。先检查 .NET 运行时，缺了就提示并打开下载页 |
-| `KeyboardEnhance.App.exe` | 主程序，由启动器拉起（不要直接双击它） |
+拷走整个文件夹就带走了软件和全部数据。
 
-解压到任意目录即可（例如 `D:\software\myself`）。用户数据与备份会自动放在
-同目录的 `KeyboardEnhance Data` / `KeyboardEnhance Back` 里。
+> 为什么这么大：**.NET 运行时已经打包进 exe 里**。
+> 以前的做法是"要求用户先装运行时"，没装的人双击就没反应；
+> 现在宁可文件大一点，也不要让任何人卡在第一步。
 
-如果你不确定该装哪个：**Windows → x64 → Desktop Runtime**，这三个词对上就没错。
-
-### 3. 拿到程序
-
-两种方式任选：
-
-- **直接下载**：到本仓库的 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases)
-  页面，下载最新版本的 `KeyboardEnhance.zip`，解压后双击里面的 `KeyboardEnhance.exe`。
-- **自己编译**：见文末「开发与构建」。
-
-### 4. 运行
+### 3. 运行
 
 双击 `KeyboardEnhance.exe`：
 
@@ -147,8 +133,8 @@
 | 功能 | 说明 |
 | --- | --- |
 | 播放 / 暂停、上一曲、下一曲、停止 | 媒体键，控制当前播放器 |
-| 音量 + / 音量 − / 静音 | 直接调 Core Audio，按 5% 一步，提示「音量 65%」 |
-| 亮度 + / 亮度 − | 内置屏走 WMI、外接屏走 DDC/CI（需在显示器菜单开启）；写完回读确认，被显示器丢弃会自动重写，调不动时提示具体原因 |
+| 音量 + / 音量 − / 静音 | 发**系统音量键**：Windows 自己调音量并弹出它自己的横条；幅度可在设置里改（默认 5%），按住连续调节 |
+| 亮度 + / 亮度 − | 内置屏走 WMI、外接屏走 DDC/CI（需在显示器菜单开启）；屏幕上显示自绘横条（系统没有亮度横条）；幅度可在设置里改（默认 10%），按住连续调节 |
 | 打开计算器 / 文件资源管理器 / 任务管理器 | 常用系统工具 |
 | 锁定屏幕 / 截图 | Win+L / 系统截图工具 |
 

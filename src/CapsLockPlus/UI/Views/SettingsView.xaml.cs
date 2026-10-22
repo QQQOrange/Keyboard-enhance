@@ -37,6 +37,14 @@ public partial class SettingsView : UserControl
         RepeatBox.IsChecked = g.RepeatWhenHeld;
         MouseSpeedSlider.Value = g.MouseSpeed;
         MouseSpeedText.Text = $"{g.MouseSpeed}（Caps+LAlt+滚轮 可快速调整）";
+        /* 音量下限跟系统步进走：系统一步就是 2%，设 1% 也只能走 2%，
+         * 与其让用户设一个"永远达不到"的值，不如把下限抬到 2%。 */
+        int sysStep = Math.Max(1, Core.Windows.VolumeService.StepPercent());
+        VolumeStepSlider.Minimum = sysStep;
+        VolumeStepSlider.Value = Math.Max(g.VolumeStep, sysStep);
+        BrightnessStepSlider.Value = g.BrightnessStep;
+        UpdateVolumeStepText(g.VolumeStep);
+        UpdateBrightnessStepText(g.BrightnessStep);
         TapCapsBox.SelectedIndex = g.TapCapsAction switch
         {
             "esc" => 1,
@@ -257,6 +265,46 @@ public partial class SettingsView : UserControl
         if (_host == null || _suppress) return;
         _host.Settings.Global.RepeatWhenHeld = RepeatBox.IsChecked == true;
         Save();
+    }
+
+    /// <summary>
+    /// 音量一次调多少。
+    ///
+    /// 音量走系统音量键，而系统步进是固定的（通常 2%），所以设 5% 时
+    /// 实际是"这次 4%、下次 6%"交替 —— 长期平均正好 5%。
+    /// 这一点必须在界面上说清楚，否则用户会觉得"设了 5 却总是差 1"。
+    /// </summary>
+    private void OnVolumeStepChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_host == null || _suppress) return;
+        int v = (int)Math.Round(VolumeStepSlider.Value);
+        _host.Settings.Global.VolumeStep = v;
+        UpdateVolumeStepText(v);
+        Save();
+    }
+
+    private void OnBrightnessStepChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_host == null || _suppress) return;
+        int v = (int)Math.Round(BrightnessStepSlider.Value);
+        _host.Settings.Global.BrightnessStep = v;
+        UpdateBrightnessStepText(v);
+        Save();
+    }
+
+    private void UpdateVolumeStepText(int v)
+    {
+        if (VolumeStepText == null) return;
+        int sys = Core.Windows.VolumeService.StepPercent();
+        VolumeStepText.Text = v % sys == 0
+            ? $"{v}%（按住时按系统 {sys}% 细调）"
+            : $"{v}%（系统步进 {sys}%，按整数倍补偿，长期平均正好 {v}%）";
+    }
+
+    private void UpdateBrightnessStepText(int v)
+    {
+        if (BrightnessStepText == null) return;
+        BrightnessStepText.Text = $"{v}%（按住时按 1% 细调）";
     }
 
     private void OnMouseSpeedChanged(object sender, RoutedEventArgs e)

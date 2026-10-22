@@ -64,21 +64,36 @@ public static class HardwareProbe
                 int? down = VolumeService.Step(-5);
                 W($"再 -5% → {down}%");
 
-                /* ---- 系统 OSD 那条路 ----
+                /* ---- 系统音量键 ----
                  *
-                 * 这条才是"按键调音量时弹不弹横条"的关键：
-                 * 把 WM_APPCOMMAND 发给任务栏，由 explorer 自己调音量并画 OSD。
-                 * 能读到音量真的被它改动了，就说明 OSD 也画出来了
-                 * （两者是同一个处理函数里做的）。 */
+                 * 按键映射的音量动作就是发这个键：由 shell 自己调音量、
+                 * 自己弹 Windows 那条横条。这里确认"发出去之后音量真的变了"，
+                 * 变了就说明横条也弹出来了（同一个处理函数里画的）。 */
                 W("");
-                W("=== 系统 OSD（音量横条） ===");
-                int baseVol = VolumeService.Get() ?? 50;
-                int osdTarget = Math.Clamp(baseVol + 2, 0, 100);
-                VolumeService.Set(baseVol);
-                bool shellOk = ShellOsd.SetVolume(osdTarget, +1);
-                W($"任务栏 APPCOMMAND → {(shellOk ? "有响应（系统横条已显示）" : "没响应（改用自绘横条）")}");
-                W($"目标 {osdTarget}% → 实际 {VolumeService.Get()}%");
-                if (!shellOk) problems++;
+                W("=== 系统音量键（按键映射用的就是它） ===");
+                int keyBefore = VolumeService.Get() ?? -1;
+                Core.Input.InputSender.Tap(Core.Input.VK.VolumeUp);
+                System.Threading.Thread.Sleep(240);
+                int keyAfter = VolumeService.Get() ?? -1;
+                W($"{keyBefore}% → {keyAfter}%  "
+                  + (keyAfter != keyBefore ? "有响应（系统横条已弹出）" : "没响应（会走兜底）"));
+                if (keyAfter == keyBefore) problems++;
+
+                // 自绘横条（亮度用）：确认能叫起来而不抛异常
+                W("");
+                W("=== 自绘横条（亮度用） ===");
+                try
+                {
+                    UI.Windows.OsdWindow.Show(UI.Windows.OsdKind.Brightness,
+                        BrightnessService.Get() ?? 50);
+                    System.Threading.Thread.Sleep(240);
+                    W("已显示");
+                }
+                catch (Exception ex)
+                {
+                    W($"显示失败：{ex.Message}");
+                    problems++;
+                }
             }
             finally
             {
@@ -87,18 +102,6 @@ public static class HardwareProbe
                 W($"已还原：{VolumeService.Get()}% / 静音 {VolumeService.GetMute()}");
             }
         }
-
-        // ---------------- 亮度 OSD ----------------
-        W("");
-        W("=== 系统 OSD（亮度横条） ===");
-        var osdBefore = ShellOsd.OsdHostState();
-        W($"浮层宿主（NativeHWNDHost）：存在={osdBefore.Exists} 可见={osdBefore.Visible}");
-        bool osdOk = ShellOsd.ShowBrightnessOsd();
-        System.Threading.Thread.Sleep(200);
-        var osdAfter = ShellOsd.OsdHostState();
-        W($"触发结果：{(osdOk ? "已发出 SHELLHOOK" : "叫不出浮层")}");
-        W($"之后：存在={osdAfter.Exists} 可见={osdAfter.Visible}");
-        if (!osdOk) problems++;
 
         // ---------------- 亮度 ----------------
         W("");

@@ -1,0 +1,61 @@
+﻿<Window x:Class="CapsLockPlus.UI.Windows.OsdWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="368" Height="98"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
+        Topmost="True" Focusable="False" IsHitTestVisible="False"
+        SnapsToDevicePixels="True" UseLayoutRounding="True"
+        Title="按键增强 OSD">
+
+    <!-- 深色圆角卡片：和 Windows 自己的音量横条一个路数。
+         这里刻意不跟随应用主题 —— 系统 OSD 本来就是深色的，
+         做成浅色反而不像"系统提示"。 -->
+    <Border x:Name="Card" CornerRadius="16" Background="#F01C1C1F"
+            BorderBrush="#38FFFFFF" BorderThickness="1" Padding="20,16">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 图标：音量 / 静音 / 亮度 -->
+            <TextBlock x:Name="IconText" Grid.Column="0"
+                       Text="&#xE767;"
+                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                       FontSize="26" Foreground="#F4F6FA"
+                       VerticalAlignment="Center" Margin="0,0,18,0" />
+
+            <Grid Grid.Column="1" VerticalAlignment="Center">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="TitleText" Grid.Row="0" Text="音量"
+                           FontSize="12.5" Foreground="#B9C3D2" Margin="0,0,0,9" />
+
+                <!-- 进度条：底槽 + 填充。
+                     填充用**星号比例列**而不是固定宽度：固定宽度要靠
+                     Track.ActualWidth 来算，而窗口刚显示时布局还没完成，
+                     算出来是 0，进度条就永远是空的（踩过）。 -->
+                <Grid x:Name="Track" Grid.Row="1" Height="6">
+                    <Border CornerRadius="3" Background="#3DFFFFFF" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="FillColumn" />
+                            <ColumnDefinition x:Name="RestColumn" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" CornerRadius="3" Background="#F4F6FA" />
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <TextBlock x:Name="ValueText" Grid.Column="2" Text="0"
+                       FontSize="21" FontWeight="SemiBold" Foreground="#F4F6FA"
+                       VerticalAlignment="Center" Margin="18,0,0,0"
+                       MinWidth="42" TextAlignment="Right" />
+        </Grid>
+    </Border>
+</Window>

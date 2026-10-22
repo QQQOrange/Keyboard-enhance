@@ -25,7 +25,7 @@ public static class RenderTools
     {
         // 「bindings」页已移除：窗口绑定并入按键映射，作为动作处理
         "guide", "keys", "layers", "macros", "qbar",
-        "clipboard", "translate", "backup", "settings", "test", "help", "about",
+        "clipboard", "backup", "settings", "test", "help", "about",
     };
 
     public static int Run(AppHost host, string outDir)
@@ -193,6 +193,30 @@ public static class RenderTools
         }
 
         main.Close();
+
+        /* 音量 / 亮度横条。
+         *
+         * 它是自绘的浮层，用户最关心的就是"长什么样、出现在哪"，
+         * 所以单独出一张图，别让文档里只有文字描述。 */
+        foreach (var (kind, file, pct) in new[]
+                 {
+                     (OsdKind.Volume, "osd-volume.png", 65),
+                     (OsdKind.Brightness, "osd-brightness.png", 40),
+                 })
+        {
+            var osd = OsdWindow.CreateDetached();
+            osd.ShowInTaskbar = false;
+            osd.WindowStartupLocation = WindowStartupLocation.Manual;
+            osd.Left = -32000;
+            osd.Top = -32000;
+            osd.Show();
+            osd.PrepareForRender(kind, pct);
+            Pump(160);
+            osd.UpdateLayout();
+            Save(osd, Path.Combine(outDir, file));
+            osd.Close();
+            count++;
+        }
 
         // Qbar 面板（深色浮层，单独渲染）
         var qbar = new QbarWindow(host) { ShowInTaskbar = false, Left = -32000, Top = -32000 };

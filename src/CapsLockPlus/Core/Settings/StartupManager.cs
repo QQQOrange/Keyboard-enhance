@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 
 namespace CapsLockPlus.Core.Settings;
 
@@ -88,12 +88,8 @@ public static class StartupManager
     {
         try
         {
-            string? dir = Path.GetDirectoryName(Environment.ProcessPath);
-            if (!string.IsNullOrEmpty(dir))
-            {
-                string launcher = Path.Combine(dir, AppInfo.LauncherName);
-                if (File.Exists(launcher)) return launcher;
-            }
+            // 只有一个 exe，自启就写它自己。
+            // 早期版本这里会去找"启动器"，现在没有那东西了。
         }
         catch { }
 

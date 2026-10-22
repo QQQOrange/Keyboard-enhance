@@ -399,6 +399,9 @@ public static class SettingsStore
         s.Layers ??= new List<LayerOptions>();
         s.Macros ??= new List<Macro>();
         s.Global.MouseSpeed = Math.Clamp(s.Global.MouseSpeed, 1, 20);
+        // 步进允许 1~50：太小没感觉，太大一下到底
+        s.Global.VolumeStep = Math.Clamp(s.Global.VolumeStep, 1, 50);
+        s.Global.BrightnessStep = Math.Clamp(s.Global.BrightnessStep, 1, 50);
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
 
         /* 已删除的动作：老配置里可能还绑着，统一改成"什么都不做"。

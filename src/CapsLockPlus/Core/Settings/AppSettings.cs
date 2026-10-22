@@ -144,6 +144,18 @@ public sealed class GlobalOptions
     public string TextInputMode { get; set; } = "auto";
 
     /// <summary>
+    /// 音量键一次调多少（百分比）。
+    ///
+    /// 音量本身走系统音量键（这样才有系统横条），而系统步进是固定的
+    /// （通常 2%），所以这里按"发几次键"来凑：设 5% 就按系统步进发 2~3 次，
+    /// 并用累计误差补偿，长期平均正好等于设定值。
+    /// </summary>
+    public int VolumeStep { get; set; } = 5;
+
+    /// <summary>亮度键一次调多少（百分比）。亮度是我们自己调的，可以精确到 1%。</summary>
+    public int BrightnessStep { get; set; } = 10;
+
+    /// <summary>
     /// 是否以管理员身份启动。
     ///
     /// **默认 false**，这是刻意的。

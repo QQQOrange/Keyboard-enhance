@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text;
 
 namespace CapsLockPlus.Core.Interop;
@@ -247,6 +247,13 @@ public static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    /* 窗口所在显示器的 DPI（Win10 1607+）。
+     * 定位窗口必须用它，不能用 SystemParameters.WorkArea —— 后者是
+     * "系统 DPI 下的 DIP"，而 Left/Top 是"窗口所在显示器 DPI 下的 DIP"，
+     * 200% 缩放时两者差一倍，窗口会直接落到屏幕外。 */
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);

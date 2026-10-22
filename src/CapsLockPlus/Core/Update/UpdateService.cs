@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -283,19 +283,9 @@ public sealed class UpdateService
             // 2) 新文件就位
             File.Copy(downloadedPath, current, true);
 
-            /* 3) 启动新版本。
-             *
-             * 优先启动**启动器**（同目录的 KeyboardEnhance.exe）：
-             * 主程序叫 KeyboardEnhance.App.exe，启动器才是用户双击的那个，
-             * 它负责检查 .NET 运行时。直接重启主程序的话，
-             * 万一运行时刚好被卸载，用户又会回到"点了没反应"。 */
-            string launcher = System.IO.Path.Combine(dir, AppInfo.LauncherName);
-            bool hasLauncher = File.Exists(launcher)
-                               && !launcher.Equals(current, StringComparison.OrdinalIgnoreCase);
-            string start = hasLauncher ? launcher : current;
-
-            // 带 --elevated，避免再次弹 UAC
-            var psi = new ProcessStartInfo(start) { UseShellExecute = true };
+            // 3) 启动新版本（只有一个 exe，就是它自己）。
+            //    带 --elevated，避免再次弹 UAC
+            var psi = new ProcessStartInfo(current) { UseShellExecute = true };
             psi.ArgumentList.Add("--elevated");
             psi.ArgumentList.Add("--updated");
             Process.Start(psi);

@@ -16,16 +16,12 @@ public static class AppInfo
     public const string Author = "QQQOrange";
 
     /// <summary>
-    /// 主程序的可执行文件名。
+    /// 可执行文件名（发布产物与进程名）。
     ///
-    /// 为什么带 <c>.App</c>：同目录的 <c>KeyboardEnhance.exe</c> 是**启动器**
-    /// （net48 编译，负责检查 .NET 10 运行时、缺了就提示并打开下载页）。
-    /// 用户双击的永远是启动器；主程序是它拉起来的那个。
+    /// **只有一个 exe**：运行时随发布包自带（SelfContained），
+    /// 用户双击就是它本身，不需要先经过一个"启动器"。
     /// </summary>
-    public const string ExeName = "KeyboardEnhance.App.exe";
-
-    /// <summary>启动器文件名（用户双击的那个）。</summary>
-    public const string LauncherName = "KeyboardEnhance.exe";
+    public const string ExeName = "KeyboardEnhance.exe";
 
     /// <summary>完整标题：名称 + 英文名，用于关于页首行。</summary>
     public const string TitleWithEnglish = ProductName + " · " + EnglishName;

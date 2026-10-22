@@ -264,18 +264,18 @@ public sealed class ActionCatalog
         c.Add("mediaNext", "系统功能", "下一首", "媒体键：跳到下一首", _ => Send(0xB0));
         c.Add("mediaPlayPause", "系统功能", "播放 / 暂停", "媒体键：播放或暂停", _ => Send(0xB3), shortTitle: "播放");
         c.Add("mediaStop", "系统功能", "停止播放", "媒体键：停止", _ => Send(0xB2));
-        /* 音量：直接调 Core Audio（IAudioEndpointVolume），不再模拟媒体键。
+        /* 音量：发**系统音量键**（VK_VOLUME_UP/DOWN）。
          *
-         * 旧的 `SendRepeat(0xAF, …)` 依赖系统 shell 分发 VK_VOLUME_UP，
-         * 在键盘过滤驱动 / 远程会话 / 前台程序抢媒体键的机器上会静默失效，
-         * 用户看到的现象就是"按了完全没反应"。现在走音频引擎，成功与否当场可知，
-         * 还能回读真实音量显示百分比。参数可改步进（默认 5%）。 */
+         * 这样 Windows 自己调音量、自己弹那条横条 —— 用户要的就是系统那个，
+         * 自绘永远做不像。步进也就跟着系统的走（通常 2%），
+         * 参数不再控制步进，只在媒体键被吞时用作兜底的调整量。
+         * 按住会连续发，见 HotkeyEngine.IsContinuous。 */
         c.Add("volumeUp", "系统功能", "音量 +",
-            "把系统音量提高 5%（参数可改步进，例如填 10）",
-            a => ctx.ChangeVolume(VolumeStep(a)), shortTitle: "音量+");
+            "系统音量键：调高音量并弹出 Windows 自带的横条（幅度在设置里改，按住连续调）",
+            _ => ctx.ChangeVolume(ctx.VolumeStep), shortTitle: "音量+");
         c.Add("volumeDown", "系统功能", "音量 -",
-            "把系统音量降低 5%（参数可改步进）",
-            a => ctx.ChangeVolume(-VolumeStep(a)), shortTitle: "音量-");
+            "系统音量键：调低音量并弹出 Windows 自带的横条（幅度在设置里改，按住连续调）",
+            _ => ctx.ChangeVolume(-ctx.VolumeStep), shortTitle: "音量-");
         c.Add("volumeMute", "系统功能", "静音", "静音 / 取消静音（切换）",
             _ => ctx.ToggleMute(), shortTitle: "静音");
 
@@ -286,11 +286,11 @@ public sealed class ActionCatalog
         /* 亮度：WMI（内置屏）→ DDC/CI（外接屏）。两条都不通时给明确提示 ——
          * 用户按了没反应会以为按键坏了。 */
         c.Add("brightnessUp", "系统功能", "亮度 +",
-            "屏幕亮度提高 10%（参数可改步进；外接屏需开启 DDC/CI）",
-            a => ctx.ChangeBrightness(10 * ParseInt(a, 1)), shortTitle: "亮+");
+            "屏幕亮度提高一档（幅度在设置里改），屏幕上会显示横条（按住连续调；外接屏需开启 DDC/CI）",
+            _ => ctx.ChangeBrightness(ctx.BrightnessStep), shortTitle: "亮+");
         c.Add("brightnessDown", "系统功能", "亮度 -",
-            "屏幕亮度降低 10%（参数可改步进；外接屏需开启 DDC/CI）",
-            a => ctx.ChangeBrightness(-10 * ParseInt(a, 1)), shortTitle: "亮-");
+            "屏幕亮度降低一档（幅度在设置里改），屏幕上会显示横条（按住连续调；外接屏需开启 DDC/CI）",
+            _ => ctx.ChangeBrightness(-ctx.BrightnessStep), shortTitle: "亮-");
 
         c.Add("openExplorer", "系统功能", "打开文件资源管理器",
             "打开「此电脑」", _ => { ctx.RunProgram("explorer.exe"); return true; }, shortTitle: "资源");

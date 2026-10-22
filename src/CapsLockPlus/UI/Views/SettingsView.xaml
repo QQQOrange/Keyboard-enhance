@@ -254,6 +254,42 @@
                                 IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
                                 ValueChanged="OnMouseSpeedChanged" />
                     </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="音量调节幅度" Style="{StaticResource Text.Body}" />
+                            <TextBlock x:Name="VolumeStepText" Text="5%"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Slider Grid.Column="1" x:Name="VolumeStepSlider" Width="180" Minimum="1" Maximum="20"
+                                IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                ValueChanged="OnVolumeStepChanged" />
+                    </Grid>
+
+                    <Border Style="{StaticResource Divider}" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="亮度调节幅度" Style="{StaticResource Text.Body}" />
+                            <TextBlock x:Name="BrightnessStepText" Text="10%"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Slider Grid.Column="1" x:Name="BrightnessStepSlider" Width="180" Minimum="1" Maximum="50"
+                                IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                ValueChanged="OnBrightnessStepChanged" />
+                    </Grid>
                 </StackPanel>
             </Border>
 

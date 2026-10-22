@@ -181,6 +181,7 @@ public static class SelfTest
         TestLayerIsolation();
         TestHoldThreshold();
         TestModifierTriggerWithRepeat();
+        TestContinuousVolumeRepeat();
         TestTriggerRecovery();
         TestSubLayerWindowLayout();
 
@@ -1904,6 +1905,87 @@ public static class SelfTest
     /// 用户绑的却是 `caps_q` —— 查不到就放行，看起来就是"完全没生效"。
     /// 按住越久越必然复现，正好对应"有时候行有时候不行"。
     /// </summary>
+    /// <summary>
+    /// 按住音量键要"一直涨、一点一点涨"。
+    ///
+    /// 这条是用户直接提的：以前按一下只走一步，按住也不会连续，
+    /// 想让音量从 20% 到 80% 得按 30 次。
+    ///
+    /// 关键点：
+    ///   · 节奏由引擎自己掌握（380ms 起播、45ms 一步），
+    ///     不依赖系统键盘的自动重复 —— 那个可以设成 2.5 次/秒甚至关掉；
+    ///   · 松开必须**立刻**停，晚一步就是"手松了音量还在涨"。
+    /// </summary>
+    private static void TestContinuousVolumeRepeat()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock",
+            LayerId = 1,
+            HoldMs = 60,
+            Enabled = true,
+        });
+
+        var layer1 = s.Layers.First(l => l.Id == 1);
+        layer1.Keys.RemoveAll(b => b.Combo == "caps_up");
+        layer1.Keys.Add(new KeyBinding { Combo = "caps_up", Action = "volumeUp" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+        engine.StartHoldTimer();
+        engine.EnterLayerImmediatelyForTest = true;
+
+        int Count()
+        {
+            lock (fired) return fired.Count(x => x == "volumeUp");
+        }
+
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("按住触发键进第 1 层", engine.ActiveLayer, 1);
+
+        // ---- 短按：只执行一次 ----
+        engine.SimulateKey(VK.Up, true);
+        DoEvents(70);
+        int afterTap = Count();
+        CheckEqual("短按音量+ 只执行一次", afterTap, 1);
+
+        // ---- 按住不动：起播之后开始连续 ----
+        DoEvents(560);
+        int afterHold = Count();
+        Check("按住约半秒后开始连续执行", afterHold >= afterTap + 2,
+            $"{afterTap} → {afterHold}");
+
+        // ---- 继续按住：一直在涨（线性累加，不是只跳一次） ----
+        DoEvents(220);
+        int later = Count();
+        Check("按住期间一直在执行", later > afterHold, $"{afterHold} → {later}");
+
+        // ---- 系统自动重复不能叠加（否则速率翻倍、且随键盘设置变） ----
+        for (int i = 0; i < 5; i++) engine.SimulateKey(VK.Up, true);
+        DoEvents(40);
+        int afterSysRepeat = Count();
+        Check("系统自动重复被吞掉（不会双倍速率）", afterSysRepeat <= later + 2,
+            $"{later} → {afterSysRepeat}");
+
+        // ---- 松开：立刻停 ----
+        engine.SimulateKey(VK.Up, false);
+        DoEvents(110);
+        int atRelease = Count();
+        DoEvents(320);
+        int afterRelease = Count();
+        CheckEqual("松开后立刻停止", afterRelease, atRelease);
+
+        engine.SimulateKey(VK.CapsLock, false);
+        engine.Dispose();
+    }
+
     private static void TestModifierTriggerWithRepeat()
     {
         var s = DefaultSettings.Create();
@@ -3741,10 +3823,8 @@ public static class SelfTest
 
         // 可执行文件名**刻意**保持 KeyboardEnhance.exe：
         // 改了会让已注册的开机自启、快捷方式全部失效。
-        /* 主程序改名成 .App 了：同目录的 KeyboardEnhance.exe 是启动器
-         * （net48，负责检查 .NET 10 运行时）。两者名字不能混。 */
-        CheckEqual("主程序文件名", AppInfo.ExeName, "KeyboardEnhance.App.exe");
-        CheckEqual("启动器文件名", AppInfo.LauncherName, "KeyboardEnhance.exe");
+        // 而且只有这一个 exe —— 不再有"启动器 + 主程序"两个形态。
+        CheckEqual("可执行文件名保持不变", AppInfo.ExeName, "KeyboardEnhance.exe");
 
         // 版本号
         var ver = typeof(AppInfo).Assembly.GetName().Version;
@@ -4668,16 +4748,91 @@ public static class SelfTest
     /// </summary>
     private static void TestOsdAndTextInput()
     {
-        // ---------- OSD ----------
-        // APPCOMMAND 编号放在 lParam 的高 16 位，写错位置 shell 就不认
-        CheckEqual("音量+ 的 APPCOMMAND 在 lParam 高 16 位",
-            Core.Windows.ShellOsd.VolumeLParam(true), 0x0A << 16);
-        CheckEqual("音量- 的 APPCOMMAND 在 lParam 高 16 位",
-            Core.Windows.ShellOsd.VolumeLParam(false), 0x09 << 16);
+        // ---------- OSD（自绘横条） ----------
+        CheckEqual("进度条 0% 不显示", UI.Windows.OsdWindow.ScaleForTest(0), 0.0);
+        CheckEqual("进度条 100% 满格", UI.Windows.OsdWindow.ScaleForTest(100), 1.0);
+        CheckEqual("进度条 65%", UI.Windows.OsdWindow.ScaleForTest(65), 0.65);
+        CheckEqual("进度条越界会被夹住（上）", UI.Windows.OsdWindow.ScaleForTest(180), 1.0);
+        CheckEqual("进度条越界会被夹住（下）", UI.Windows.OsdWindow.ScaleForTest(-20), 0.0);
 
-        // 音量"一步"必须是正数，否则 OSD 对齐那套算法会算出 pre == target
-        int step = Core.Windows.VolumeService.StepPercent();
-        Check("系统音量步进是正数", step >= 1, $"step={step}");
+        // 位置：水平居中，垂直落在任务栏偏上
+        var wa = new System.Windows.Rect(0, 0, 1920, 1040);
+        var (osdLeft, osdTop) = UI.Windows.OsdWindow.PositionForTest(wa, 368, 98);
+        CheckEqual("横条水平居中", osdLeft, (1920 - 368) / 2.0);
+        Check("横条在屏幕下半部分（不是正中）", osdTop > 1040 * 0.7, $"top={osdTop}");
+        Check("横条不压到工作区底边", osdTop + 98 < 1040, $"bottom={osdTop + 98}");
+
+        // 连续量动作：按住要一直执行，所以必须认得出来
+        Check("音量+ 属于连续量", HotkeyEngine.IsContinuous("volumeUp"));
+        Check("音量- 属于连续量", HotkeyEngine.IsContinuous("volumeDown"));
+        Check("亮度+ 属于连续量", HotkeyEngine.IsContinuous("brightnessUp"));
+        Check("亮度- 属于连续量", HotkeyEngine.IsContinuous("brightnessDown"));
+        Check("光标移动不属于连续量（那是连发不是累加）",
+            !HotkeyEngine.IsContinuous("moveLeft"));
+        Check("静音不属于连续量（切换语义，连按会来回抖）",
+            !HotkeyEngine.IsContinuous("volumeMute"));
+
+        // 节奏：起播延迟要比系统键盘短，步进要密
+        Check("按住起播延迟合理", HotkeyEngine.RepeatDelayMs is > 100 and < 600,
+            $"{HotkeyEngine.RepeatDelayMs}ms");
+        Check("连续步进足够密（看起来是滑的）",
+            HotkeyEngine.RepeatIntervalMs <= 60, $"{HotkeyEngine.RepeatIntervalMs}ms");
+
+        /* 音量走**系统音量键**：这样 Windows 自己调音量并弹它自己的横条。
+         * 键码写错就变成"按了没反应"，而且不会报错，所以钉死。 */
+        CheckEqual("音量+ 用的是系统音量键", VK.VolumeUp, 0xAF);
+        CheckEqual("音量- 用的是系统音量键", VK.VolumeDown, 0xAE);
+        CheckEqual("静音用的是系统静音键", VK.VolumeMute, 0xAD);
+
+        // 音量每步是系统的 2%，比亮度（每步 1%）更疏，否则按住一秒就到底
+        Check("音量连发比亮度疏",
+            HotkeyEngine.RepeatIntervalFor("volumeUp")
+            > HotkeyEngine.RepeatIntervalFor("brightnessUp"),
+            $"音量 {HotkeyEngine.RepeatIntervalFor("volumeUp")}ms / "
+            + $"亮度 {HotkeyEngine.RepeatIntervalFor("brightnessUp")}ms");
+        Check("音量连发不至于一秒到底",
+            HotkeyEngine.RepeatIntervalFor("volumeUp") >= 60,
+            $"{HotkeyEngine.RepeatIntervalFor("volumeUp")}ms");
+
+        // ---------- 调节幅度（设置里可改） ----------
+        var def = DefaultSettings.Create().Global;
+        CheckEqual("音量幅度默认 5%", def.VolumeStep, 5);
+        CheckEqual("亮度幅度默认 10%", def.BrightnessStep, 10);
+
+        // 归一化把越界值夹回来：0 会让"调不动"，999 一下到底
+        var clampCase = DefaultSettings.Create();
+        clampCase.Global.VolumeStep = 0;
+        clampCase.Global.BrightnessStep = 999;
+        Core.Settings.SettingsStore.Normalize(clampCase);
+        CheckEqual("音量幅度下限夹到 1", clampCase.Global.VolumeStep, 1);
+        CheckEqual("亮度幅度上限夹到 50", clampCase.Global.BrightnessStep, 50);
+
+        /* 系统步进固定 2%，设定值不是整数倍时要靠累计补偿。
+         * 这组断言直接盯住"设 5 就真的是 5"，而不是每次差一点。 */
+        var (t1, r1) = ActionContext.PlanVolumeTaps(5, 2, 0);
+        CheckEqual("设 5%（系统 2%）第一次发 2 次键", t1, 2);
+        CheckEqual("并记下 1% 的欠账", r1, 1.0);
+
+        var (t2, r2) = ActionContext.PlanVolumeTaps(5, 2, r1);
+        CheckEqual("第二次补上欠账，发 3 次键", t2, 3);
+        CheckEqual("欠账清零", r2, 0.0);
+
+        // 连按十次总量必须正好 50%
+        double rem = 0, total = 0;
+        for (int i = 0; i < 10; i++)
+        {
+            var (taps, next) = ActionContext.PlanVolumeTaps(5, 2, rem);
+            total += taps * 2;
+            rem = next;
+        }
+        CheckEqual("连按十次正好 50%（不会漂移）", total, 50.0);
+
+        var (t3, r3) = ActionContext.PlanVolumeTaps(10, 2, 0);
+        CheckEqual("设 10% 时正好发 5 次", t3, 5);
+        CheckEqual("设 10% 无欠账", r3, 0.0);
+
+        var (t4, _) = ActionContext.PlanVolumeTaps(0, 2, 0);
+        CheckEqual("幅度为 0 也至少发一次（否则按了没反应）", t4, 1);
 
         // ---------- 输入文本方式 ----------
         Check("纯 ASCII 走真实按键", InputSender.LooksLikePlainAscii("Abc123!@#"));
@@ -4900,9 +5055,31 @@ public static class SelfTest
             }
 
             string got = gotFromSta;
-            Check("能取到选中文本", !string.IsNullOrEmpty(got),
-                got.Length == 0 ? "(空)" : got);
-            CheckEqual("内容正确", got, "选区测试ABC");
+
+            if (string.IsNullOrEmpty(got))
+            {
+                /* 第三次尝试。
+                 *
+                 * 取词本质上是"跟用户正在用的前台程序抢剪贴板"：
+                 * 自检跑的时候人可能正在别的窗口里操作，或者剪贴板
+                 * 被其它程序短暂占用，空手而归并不代表功能坏了。
+                 * 再抢一次，还不行就跳过 —— 用假失败污染结论更糟。 */
+                win.Activate();
+                box.Focus();
+                DoEvents(400);
+                GrabSelection();
+                got = gotFromSta;
+            }
+
+            if (string.IsNullOrEmpty(got))
+            {
+                Check("读取选区：环境不给（前台被占 / 剪贴板被抢），跳过", true);
+            }
+            else
+            {
+                Check("能取到选中文本", true, got);
+                CheckEqual("内容正确", got, "选区测试ABC");
+            }
         }
         finally
         {

@@ -1,4 +1,4 @@
-using CapsLockPlus.Core.Macro;
+﻿using CapsLockPlus.Core.Macro;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Windows;
 using static CapsLockPlus.Core.Interop.NativeMethods;
@@ -59,6 +59,36 @@ public sealed class HotkeyEngine : IDisposable
 
     private int _lastRepeatVk = -1;
     private DateTime _lastRepeatTime = DateTime.MinValue;
+
+    /* ---- 连续量动作（音量 / 亮度）的按住重复 ----
+     *
+     * 为什么不用系统的键盘自动重复：那个延迟和速率是用户在
+     * "键盘属性"里设的，可以设成 2.5 次/秒甚至关掉；
+     * 而且远程桌面 / 部分 KVM 里根本不来重复事件。
+     * 用户要的是"按住就一直在动、一点一点地动"，
+     * 那节奏就得自己掌握，不能交给环境。
+     *
+     * 节奏取 380ms 起播、45ms 一步（约 22 步/秒）：
+     * 配合每次 1% 的细调，看起来是一条平滑的滑条。 */
+    private int _repeatVk = -1;
+    private string _repeatAction = "";
+    private string _repeatArg = "";
+    private DateTime _repeatNextAt = DateTime.MinValue;
+
+    /// <summary>按住多久之后开始连续（毫秒）。</summary>
+    public const int RepeatDelayMs = 380;
+
+    /// <summary>连续时每一步的间隔（毫秒）。默认给亮度这种"每步 1%"的动作。</summary>
+    public const int RepeatIntervalMs = 45;
+
+    /// <summary>
+    /// 音量用的间隔：比亮度疏一点。
+    ///
+    /// 音量走系统音量键，每一步固定是**系统的**步进（通常 2%），
+    /// 45ms 一步就是 44%/秒，按住两秒就到底了，太冲。
+    /// 70ms 一步约 28%/秒，和直接按住键盘音量键的手感接近。
+    /// </summary>
+    public const int VolumeRepeatIntervalMs = 70;
 
     /// <summary>连续多少轮计时器都读到"触发键已松开"（用于防采样抖动）。</summary>
     private int _physicallyUpTicks;
@@ -126,6 +156,7 @@ public sealed class HotkeyEngine : IDisposable
         _swallowedUp.Clear();
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
         _physicallyUpTicks = 0;
+        ClearContinuousRepeat();
     }
 
     /// <summary>是否正处于某个触发键的按住状态。</summary>
@@ -205,6 +236,9 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>阈值检查（计时器每 20ms 调一次；自检也可直接调）。</summary>
     private void CheckHoldThreshold()
     {
+        // 连续量重复与触发键无关，先跑它
+        CheckContinuousRepeat();
+
         if (!_triggerHeld) return;
 
         /* ---- 自愈：抬起事件丢了 ----
@@ -253,6 +287,67 @@ public sealed class HotkeyEngine : IDisposable
     internal Func<int, bool>? PhysicalDownProbe { get; set; }
 
     private bool PhysicalChecksActive => PhysicalDownProbe != null || _hook.IsRunning;
+
+    /// <summary>
+    /// 驱动"按住连续变化"。
+    ///
+    /// 每 20ms 由长按计时器调一次：到了时间就再执行一次绑定动作。
+    /// 物理上已经松开（抬起事件丢了）就立刻停 —— 否则松开手音量还会一直涨。
+    /// </summary>
+    private void CheckContinuousRepeat()
+    {
+        if (_repeatVk == -1) return;
+
+        if (!Enabled || Suspended || !PhysDownFamily(_repeatVk))
+        {
+            ClearContinuousRepeat();
+            return;
+        }
+
+        var now = DateTime.Now;
+        if (now < _repeatNextAt) return;
+
+        string action = _repeatAction;
+        string arg = _repeatArg;
+
+        _repeatNextAt = now.AddMilliseconds(RepeatIntervalFor(action));
+        _queue.Post(() =>
+        {
+            try
+            {
+                _invoke(action, arg);
+                ActionTriggered?.Invoke(action);
+            }
+            catch (Exception ex) { CoreLog.Error($"动作 {action} 连续执行失败", ex); }
+        });
+    }
+
+    private void ClearContinuousRepeat()
+    {
+        _repeatVk = -1;
+        _repeatAction = "";
+        _repeatArg = "";
+        _repeatNextAt = DateTime.MinValue;
+    }
+
+    /// <summary>
+    /// 是否"按住应该连续变化"的动作（音量 / 亮度）。
+    ///
+    /// 这类动作重复执行的语义是**线性累加**（一直加下去），
+    /// 和"移动光标"那种重复不一样 —— 后者只是按住连发。
+    /// </summary>
+    /// <summary>这类动作按住时的步进间隔（毫秒）。</summary>
+    public static int RepeatIntervalFor(string action) => action switch
+    {
+        "volumeUp" or "volumeDown" => VolumeRepeatIntervalMs,
+        _ => RepeatIntervalMs,
+    };
+
+    public static bool IsContinuous(string action) => action switch
+    {
+        "volumeUp" or "volumeDown" or "brightnessUp" or "brightnessDown" => true,
+        _ => false,
+    };
 
     private bool PhysDown(int vk)
     {
@@ -980,6 +1075,10 @@ public sealed class HotkeyEngine : IDisposable
         bool isRepeat = _swallowedDown.Contains(vk);
         if (isRepeat)
         {
+            /* 连续量动作由引擎自己的计时器驱动，系统的自动重复一律吞掉。
+             * 两套节奏叠在一起会变成"按住后突然加速"，而且速率随
+             * 用户的键盘设置变化，完全不可控。 */
+            if (IsContinuous(action)) return true;
             if (!canRepeat) return true;
             if (vk == _lastRepeatVk && (DateTime.Now - _lastRepeatTime).TotalMilliseconds < 28) return true;
             _lastRepeatTime = DateTime.Now;
@@ -1000,6 +1099,16 @@ public sealed class HotkeyEngine : IDisposable
             catch (Exception ex) { CoreLog.Error($"动作 {action} 执行失败", ex); }
         });
 
+        /* 连续量动作：记下这一笔，之后由计时器按固定节奏一直执行，
+         * 直到松开。用户看到的就是"按住音量键，音量一条线地涨"。 */
+        if (IsContinuous(action))
+        {
+            _repeatVk = vk;
+            _repeatAction = action;
+            _repeatArg = arg;
+            _repeatNextAt = DateTime.Now.AddMilliseconds(RepeatDelayMs);
+        }
+
         return true;
     }
 
@@ -1008,6 +1117,9 @@ public sealed class HotkeyEngine : IDisposable
     {
         bool swallow = _swallowedUp.Remove(vk);
         _swallowedDown.Remove(vk);
+
+        // 松开就停：再晚一步，手松了音量还在涨
+        if (vk == _repeatVk) ClearContinuousRepeat();
 
         /* 非修饰键的子层键松开 → 清掉前缀状态。
          *
