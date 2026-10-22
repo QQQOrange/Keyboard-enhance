@@ -182,6 +182,7 @@ public static class SelfTest
         TestHoldThreshold();
         TestModifierTriggerWithRepeat();
         TestContinuousVolumeRepeat();
+        TestRepeatSurvivesPhysicalJitter();
         TestTriggerRecovery();
         TestSubLayerWindowLayout();
 
@@ -1986,6 +1987,81 @@ public static class SelfTest
         engine.Dispose();
     }
 
+    /// <summary>
+    /// 连按层内按键时，**绝不能**因为物理读数抖动把层复位。
+    ///
+    /// 这是 v4.2.1 修的那个"第一次有效、第二次变回原生功能"：
+    /// 用户按住右 Alt 进层、按 Up 调音量，注入媒体键后
+    /// `GetAsyncKeyState(触发键)` 会短暂读不到按下，
+    /// 自愈逻辑连续 3 轮（60ms）就判"抬起事件丢了"→ 复位 → 层被踢掉。
+    ///
+    /// 现在的规则：只要用户还在按键（或刚注入过），就不做自愈判定。
+    /// </summary>
+    private static void TestRepeatSurvivesPhysicalJitter()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "ralt",
+            LayerId = 1,
+            HoldMs = 60,
+            Enabled = true,
+        });
+
+        var layer1 = s.Layers.First(l => l.Id == 1);
+        layer1.Keys.RemoveAll(b => b.Combo == "caps_up");
+        layer1.Keys.Add(new KeyBinding { Combo = "caps_up", Action = "volumeUp" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+        engine.StartHoldTimer();
+        engine.EnterLayerImmediatelyForTest = true;
+
+        // 触发键物理按下 → 之后模拟"读数抖成没按下"
+        bool triggerDown = true;
+        engine.PhysicalDownProbe = vk => vk is 0xA4 or 0xA5 or 0x12 && triggerDown;
+
+        engine.SimulateKey(VK.RMenu, true);
+        CheckEqual("右 Alt 进第 1 层", engine.ActiveLayer, 1);
+
+        // 用户开始连按：物理读数立刻"抖成没按下"
+        triggerDown = false;
+        for (int i = 0; i < 8; i++)
+        {
+            engine.SimulateKey(VK.Up, true);      // 持续按键活动
+            engine.SimulateKey(VK.Up, false);
+            engine.CheckHoldThresholdForTest();
+            DoEvents(15);
+        }
+
+        Check("连按期间物理读数抖动不会把层复位", engine.IsTriggerHeld);
+        CheckEqual("层还在", engine.ActiveLayer, 1);
+
+        // 用户继续按第二下 —— 这一下以前会变成"原生上箭头"
+        engine.SimulateKey(VK.Up, true);
+        DoEvents(90);
+        int times;
+        lock (fired) times = fired.Count(x => x == "volumeUp");
+        Check("第二次按键仍然执行绑定动作", times >= 2, $"执行了 {times} 次");
+
+        engine.SimulateKey(VK.Up, false);
+
+        /* 真正的抬起丢失（切桌面 / 远程接管）里用户是**完全没在按键**的：
+         * 静默超过门槛之后，自愈必须照常生效，否则触发键会永久卡住。 */
+        DoEvents(520);
+        for (int i = 0; i < 12; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
+        Check("静默一段时间后自愈照常生效", !engine.IsTriggerHeld);
+
+        engine.PhysicalDownProbe = null;
+        engine.Dispose();
+    }
+
     private static void TestModifierTriggerWithRepeat()
     {
         var s = DefaultSettings.Create();
@@ -2161,8 +2237,11 @@ public static class SelfTest
         engine.CheckHoldThresholdForTest();
         Check("单次采样「没按着」不会立刻取消按住状态", engine.IsTriggerHeld);
 
-        engine.CheckHoldThresholdForTest();
-        engine.CheckHoldThresholdForTest();
+        /* 自愈现在要求"用户已经静默一段时间"——
+         * 连按层内按键时绝不复位（v4.2.1 修的那个 bug）。
+         * 所以这里要先等过静默门槛，再喂几轮检查。 */
+        DoEvents(460);
+        for (int i = 0; i < 10; i++) { engine.CheckHoldThresholdForTest(); DoEvents(6); }
         Check("物理已松开但没收到抬起 → 状态自愈", !engine.IsTriggerHeld);
         CheckEqual("自愈后退出层", engine.ActiveLayer, -1);
 

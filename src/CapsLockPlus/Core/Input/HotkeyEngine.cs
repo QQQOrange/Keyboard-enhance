@@ -71,6 +71,7 @@ public sealed class HotkeyEngine : IDisposable
      * 节奏取 380ms 起播、45ms 一步（约 22 步/秒）：
      * 配合每次 1% 的细调，看起来是一条平滑的滑条。 */
     private int _repeatVk = -1;
+    private int _repeatUpTicks;
     private string _repeatAction = "";
     private string _repeatArg = "";
     private DateTime _repeatNextAt = DateTime.MinValue;
@@ -92,6 +93,15 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>连续多少轮计时器都读到"触发键已松开"（用于防采样抖动）。</summary>
     private int _physicallyUpTicks;
+
+    /// <summary>
+    /// 最近一次真实按键事件的时间。
+    ///
+    /// 自愈判定要参考它：用户正在连按层内按键时，绝对不能因为
+    /// `GetAsyncKeyState` 的一次读数就去复位状态 —— 那会把层直接踢掉，
+    /// 表现是"第一次按键有效，第二次变回原生功能"。
+    /// </summary>
+    private DateTime _lastKeyActivity = DateTime.MinValue;
 
     /// <summary>
     /// 双击触发键的判定窗口（毫秒）。
@@ -156,6 +166,7 @@ public sealed class HotkeyEngine : IDisposable
         _swallowedUp.Clear();
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
         _physicallyUpTicks = 0;
+        _lastKeyActivity = DateTime.Now;
         ClearContinuousRepeat();
     }
 
@@ -254,12 +265,35 @@ public sealed class HotkeyEngine : IDisposable
          * 而系统/驱动可能只报通用码 0x12。 */
         if (_activeTriggerVk != -1 && !PhysDownFamily(_activeTriggerVk))
         {
-            /* 连续 3 次（约 60ms）都读不到按下才认账。
+            /* ---- 先看"用户是不是正在按键" ----
+             *
+             * 这条是 v4.2.1 修的核心 bug：
+             *
+             * 用户按住右 Alt 进层、按 Up 调音量 —— 第一次有效，
+             * 第二次起 Up 变回原生功能（光标上移）。根因就在这里：
+             * 连按层内按键时，`GetAsyncKeyState(触发键)` 会在两次按键之间
+             * 短暂读到"没按下"（注入媒体键、AltGr 合成 Ctrl、驱动抖动都会），
+             * 连续 3 轮（60ms）就判"抬起事件丢失"→ ResetTriggerState →
+             * 层被踢掉，后面的按键自然全走原生路径。
+             *
+             * 真正的"抬起事件丢失"场景（切 UAC 桌面 / 远程接管 / 睡眠唤醒）
+             * 里用户是**完全没在按键**的，所以"静默 400ms"这个门槛
+             * 既能保住自愈能力，又不会误伤连按。 */
+            var now = DateTime.Now;
+            bool busyTyping = (now - _lastKeyActivity).TotalMilliseconds < 400;
+            bool justInjected = (now - InputSender.LastInjectAt).TotalMilliseconds < 500;
+            if (busyTyping || justInjected)
+            {
+                _physicallyUpTicks = 0;
+                return;
+            }
+
+            /* 连续 8 次（约 160ms）都读不到按下才认账。
              *
              * 单次采样可能抖：`GetAsyncKeyState` 在切桌面、UAC 提示、
              * 远程会话切换的瞬间会短暂返回"没按下"。若一抖就复位，
              * 用户正按着触发键进层会被莫名取消 —— 那是比原 bug 更糟的体验。 */
-            if (++_physicallyUpTicks >= 3)
+            if (++_physicallyUpTicks >= 8)
             {
                 CoreLog.Warn($"触发键 0x{_activeTriggerVk:X2} 物理上已松开但没收到抬起事件，复位状态");
                 ResetTriggerState("抬起事件丢失");
@@ -298,13 +332,49 @@ public sealed class HotkeyEngine : IDisposable
     {
         if (_repeatVk == -1) return;
 
-        if (!Enabled || Suspended || !PhysDownFamily(_repeatVk))
+        if (!Enabled || Suspended)
         {
             ClearContinuousRepeat();
             return;
         }
 
+        /* ---- 主判据：钩子自己记的"这个键按下过、还没收到抬起" ----
+         *
+         * 不能用 GetAsyncKeyState 当主判据：注入按键之后、切桌面、
+         * 远程会话切换时它都会短暂读不准。拿它做主判据的后果是
+         * "按住音量键刚开始动一下就停了" —— 比不连续更糟。
+         *
+         * `_swallowedDown` 是我们自己在按下时加、收到抬起时删的，
+         * 它才真正代表"用户还按着"。 */
+        if (!_swallowedDown.Contains(_repeatVk))
+        {
+            ClearContinuousRepeat();
+            return;
+        }
+
+        /* ---- 兜底：抬起事件丢了 ----
+         *
+         * 这时 `_swallowedDown` 会一直留着，用户松手了音量还在涨。
+         * 但要等"没有注入、且连续 8 轮读不到物理按下"才认账 ——
+         * 连续调节期间每 70ms 都在注入按键，此时物理读数不可信。 */
         var now = DateTime.Now;
+        bool justInjected = (now - InputSender.LastInjectAt).TotalMilliseconds < 600;
+        if (!PhysDownFamily(_repeatVk))
+        {
+            /* 只有"没在注入 + 连续 8 轮都读不到"才算真的松开了。
+             * 其它情况一律当作还按着 —— 这里绝不能 return，
+             * 否则注入期间会每 20ms 空转一次，长按就永远不动。 */
+            if (!justInjected && ++_repeatUpTicks >= 8)
+            {
+                ClearContinuousRepeat();
+                return;
+            }
+        }
+        else
+        {
+            _repeatUpTicks = 0;
+        }
+
         if (now < _repeatNextAt) return;
 
         string action = _repeatAction;
@@ -325,6 +395,7 @@ public sealed class HotkeyEngine : IDisposable
     private void ClearContinuousRepeat()
     {
         _repeatVk = -1;
+        _repeatUpTicks = 0;
         _repeatAction = "";
         _repeatArg = "";
         _repeatNextAt = DateTime.MinValue;
@@ -398,7 +469,18 @@ public sealed class HotkeyEngine : IDisposable
 
         int skip = _triggerHeld ? _activeTriggerVk : -1;
 
-        if (!SameFamily(skip, VK.LControl)) _ctrlDown = PhysDownFamily(VK.LControl);
+        /* 右 Alt 在不少键盘上是 **AltGr**：按下时系统会同时合成 Ctrl+Alt。
+         * 触发键是它的时候，物理读到的那个 Ctrl 不能算进 combo ——
+         * 否则层里每个键都被拼成 caps_ctrl_xxx，用户绑的 caps_up 永远查不到，
+         * 表现就是"进层了，但层里的键全变成原生功能"。 */
+        /* 判定 AltGr 要**同时**看到 Alt 和 Ctrl 都是物理按下 ——
+         * 只看 Alt 会把"Ctrl 标记卡住、物理已松开"的正常校正也跳过，
+         * 那层里的键又会全部变成 caps_ctrl_xxx。 */
+        bool altGr = SameFamily(skip, VK.RMenu)
+                     && PhysDownFamily(VK.RMenu)
+                     && PhysDownFamily(VK.LControl);
+
+        if (!SameFamily(skip, VK.LControl) && !altGr) _ctrlDown = PhysDownFamily(VK.LControl);
         if (!SameFamily(skip, VK.LShift)) _shiftDown = PhysDownFamily(VK.LShift);
         if (!SameFamily(skip, VK.LMenu)) _laltDown = PhysDownFamily(VK.LMenu);
         if (!SameFamily(skip, VK.LWin)) _lwinDown = PhysDownFamily(VK.LWin);
@@ -493,6 +575,8 @@ public sealed class HotkeyEngine : IDisposable
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
         if (injected && !AcceptInjectedForTest) return false;   // 自己注入的按键放行
+
+        _lastKeyActivity = DateTime.Now;
 
         /* 测试页专用：把真实按键抛出去。
          *

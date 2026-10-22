@@ -1,4 +1,4 @@
-using CapsLockPlus.Core.Interop;
+﻿using CapsLockPlus.Core.Interop;
 using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Input;
@@ -28,10 +28,20 @@ public static class InputSender
     /// </summary>
     public static bool DryRun { get; set; }
 
+    /// <summary>
+    /// 最近一次真正注入按键的时间。
+    ///
+    /// 引擎的自愈逻辑要参考它：注入的按键会占用输入队列、也会让
+    /// `GetAsyncKeyState` 在极短时间内读不准，此时绝不能判"触发键松开了"
+    /// 去复位层 —— 那正是"第一次有效、第二次变回原生功能"的根因。
+    /// </summary>
+    public static DateTime LastInjectAt { get; private set; } = DateTime.MinValue;
+
     private static void Send(params INPUT[] inputs)
     {
         if (inputs.Length == 0 || DryRun) return;
         SendInput((uint)inputs.Length, inputs, InputSize);
+        LastInjectAt = DateTime.Now;
     }
 
     private static INPUT KeyInput(int vk, bool up, bool unicode = false, ushort scan = 0)
