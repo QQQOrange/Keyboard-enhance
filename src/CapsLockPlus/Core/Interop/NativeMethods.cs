@@ -377,4 +377,169 @@ public static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool AllowSetForegroundWindow(uint dwProcessId);
+
+    // ================= 窗口带（window band）与分层窗口 =================
+
+    /* 为什么需要这一整块 —— 亮度横条被开始菜单遮挡的根因。
+     *
+     * Windows 8 起，外壳把窗口分进若干「带」（band）。Z 序先比 band、再比
+     * 带内的先后。实测（tools/probe_start_band.py）本机：
+     *
+     *   普通窗口 / 任务栏        band 1  (DESKTOP)
+     *   开始菜单 / 搜索          band 6  (IMMERSIVE_INACTIVEMOBODY)
+     *   系统音量条（Shell 自己） band ≥ 6 —— 和开始菜单同一层，所以盖不住
+     *
+     * 普通进程能用 SetWindowPos 干的事**全都在 band 1 之内**：
+     * HWND_TOPMOST 只影响同带内次序，HWND_TOP 也只到 band 1 的顶。
+     * 所以不管怎么重提升，开始菜单一打开就是压在我们上面。
+     *
+     * 唯一不需要 UIAccess 签名的出路：**创建时**就把窗口生进更高的带
+     * （CreateWindowInBand）。实测普通进程被允许的带上限是 16：
+     * band 2~12 一律返回 ERROR_ACCESS_DENIED(5)，16 可以，
+     * 而且 16 > 6 —— 实测能压在开始菜单之上（tools/probe_band16_overlap.py）。
+     *
+     * SetWindowBand 对已存在的窗口无效（同样 ACCESS_DENIED），所以只能在
+     * CreateWindowInBand 里一次定死；WPF 的 Window 不提供这个能力，
+     * 于是横条需要一个自己的分层窗口来当宿主。
+     */
+
+    /// <summary>band 值（Win8+ 的 ZBID_*）。只列本程序用得到的。</summary>
+    public const uint ZBID_DESKTOP = 1;
+    public const uint ZBID_IMMERSIVE_MOGO = 4;              // 开始菜单
+    public const uint ZBID_IMMERSIVE_INACTIVEMOBODY = 6;    // 搜索/开始（实测）
+    public const uint ZBID_UIACCESS = 11;
+
+    /// <summary>
+    /// 实测普通进程能创建的最高带。16 在本机（Win11 23H2）可用且高于开始菜单；
+    /// 17 起又是 ACCESS_DENIED。换系统版本若不允许，创建会失败并回退老路径。
+    /// </summary>
+    public const uint ZBID_ABOVE_SHELL = 16;
+
+    public delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct WNDCLASS
+    {
+        public uint style;
+        public IntPtr lpfnWndProc;
+        public int cbClsExtra;
+        public int cbWndExtra;
+        public IntPtr hInstance;
+        public IntPtr hIcon;
+        public IntPtr hCursor;
+        public IntPtr hbrBackground;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpszMenuName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string lpszClassName;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SIZE
+    {
+        public int cx;
+        public int cy;
+        public SIZE(int cx, int cy) { this.cx = cx; this.cy = cy; }
+    }
+
+    /// <summary>UpdateLayeredWindow 的混合参数（Pack=1 是硬要求）。</summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct BLENDFUNCTION
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        public uint[] bmiColors;
+    }
+
+    public const uint WS_POPUP = 0x80000000;
+
+    public const uint BI_RGB = 0;
+    public const uint DIB_RGB_COLORS = 0;
+
+    public const uint AC_SRC_OVER = 0x00;
+    public const uint AC_SRC_ALPHA = 0x01;
+    public const uint ULW_ALPHA = 0x02;
+    public const uint ULW_OPAQUE = 0x04;
+
+    public const int SW_SHOWNA = 8;
+    public const int SW_HIDE = 0;
+
+    /// <summary>
+    /// 未文档化导出。**按序号之外的名字导出**，所以能用 DllImport 直接绑；
+    /// 不存在时（Win7 / 某些精简版）会抛 EntryPointNotFoundException，
+    /// 调用方必须接住并回退。
+    /// </summary>
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr CreateWindowInBand(
+        int dwExStyle, IntPtr atomClass, string? lpWindowName, uint dwStyle,
+        int x, int y, int nWidth, int nHeight,
+        IntPtr hWndParent, IntPtr hMenu, IntPtr hInstance, IntPtr lpParam, uint dwBand);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern ushort RegisterClass(ref WNDCLASS lpWndClass);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool UnregisterClass(string lpClassName, IntPtr hInstance);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool DestroyWindow(IntPtr hWnd);
+
+    /// <summary>读窗口所在带。窗口不在任何带里（普通窗口）时返回 false。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetWindowBand(IntPtr hWnd, out uint pdwBand);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UpdateLayeredWindow(
+        IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize,
+        IntPtr hdcSrc, ref POINT pptSrc, uint crKey,
+        ref BLENDFUNCTION pblend, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateDIBSection(
+        IntPtr hdc, ref BITMAPINFO pbmi, uint usage, out IntPtr ppvBits,
+        IntPtr hSection, uint offset);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteObject(IntPtr ho);
 }

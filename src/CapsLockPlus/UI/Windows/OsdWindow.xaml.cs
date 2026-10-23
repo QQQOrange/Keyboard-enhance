@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Interop;
@@ -161,14 +162,37 @@ public partial class OsdWindow : Window
     private readonly DispatcherTimer _hideTimer;
     private readonly DispatcherTimer _raiseTimer;
 
-    private double _scale;
+    private int _percent;
     private bool _fadingOut;
 
     private long _paletteTick;
     private bool _lightPalette;
 
+    /* 最近一次套用的四个颜色。高带路径的离屏卡片要跟窗口里的那份同步，
+     * 但它可能比 ApplyPalette 晚创建，所以颜色得留一份在这里。 */
+    private Color _cardColor = DarkCard;
+    private Color _textColor = DarkText;
+    private Color _trackColor = DarkTrack;
+    private Color _fillColor = Color.FromRgb(0x4C, 0xC2, 0xFF);
+
     /// <summary>上次摆放的物理坐标 + 缩放，用来跳过无意义的 SetWindowPos。</summary>
     private (int X, int Y, int W, int H, double Scale) _placed;
+
+    /* ---- 高带（band 16）路径 ----
+     *
+     * 非 null 表示横条由 <see cref="OsdBandSurface"/> 显示，
+     * 本窗口**从不 Show**，只负责算位置、渲染位图、掌管动画状态。
+     * null 表示回退到"本窗口直接显示"的老路径（band 16 不可用时）。 */
+    private OsdBandSurface? _band;
+    private bool _surfaceTried;
+    private bool _bandVisible;
+    private byte _bandAlpha = 255;
+    private DispatcherTimer? _bandFadeTimer;
+
+    /// <summary>新路径的渲染源：不挂在任何窗口上的卡片实例。</summary>
+    private OsdCard? _offscreen;
+    private RenderTargetBitmap? _cachedBitmap;
+    private (int Percent, bool Light, double Scale) _cacheKey = (-1, false, 0);
 
     private OsdWindow()
     {
@@ -177,9 +201,9 @@ public partial class OsdWindow : Window
         Width = DesignWidth + ShadowPad * 2;
         Height = DesignHeight + ShadowPad * 2;
 
-        /* 圆角只在代码里定一次。XAML 里那个 8 是给设计器看的参考值，
+        /* 圆角只在代码里定一次。XAML 里给设计器看的那个值不算数，
          * 这里覆盖成常量 —— 免得以后改了一个忘了另一个。 */
-        Card.CornerRadius = new CornerRadius(CardRadius);
+        CardView.Radius = CardRadius;
 
         _hideTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
@@ -205,10 +229,47 @@ public partial class OsdWindow : Window
             Place();
         };
 
-        Loaded += (_, _) => { ApplyPalette(force: true); RefreshFill(); };
+        Loaded += (_, _) => ApplyPalette(force: true);
 
         ApplyPalette(force: true);
+        EnsureSurface();
     }
+
+    /// <summary>
+    /// 选定横条的宿主：优先 **band 16 的分层窗口**（能压过开始菜单），
+    /// 不可用时退回本窗口 + 周期重提升（能压过任务栏，但压不过开始菜单）。
+    ///
+    /// 只尝试一次：band 是系统能力，运行期间不会变；每次显示都试一遍
+    /// 只会让按键路径多背一次 P/Invoke。
+    /// </summary>
+    private void EnsureSurface()
+    {
+        if (_surfaceTried) return;
+        _surfaceTried = true;
+
+        /* 逃生口：某些系统上 band 16 的窗口会挡住游戏的独占全屏，
+         * 或者用户就是不想要"浮在开始菜单之上"。设 CAPSLOCKPLUS_OSD_BAND=0
+         * 即可退回原来的 WPF 窗口（横条仍压得住任务栏，但压不过开始菜单）。
+         * 自检也用它验证回退路径没被改坏。 */
+        string? forced = Environment.GetEnvironmentVariable("CAPSLOCKPLUS_OSD_BAND");
+        if (forced is "0" or "off" or "false")
+        {
+            CoreLog.Info("OSD 宿主：按 CAPSLOCKPLUS_OSD_BAND 要求使用普通 WPF 窗口");
+            return;
+        }
+
+        _band = OsdBandSurface.TryCreate(NativeMethods.ZBID_ABOVE_SHELL, out string error);
+        if (_band != null)
+        {
+            CoreLog.Info($"OSD 宿主：band {NativeMethods.ZBID_ABOVE_SHELL} 分层窗口"
+                         + $"（高于开始菜单的 band 6），hwnd=0x{_band.Handle.ToInt64():X}");
+            return;
+        }
+
+        CoreLog.Info("OSD 宿主：回退到普通 WPF 窗口 —— " + error
+                     + "；此路径能压过任务栏，但压不过开始菜单");
+    }
+
 
     /// <summary>
     /// 预热：只把窗口和 HWND 建出来，不显示。
@@ -230,7 +291,18 @@ public partial class OsdWindow : Window
         try
         {
             _instance ??= new OsdWindow();
-            _ = new WindowInteropHelper(_instance).EnsureHandle();   // 先把 HWND 建出来
+
+            if (_instance._band == null)
+            {
+                _ = new WindowInteropHelper(_instance).EnsureHandle();   // 先把 HWND 建出来
+            }
+            else
+            {
+                /* 高带路径没有 WPF 窗口要建，真正的冷启动开销在
+                 * "第一次离屏渲染"（字体、DropShadowEffect、DIB 创建）。
+                 * 先按 100% 渲染一张丢掉，把这条链路焐热。 */
+                _ = _instance.Render(50, 1.0);
+            }
         }
         catch (Exception e)
         {
@@ -293,8 +365,18 @@ public partial class OsdWindow : Window
         }
     }
 
-    /// <summary>仅供自检：窗口句柄。</summary>
-    internal IntPtr HandleForTest => new WindowInteropHelper(this).Handle;
+    /// <summary>仅供自检：窗口句柄（高带路径给 band 宿主，老路径给 WPF 窗口）。</summary>
+    internal IntPtr HandleForTest =>
+        _band?.Handle ?? new WindowInteropHelper(this).Handle;
+
+    /// <summary>仅供自检：当前走的是哪条路径（true = band 16 分层窗口）。</summary>
+    internal bool UsesBandSurfaceForTest => _band != null;
+
+    /// <summary>仅供自检：band 宿主实际所在的带（老路径返回 0）。</summary>
+    internal uint BandForTest => _band?.BandForTest ?? 0;
+
+    /// <summary>仅供自检：按指定缩放渲染一张卡片位图（走的是真实渲染路径）。</summary>
+    internal RenderTargetBitmap RenderForTest(int percent, double scale) => Render(percent, scale);
 
     /// <summary>
     /// 仅供自检：开/关"周期性置顶"。
@@ -313,6 +395,7 @@ public partial class OsdWindow : Window
     {
         _raiseTimer.Stop();
         _hideTimer.Stop();
+        _bandFadeTimer?.Stop();
         try { Close(); } catch { /* 自检里关不掉不算失败 */ }
     }
 
@@ -323,7 +406,7 @@ public partial class OsdWindow : Window
     internal static double CardBottomGapForTest => BottomGap;
 
     /// <summary>仅供自检：卡片**实际生效**的圆角（XAML 可能被单独改过）。</summary>
-    internal double CardRadiusForTest => Card.CornerRadius.TopLeft;
+    internal double CardRadiusForTest => CardView.Radius;
 
     /// <summary>仅供自检：当前系统是浅色还是深色模式。</summary>
     internal static bool SystemLightForTest => IsSystemLightTheme();
@@ -352,16 +435,21 @@ public partial class OsdWindow : Window
     private void Apply(int percent)
     {
         percent = Math.Clamp(percent, 0, 100);
-        _scale = percent / 100.0;
-        ValueText.Text = percent.ToString();
+        _percent = percent;
+        CardView.SetPercent(percent);
         ApplyPalette();
-        RefreshFill();
     }
 
     private void Present()
     {
         bool wasFadingOut = _fadingOut;
         _fadingOut = false;
+
+        if (_band != null)
+        {
+            PresentBand(wasFadingOut);
+            return;
+        }
 
         bool firstShow = !IsVisible;
         if (firstShow)
@@ -384,6 +472,14 @@ public partial class OsdWindow : Window
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
             });
 
+        if (firstShow)
+        {
+            // 动画启动后的实际状态（排查"窗口在但看不见"时全靠这两行）
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                CoreLog.Info($"OSD 淡入后：opacity={Opacity:F2} visible={IsVisible} "
+                             + $"实际={Width:F0}x{Height:F0} 卡片={CardView.ActualWidth:F0}x{CardView.ActualHeight:F0}")));
+        }
+
         _hideTimer.Stop();
         _hideTimer.Interval = TimeSpan.FromMilliseconds(
             HoldOverrideMs > 0 ? HoldOverrideMs : HoldMs);
@@ -392,10 +488,115 @@ public partial class OsdWindow : Window
         if (!_raiseTimer.IsEnabled) _raiseTimer.Start();
     }
 
+    /// <summary>
+    /// 高带路径的显示流程：算位置 → 渲成位图 → 贴到 band 16 的分层窗口。
+    ///
+    /// 和 WPF 路径的三点不同：
+    ///   1. **不 Show 本窗口**（窗口只是渲染器和状态机）；
+    ///   2. 不需要周期性重提升 —— band 16 天然高于 band 1 的任务栏和 band 6 的开始菜单；
+    ///   3. 淡入淡出改的是位图的 SourceConstantAlpha，不重画内容。
+    /// </summary>
+    private void PresentBand(bool wasFadingOut)
+    {
+        if (_band == null) return;
+
+        bool firstShow = !_bandVisible;
+        _bandVisible = true;
+
+        if (!TryComputeRect(out var rect, out double scale))
+        {
+            CoreLog.Warn("OSD 高带路径：没有可用的工作区，跳过本次显示");
+            return;
+        }
+
+        var bitmap = Render(_percent, scale);
+        byte alpha = firstShow || wasFadingOut ? (byte)0 : _bandAlpha;
+
+        _band.Present(bitmap, rect.X, rect.Y, alpha);
+        if (firstShow) LogGeometry("首次显示（band 16）");
+
+        if (firstShow || wasFadingOut || _bandAlpha < 255)
+            FadeBand(alpha, 255, FadeInMs, onDone: null);
+
+        _hideTimer.Stop();
+        _hideTimer.Interval = TimeSpan.FromMilliseconds(
+            HoldOverrideMs > 0 ? HoldOverrideMs : HoldMs);
+        _hideTimer.Start();
+    }
+
+    /// <summary>
+    /// band 路径的淡入淡出：每 ~16ms 改一次 SourceConstantAlpha。
+    ///
+    /// 为什么不用 WPF 的 Opacity 动画：窗口根本没显示，动画作用在窗口上没人看。
+    /// 为什么不用 CompositionTarget.Rendering：横条只活 2 秒，定时器足够，
+    /// 也不用担心帧率不稳定时抢渲染线程。
+    /// </summary>
+    private void FadeBand(byte from, byte to, int durationMs, Action? onDone)
+    {
+        _bandFadeTimer?.Stop();
+
+        if (_band == null)
+        {
+            onDone?.Invoke();
+            return;
+        }
+
+        if (durationMs <= 0 || from == to)
+        {
+            _bandAlpha = to;
+            _band.SetAlpha(to);
+            onDone?.Invoke();
+            return;
+        }
+
+        _bandAlpha = from;
+        _band.SetAlpha(from);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var timer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+
+        timer.Tick += (_, _) =>
+        {
+            double t = Math.Min(1.0, clock.Elapsed.TotalMilliseconds / durationMs);
+
+            // 和 WPF 那条一样用 ease-out，看起来才是"弹出来"而不是匀速
+            double eased = 1 - (1 - t) * (1 - t);
+            byte a = (byte)Math.Round(from + (to - from) * eased);
+
+            _bandAlpha = a;
+            _band?.SetAlpha(a);
+
+            if (t >= 1)
+            {
+                timer.Stop();
+                if (ReferenceEquals(_bandFadeTimer, timer)) _bandFadeTimer = null;
+                onDone?.Invoke();
+            }
+        };
+
+        _bandFadeTimer = timer;
+        timer.Start();
+    }
+
     private void StartFadeOut()
     {
         if (_fadingOut) return;
         _fadingOut = true;
+
+        if (_band != null)
+        {
+            FadeBand(_bandAlpha, 0, FadeOutMs, onDone: () =>
+            {
+                // 淡出途中又被叫醒的话，_fadingOut 已被 Present 置回 false
+                if (!_fadingOut) return;
+                _band?.Hide();
+                _bandVisible = false;
+            });
+            return;
+        }
 
         var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(FadeOutMs));
         fade.Completed += (_, _) =>
@@ -423,18 +624,28 @@ public partial class OsdWindow : Window
         if (!force && now - _paletteTick < AccentCacheMs) return;
 
         _paletteTick = now;
-        _lightPalette = IsSystemLightTheme();
+        bool light = IsSystemLightTheme();
 
-        Color card = _lightPalette ? LightCard : DarkCard;
-        Color text = _lightPalette ? LightText : DarkText;
-        Color track = _lightPalette ? LightTrack : DarkTrack;
-        Color fill = ReadAccent(_lightPalette);
+        Color card = light ? LightCard : DarkCard;
+        Color text = light ? LightText : DarkText;
+        Color track = light ? LightTrack : DarkTrack;
+        Color fill = ReadAccent(light);
 
-        Card.Background = new SolidColorBrush(card);
-        IconText.Foreground = new SolidColorBrush(text);
-        ValueText.Foreground = new SolidColorBrush(text);
-        TrackBar.Background = new SolidColorBrush(track);
-        FillBar.Background = new SolidColorBrush(fill);
+        if (light != _lightPalette)
+        {
+            /* 明暗切换了：高带路径的位图缓存必须作废，
+             * 否则下一次按键还会用旧配色渲染。 */
+            _lightPalette = light;
+            _cacheKey = (-1, false, 0);
+        }
+
+        _cardColor = card;
+        _textColor = text;
+        _trackColor = track;
+        _fillColor = fill;
+
+        CardView.SetPalette(card, text, track, fill);
+        _offscreen?.SetPalette(card, text, track, fill);
     }
 
     /// <summary>Windows 当前是不是浅色模式。</summary>
@@ -519,18 +730,17 @@ public partial class OsdWindow : Window
     /// </summary>
     private void Place()
     {
+        // 高带路径自己算位置（PresentBand → TryComputeRect），这里只管 WPF 窗口
+        if (_band != null) return;
+
         try
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
 
-            if (!OsdPlacement.TryGetTargetWorkArea(hwnd, out var area) || !area.IsValid)
-                return;
+            if (!TryComputeRect(out var r, out double scale)) return;
 
-            var r = OsdPlacement.Compute(
-                area.Left, area.Top, area.Right, area.Bottom, area.DpiScale);
-
-            var key = (r.X, r.Y, r.Width, r.Height, Math.Round(area.DpiScale, 3));
+            var key = (r.X, r.Y, r.Width, r.Height, Math.Round(scale, 3));
             if (_placed == key) return;
             _placed = key;
 
@@ -546,6 +756,92 @@ public partial class OsdWindow : Window
         {
             CoreLog.Warn("OSD 定位失败：" + e.Message);
         }
+    }
+
+    /// <summary>
+    /// 算出横条该占的物理像素矩形，以及**实际生效**的缩放。
+    ///
+    /// 两条路径共用（WPF 窗口用 SetWindowPos，高带路径交给 UpdateLayeredWindow），
+    /// 所以位置逻辑只有这一份。缩放从结果反推而不是直接用 area.DpiScale：
+    /// <see cref="OsdPlacement.Compute"/> 里有一条"极小屏等比缩小"的兜底，
+    /// 真触发时倍率已经不是原值了，位图必须按真实倍率渲染才不会糊。
+    /// </summary>
+    private bool TryComputeRect(out OsdRect rect, out double scale)
+    {
+        rect = default;
+        scale = 1.0;
+
+        IntPtr fallback = _band?.Handle ?? IntPtr.Zero;
+        if (fallback == IntPtr.Zero) fallback = new WindowInteropHelper(this).Handle;
+        if (fallback == IntPtr.Zero) return false;
+
+        if (!OsdPlacement.TryGetTargetWorkArea(fallback, out var area) || !area.IsValid)
+            return false;
+
+        rect = OsdPlacement.Compute(area.Left, area.Top, area.Right, area.Bottom, area.DpiScale);
+        if (rect.Width <= 0 || rect.Height <= 0) return false;
+
+        scale = rect.Height / (DesignHeight + ShadowPad * 2);
+        return scale > 0.05;
+    }
+
+    /// <summary>
+    /// 把卡片渲染成一张位图（Pbgra32，预乘 alpha —— UpdateLayeredWindow 要的就是它）。
+    ///
+    /// 缓存键是"百分比 + 明暗 + 缩放"：连按亮度键时同一档位只会渲染一次，
+    /// 中间那些 1% 的变化才需要重画（一张 432×144 大约 1~2ms）。
+    /// </summary>
+    private RenderTargetBitmap Render(int percent, double scale)
+    {
+        double wDip = DesignWidth + ShadowPad * 2;
+        double hDip = DesignHeight + ShadowPad * 2;
+
+        int pw = Math.Max(1, (int)Math.Round(wDip * scale));
+        int ph = Math.Max(1, (int)Math.Round(hDip * scale));
+        double rounded = Math.Round(scale, 3);
+
+        if (_cachedBitmap != null
+            && _cacheKey == (percent, _lightPalette, rounded)
+            && _cachedBitmap.PixelWidth == pw
+            && _cachedBitmap.PixelHeight == ph)
+        {
+            return _cachedBitmap;
+        }
+
+        if (_offscreen == null)
+        {
+            _offscreen = new OsdCard { Radius = CardRadius };
+            _offscreen.SetPalette(_cardColor, _textColor, _trackColor, _fillColor);
+        }
+
+        _offscreen.Width = wDip;
+        _offscreen.Height = hDip;
+        _offscreen.SetPercent(percent);
+        _offscreen.Measure(new Size(wDip, hDip));
+        _offscreen.Arrange(new Rect(0, 0, wDip, hDip));
+        _offscreen.UpdateLayout();
+
+        /* dpi 必须等于 96×缩放：RenderTargetBitmap 用 dpi 把"像素"和"DIP"对上，
+         * 写死 96 会让 200% 的屏上内容只有一半大（也可能糊）。 */
+        double dpi = 96.0 * scale;
+        var bmp = new RenderTargetBitmap(pw, ph, dpi, dpi, PixelFormats.Pbgra32);
+        bmp.Render(_offscreen);
+        bmp.Freeze();
+
+        _cachedBitmap = bmp;
+        _cacheKey = (percent, _lightPalette, rounded);
+        return bmp;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _bandFadeTimer?.Stop();
+        _bandFadeTimer = null;
+        _band?.Dispose();
+        _band = null;
+        _bandVisible = false;
+
+        base.OnClosed(e);
     }
 
     /// <summary>
@@ -579,6 +875,9 @@ public partial class OsdWindow : Window
     /// </summary>
     private void RaiseToTop()
     {
+        // band 16 高于任务栏(1)与开始菜单(6)，同带内也没有竞争者，不用抢
+        if (_band != null) return;
+
         try
         {
             var hwnd = new WindowInteropHelper(this).Handle;
@@ -626,7 +925,9 @@ public partial class OsdWindow : Window
     {
         try
         {
-            var hwnd = new WindowInteropHelper(this).Handle;
+            /* 高带路径下这个窗口根本没建 HWND，真正在屏幕上的是 band 宿主，
+             * 日志里必须是它的句柄，否则排查时对不上号。 */
+            IntPtr hwnd = _band?.Handle ?? new WindowInteropHelper(this).Handle;
             int ex = hwnd == IntPtr.Zero ? 0 : NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
 
             string where = OsdPlacement.TryGetTargetWorkArea(hwnd, out var area)
@@ -640,7 +941,9 @@ public partial class OsdWindow : Window
 
             CoreLog.Info($"OSD {when}：卡片={cw}x{ch}px 窗口={r.Width}x{r.Height}px "
                          + $"pos={r.X},{r.Y} 工作区={where} "
-                         + $"ex=0x{ex:X8} hwnd=0x{hwnd.ToInt64():X}");
+                         + $"ex=0x{ex:X8} hwnd=0x{hwnd.ToInt64():X} "
+                         + $"卡片控件={CardView.ActualWidth:F1}x{CardView.ActualHeight:F1}"
+                         + $" opacity={Opacity:F2}");
         }
         catch (Exception e)
         {
@@ -649,16 +952,9 @@ public partial class OsdWindow : Window
     }
 
     /// <summary>
-    /// 按百分比设置进度条填充。
+    /// 按百分比设置进度条填充 —— 已搬进 <see cref="OsdCard.SetPercent"/>。
     ///
-    /// 用两列星号比例（s : 1-s）而不是算像素宽度：
-    /// 算像素要靠 Track.ActualWidth，窗口刚显示时它还是 0，
-    /// 进度条就会停在空状态；比例交给 WPF 的布局去分，什么时候设都对。
+    /// 搬走的原因：高带路径渲染的是**另一个** <see cref="OsdCard"/> 实例，
+    /// 填充比例如果留在窗口这边算，两条路径迟早会算出不一样的宽度。
     /// </summary>
-    private void RefreshFill()
-    {
-        double s = Math.Max(0, Math.Min(1, _scale));
-        FillColumn.Width = new GridLength(s, GridUnitType.Star);
-        RestColumn.Width = new GridLength(1 - s, GridUnitType.Star);
-    }
 }

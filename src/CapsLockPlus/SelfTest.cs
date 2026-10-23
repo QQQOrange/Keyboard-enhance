@@ -155,6 +155,7 @@ public static class SelfTest
         TestBrightnessPumpStarts();
         TestOsdAndTextInput();
         TestOsdAlwaysOnTop();
+        TestOsdAboveShellMenu();
         TestOsdScalesAcrossDisplays();
         TestToastCoalescing();
         TestDirectSearchCoversAllEngines();
@@ -5313,6 +5314,99 @@ public static class SelfTest
         // 顺带守住这两件事：重提升不能挪动/改变横条尺寸
         Check("重提升带 NOMOVE|NOSIZE 以外的窗口标志不会被误加",
             (NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE) != 0);
+    }
+
+    /// <summary>
+    /// 亮度横条必须能压在**开始菜单**之上（用户报：开始菜单一打开就把横条盖住）。
+    ///
+    /// 根因是窗口带（band），不是置顶参数：开始菜单/搜索在 band 6，
+    /// 任务栏和普通窗口都在 band 1，而 SetWindowPos 只能在 band 1 里调次序。
+    /// 唯一不需要 UIAccess 签名的出路是用 CreateWindowInBand 在创建时进 band 16。
+    ///
+    /// 这里守四件事：
+    ///   1. 常量关系对（16 > 6）—— 防止有人"顺手"把高带值改小；
+    ///   2. 真能创建（本机允许才通过，不允许就是回退，不算失败但要报出来）；
+    ///   3. 请求 band 6 必须被拒 —— 这条反过来证明"权限模型没变"，
+    ///      也证明测试用的 API 真的在起作用（不是随便传什么都成功）；
+    ///   4. 渲染出来的位图尺寸/透明度正确（四角透明、中心不透明）。
+    ///
+    /// 行为验证（真开开始菜单看像素）在 tools/test_osd_start_menu.py。
+    /// </summary>
+    private static void TestOsdAboveShellMenu()
+    {
+        Check("高带值高于开始菜单的 band（16 > 6）",
+            NativeMethods.ZBID_ABOVE_SHELL > NativeMethods.ZBID_IMMERSIVE_INACTIVEMOBODY,
+            $"{NativeMethods.ZBID_ABOVE_SHELL} vs {NativeMethods.ZBID_IMMERSIVE_INACTIVEMOBODY}");
+
+        Check("高带值不是 UIACCESS（那条路要签名，普通进程走不通）",
+            NativeMethods.ZBID_ABOVE_SHELL != NativeMethods.ZBID_UIACCESS);
+
+        // 真正建一个宿主，确认落在 band 16
+        var surface = Core.Windows.OsdBandSurface.TryCreate(
+            NativeMethods.ZBID_ABOVE_SHELL, out string createError);
+
+        Check("能以 band 16 创建横条宿主", surface != null, createError);
+        if (surface != null)
+        {
+            CheckEqual("宿主实际落在 band 16", surface.BandForTest, 16u);
+
+            // 点击穿透 + 不抢焦点 + 不进 Alt+Tab：缺一个就会影响用户正在做的事
+            int ex = NativeMethods.GetWindowLong(surface.Handle, NativeMethods.GWL_EXSTYLE);
+            Check("宿主带 WS_EX_LAYERED（UpdateLayeredWindow 需要）",
+                (ex & NativeMethods.WS_EX_LAYERED) != 0, $"ex=0x{ex:X8}");
+            Check("宿主带 WS_EX_TRANSPARENT（点击穿透）",
+                (ex & NativeMethods.WS_EX_TRANSPARENT) != 0, $"ex=0x{ex:X8}");
+            Check("宿主带 WS_EX_NOACTIVATE（不抢焦点）",
+                (ex & NativeMethods.WS_EX_NOACTIVATE) != 0, $"ex=0x{ex:X8}");
+            Check("宿主带 WS_EX_TOOLWINDOW（不进 Alt+Tab）",
+                (ex & NativeMethods.WS_EX_TOOLWINDOW) != 0, $"ex=0x{ex:X8}");
+
+            surface.Dispose();
+        }
+
+        /* 反向用例：band 6 是外壳的带，普通进程没有权限。
+         * 如果这条突然"通过"了，说明权限模型变了 —— 那我们的
+         * "16 是可选上限"的判断也就不可信了，必须重新量。 */
+        var denied = Core.Windows.OsdBandSurface.TryCreate(
+            NativeMethods.ZBID_IMMERSIVE_INACTIVEMOBODY, out string deniedError);
+        Check("请求 band 6 被拒绝（权限模型没变）", denied == null,
+            "竟然创建成功了，需要重新确认 band 允许范围");
+        Check("被拒时给出原因（便于日志排查）",
+            !string.IsNullOrWhiteSpace(deniedError), deniedError);
+        denied?.Dispose();
+
+        // 实际横条用的就是这条路
+        var osd = UI.Windows.OsdWindow.CreateDetached();
+        Check("横条默认走高带路径（不是回退到 WPF 窗口）",
+            osd.UsesBandSurfaceForTest, "回退到了 WPF 窗口，开始菜单会盖住它");
+        CheckEqual("横条宿主的 band", osd.BandForTest, 16u);
+
+        /* 渲染：200% 下卡片是 216×72 DIP → 432×144 像素；
+         * 四角必须透明（圆角+阴影留白），中心必须不透明（卡片）。
+         * 这条能挡住"忘了设 dpi"（位图尺寸对但内容只有一半大）
+         * 和"位图全透明"（窗口在，但什么都看不见）。 */
+        var bmp = osd.RenderForTest(60, 2.0);
+        CheckEqual("位图宽度 = 216×缩放", bmp.PixelWidth, 432);
+        CheckEqual("位图高度 = 72×缩放", bmp.PixelHeight, 144);
+
+        if (bmp.PixelWidth == 432 && bmp.PixelHeight == 144)
+        {
+            int stride = bmp.PixelWidth * 4;
+            var pixels = new byte[stride * bmp.PixelHeight];
+            bmp.CopyPixels(pixels, stride, 0);
+
+            byte AlphaAt(int x, int y) => pixels[y * stride + x * 4 + 3];
+
+            Check("位图左上角透明（阴影/圆角留白）", AlphaAt(2, 2) < 16,
+                $"alpha={AlphaAt(2, 2)}");
+            Check("位图中心不透明（卡片本体）", AlphaAt(216, 72) > 200,
+                $"alpha={AlphaAt(216, 72)}");
+            Check("位图右侧留白也透明", AlphaAt(429, 72) < 16,
+                $"alpha={AlphaAt(429, 72)}");
+        }
+
+        osd.CloseForTest();
+        DoEvents(60);
     }
 
     /// <summary>

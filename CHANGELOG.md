@@ -4,6 +4,67 @@
 
 ---
 
+## v4.5.9 — 亮度横条压过开始菜单（窗口带 / window band）
+
+> ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**（本程序不自带运行时，
+> 没装的话双击不会有任何反应）。下载：<https://dotnet.microsoft.com/download/dotnet/10.0>
+> → 选 **.NET Desktop Runtime 10.0.x → Windows → x64**。
+
+用户报：开始菜单一打开就把亮度横条整个盖住；可系统自带的音量条却能正常显示。
+
+### 根因：不是置顶参数，是「窗口带」
+
+Windows 8 起，外壳把窗口分进若干 **band**，Z 序**先比 band、再比带内先后**。
+本机实测（`tools/probe_start_band.py`）：
+
+| 窗口 | band |
+| --- | --- |
+| 普通窗口、任务栏 `Shell_TrayWnd` | **1**（DESKTOP） |
+| 开始菜单 / 搜索（`StartMenuExperienceHost` / `SearchHost`） | **6**（IMMERSIVE_INACTIVEMOBODY） |
+| 系统音量条 | Shell 自己画的，本来就在高带 |
+
+所以 `SetWindowPos` 能做的全部事情 —— `HWND_TOPMOST`、`HWND_TOP`、
+每 200ms 重提升 —— **都只在 band 1 之内有效**，永远追不上 band 6。
+v4.5.8 之所以能压过任务栏，是因为任务栏也在 band 1，同带内比先后；
+一开始菜单就不在同一个带里，参数再换也没用。音量条不受影响，
+纯粹因为它是 Shell 的一部分。
+
+常规解法是 UIAccess（要微软签名 + 装进 Program Files），对开源自编译版本不现实。
+
+### 改法：创建时就进 band 16
+
+实测发现普通（非 UIAccess）进程用 `CreateWindowInBand` **能创建 band 16 的窗口**，
+而 16 高于开始菜单的 6；请求 band 2~12 则一律 `ERROR_ACCESS_DENIED`。
+`SetWindowBand` 对已存在的窗口无效（同样被拒），所以 band 只能在创建时定死 ——
+WPF 的 `Window` 没有这个能力，横条因此换了一个宿主：
+
+1. `OsdBandSurface`：`CreateWindowInBand(…, band 16)` 建一个
+   `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` 的弹窗；
+2. `OsdCard`：把卡片视觉从窗口里抽成 `UserControl`（**唯一一份定义**）；
+3. 离屏 `RenderTargetBitmap` 渲染成 Pbgra32 位图 → `UpdateLayeredWindow` 贴上；
+4. 淡入淡出改 `SourceConstantAlpha`，不再动 WPF 的 `Opacity`。
+
+圆角、阴影、半透明材质全部不变（位图自带 alpha），也不再需要周期性抢 Z 序。
+
+### 降级与逃生口
+
+- 系统不给 band 16（老版本 / 精简版）→ 自动回退原来的 WPF 窗口：
+  仍压得住任务栏，只是压不过开始菜单；
+- `CAPSLOCKPLUS_OSD_BAND=0` 可强制走老路径（独占全屏游戏等场景）。
+
+### 验证
+
+- 自检 1863 → **1881 项全绿**，新增 18 项：band 常量关系、真能创建且落在 16、
+  请求 band 6 必须被拒（证明权限模型没变）、四个扩展样式、位图尺寸与四角透明度。
+  变异验证：把高带值改成 6 → 4 项立刻红。
+- 端到端 `tools/test_osd_start_menu.py`（真开开始菜单、抓像素）两个场景：
+  1. 横条显示中打开开始菜单 → 进度条强调蓝 `(68,142,206)` 前后**完全一致**，
+     而旁边对照点被开始菜单换掉（证明测试没有"在没重叠的地方自己好了"）；
+  2. 开始菜单开着再唤出横条 → 横条可见，且开始菜单没被顶掉。
+- 负向对照：`CAPSLOCKPLUS_OSD_BAND=0` 跑同一脚本 → 两个场景都红（退出码 1）。
+
+---
+
 ## v4.5.8 — 亮度横条"永远在最上层"
 
 > ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**（本程序不自带运行时，
