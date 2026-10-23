@@ -9,15 +9,16 @@
         Title="按键增强 横条">
 
     <!-- 亮度横条 —— 逐项对齐 Windows 自己的音量横条：
-         192×48 深色圆角卡片（圆角 6）、无边框、带柔和阴影，
+         192×48 圆角卡片（圆角 7.5）、无边框、带柔和阴影，
          一行「图标 + 进度条 + 数字」；进度条用系统强调色的浅色档，
          图标与数字纯白。**不跟随应用主题** —— 系统那条横条在浅色桌面上
          也仍然是深色卡片（实测），跟着主题变反而会"白天蓝、夜里白"。
 
-         尺寸在这里只作为设计参考：真正的尺寸由代码里的
-         DesignWidth/DesignHeight/ShadowPad 决定（定位也要用同一组数字）。 -->
+         尺寸/圆角在这里只作为设计参考：真正生效的值由代码里的
+         DesignWidth/DesignHeight/ShadowPad/CardRadius 决定
+         （定位也要用同一组数字，所以只留一份）。 -->
     <Grid>
-        <Border x:Name="Card" Margin="12" CornerRadius="6" Background="#F02D2D2D"
+        <Border x:Name="Card" Margin="12" CornerRadius="7.5" Background="#F02D2D2D"
                 BorderThickness="0" Padding="13,0,12,0">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.24" Color="#000000" />

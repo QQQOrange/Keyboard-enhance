@@ -17,7 +17,7 @@ namespace CapsLockPlus.UI.Windows;
 ///
 ///   | 项目 | 系统音量条（实测） | 本横条 |
 ///   | --- | --- | --- |
-///   | 卡片 | 192×48 DIP、深色、圆角 6、无边框、带柔光阴影 | 同 |
+///   | 卡片 | 192×48 DIP、深色、圆角 7.5、无边框、带柔光阴影 | 同 |
 ///   | 版式 | 左图标 + 中间进度条 + 右侧数字 | 同（图标换成亮度） |
 ///   | 进度条 | 高 5 DIP、填充=系统强调色浅档、槽=白色 55% | 同 |
 ///   | 文字 | 纯白，图标 16、数字 14 | 同 |
@@ -47,6 +47,30 @@ public partial class OsdWindow : Window
     /// <summary>卡片尺寸（DIP）。与系统音量条一致。</summary>
     public const double DesignWidth = 192;
     public const double DesignHeight = 48;
+
+    /// <summary>
+    /// 卡片圆角（DIP）。实测对齐系统音量条 = 7.5。
+    ///
+    /// 怎么量出来的（<c>tools/measure_osd_radius.py</c>）：
+    /// 铺纯黑全屏 → 触发横条 → 截图 → 沿左下角逐行求左边界
+    /// → 用圆角矩形方程 d(t)=R-sqrt(R²-(R-t)²) 做最小二乘拟合。
+    ///
+    /// 三个关键点，少一个就会量错：
+    ///   1. **从底边量，不从顶边量**：两条横条都贴工作区底 14 DIP，底边必然对齐；
+    ///      顶边会差 1~2 px（WPF 与 DWM 抗锯齿起点不同），从顶边量等于把这
+    ///      点偏差塞进半径里。
+    ///   2. **只认比值/同算法对比，不认绝对拟合值**：拟合值比真值小约 2.4 px
+    ///      （50% 阈值 + 抗锯齿让边界内收）。旧值 6 DIP 真值 12 px、拟合 9.75，
+    ///      偏差 2.25；8 DIP 真值 16 px、拟合 13.5，偏差 2.5 —— 偏差基本恒定。
+    ///   3. **拿系统的拟合值反推**：系统拟合 12.5 px + 偏差 ≈ 15 px = 7.5 DIP。
+    ///
+    /// 按 7.5 DIP 复测，我们左下剖面 10.8/8.0/6.3/5.0/3.7…，
+    /// 系统 10.9/8.1/6.3/4.9/3.7…，逐行差 ≤ 0.1 px，拟合值同为 12.50。
+    ///
+    /// 以前写 6 是"看起来差不多"估的：200% 下只差 4 个像素，单看没感觉，
+    /// 但和系统横条并排时"我们更方"很明显（用户就是这么发现的）。
+    /// </summary>
+    public const double CardRadius = 7.5;
 
     /// <summary>
     /// 卡片四周留给阴影的余量（DIP）。
@@ -131,6 +155,10 @@ public partial class OsdWindow : Window
         Width = DesignWidth + ShadowPad * 2;
         Height = DesignHeight + ShadowPad * 2;
 
+        /* 圆角只在代码里定一次。XAML 里那个 8 是给设计器看的参考值，
+         * 这里覆盖成常量 —— 免得以后改了一个忘了另一个。 */
+        Card.CornerRadius = new CornerRadius(CardRadius);
+
         _hideTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
             Interval = TimeSpan.FromMilliseconds(HoldMs),
@@ -213,6 +241,9 @@ public partial class OsdWindow : Window
 
     /// <summary>仅供自检：卡片下沿离工作区底边多少 DIP。</summary>
     internal static double CardBottomGapForTest => BottomGap;
+
+    /// <summary>仅供自检：卡片**实际生效**的圆角（XAML 可能被单独改过）。</summary>
+    internal double CardRadiusForTest => Card.CornerRadius.TopLeft;
 
     /// <summary>仅供自检：当前系统是浅色还是深色模式。</summary>
     internal static bool SystemLightForTest => IsSystemLightTheme();

@@ -5327,6 +5327,28 @@ public static class SelfTest
         Check("横条长宽比与系统一致（4 : 1）",
             Math.Abs(ow / oh - 4.0) < 0.05, $"{ow / oh:F2}");
 
+        /* 圆角也要一致。以前是 6 DIP，比系统"更方" —— 用户一眼就看出来了：
+         * 200% 缩放下差 2 DIP 只有 4 个像素，单看没感觉，并排就很明显。
+         * 定量依据（tools/measure_osd_radius.py，同一算法量两边、都从底边对齐）：
+         *   系统拟合 12.5 px；我们 6 DIP→9.75、8 DIP→13.5。
+         * 拟合值比真值恒定小约 2.4 px，反推系统 = 12.5+2.4 ≈ 15 px = 7.5 DIP；
+         * 按 7.5 复测，两边剖面逐行差 ≤ 0.1 px，拟合值同为 12.5。
+         * 所以断言 7.5，不能断 8（8 会圆过头 1 px，用户还是会看出来）。 */
+        CheckEqual("卡片圆角与系统一致（7.5 DIP）",
+            UI.Windows.OsdWindow.CardRadius, 7.5);
+        Check("圆角不超过卡片高度的一半（不会变成胶囊）",
+            UI.Windows.OsdWindow.CardRadius <= oh / 2,
+            $"{UI.Windows.OsdWindow.CardRadius} vs {oh / 2}");
+
+        /* 只断言常量不够：XAML 里还写着一个坐标值，万一有人改 XAML
+         * 而忘了 ctor 覆盖，实际渲染的就是 XAML 那个。这里查真家伙。 */
+        var osdRadius = UI.Windows.OsdWindow.CreateDetached();
+        CheckEqual("实际生效的圆角 == 常量（XAML 不会偷偷盖回去）",
+            Math.Round(osdRadius.CardRadiusForTest, 3),
+            UI.Windows.OsdWindow.CardRadius);
+        osdRadius.Close();
+        DoEvents(40);
+
         /* 配色：两套都对齐系统（半透明材质 + 强调色进度条）。
          * 横条跟的是 **Windows 系统主题**，不是本应用主题。 */
         var darkPal = UI.Windows.OsdWindow.PaletteForTest(light: false);
