@@ -248,47 +248,14 @@ public static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
-    /* 任务栏矩形。
+    /* 任务栏矩形（ABM_GETTASKBARPOS）。
      *
-     * 为什么需要它：任务栏设成"自动隐藏"时，工作区就等于整块屏幕
-     * （rcWork == rcMonitor），但 Windows 自己的亮度/音量横条**仍然让开任务栏**，
-     * 于是它看起来比"贴着屏幕底"的位置高一截（本机实测差 48 DIP 左右）。
-     * ABM_GETTASKBARPOS 即使在自动隐藏状态下也会返回任务栏的真实矩形。 */
-    [DllImport("shell32.dll", CallingConvention = CallingConvention.StdCall)]
-    public static extern IntPtr SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
-
-    public const uint ABM_GETTASKBARPOS = 0x00000005;
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct APPBARDATA
-    {
-        public int cbSize;
-        public IntPtr hWnd;
-        public uint uCallbackMessage;
-        public uint uEdge;
-        public RECT rc;
-        public IntPtr lParam;
-    }
-
-    /// <summary>任务栏矩形（物理像素）。拿不到时返回 false。</summary>
-    public static bool TryGetTaskbarRect(out RECT rect)
-    {
-        rect = default;
-        try
-        {
-            var data = new APPBARDATA
-            {
-                cbSize = Marshal.SizeOf<APPBARDATA>(),
-            };
-            if (SHAppBarMessage(ABM_GETTASKBARPOS, ref data) == IntPtr.Zero) return false;
-            rect = data.rc;
-            return rect.Width > 0 && rect.Height > 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+     * ⚠ 已删除。它曾经被用来"让亮度横条避开任务栏"，但这个前提是错的：
+     *   任务栏固定时 rcWork 已经扣除了它；任务栏自动隐藏时 rcWork 等于整屏，
+     *   而系统横条实测（3840×2160@200%，黑底截图量边缘）**仍然贴着屏幕底**
+     *   （下沿距底 28 px），并没有额外让开。多让一次的结果就是整条横条
+     *   比系统高 96 px —— 用户反馈"比系统音量条高一个横条"。
+     *   定位只用 rcWork，见 OsdWindow.Place()。 */
 
     /* 窗口所在显示器的 DPI（Win10 1607+）。
      * 定位窗口必须用它，不能用 SystemParameters.WorkArea —— 后者是

@@ -23,7 +23,6 @@ public partial class GuideView : UserControl
         RunStateHint.Text = _host.Engine.Enabled
             ? "按住 CapsLock 即可使用全部功能"
             : "点击标题栏的「恢复」重新启用";
-        SchemeText.Text = s.Global.HotkeyScheme == "capslock_plus" ? "经典 CapsLock+ 3.0" : "Capslox（推荐）";
         StartupText.Text = s.Global.StartWithWindows ? "已开启" : "未开启";
 
         var keys = new List<QuickKey>
@@ -40,6 +39,22 @@ public partial class GuideView : UserControl
             new("F6", "窗口置顶", "再按一次取消"),
         };
         QuickKeys.ItemsSource = keys;
+    }
+
+    /// <summary>
+    /// 内容至少铺满可视区域。
+    ///
+    /// 最大化时整页内容只有几百 DIP 高，ScrollViewer 下方会留下大片空白
+    /// （用户的原话是"快速上手页面最大化之后，右边和下边是空的"）。
+    /// 右边靠横向铺满解决；下边靠这里：把视口高度同步成内容的最小高度，
+    /// 最后那张卡片所在的 * 行就会把剩余空间吃掉。
+    ///
+    /// 不能写死 MinHeight：窗口可以拉成任意大小，视口高度只有运行时才知道。
+    /// </summary>
+    private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double chrome = PageBody.Margin.Top + PageBody.Margin.Bottom;
+        PageBody.MinHeight = Math.Max(0, PageScroll.ViewportHeight - chrome);
     }
 
     private void OnStartSetup(object sender, RoutedEventArgs e)

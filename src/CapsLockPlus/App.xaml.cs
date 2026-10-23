@@ -83,7 +83,7 @@ public partial class App : Application
             a => a.Equals("--reveal", StringComparison.OrdinalIgnoreCase));
         if (revealIndex >= 0 && revealIndex + 1 < e.Args.Length)
         {
-            string folder = e.Args[revealIndex + 1];
+            string target = e.Args[revealIndex + 1];
             var lines = new List<string>();
 
             try
@@ -91,25 +91,51 @@ public partial class App : Application
                 var beforeFg = Core.Windows.WindowService.ForegroundInfo();
                 lines.Add($"打开前的前台：{beforeFg?.Title} [{beforeFg?.ClassName}] {beforeFg?.ExeName}");
 
-                bool exists = Directory.Exists(folder);
-                lines.Add($"目标文件夹：{folder}（存在：{exists}）");
-                if (!exists)
+                bool isUrl = target.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                             || target.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+                bool isFolder = !isUrl && Directory.Exists(target);
+                bool isFile = !isUrl && !isFolder && File.Exists(target);
+                lines.Add($"目标：{target}（网址={isUrl} 文件夹={isFolder} 文件={isFile}）");
+
+                if (!isUrl && !isFolder && !isFile)
                 {
-                    lines.Add("结论：路径不存在，无法测试");
+                    lines.Add("结论：目标不存在，无法测试");
                 }
                 else
                 {
-                    Core.Windows.WindowService.OpenFolderInForeground(folder);
-                    Thread.Sleep(2500);       // 等 explorer 起来并完成置前
+                    /* 预期程序：
+                     *   网址 → 默认浏览器（注册表 UserChoice）
+                     *   文件夹 → explorer
+                     *   文件 → 文件关联（AssocQueryString） */
+                    string expectExe = isUrl
+                        ? Core.Windows.WindowService.DefaultBrowserExe()
+                        : isFolder ? "explorer.exe"
+                        : Core.Windows.WindowService.AssociatedExe(target);
+                    string expectName = expectExe.Length > 0 ? Path.GetFileName(expectExe) : "";
+                    lines.Add($"预期程序：{(expectName.Length > 0 ? expectName : "(没能解析)")}");
+
+                    if (isUrl)
+                        Core.Windows.WindowService.LaunchInForeground(
+                            target, Core.Windows.WindowService.ShellTargetKind.Url);
+                    else if (isFolder)
+                        Core.Windows.WindowService.OpenFolderInForeground(target);
+                    else
+                        Core.Windows.WindowService.LaunchInForeground(
+                            target, Core.Windows.WindowService.ShellTargetKind.File);
+
+                    Thread.Sleep(3200);       // 等 shell 启动 + 置前重试
 
                     var fg = Core.Windows.WindowService.ForegroundInfo();
                     lines.Add($"打开后的前台：{fg?.Title} [{fg?.ClassName}] {fg?.ExeName}");
 
                     bool onTop = fg != null &&
-                                 string.Equals(fg.ClassName, "CabinetWClass", StringComparison.OrdinalIgnoreCase);
+                        (isFolder
+                            ? string.Equals(fg.ClassName, "CabinetWClass", StringComparison.OrdinalIgnoreCase)
+                            : expectName.Length > 0 &&
+                              Core.Windows.WindowService.SameExeName(fg.ExeName, expectName));
                     lines.Add(onTop
-                        ? "结论：资源管理器窗口已在前台 ✓"
-                        : "结论：前台不是资源管理器 ✗");
+                        ? $"结论：{(isFolder ? "资源管理器" : expectName)} 已在前台 ✓"
+                        : "结论：前台不是目标窗口 ✗");
                 }
             }
             catch (Exception ex)
@@ -126,6 +152,34 @@ public partial class App : Application
             catch { /* 预期内：探测/重试型，失败即视为无结果 */ }
 
             Environment.Exit(0);
+            return;
+        }
+
+        /* 诊断：只显示一次亮度横条，停几秒后退出。
+         *
+         * 用法：KeyboardEnhance.exe --osd 45
+         *
+         * 为什么需要它：横条的位置只能"真的显示出来再量"。
+         * 用户报"比系统音量条高一截"时，铺一块纯黑全屏窗体再跑这个，
+         * 截图量卡片边缘，就能和系统那条逐像素对齐（见 tools/measure_osd_dark.py）。
+         * 顺带也验证 Place() 走的物理像素 + DPI 那条路径。 */
+        int osdIndex = Array.FindIndex(e.Args,
+            a => a.Equals("--osd", StringComparison.OrdinalIgnoreCase));
+        if (osdIndex >= 0)
+        {
+            int percent = int.TryParse(e.Args.ElementAtOrDefault(osdIndex + 1), out int pv)
+                ? Math.Clamp(pv, 0, 100) : 50;
+
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            UI.Windows.OsdWindow.Show(percent);
+
+            var closeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            closeTimer.Tick += (_, _) =>
+            {
+                closeTimer.Stop();
+                Shutdown();
+            };
+            closeTimer.Start();
             return;
         }
 

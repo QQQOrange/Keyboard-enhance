@@ -410,7 +410,13 @@ public sealed class ActionContext
 
         try
         {
-            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            /* 不只是 Process.Start —— 那样浏览器会**在后台**打开
+             * （前台锁定把新窗口压在任务栏），用户按下直达网址的键
+             * 只看到任务栏闪一下。这里和"直达文件夹"走同一套置前逻辑。 */
+            bool web = target.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                       || target.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            WindowService.LaunchInForeground(target,
+                web ? WindowService.ShellTargetKind.Url : WindowService.ShellTargetKind.File);
         }
         catch (Exception ex) { Notify(UiText.Failed("打开网址", ex.Message)); }
     }
@@ -490,7 +496,11 @@ public sealed class ActionContext
                 Notify($"文件不存在：{target}");
                 return;
             }
-            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+
+            /* 和网址/文件夹一样：打开之后把那个程序带到最前面。
+             * 具体是谁打开由文件关联决定（.docx → Word、.mp4 → 播放器），
+             * WindowService 会自己查关联再认窗口。 */
+            WindowService.LaunchInForeground(target, WindowService.ShellTargetKind.File);
         }
         catch (Exception ex) { Notify(UiText.Failed("打开这个文件", ex.Message)); }
     }

@@ -42,7 +42,7 @@ public partial class KeysView : UserControl
     private void BuildKeyboard()
     {
         if (_host == null) return;
-        KeyboardPanel.Children.Clear();
+        KeyboardPanel.Child = null;
         // 搜索框已移除：不再按关键字过滤，整把键盘始终完整显示
         string filter = "";
         int bound = 0;
@@ -59,7 +59,17 @@ public partial class KeysView : UserControl
          * 上一版每行各自 new Grid + 各自的 Star 宽度 —— 各行总权重不同，
          * 同一"1 单位"在每行的实际像素宽度都不一样，键全对不齐。
          * 现在所有行共用同一套 ColumnDefinition，键按绝对列号落位。 */
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        var grid = new Grid
+        {
+            Margin = new Thickness(0, 0, 0, 6),
+            /* 显式给自然尺寸（不再是"铺满父容器"）。
+             * 父级 Viewbox 就是拿这个尺寸当基准做等比例缩放：
+             * 窗口宽 → 整把键盘按同一比例放大；窗口窄 → 按同一比例缩小。
+             * 不给尺寸的话，Viewbox 会用无限宽度量星列，
+             * 星列退化成 Auto，每行宽度全由文字撑出来，反而更乱。 */
+            Width = NaturalWidth,
+            Height = NaturalHeight,
+        };
         for (int c = 0; c < TotalCols; c++)
             grid.ColumnDefinitions.Add(new ColumnDefinition
             {
@@ -108,7 +118,7 @@ public partial class KeysView : UserControl
             grid.Children.Add(cap);
         }
 
-        KeyboardPanel.Children.Add(grid);
+        KeyboardPanel.Child = grid;
 
         // ---- 状态文字 ----
         var tap = FindInCurrentLayer("press_caps");
@@ -126,8 +136,10 @@ public partial class KeysView : UserControl
          * 录了 Ctrl+Shift 就落到 `_ => ""`，界面完全看不出"正在看一个修饰子层"，
          * 只看到"0 个绑定"—— 用户会以为绑定被删了。
          * 顺便把"怎么回到普通键"写在同一行。 */
-        string modText = _layer == KeyModifiers.None ? "" : ModifierText(_layer);
-        string backHint = _layer == KeyModifiers.None
+        string modText = _layer != KeyModifiers.None
+            ? ModifierText(_layer)
+            : string.IsNullOrEmpty(_subLayerKey) ? "" : " + " + KeyName.Display(_subLayerKey);
+        string backHint = modText.Length == 0
             ? ""
             : "　·　点上方的「直接按」回到普通键";
         LayerHint.Text = $"当前：第 {_layerId} 层「{layerName}」{modText}（{bound} 个绑定）　·　{triggerText}{backHint}";
@@ -174,7 +186,7 @@ public partial class KeysView : UserControl
     private Border? BuildKeycapEntry(string label, string keyId, string filter,
         ref int bound, string? triggerKey)
     {
-        string combo = KeyName.BuildComboEx(_layer, keyId);
+        string combo = ComboFor(keyId);
         var binding = FindInCurrentLayer(combo);
 
         /* 只有"动作真实存在"才算已绑定。

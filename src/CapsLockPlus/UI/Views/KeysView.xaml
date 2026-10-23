@@ -38,14 +38,17 @@
 
             <!-- 键盘 -->
             <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0" Padding="20,16">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+                <!--
+                    三段式 Dock：顶部说明钉顶、底部控件钉底，中间剩下的全部给键盘。
 
-                    <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                    以前键盘那行是 Auto、底部那行是 *，键盘只能按"自然宽度"铺开：
+                    窗口一收窄，92 个星列一起被压扁 —— 键帽高度还是 52px，
+                    宽度却只剩十几个像素，字全挤在一起，看起来"整块被压变形"。
+                    现在最外层套 Viewbox 等比缩放（见 BuildKeyboard 里的 NaturalWidth），
+                    窗口怎么变，整把键盘都按同一比例缩，不会只压一个方向。
+                -->
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
                         <StackPanel Orientation="Horizontal">
                             <!--
                                 这里是**当前层的触发键**，不是写死的 CapsLock。
@@ -76,9 +79,7 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <StackPanel Grid.Row="1" x:Name="KeyboardPanel" VerticalAlignment="Top" Margin="0,4,0,0" />
-
-                    <StackPanel Grid.Row="2" VerticalAlignment="Bottom">
+                    <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <TextBlock Text="层" Style="{StaticResource Text.Secondary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -118,7 +119,12 @@
                                        Margin="6,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
                     </StackPanel>
-                </Grid>
+
+                    <!-- 键盘本体：Stretch=Uniform 保证等比例；TwoWay 跟随窗口放大/缩小 -->
+                    <Viewbox x:Name="KeyboardPanel" Margin="0,4,0,4"
+                             Stretch="Uniform" StretchDirection="Both"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </DockPanel>
             </Border>
 
             <!-- 编辑面板 -->

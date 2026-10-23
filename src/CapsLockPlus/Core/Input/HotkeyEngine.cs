@@ -573,13 +573,25 @@ public sealed class HotkeyEngine : IDisposable
     }
 
     /// <summary>
-    /// 用物理状态校正修饰键标记。
+    /// 用物理状态校正修饰键标记 —— **只校正没被我们吞掉的那些**。
     ///
-    /// 为什么需要：`_ctrlDown` 这类标记只要漏掉一次抬起（钩子重装、
-    /// 切桌面、另一个程序抢焦点导致 up 被吞），就会**一直**是 true。
-    /// 之后层内每次按键都被拼成 `caps_ctrl_xxx`，用户绑的 `caps_q`
-    /// 永远查不到 —— 表现就是"触发键进层了，但层里的键全都不灵"，
-    /// 而且会一直坏到程序重启。物理状态是唯一的真相来源。
+    /// 校正本身是需要的：`_ctrlDown` 这类标记只要漏掉一次抬起（钩子重装、
+    /// 切桌面、另一个程序抢焦点导致 up 被吞），就会**一直**是 true，
+    /// 之后层内每个键都被拼成 `caps_ctrl_xxx`，用户绑的 `caps_q` 永远查不到。
+    ///
+    /// ⚠ 但**层内按下的修饰键一个都不能用物理状态校正**，这是 v4.5.5 修的
+    /// 真实 bug（用户报"按下修饰键之后不能正确触发相关功能"）：
+    ///
+    ///   为了让 Ctrl/Shift/Alt/Win 不在系统里弹出 Alt 菜单、开始菜单，
+    ///   层内按下它们时钩子会把事件**吞掉**。系统层面这些键从未被按下，
+    ///   `GetAsyncKeyState` 读出来永远是 false。旧实现每次按键都无条件
+    ///   按物理状态覆盖 —— 于是"Ctrl 按下（记为 true）→ 按 Q 前先校正
+    ///   （被抹成 false）→ 查 caps_q"，Ctrl 子层整层失效，
+    ///   Alt+滚轮同理。自检里因为探测函数被人为设成"按着"才没暴露。
+    ///
+    /// 现在的分工：
+    ///   · 我们自己吞过的修饰键（在 <c>_swallowedUp</c> 里）→ 只信按键事件流；
+    ///   · 没吞过的（进层**之前**就按着的）→ 物理状态可信，可以纠偏。
     ///
     /// ⚠ 触发键本身若是修饰键（右 Alt 当触发键），物理上它当然是按着的，
     /// 但绝不能算进 combo，否则又回到 caps_lalt_q 的老问题。
@@ -601,12 +613,42 @@ public sealed class HotkeyEngine : IDisposable
                      && PhysDownFamily(VK.RMenu)
                      && PhysDownFamily(VK.LControl);
 
-        if (!SameFamily(skip, VK.LControl) && !altGr) _ctrlDown = PhysDownFamily(VK.LControl);
-        if (!SameFamily(skip, VK.LShift)) _shiftDown = PhysDownFamily(VK.LShift);
-        if (!SameFamily(skip, VK.LMenu)) _laltDown = PhysDownFamily(VK.LMenu);
-        if (!SameFamily(skip, VK.LWin)) _lwinDown = PhysDownFamily(VK.LWin);
-        if (!SameFamily(skip, VK.RWin)) _rwinDown = PhysDownFamily(VK.RWin);
+        if (!SameFamily(skip, VK.LControl) && !altGr && !SwallowedInFamily(VK.LControl))
+            _ctrlDown = PhysDownFamily(VK.LControl);
+        if (!SameFamily(skip, VK.LShift) && !SwallowedInFamily(VK.LShift))
+            _shiftDown = PhysDownFamily(VK.LShift);
+        if (!SameFamily(skip, VK.LMenu) && !SwallowedInFamily(VK.LMenu))
+            _laltDown = PhysDownFamily(VK.LMenu);
+        if (!SameFamily(skip, VK.LWin) && !SwallowedInFamily(VK.LWin))
+            _lwinDown = PhysDownFamily(VK.LWin);
+        if (!SameFamily(skip, VK.RWin) && !SwallowedInFamily(VK.RWin))
+            _rwinDown = PhysDownFamily(VK.RWin);
     }
+
+    /// <summary>
+    /// 这个修饰键（含左右/通用码）是不是**正被我们吞着**。
+    ///
+    /// <c>_swallowedUp</c> 里存的是"按下被吞掉、还没等到抬起"的键码。
+    /// 这类键在系统看来根本没按下，物理状态不可信 —— 见上面的说明。
+    /// </summary>
+    private bool SwallowedInFamily(int vk)
+    {
+        foreach (int code in FamilyCodes(vk))
+            if (_swallowedUp.ContainsKey(code)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 仅供自检：查询某个修饰键当前被记为"按住"（Ctrl/Shift/Alt/Win）。
+    /// </summary>
+    internal bool ModifierHeldForTest(KeyModifiers which) => which switch
+    {
+        KeyModifiers.Ctrl => _ctrlDown,
+        KeyModifiers.Shift => _shiftDown,
+        KeyModifiers.Alt => _laltDown,
+        KeyModifiers.Win => _lwinDown || _rwinDown,
+        _ => false,
+    };
 
     /// <summary>仅供自检：手动跑一次阈值检查，不依赖计时器。</summary>
     public void CheckHoldThresholdForTest() => CheckHoldThreshold();
@@ -1296,14 +1338,19 @@ public sealed class HotkeyEngine : IDisposable
         if (_ctrlDown) mods |= KeyModifiers.Ctrl;
         if (_shiftDown) mods |= KeyModifiers.Shift;
 
+        /* 有非修饰键子层按住时，只查"子层前缀 + 键"的绑定。
+         *
+         * **不再回退**到普通查法 —— 这一条和触发层保持同一套语义：
+         * 按住子层键 = 键盘交给这个子层，子层里没绑就是空操作。
+         * 以前会在子层查不到时退回 caps_q，于是"子层里没绑的键"
+         * 会去执行基础层的功能，用户看到的就是"子层根本没生效"。
+         *
+         * ⚠ 修饰键子层（ctrl / ctrl_shift）本来就在 combo 里带上修饰前缀，
+         * 走的是下面的 comboId，不受这条影响。 */
         string comboId = KeyName.BuildComboEx(mods, keyName);
-
-        /* 有非修饰键子层按住时，优先查"子层前缀 + 键"的绑定；
-         * 没有绑定再退回普通查法。 */
-        KeyBinding? binding = null;
-        if (!string.IsNullOrEmpty(_subLayerKeyDown))
-            binding = FindInLayer(settings, _activeLayer, ComboForSubLayer(_subLayerKeyDown, mods, keyName));
-        binding ??= FindInLayer(settings, _activeLayer, comboId);
+        KeyBinding? binding = string.IsNullOrEmpty(_subLayerKeyDown)
+            ? FindInLayer(settings, _activeLayer, comboId)
+            : FindInLayer(settings, _activeLayer, ComboForSubLayer(_subLayerKeyDown, mods, keyName));
 
         if (binding == null || !binding.IsBound)
         {

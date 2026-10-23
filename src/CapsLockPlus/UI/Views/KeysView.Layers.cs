@@ -426,6 +426,18 @@ public partial class KeysView : UserControl
                 ? KeyName.Display(key)
                 : $"{ModifierText(mods)} {KeyName.Display(key)}";
 
+            /* 非修饰键子层的 combo 形如 caps_tab_q：键名里带下划线。
+             * 拆出子层名前缀显示成 "Tab Q"，别把内部编码露给用户。 */
+            int sep = key.IndexOf('_');
+            if (sep > 0)
+            {
+                string sub = KeyName.Display(key[..sep]);
+                string rest = KeyName.Display(key[(sep + 1)..]);
+                label = mods == KeyModifiers.None
+                    ? $"{sub} {rest}"
+                    : $"{ModifierText(mods)} {sub}+{rest}";
+            }
+
             /* 列表里的"功能"列要和键帽一致：
              * 窗口绑定显示程序名，直达网页显示备注/域名 ——
              * 否则用户看到的是"覆盖""打开网页"，对不上自己绑的东西。 */

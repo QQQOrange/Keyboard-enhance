@@ -653,8 +653,53 @@ public partial class KeysView : UserControl
     /// 自定义按键捕获到 Ctrl+Shift+K 时，直接把 `_layer` 设成 Ctrl|Shift、
     /// 把 `_selectedKey` 设成 "k"，于是这里一律用同一个公式，
     /// 不存在"捕获到的修饰键被丢掉"的可能。
+    ///
+    /// **非修饰键子层**（tab / f13 / capslock…）没有修饰位，靠键名前缀区分：
+    /// 引擎拼的是 <c>caps_tab_q</c>（见 HotkeyEngine.ComboForSubLayer）。
+    /// 以前这里不拼前缀，点了「+ Tab」之后键帽读写的还是 caps_q ——
+    /// 等于在改基础层，而引擎查的 caps_tab_q 永远没人写，子层形同虚设。
     /// </summary>
-    private string CurrentCombo() => KeyName.BuildComboEx(_layer, _selectedKey);
+    private string CurrentCombo() => ComboFor(_selectedKey);
+
+    /// <summary>某个物理键在当前层/当前子层下的 combo ID。</summary>
+    private string ComboFor(string keyId) => ComboFor(_subLayerKey, _layer, keyId);
+
+    /// <summary>
+    /// 拼 combo ID 的**唯一**规则（引擎与界面必须一致）。
+    ///
+    /// * 直接按：<c>caps_q</c>
+    /// * 修饰键子层：<c>caps_ctrl_q</c>（修饰位由 mods 表达）
+    /// * 非修饰键子层：<c>caps_tab_q</c>（子层键当前缀）
+    ///
+    /// 抽成静态是为了让自检能直接断言，不必去启动整个界面。
+    /// </summary>
+    internal static string ComboFor(string? subLayerKey, KeyModifiers mods, string keyId)
+    {
+        string prefix = string.IsNullOrEmpty(subLayerKey) || IsModifierOnlySubLayer(subLayerKey)
+            ? ""
+            : subLayerKey + "_";
+        return KeyName.BuildComboEx(mods, prefix + keyId);
+    }
+
+    /// <summary>子层键是不是纯修饰键组合（ctrl / ctrl_shift / lalt…）。</summary>
+    internal static bool IsModifierOnlySubLayer(string? subKey)
+    {
+        if (string.IsNullOrWhiteSpace(subKey)) return false;
+        foreach (string part in subKey.Split('_', StringSplitOptions.RemoveEmptyEntries))
+        {
+            switch (part.ToLowerInvariant())
+            {
+                case "ctrl" or "lctrl" or "rctrl":
+                case "shift" or "lshift" or "rshift":
+                case "alt" or "lalt" or "ralt":
+                case "win" or "lwin" or "rwin":
+                    continue;
+                default:
+                    return false;
+            }
+        }
+        return true;
+    }
 
     /// <summary>层内修饰键的中文说明（界面提示用）。</summary>
     private static string ModifierText(KeyModifiers m)

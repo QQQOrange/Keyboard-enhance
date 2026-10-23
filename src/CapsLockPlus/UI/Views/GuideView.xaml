@@ -2,11 +2,27 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource Font.Ui}">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,4,20,24">
-        <StackPanel MaxWidth="980" HorizontalAlignment="Left">
+    <!--
+        布局要点（用户反馈"最大化之后右边和下边是空的"）：
+          · 以前内容是一个 MaxWidth=980 + 左对齐的 StackPanel ——
+            窗口一最大化，右侧近千 DIP 全是空白；
+          · 现在横向铺满，纵向用 Grid 的 * 行把剩余高度分给最后一张卡片。
+        ScrollViewer 的视口高度通过 SizeChanged 同步成 PageBody 的 MinHeight，
+        否则 * 行在"内容比窗口矮"时会塌成 0，下边照样留空。
+    -->
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  SizeChanged="OnPageSizeChanged">
+        <Grid x:Name="PageBody" Margin="24,4,20,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
             <!-- 欢迎横幅 -->
-            <Border CornerRadius="18" Padding="26,24" Margin="0,0,0,18">
+            <Border Grid.Row="0" CornerRadius="18" Padding="26,24" Margin="0,0,0,18">
                 <Border.Background>
                     <!-- 与引导页同一块品牌渐变（Controls.xaml / Brush.BrandHero） -->
                     <StaticResource ResourceKey="Brush.BrandHero" />
@@ -16,12 +32,12 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
                         <TextBlock Text="让每一个按键，都能变成你的快捷键" FontSize="24" FontWeight="SemiBold"
                                    Foreground="White" />
                         <TextBlock Text="按住触发键就是功能键：字母键移动 / 选择光标，数字键切换窗口，Q 打开搜索面板。"
                                    Foreground="{StaticResource Brush.BrandSubtitle}" FontSize="13.5" Margin="0,9,0,0" TextWrapping="Wrap"
-                                   MaxWidth="620" />
+                                   MaxWidth="760" HorizontalAlignment="Left" />
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
                             <Button Content="开始 3 步设置" Style="{StaticResource Button.Base}"
                                     Background="{StaticResource Brush.BrandOnLight}" BorderBrush="{StaticResource Brush.BrandOnLight}"
@@ -45,10 +61,10 @@
                 </Grid>
             </Border>
 
-            <!-- 状态卡片 -->
-            <Grid Margin="0,0,0,16">
+            <!-- 状态卡片（原来的「按键方案」已按用户要求撤掉：方案固定为 Capslox，
+                 摆一张永远不变的卡片只会占地方） -->
+            <Grid Grid.Row="1" Margin="0,0,0,16">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
@@ -70,25 +86,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="1" Style="{StaticResource Card}" Margin="4,0,4,0">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Border Width="30" Height="30" CornerRadius="9" Background="{DynamicResource Brush.AccentSoft}">
-                                <TextBlock Text="&#xE8C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                           FontSize="14" Foreground="{DynamicResource Brush.Accent}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                            <TextBlock Text="按键方案" Style="{StaticResource Text.Secondary}" Margin="10,0,0,0"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
-                        <TextBlock x:Name="SchemeText" Text="Capslox（推荐）" Style="{StaticResource Text.H2}"
-                                   Margin="0,12,0,0" />
-                        <TextBlock Text="可以在「按键映射」里逐项修改" Style="{StaticResource Text.Tertiary}"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="2" Style="{StaticResource Card}" Margin="8,0,0,0">
+                <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,0,0">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Border Width="30" Height="30" CornerRadius="9" Background="{DynamicResource Brush.AccentSoft}">
@@ -107,7 +105,7 @@
             </Grid>
 
             <!-- 三步上手 -->
-            <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="三步就能用起来" Style="{StaticResource Text.H2}" />
                     <TextBlock Text="不用记命令，也不用改配置文件。" Style="{StaticResource Text.Secondary}"
@@ -162,23 +160,31 @@
                 </StackPanel>
             </Border>
 
-            <!-- 常用组合 -->
-            <Border Style="{StaticResource Card}">
-                <StackPanel>
-                    <Grid>
+            <!-- 常用组合：窗口变高时由这一张卡片吃掉剩余空间（行高 = *） -->
+            <Border Grid.Row="3" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
                         <TextBlock Text="最常用的 8 个组合" Style="{StaticResource Text.H2}" />
                         <Button Content="全部快捷键" Style="{StaticResource Button.Ghost}" HorizontalAlignment="Right"
                                 Click="OnOpenHelp" />
                     </Grid>
-                    <ItemsControl x:Name="QuickKeys" Margin="0,14,0,0">
+
+                    <ItemsControl Grid.Row="1" x:Name="QuickKeys" Margin="0,14,0,0"
+                                  VerticalAlignment="Stretch" VerticalContentAlignment="Stretch">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <UniformGrid Columns="2" />
+                                <UniformGrid Columns="2" VerticalAlignment="Stretch" />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border Margin="0,0,10,10" Padding="12,10" CornerRadius="10"
+                                        VerticalAlignment="Stretch"
                                         Background="{DynamicResource Brush.SurfaceAlt}"
                                         BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
                                     <Grid>
@@ -206,8 +212,8 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                </StackPanel>
+                </Grid>
             </Border>
-        </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

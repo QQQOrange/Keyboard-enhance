@@ -38,6 +38,29 @@ public static class RenderTools
         main.Left = -32000;
         main.Top = -32000;
         main.ShowInTaskbar = false;
+
+        /* 支持指定出图尺寸：CAPSLOCKPLUS_RENDER_SIZE=1240x800
+         *
+         * 默认尺寸只能验证"最大化好看"这一种情况。用户报的键盘被压扁
+         * 恰恰只在**缩小窗口**时出现，所以出图必须能换尺寸，
+         * 否则这类回归永远看不出来。 */
+        string? size = Environment.GetEnvironmentVariable("CAPSLOCKPLUS_RENDER_SIZE");
+        if (!string.IsNullOrWhiteSpace(size))
+        {
+            string[] parts = size.Split('x', 'X');
+            if (parts.Length == 2
+                && double.TryParse(parts[0], out double w) && w > 200
+                && double.TryParse(parts[1], out double h) && h > 200)
+            {
+                main.Width = w;
+                main.Height = h;
+            }
+            else
+            {
+                CoreLog.Warn("CAPSLOCKPLUS_RENDER_SIZE 格式不对（要 宽x高，如 1240x800）：" + size);
+            }
+        }
+
         main.Show();
         Pump();
 

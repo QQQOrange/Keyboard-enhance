@@ -142,6 +142,7 @@ public static class SelfTest
         TestComplexTriggerKey();
         TestTriggerBadgeFollowsLayer();
         TestSubLayers();
+        TestSubLayerCombos();
         TestDirectSearch();
         TestTypeTextAction();
 
@@ -2399,6 +2400,8 @@ public static class SelfTest
         var layer3 = s.Layers.First(l => l.Id == 3);
         layer3.Keys.Add(new KeyBinding { Combo = "caps_q", Action = "qbar" });
         layer3.Keys.Add(new KeyBinding { Combo = "caps_shift_q", Action = "copy" });
+        // Ctrl 子层：用来验证"层内按住的修饰键能正确参与 combo"
+        layer3.Keys.Add(new KeyBinding { Combo = "caps_ctrl_q", Action = "copyAll" });
 
         var fired = new List<string>();
         var queue = new ActionQueue();
@@ -2449,18 +2452,27 @@ public static class SelfTest
         Check("真按住时的自动重复被忽略（仍是同一次按下）",
             engine.IsTriggerHeld && engine.ActiveLayer == 3);
 
-        // ---------- ③ 修饰键卡住 → 物理校正后仍命中 caps_q ----------
-        // 模拟"按下 Ctrl 后漏掉抬起"：只发 down，不发 up
-        physicallyDown.Add(VK.LControl);
-        engine.SimulateKey(VK.LControl, true);
-        // 之后 Ctrl 物理上松开了，但 up 事件丢了
-        physicallyDown.Remove(VK.LControl);
+        // ---------- ③ 进层前按下的修饰键卡住 → 物理校正后仍命中 caps_q ----------
+        /* 只有"没被我们吞过"的修饰键才能靠物理状态纠偏。
+         * 层内按下的修饰键会被吞掉（系统看不到），物理读数不可信 ——
+         * 这种走 ⑤ 的路径，绝不能在这里校正。 */
+        engine.SimulateKey(VK.RMenu, false);       // 先退出层，Shift 要在层外按下
+        physicallyDown.Clear();
+        DoEvents(150);                             // 与上次触发键 down 拉开 >100ms
+        physicallyDown.Add(VK.LShift);
+        engine.SimulateKey(VK.LShift, true);       // Shift 在层外按下（不吞）
+        physicallyDown.Add(VK.RMenu);
+        engine.SimulateKey(VK.RMenu, true);        // 再按触发键进层
+        CheckEqual("按住 Shift 后仍能进第 3 层", engine.ActiveLayer, 3);
+
+        // Shift 物理上松开了，但 up 事件丢了
+        physicallyDown.Remove(VK.LShift);
         lock (fired) fired.Clear();
         bool qSwallowed = engine.SimulateKey(0x51 /*Q*/, true);
         DoEvents(60);
-        Check("修饰键状态卡住时，物理校正后仍命中 caps_q", qSwallowed);
+        Check("进层前按下的修饰键卡住时，物理校正后仍命中 caps_q", qSwallowed);
         lock (fired)
-            Check("命中后执行的是 caps_q 的动作（不是 caps_ctrl_q）",
+            Check("命中后执行的是 caps_q 的动作（不是 caps_shift_q）",
                 fired.Contains("qbar") && !fired.Contains("copy"),
                 string.Join(",", fired));
         engine.SimulateKey(0x51, false);
@@ -2468,6 +2480,7 @@ public static class SelfTest
         // ---------- ④ 触发键按住前就按着的 Shift 不能被抹掉 ----------
         engine.SimulateKey(VK.RMenu, false);
         physicallyDown.Clear();
+        DoEvents(150);
 
         physicallyDown.Add(VK.LShift);
         engine.SimulateKey(VK.LShift, true);      // Shift 先按住（不在层里，放行）
@@ -2485,7 +2498,41 @@ public static class SelfTest
         engine.SimulateKey(VK.RMenu, false);
         engine.SimulateKey(VK.LShift, false);
 
-        // ---------- ⑤ Qbar 打开后的宽限期 ----------
+        /* ---------- ⑤ 层内按下的修饰键 → 必须命中修饰子层 ----------
+         *
+         * 这是 v4.5.5 修的真实 bug：层内的 Ctrl/Shift/Alt/Win 会被钩子吞掉
+         * （不吞会弹 Alt 菜单 / 开始菜单），系统层面它们从未按下，
+         * GetAsyncKeyState 读出来是 false。旧实现每次按键前都用物理状态
+         * 覆盖修饰标记，于是刚记下的 ctrl 立刻被抹掉 ——
+         * 用户按住 Ctrl 再按 Q，执行的是 caps_q（基础层），
+         * 修饰子层的绑定整层不生效。
+         *
+         * 这里把物理探测设成"什么都没按"来复现真实环境。 */
+        physicallyDown.Clear();
+        physicallyDown.Add(VK.RMenu);
+        DoEvents(150);
+        engine.SimulateKey(VK.RMenu, true);
+        CheckEqual("重新进第 3 层（修饰子层测试）", engine.ActiveLayer, 3);
+
+        engine.SimulateKey(VK.LControl, true);     // 被吞：物理读数仍是"没按下"
+        Check("层内按下的 Ctrl 被记为按住", engine.ModifierHeldForTest(KeyModifiers.Ctrl));
+
+        lock (fired) fired.Clear();
+        bool ctrlQ = engine.SimulateKey(0x51 /*Q*/, true);
+        DoEvents(60);
+        Check("Ctrl 子层的键被执行", ctrlQ);
+        lock (fired)
+            Check("执行的是 caps_ctrl_q 的动作（不是 caps_q）",
+                fired.Contains("copyAll") && !fired.Contains("qbar"),
+                string.Join(",", fired));
+
+        engine.SimulateKey(0x51, false);
+        engine.SimulateKey(VK.LControl, false);
+        Check("松开 Ctrl 后修饰状态清零", !engine.ModifierHeldForTest(KeyModifiers.Ctrl));
+        engine.SimulateKey(VK.RMenu, false);
+        physicallyDown.Clear();
+
+        // ---------- ⑥ Qbar 打开后的宽限期 ----------
         Check("Qbar 打开瞬间的 Deactivated 不会关面板",
             !UI.Windows.QbarWindow.ShouldHideOnDeactivate(0));
         Check("Qbar 打开 100ms 内仍不关",
@@ -3945,6 +3992,28 @@ public static class SelfTest
         CheckEqual("ExpandPath 与 ExpandFolderPath 行为一致",
             Core.Actions.ActionContext.ExpandPath("D:/Work/A/"),
             Core.Actions.ActionContext.ExpandFolderPath("D:/Work/A/"));
+
+        // 8. 打开之后要把目标窗口带到前台：先从 shell 命令里认出"目标程序"
+        CheckEqual("带引号的 open 命令能取出 exe",
+            Core.Windows.WindowService.ParseExeFromShellCommand(
+                "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" -- \"%1\""),
+            @"C:\Program Files\Google\Chrome\Application\chrome.exe");
+        CheckEqual("不带引号（路径有空格）也能取出 exe",
+            Core.Windows.WindowService.ParseExeFromShellCommand(
+                @"C:\Program Files\Mozilla Firefox\firefox.exe -osint -url %1"),
+            @"C:\Program Files\Mozilla Firefox\firefox.exe");
+        CheckEqual("环境变量会被展开",
+            Core.Windows.WindowService.ParseExeFromShellCommand(
+                @"%SystemRoot%\explorer.exe %1"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"));
+        CheckEqual("空命令返回空串",
+            Core.Windows.WindowService.ParseExeFromShellCommand(""), "");
+        CheckEqual("没有 exe 的命令返回空串",
+            Core.Windows.WindowService.ParseExeFromShellCommand("rundll32 foo"), "");
+        Check("两个 exe 名比较忽略路径与大小写",
+            Core.Windows.WindowService.SameExeName("chrome.exe", @"C:\X\CHROME.EXE"));
+        Check("不同程序不会被认成同一个",
+            !Core.Windows.WindowService.SameExeName("chrome.exe", "msedge.exe"));
     }
 
     /// <summary>
@@ -4581,6 +4650,123 @@ public static class SelfTest
     }
 
     /// <summary>
+    /// 子层的 combo 规则与**实际查找**。
+    ///
+    /// 两个真实问题：
+    ///   ① 界面拼 combo 时只用了修饰位，没带非修饰键子层的前缀 ——
+    ///      点「+ Tab」之后键帽读写的还是 caps_q，等于在改基础层，
+    ///      而引擎查的是 caps_tab_q，那个子层永远绑不上；
+    ///   ② 子层里没绑的键以前会退回基础层绑定 ——
+    ///      按 Tab+W 却执行了 caps_w，用户觉得"子层根本没生效"。
+    ///      现在的语义和触发层一致：按住子层键 = 键盘交给子层，没绑就什么都不做。
+    /// </summary>
+    private static void TestSubLayerCombos()
+    {
+        // ---------- ① 拼 combo 的规则：界面与引擎必须一致 ----------
+        CheckEqual("直接按", UI.Views.KeysView.ComboFor("", KeyModifiers.None, "q"), "caps_q");
+        CheckEqual("Ctrl 子层", UI.Views.KeysView.ComboFor("ctrl", KeyModifiers.Ctrl, "q"),
+            "caps_ctrl_q");
+        CheckEqual("Ctrl+Shift 子层",
+            UI.Views.KeysView.ComboFor("ctrl_shift", KeyModifiers.Ctrl | KeyModifiers.Shift, "q"),
+            "caps_ctrl_shift_q");
+        CheckEqual("Tab 子层（非修饰键）",
+            UI.Views.KeysView.ComboFor("tab", KeyModifiers.None, "q"), "caps_tab_q");
+        CheckEqual("F13 子层（非修饰键）",
+            UI.Views.KeysView.ComboFor("f13", KeyModifiers.None, "q"), "caps_f13_q");
+
+        Check("tab 不是修饰键子层", !UI.Views.KeysView.IsModifierOnlySubLayer("tab"));
+        Check("f13 不是修饰键子层", !UI.Views.KeysView.IsModifierOnlySubLayer("f13"));
+        Check("ctrl 是修饰键子层", UI.Views.KeysView.IsModifierOnlySubLayer("ctrl"));
+        Check("ctrl_shift 是修饰键组合", UI.Views.KeysView.IsModifierOnlySubLayer("ctrl_shift"));
+        Check("空子层键不算修饰键", !UI.Views.KeysView.IsModifierOnlySubLayer(""));
+
+        // ---------- ② 引擎按同一套 combo 找绑定 ----------
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock", LayerId = 1, HoldMs = 60, Enabled = true,
+        });
+
+        var layer = s.Layers.First(l => l.Id == 1);
+        layer.SubLayers = new List<SubLayerDef>
+        {
+            new() { Key = "tab" },
+            new() { Key = "ctrl" },
+        };
+        layer.SubLayerModifiers.Clear();
+
+        layer.Keys.RemoveAll(b => b.Combo is "caps_q" or "caps_w"
+                                    or "caps_tab_q" or "caps_tab_w" or "caps_ctrl_q");
+        layer.Keys.Add(new KeyBinding { Combo = "caps_q", Action = "qbar" });
+        // W 只在基础层绑了功能：按住 Tab 时应"什么都没发生"，而不是执行它
+        layer.Keys.Add(new KeyBinding { Combo = "caps_w", Action = "backspace" });
+        layer.Keys.Add(new KeyBinding { Combo = "caps_tab_q", Action = "copy" });
+        layer.Keys.Add(new KeyBinding { Combo = "caps_ctrl_q", Action = "copyAll" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+        engine.StartHoldTimer();
+        engine.EnterLayerImmediatelyForTest = true;
+
+        int Count(string action)
+        {
+            lock (fired) return fired.Count(x => x == action);
+        }
+
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("按住触发键进第 1 层（子层测试）", engine.ActiveLayer, 1);
+
+        // 直接按 Q → qbar
+        engine.SimulateKey(0x51, true);
+        engine.SimulateKey(0x51, false);
+        DoEvents(60);
+        Check("直接按 Q 命中 caps_q", Count("qbar") == 1, string.Join(",", fired));
+
+        // Tab 子层 + Q → copy（不是 qbar）
+        engine.SimulateKey(VK.Tab, true);
+        engine.SimulateKey(0x51, true);
+        engine.SimulateKey(0x51, false);
+        DoEvents(60);
+        Check("Tab 子层 + Q 命中 caps_tab_q", Count("copy") == 1, string.Join(",", fired));
+        Check("Tab 子层 + Q 不会再执行基础层的 caps_q", Count("qbar") == 1,
+            string.Join(",", fired));
+
+        // Tab 子层 + W（两个 combo 都没绑）→ 吞掉、什么都不执行
+        bool wSwallowed = engine.SimulateKey(0x57 /*W*/, true);
+        engine.SimulateKey(0x57, false);
+        DoEvents(60);
+        Check("子层里没绑的键被吞掉（不恢复原生输入）", wSwallowed);
+        lock (fired)
+            Check("子层里没绑的键不回退到基础层绑定",
+                fired.Count == 2, string.Join(",", fired));
+
+        // 松开 Tab，回到直接按
+        engine.SimulateKey(VK.Tab, false);
+        engine.SimulateKey(0x51, true);
+        engine.SimulateKey(0x51, false);
+        DoEvents(60);
+        Check("松开子层键后回到 caps_q", Count("qbar") == 2, string.Join(",", fired));
+
+        // Ctrl 子层（修饰键）：按 Tab 时不会被当成子层前缀干扰
+        engine.SimulateKey(VK.LControl, true);
+        engine.SimulateKey(0x51, true);
+        engine.SimulateKey(0x51, false);
+        DoEvents(60);
+        Check("Ctrl 子层 + Q 命中 caps_ctrl_q", Count("copyAll") == 1, string.Join(",", fired));
+        engine.SimulateKey(VK.LControl, false);
+
+        engine.SimulateKey(VK.CapsLock, false);
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
     /// 「直接搜索」：用选中文本 + 指定引擎，在默认浏览器里搜索。
     /// </summary>
     private static void TestDirectSearch()
@@ -5109,7 +5295,7 @@ public static class SelfTest
         CheckEqual("进度条越界会被夹住（上）", UI.Windows.OsdWindow.ScaleForTest(180), 1.0);
         CheckEqual("进度条越界会被夹住（下）", UI.Windows.OsdWindow.ScaleForTest(-20), 0.0);
 
-        /* 位置与尺寸：全部对齐系统音量条（192×48、贴底 15 DIP）。
+        /* 位置与尺寸：全部对齐系统音量条（192×48、贴工作区底边 14 DIP）。
          * 数字来自对系统横条的全屏截图测量，见 OsdWindow 的注释。 */
         double ow = UI.Windows.OsdWindow.DesignWidth;
         double oh = UI.Windows.OsdWindow.DesignHeight;
@@ -5118,17 +5304,23 @@ public static class SelfTest
         CheckEqual("横条水平居中", osdLeft, (1920 - (ow + 24)) / 2.0);
         Check("横条在屏幕下半部分（不是正中）", osdTop > 1040 * 0.85, $"top={osdTop}");
 
-        /* 卡片下沿离工作区底边必须和系统一样是 15 DIP：
+        /* 卡片下沿离工作区底边必须和系统一样是 14 DIP：
          * 窗口比卡片大一圈（留给阴影），所以窗口底边不是卡片底边。 */
         double cardBottom = osdTop + 12 + oh;
-        CheckEqual("卡片下沿贴底 15 DIP（相对工作区/任务栏上沿）",
+        CheckEqual("卡片下沿贴底 14 DIP（相对工作区底边）",
             Math.Round(1040 - cardBottom, 3), UI.Windows.OsdWindow.CardBottomGapForTest);
 
-        /* 任务栏在底部占 48 DIP 时（本机就是自动隐藏 + 占位 48）：
-         * 系统横条的卡片下沿离**屏幕**底 63 DIP。 */
-        var (_, topWithBar) = UI.Windows.OsdWindow.PositionForTest(wa, 1040 - 48);
-        CheckEqual("有任务栏时卡片下沿离屏幕底 63 DIP（与系统实测一致）",
-            Math.Round(1040 - (topWithBar + 12 + oh), 0), 63.0);
+        /* 任务栏固定时 rcWork 已经扣掉了它（这里模拟 48 DIP 的任务栏）：
+         * 卡片同样只离**工作区**底边 14 DIP，不需要再额外让开一次。
+         * v4.5.5 之前会再减一个任务栏高度，结果比系统横条高整整一格。 */
+        var waWithBar = new System.Windows.Rect(0, 0, 1920, 1040 - 48);
+        var (_, topWithBar) = UI.Windows.OsdWindow.PositionForTest(waWithBar);
+        CheckEqual("有任务栏时也只让 14 DIP（不再重复扣任务栏）",
+            Math.Round(waWithBar.Bottom - (topWithBar + 12 + oh), 3),
+            UI.Windows.OsdWindow.CardBottomGapForTest);
+        Check("横条不会因为任务栏再抬高 48 DIP",
+            Math.Abs(topWithBar - (osdTop - 48)) < 0.001,
+            $"{topWithBar} vs {osdTop - 48}");
 
         CheckEqual("卡片宽度与系统一致（192）", ow, 192.0);
         CheckEqual("卡片高度与系统一致（48）", oh, 48.0);
@@ -5870,6 +6062,34 @@ public static class SelfTest
         int maxRight = all.SelectMany(r => r).Max(k => k.Col + k.Span);
         Check("声明的总列数覆盖所有键", declared >= maxRight,
             $"declared={declared} maxRight={maxRight}");
+
+        /* ---------- 等比例缩放 ----------
+         *
+         * 用户报的问题：「非全屏时整个按键的内容会被压缩，没有等比例缩小」。
+         * 根因是键盘宽度由父容器决定、键帽高度却写死 52px ——
+         * 窗口一窄只有横向被压。现在改成：键盘有**固定的自然宽高比**，
+         * 外面套 Viewbox 等比缩放到可用空间。
+         *
+         * 这里断言两件事：
+         *   ① 自然尺寸算得出来，且键的宽高比在"像个键帽"的范围内；
+         *   ② 承载键盘的控件必须是 Viewbox（不是 StackPanel/Grid），
+         *      否则等比缩放根本无从谈起。 */
+        double nw = UI.Views.KeysView.NaturalWidth;
+        double nh = UI.Views.KeysView.NaturalHeight;
+        Check("键盘自然宽度是正数", nw > 0, nw.ToString("0.0"));
+        Check("键盘自然高度是正数", nh > 0, nh.ToString("0.0"));
+
+        double keyW = nw / (declared / 4.0);
+        double keyH = nh / all.Length;
+        Check("标准键宽高比接近 1（不被压扁）", keyW / keyH is > 0.6 and < 1.4,
+            $"keyW={keyW:0.0} keyH={keyH:0.0} ratio={keyW / keyH:0.00}");
+
+        var hostField = t.GetField("KeyboardPanel",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Check("键盘宿主字段存在", hostField != null);
+        Check("键盘宿主是 Viewbox（等比缩放容器）",
+            hostField?.FieldType == typeof(System.Windows.Controls.Viewbox),
+            hostField?.FieldType.Name ?? "(null)");
     }
 
     private static void TestTriggerKeyPosition()
@@ -6041,6 +6261,70 @@ public static class SelfTest
             .Select(l => l.Id).ToList();
         Check("有绑定的层不止一个", layersWithBindings.Count > 1,
             string.Join(",", layersWithBindings));
+
+        // ---------- 输入文本：速查表里只显示备注，正文默认隐藏 ----------
+        //
+        // 参数就是文字本身（邮箱、地址、常用回复），而速查表最容易被截图；
+        // 用户明确要求"默认隐藏文本的内容，只显示备注"。
+        var info = new Core.Actions.ActionInfo(
+            "typeText", "输入文本", "输入一段文字",
+            "把这段文字直接输入到当前光标处（支持中文与 emoji）", NeedsArg: true);
+
+        string hidden = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "typeText", Arg = "我的密码是 hunter2" }, info);
+        Check("输入文本的正文不出现在速查表里", !hidden.Contains("hunter2"), hidden);
+        Check("没有备注时明确标注内容已隐藏", hidden.Contains("已隐藏"), hidden);
+
+        string noted = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "typeText", Arg = "我的密码是 hunter2", Note = "公司邮箱" }, info);
+        Check("有备注时显示备注", noted.Contains("公司邮箱"), noted);
+        Check("有备注时正文仍然不出现", !noted.Contains("hunter2"), noted);
+
+        // ---------- 其余动作：备注优先于"动作说明 + 参数" ----------
+        //
+        // 宏最典型：参数是 macro:3 / 重复次数这类机器串，拼出来是
+        // 「播放宏：每日备份（参数 3）」，用户自己写的备注反而看不到。
+        // 用户明确要求：只要写了备注，速查表就优先显示备注。
+        var macroInfo = new Core.Actions.ActionInfo(
+            "macro:3", "宏", "播放宏：每日备份",
+            "播放宏：每日备份", NeedsArg: true);
+
+        string macroNoNote = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "macro:3", Arg = "3" }, macroInfo);
+        Check("宏没备注时仍显示动作说明与参数", macroNoNote.Contains("播放宏：每日备份"),
+            macroNoNote);
+
+        string macroNote = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "macro:3", Arg = "3", Note = "备份" }, macroInfo);
+        CheckEqual("宏写了备注就只显示备注", macroNote, "备份");
+
+        // 普通动作同理（参数里是命令 / 次数这类机器值）
+        var repeatInfo = new Core.Actions.ActionInfo(
+            "repeat", "重复", "重复上一次操作", "重复上一次操作", NeedsArg: true);
+        string repeatNote = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "repeat", Arg = "5", Note = "连按五次" }, repeatInfo);
+        CheckEqual("普通动作写了备注也以备注为准", repeatNote, "连按五次");
+
+        // 备注为空白（只有空格）时仍然当作"没写"，不能把说明吃掉
+        string blank = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "repeat", Arg = "5", Note = "   " }, repeatInfo);
+        Check("空白备注不算备注", blank.Contains("重复上一次操作"), blank);
+
+        // 自定义按键：备注优先（键帽上用的就是备注，速查表必须一致）
+        var ckInfo = new Core.Actions.ActionInfo(
+            "customKey", "自定义按键", "把某个键发给指定应用",
+            "把某个键发给指定应用", NeedsArg: true);
+        var ckArg = new Core.Actions.CustomKeySpec
+        {
+            Key = "f13", AppPath = @"C:\Apps\WeChat.exe", BringFront = true,
+        };
+        string ckNoNote = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "customKey", Arg = ckArg.ToArg() }, ckInfo);
+        Check("自定义按键没备注时说明发给谁", ckNoNote.Contains("WeChat"), ckNoNote);
+
+        string ckNote = UI.Views.HelpView.DescribeBinding(
+            new KeyBinding { Action = "customKey", Arg = ckArg.ToArg(), Note = "微信" }, ckInfo);
+        CheckEqual("自定义按键写了备注就只显示备注", ckNote, "微信");
     }
 
     /// <summary>

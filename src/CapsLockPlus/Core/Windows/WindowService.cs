@@ -595,4 +595,241 @@ public static class WindowService
         CoreLog.Warn($"[打开文件夹] 没能置前（{timeoutMs}ms 内试了 {tries} 次；" +
                      $"现有资源管理器窗口：{(titles.Count == 0 ? "无" : string.Join(" | ", titles))}）");
     }
+
+    // ================= 打开网址 / 文件，并把目标窗口带到前台 =================
+
+    /// <summary>
+    /// 打开的东西属于哪一类 —— 决定用什么办法认出"该置前哪个窗口"。
+    /// </summary>
+    public enum ShellTargetKind
+    {
+        /// <summary>网址：目标程序大概率是默认浏览器。</summary>
+        Url,
+        /// <summary>文件：目标程序由文件关联决定（Word / 播放器 / …）。</summary>
+        File,
+    }
+
+    /// <summary>
+    /// 用 shell 打开网址或文件，并保证它出现在**最前面**。
+    ///
+    /// 为什么需要：按下直达链接的键时前台是别的程序，Windows 的前台锁定
+    /// 会把新窗口压在任务栏闪烁 —— 用户看到的就是"浏览器/文档在后台打开了"。
+    ///
+    /// 三步（与 <see cref="OpenFolderInForeground"/> 同一套思路）：
+    ///   1. 启动前 <c>AllowSetForegroundWindow(ASFW_ANY)</c>，
+    ///      把"可以抢前台"的许可交给接下来启动的进程 ——
+    ///      大多数情况下浏览器/Office 自己就会正确置前；
+    ///   2. 启动后异步等**新窗口**出现（按目标 exe 认人），再
+    ///      <see cref="ForceForeground"/> 兜底；
+    ///   3. 浏览器把网址开成**已有窗口里的新标签**时不会出现新窗口 ——
+    ///      这时退一步，把目标程序最上层的那个窗口拉到前台。
+    ///
+    /// 为什么要先解析"目标 exe"：只有知道该看哪个程序，才能在"新窗口"
+    /// 与"复用的旧窗口"之间做判断，也不会误把别的程序的弹窗拉到前台。
+    ///
+    /// 异步的原因同文件夹：shell 启动 + 窗口创建要几百毫秒，
+    /// 在动作队列线程上等会把后面的按键动作全堵住。
+    /// </summary>
+    public static void LaunchInForeground(string target, ShellTargetKind kind)
+    {
+        string expectedExe = kind == ShellTargetKind.Url ? DefaultBrowserExe() : AssociatedExe(target);
+        string expectedName = expectedExe.Length > 0 ? Path.GetFileName(expectedExe) : "";
+
+        var before = SnapshotAppWindows();
+
+        AllowSetForegroundWindow(ASFW_ANY);
+        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+
+        if (expectedExe.Length == 0)
+            CoreLog.Warn($"[打开{KindName(kind)}] 没能解析出目标程序，改用\"任何新窗口\"判断：{target}");
+        else
+            CoreLog.Info($"[打开{KindName(kind)}] 目标程序 {expectedName}：{target}");
+
+        Task.Run(() => WaitAndActivateApp(before, expectedName, kind));
+    }
+
+    private static string KindName(ShellTargetKind kind)
+        => kind == ShellTargetKind.Url ? "网址" : "文件";
+
+    /// <summary>当前所有"正经的可切换窗口"的句柄（不含本程序 / 工具窗 / 桌面壳）。</summary>
+    private static HashSet<IntPtr> SnapshotAppWindows()
+    {
+        var set = new HashSet<IntPtr>();
+        foreach (var w in EnumerateTopLevel()) set.Add(w.Handle);
+        return set;
+    }
+
+    /// <summary>
+    /// 等目标窗口出现并置前；最多等 <paramref name="timeoutMs"/>。
+    ///
+    /// 新窗口优先：有的程序（浏览器新窗口、Word 新文档）会新建窗口，
+    /// 有的（浏览器新标签）只是复用已有窗口 —— 两种都要覆盖。
+    /// 复用窗口只在等了约 1 秒后才尝试，避免"先激活旧窗口、新窗口
+    /// 稍后出现又抢一次"的闪烁。
+    /// </summary>
+    private static void WaitAndActivateApp(HashSet<IntPtr> before, string expectedName,
+        ShellTargetKind kind, int timeoutMs = 3500)
+    {
+        long deadline = Environment.TickCount64 + timeoutMs;
+        int tries = 0;
+        bool loggedNew = false;
+        string kindName = KindName(kind);
+
+        while (Environment.TickCount64 < deadline)
+        {
+            tries++;
+            // 临时解除前台锁定代价高（全局广播），每 4 轮才用一次
+            bool hard = tries % 4 == 0;
+
+            var windows = EnumerateTopLevel().ToList();
+
+            /* ① 新出现的窗口。
+             *
+             * expectedName 为空（解析不出关联程序）时接受任何新窗口 ——
+             * 否则就等于直接放弃置前。 */
+            foreach (var w in windows)
+            {
+                if (before.Contains(w.Handle)) continue;
+                if (expectedName.Length > 0 && !SameExeName(w.ExeName, expectedName)) continue;
+
+                if (!loggedNew)
+                {
+                    loggedNew = true;
+                    CoreLog.Info($"[打开{kindName}] 新窗口出现：{w.Display}（{w.ExeName}）");
+                }
+                if (ForceForeground(w.Handle, allowUnlockTimeout: hard))
+                {
+                    CoreLog.Info($"[打开{kindName}] 新窗口已置前（{w.Display}，第 {tries} 次尝试）");
+                    return;
+                }
+            }
+
+            /* ② 复用已有窗口：浏览器把网址开成当前窗口的新标签时走这里。
+             *
+             * EnumerateTopLevel 按 Z 序（最上层在前）返回，取第一个匹配的即可 ——
+             * 浏览器总是把新标签开在"最近活动的那个窗口"里，也就是 Z 序最前的。 */
+            if (expectedName.Length > 0 && tries >= 8)
+            {
+                foreach (var w in windows)
+                {
+                    if (!SameExeName(w.ExeName, expectedName)) continue;
+                    if (ForceForeground(w.Handle, allowUnlockTimeout: hard))
+                    {
+                        CoreLog.Info($"[打开{kindName}] 复用窗口已置前：{w.Display}（第 {tries} 次尝试）");
+                        return;
+                    }
+                    break;   // 只看最上层的那个，别把后台窗口挨个翻上来
+                }
+            }
+
+            Thread.Sleep(110);
+        }
+
+        CoreLog.Warn($"[打开{kindName}] 没能置前（{timeoutMs}ms 内试了 {tries} 次，目标程序 " +
+                     $"{(expectedName.Length == 0 ? "(未知)" : expectedName)}）");
+    }
+
+    /// <summary>两个 exe 文件名是否指同一个程序（忽略路径与大小写）。</summary>
+    internal static bool SameExeName(string a, string b)
+        => a.Length > 0 && b.Length > 0
+           && string.Equals(Path.GetFileName(a), Path.GetFileName(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>默认浏览器的可执行文件路径；解析不出来返回空串。</summary>
+    internal static string DefaultBrowserExe()
+    {
+        try
+        {
+            foreach (string scheme in new[] { "https", "http" })
+            {
+                using var choice = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    $@"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\{scheme}\UserChoice");
+                if (choice?.GetValue("ProgId") is not string progId || progId.Length == 0) continue;
+
+                using var cmdKey = Microsoft.Win32.Registry.ClassesRoot
+                    .OpenSubKey(progId + @"\shell\open\command");
+                if (cmdKey?.GetValue(null) is not string command) continue;
+
+                string exe = ParseExeFromShellCommand(command);
+                if (exe.Length > 0) return exe;
+            }
+        }
+        catch (Exception e)
+        {
+            CoreLog.Warn("读取默认浏览器失败：" + e.Message);
+        }
+        return "";
+    }
+
+    /// <summary>
+    /// 从 shell 的 open 命令里取出 exe 路径。
+    ///
+    /// 三种真实写法都要认：
+    ///   "C:\Program Files\…\chrome.exe" -- "%1"     ← 带引号（最常见）
+    ///   C:\Program Files\…\browser.exe %1           ← 不带引号但路径有空格
+    ///   %ProgramFiles%\…\msedge.exe --single-argument %1
+    ///
+    /// 不带引号时不能按空格切（路径本身可能有空格），以 <c>.exe</c> 为界更稳。
+    /// 抽成纯函数是为了让自检直接断言，不必去读这台机器的注册表。
+    /// </summary>
+    internal static string ParseExeFromShellCommand(string? command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return "";
+        string s = Environment.ExpandEnvironmentVariables(command.Trim());
+
+        if (s.StartsWith('"'))
+        {
+            int end = s.IndexOf('"', 1);
+            return end > 1 ? s[1..end].Trim() : "";
+        }
+
+        int exe = s.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+        if (exe <= 0) return "";
+        return s[..(exe + 4)].Trim();
+    }
+
+    /// <summary>
+    /// 文件关联的程序路径（双击这个文件时系统会用谁打开）。
+    ///
+    /// 用 <c>AssocQueryString(ASSOCSTR_EXECUTABLE)</c> 而不是自己翻注册表：
+    /// UserChoice、AppX、Compatibility Assistant 的映射都由它统一处理。
+    /// 优先按扩展名查（.docx），查不到再按整条路径查（有些程序按文件注册）。
+    /// </summary>
+    internal static string AssociatedExe(string path)
+    {
+        foreach (string assoc in new[] { Path.GetExtension(path), path })
+        {
+            if (string.IsNullOrWhiteSpace(assoc)) continue;
+            try
+            {
+                // S_OK 才算拿到结果；S_FALSE 表示缓冲区不够，len 会被写成所需长度，放大重试一次。
+                uint len = 1024;
+                var sb = new StringBuilder((int)len);
+                uint hr = AssocQueryString(0 /*ASSOCF_NONE*/, ASSOCSTR_EXECUTABLE, assoc, null, sb, ref len);
+                if (hr == 1 /*S_FALSE*/ && len > sb.Capacity)
+                {
+                    sb = new StringBuilder((int)len);
+                    hr = AssocQueryString(0 /*ASSOCF_NONE*/, ASSOCSTR_EXECUTABLE, assoc, null, sb, ref len);
+                }
+
+                if (hr == 0)
+                {
+                    string exe = Environment.ExpandEnvironmentVariables(sb.ToString());
+                    if (exe.Length > 0) return exe;
+                }
+            }
+            catch (Exception e)
+            {
+                CoreLog.Warn($"查询文件关联失败（{assoc}）：" + e.Message);
+            }
+        }
+        return "";
+    }
+
+    private const uint ASSOCSTR_EXECUTABLE = 2;
+
+    // 必须显式点名 AssocQueryStringW：Shlwapi 里没有无后缀的 AssocQueryString，
+    // 之前写了 ExactSpelling = true 就按裸名去导出表找，运行时直接 "Unable to find an entry point"。
+    [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode, EntryPoint = "AssocQueryStringW")]
+    private static extern uint AssocQueryString(uint flags, uint str,
+        string pszAssoc, string? pszExtra, StringBuilder pszOut, ref uint pcchOut);
 }

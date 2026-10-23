@@ -21,11 +21,17 @@ namespace CapsLockPlus.UI.Windows;
 ///   | 版式 | 左图标 + 中间进度条 + 右侧数字 | 同（图标换成亮度） |
 ///   | 进度条 | 高 5 DIP、填充=系统强调色浅档、槽=白色 55% | 同 |
 ///   | 文字 | 纯白，图标 16、数字 14 | 同 |
-///   | 位置 | 水平居中、贴工作区底边 15 DIP | 同 |
+///   | 位置 | 水平居中、贴工作区底边 14 DIP | 同 |
 ///   | 动画 | 淡入约 150ms、停留约 1.9s、淡出约 120ms（合计 ~2.1s） | 同 |
 ///
 /// 这些数字不是拍脑袋：用全屏截图 + 连通域/边缘分析量出来的
-/// （这台机器 3840×2160 @200%，对应 384×96 像素的卡片）。
+/// （这台机器 3840×2160 @200%，对应 384×94 像素的卡片）。
+///
+/// ⚠ 2026-10-23 复测（铺一块纯黑全屏窗体 → 按音量键 → 截图量卡片边缘）：
+///     卡片 384×94 px、水平居中，下沿距**屏幕**底边 28 px（= 14 DIP）。
+///   本机任务栏是"自动隐藏"，此时工作区等于整屏；系统横条**不会**额外让开
+///   任务栏。旧实现却拿 ABM_GETTASKBARPOS 把基准抬到任务栏上沿，
+///   结果整条比系统高 96 px（整整一个横条的高度）—— 用户一眼就看出来了。
 ///
 /// **不跟随应用主题**：实测系统那条横条在浅色桌面上照样是深色卡片。
 /// 之前跟着主题走，结果是"白天蓝、夜里白"，和系统对不上。
@@ -50,8 +56,13 @@ public partial class OsdWindow : Window
     /// </summary>
     private const double ShadowPad = 12;
 
-    /// <summary>卡片下沿到工作区底边的距离（DIP）。实测系统是 15。</summary>
-    private const double BottomGap = 15;
+    /// <summary>
+    /// 卡片下沿到工作区底边的距离（DIP）。
+    ///
+    /// 实测系统音量条：屏幕底边往上 28 物理像素，200% 缩放下正好 14 DIP。
+    /// （旧值 15 是"看起来差不多"估的，差 1 DIP 会在放大镜级别露馅。）
+    /// </summary>
+    private const double BottomGap = 14;
 
     /// <summary>淡入（毫秒）。实测系统 ~150ms。</summary>
     private const int FadeInMs = 150;
@@ -210,18 +221,16 @@ public partial class OsdWindow : Window
     /// 仅供自检：横条（窗口）应该出现在屏幕哪个位置。
     ///
     /// 阴影留白不参与定位 —— 否则改了阴影大小横条会跟着漂。
+    ///
+    /// 基准就是**工作区底边**，不再考虑任务栏矩形：
+    /// 任务栏固定时 rcWork 已经扣掉它；自动隐藏时 rcWork 等于整屏，
+    /// 而实测系统横条此时照样贴着屏幕底（28 px），并不会让开任务栏。
     /// </summary>
-    public static (double Left, double Top) PositionForTest(Rect workArea, double taskbarTop = double.NaN)
+    public static (double Left, double Top) PositionForTest(Rect workArea)
     {
         double winW = DesignWidth + ShadowPad * 2;
-
-        // 任务栏自动隐藏时工作区就是整屏，但系统横条仍然让开任务栏 → 取更靠上的那个
-        double baseBottom = double.IsNaN(taskbarTop)
-            ? workArea.Bottom
-            : Math.Min(workArea.Bottom, taskbarTop);
-
         double left = Math.Round(workArea.Left + (workArea.Width - winW) / 2);
-        double top = Math.Round(baseBottom - BottomGap - DesignHeight - ShadowPad);
+        double top = Math.Round(workArea.Bottom - BottomGap - DesignHeight - ShadowPad);
         return (left, top);
     }
 
@@ -376,7 +385,7 @@ public partial class OsdWindow : Window
     }
 
     /// <summary>
-    /// 水平居中，卡片下沿贴工作区底边 15 DIP（和系统那条一样）。
+    /// 水平居中，卡片下沿贴工作区底边 14 DIP（和系统那条实测一致）。
     ///
     /// **用物理像素直接 SetWindowPos**，不走 WPF 的 Left/Top：
     /// WPF 的 Left/Top 是"窗口所在显示器 DPI 下的 DIP"，而
@@ -408,18 +417,12 @@ public partial class OsdWindow : Window
             int h = (int)Math.Round((DesignHeight + ShadowPad * 2) * scale);
             int x = workLeft + (workWidth - w) / 2;
 
-            /* 竖直方向以"任务栏上沿"为准。
+            /* 竖直方向就贴**工作区**底边。
              *
-             * 任务栏自动隐藏时 rcWork 等于整屏，只用 rcWork 算会把横条
-             * 压到屏幕最底部 —— 而系统那条是让开任务栏的（本机实测差 48 DIP）。
-             * 所以取 min(工作区底, 任务栏上沿)，再减 15 DIP。 */
+             * 不要再拿任务栏矩形来"让开任务栏"：任务栏固定时 rcWork 已经
+             * 扣掉了它；自动隐藏时 rcWork 是整屏，而系统横条实测照样贴着
+             * 屏幕底（28 px）。旧实现多让了 96 px，整条比系统高一格。 */
             int baseBottom = workTop + workHeight;
-            if (NativeMethods.TryGetTaskbarRect(out var bar)
-                && bar.Top > workTop && bar.Top < baseBottom)
-            {
-                baseBottom = Math.Min(baseBottom, bar.Top);
-            }
-
             int y = baseBottom - (int)Math.Round((BottomGap + DesignHeight + ShadowPad) * scale);
 
             if (_placed == (x, y, w, h)) return;

@@ -330,12 +330,15 @@ public partial class HelpView : UserControl
     /// 窗口绑定显示程序名（或自定义名），直达网页显示备注/网址 ——
     /// 和其他页面保持同一套规则，避免"这里显示覆盖、那里显示 Photoshop"。
     /// </summary>
-    private static string DescribeBinding(Core.Settings.KeyBinding binding, Core.Actions.ActionInfo info)
+    internal static string DescribeBinding(Core.Settings.KeyBinding binding, Core.Actions.ActionInfo info)
     {
         string id = binding.Action ?? "";
+        string? note = string.IsNullOrWhiteSpace(binding.Note) ? null : binding.Note!.Trim();
 
         if (id == "customKey")
         {
+            // 备注优先：键帽上显示的就是备注，速查表跟着一致，免得两处叫法不同
+            if (note != null) return note;
             var spec = Core.Actions.CustomKeySpec.FromArg(binding.Arg);
             if (!spec.IsReady) return "自定义按键（还没配好）";
             return $"把 {Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key)} 发给 {spec.ProcessName}"
@@ -345,22 +348,37 @@ public partial class HelpView : UserControl
 
         if (id == "winBind" && !string.IsNullOrWhiteSpace(binding.Arg))
         {
-            string name = string.IsNullOrWhiteSpace(binding.Note)
-                ? System.IO.Path.GetFileNameWithoutExtension(binding.Arg)
-                : binding.Note!.Trim();
+            string name = note ?? System.IO.Path.GetFileNameWithoutExtension(binding.Arg);
             return $"切到 {name}（再按一次最小化）";
         }
 
         if (id == "webPage")
-            return "打开 " + Core.Actions.UrlUtil.LabelOf(binding.Note, binding.Arg);
+            return "打开 " + Core.Actions.UrlUtil.LabelOf(note, binding.Arg);
 
         // 直达文件夹：说清"打开的是哪个目录"，目录名比整条路径好认
         if (id == "openFolder")
-            return "打开文件夹 " + UI.Views.KeysView.FolderLabelOf(binding.Note, binding.Arg);
+            return "打开文件夹 " + UI.Views.KeysView.FolderLabelOf(note, binding.Arg);
 
         // 直达文件：同理，用文件名代替整条路径
         if (id == "openFile")
-            return "打开文件 " + UI.Views.KeysView.FileLabelOf(binding.Note, binding.Arg);
+            return "打开文件 " + UI.Views.KeysView.FileLabelOf(note, binding.Arg);
+
+        /* 输入文本：**只显示备注，内容一律隐藏**（用户明确要求）。
+         *
+         * 这个动作的参数就是文字本身 —— 邮箱、地址、常用回复，
+         * 而速查表是最容易被截图分享的一页。以前走到下面的
+         * "（参数 xxx）"分支，整段文字直接摊在屏幕上。
+         * 需要认出是哪一条就靠备注；没填备注时也不回退显示正文。 */
+        if (id == "typeText")
+            return note == null ? "输入文本（内容已隐藏）" : "输入文本 · " + note;
+
+        /* 其余动作统一走"备注优先"（用户明确要求）。
+         *
+         * 宏最典型：参数是 `macro:3` / 重复次数这种机器串，
+         * 拼出来就是「播放宏：每日备份（参数 3）」，用户自己写的备注
+         * 「备份」反而看不到。凡是填了备注就以备注为准，
+         * 没填才退回「动作说明 + 参数」。 */
+        if (note != null) return note;
 
         return binding.Arg.Length > 0
             ? $"{info.Description}（参数 {binding.Arg}）"

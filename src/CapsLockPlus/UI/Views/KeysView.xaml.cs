@@ -166,6 +166,27 @@ public partial class KeysView : UserControl
     private const double KeycapGap = 3;
 
     /// <summary>
+    /// 一个标准键（4 列）的宽度。
+    ///
+    /// 这是**自然尺寸**下的值：整把键盘按它算出一个固定宽高比，
+    /// 再交给 Viewbox 等比缩放到窗口大小（见 <see cref="NaturalWidth"/>）。
+    /// 以前没有自然尺寸，键盘宽度完全由父容器决定 —— 窗口一窄，
+    /// 92 个星列被压到每个十几像素，键帽高度却还是 52，
+    /// 于是整把键盘"横向压扁、纵向不变"，字体挤成一团。
+    /// </summary>
+    private const double KeyWidth = 46;
+
+    /// <summary>
+    /// 键盘的自然宽度（未缩放）。92 列 = 23 个标准键宽。
+    /// </summary>
+    internal static double NaturalWidth => TotalCols / 4.0 * KeyWidth;
+
+    /// <summary>
+    /// 键盘的自然高度（未缩放）。每行一个 <see cref="KeycapHeight"/> 加间距。
+    /// </summary>
+    internal static double NaturalHeight => Layout.Length * (KeycapHeight + KeycapGap);
+
+    /// <summary>
     /// 需要**纵向合并**的键：小键盘的 + 与回车各跨两行。
     ///
     /// ⚠ 这些键**不能**同时出现在 <see cref="Layout"/> 里 ——
