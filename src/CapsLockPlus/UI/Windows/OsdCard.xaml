@@ -26,24 +26,21 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 图标：亮度。和系统那条一样是单色。
-                     太阳会随取值变化（管线见 OsdCard.RefreshIcon）：
-                       · 本体不透明度  0.45 → 1.00  —— 越亮越实；
-                       · 四周光芒线    长度随亮度线性变长（一根根实在的线，
-                         不是模糊光晕 —— 光晕的观感不是线性的，用户明确否掉了）。
-                     仍然是同一个字形。 -->
-                <Grid x:Name="IconBox" Grid.Column="0" VerticalAlignment="Center"
-                      Margin="0,0,13,0">
-                    <!-- 0×0 的 Canvas 不参与测量：光芒线画多长都不会把进度条往右推，
-                         图标在布局里占的宽度仍然只是那一个字。
-                         线在代码里按当前亮度生成（OsdCard.BuildRays）。 -->
+                <!-- 图标：亮度。**整只是手绘的**（一个圆 + 八根线），不用字体字形。
+                     原因见 OsdCard 的注释：字形自带一圈固定长度的光芒，
+                     跟我们叠加的动态线拼在一起会出现"两段接不上"的割裂感，
+                     线缩短时字形那截还会留着，看起来像底槽。
+                     现在每根光芒只有一根线：内端贴着圆固定，外端随亮度外伸。 -->
+                <Grid x:Name="IconBox" Grid.Column="0" Width="16" Height="16"
+                      VerticalAlignment="Center" Margin="0,0,13,0">
+                    <!-- 0×0 的 Canvas 不参与测量：光芒线画多长都不会把进度条往右推。 -->
                     <Canvas x:Name="Rays" Width="0" Height="0"
                             HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-                    <TextBlock x:Name="IconText" Text="&#xE706;"
-                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                               FontSize="16" Foreground="#FFFFFF"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <!-- 太阳本体：直径 6.4 DIP（Windows 亮度图标的大致比例）。 -->
+                    <Ellipse x:Name="Core" Width="6.4" Height="6.4"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Fill="#FFFFFF" />
                 </Grid>
 
                 <!-- 进度条：底槽 + 填充（星号比例列，避免布局未完成时宽度为 0）。

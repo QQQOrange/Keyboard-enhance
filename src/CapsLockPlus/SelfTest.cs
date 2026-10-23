@@ -5559,11 +5559,23 @@ public static class SelfTest
 
         // 光芒是"线"，不是光晕：八根，长度随亮度走
         CheckEqual("光芒线是八根", card.RayCountForTest, 8);
-        Check("0% 时光芒只剩一小截", rays[0] >= 0.3 && rays[0] <= 1.5,
+        Check("0% 时光芒只剩一小截（几乎不可见）", rays[0] >= 0.15 && rays[0] <= 0.45,
             $"len={rays[0]:F2}");
-        Check("100% 时光芒伸到最开", rays[^1] >= 4.0, $"len={rays[^1]:F2}");
-        Check("光芒长度跨度够明显（≥ 3 倍）", rays[^1] / rays[0] >= 3.0,
+        Check("100% 时光芒约为原来的 2/3（3.5 DIP）",
+            Math.Abs(rays[^1] - 3.5) <= 0.05, $"len={rays[^1]:F2}");
+        Check("光芒长度跨度够明显（≥ 8 倍）", rays[^1] / rays[0] >= 8.0,
             $"{rays[0]:F2} → {rays[^1]:F2}");
+
+        /* 图标是手绘的：中间一个圆 + 八根线。
+         * 线必须从圆外面开始（不能插进圆里），而且不能残留字体字形 ——
+         * 字形自带一圈固定长度的光芒，和动态线叠在一起就是"两段拼接"。 */
+        Check("线内端在圆心之外（不插进圆里）",
+            card.RayInnerForTest > card.CoreDiameterForTest / 2 + 0.5,
+            $"inner={card.RayInnerForTest:F2} r={card.CoreDiameterForTest / 2:F2}");
+        Check("太阳本体是 6.4 DIP 的圆", Math.Abs(card.CoreDiameterForTest - 6.4) < 0.01,
+            $"d={card.CoreDiameterForTest:F2}");
+        Check("图标里没有字体字形残留（否则会和线拼接）", !card.HasGlyphForTest,
+            "还存在 TextBlock 字形");
 
         // 没有模糊光晕：用户明确要求"一根根的线"来表现强弱
         Check("卡片里没有光晕/模糊元素（光芒只能是线）", !card.HasSoftGlowForTest,
@@ -5618,7 +5630,7 @@ public static class SelfTest
             darkRay != null && darkRay.Color.R == 0 && darkRay.Color.G == 0 && darkRay.Color.B == 0,
             darkRay == null ? "画刷类型不是纯色" : "颜色不是黑");
         Check("浅色主题下光芒长度同样是 100% 饱和",
-            card.RayLengthForTest >= 4.0, $"len={card.RayLengthForTest:F2}");
+            card.RayLengthForTest >= 3.2, $"len={card.RayLengthForTest:F2}");
     }
 
     /// <summary>

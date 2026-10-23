@@ -21,40 +21,43 @@ namespace CapsLockPlus.UI.Windows;
 /// </summary>
 public partial class OsdCard : UserControl
 {
-    /* ── 太阳图标的联动参数 ────────────────────────────────────────
+    /* ── 太阳图标：手绘，不用字形 ──────────────────────────────────
      *
-     * 用户要的是"越亮，光芒越强越亮；越暗，光芒越弱越暗淡"，
-     * 并且明确要求：**纯线性**、**单色**、**就用当前这个字形**，
-     * 而且光芒必须是"一根根的线，用长短表示强弱" ——
-     * 不要模糊光晕（光晕的观感不是线性的，这一点被明确否掉了）。
+     * 用户的三条硬要求（v4.5.11）：
+     *   ① 亮度最低时线几乎不可见；
+     *   ② 亮度满时只有"原来长度"的 2/3；
+     *   ③ 每根光芒必须是**一根连续的线** —— 之前用 U+E706 字形叠加
+     *      动态线，看起来像两段拼接，线缩短时字形那截留着还像底槽。
      *
-     * 所以只动两个量，都是一次函数 a + (b-a)·s（s = 百分比/100）：
+     * 所以整只图标改成手绘：中间一个圆 + 八根线。
+     *   · 圆：直径 6.4 DIP，固定大小；
+     *   · 线：内端固定在 4.7（圆外留 1.5 的缝），外端 = 内端 + 长度；
+     *         长度 0.25 → 3.5 DIP（线性），满格 3.5 正是原来 5.2 的 2/3。
      *
-     *   ① 本体不透明度：0.45 → 1.00
-     *      0% 时压在 45%，看得出是太阳但明显发灰；100% 时纯实。
-     *      最小值没有取 0：图标是"这是亮度"的唯一标识，全灭会看不懂。
-     *
-     *   ② 八根光芒线的**长度**：0.9 → 5.2 DIP（内端固定，只往外伸）
-     *      0% 时只剩贴着本体的一小截，100% 时伸到最开。
-     *      线条本身的颜色和透明度不变 —— 强弱只由长短表达，
-     *      这样"线性"是肉眼能直接读出来的，不用猜。
+     * 只有两个量随亮度变，都是一次函数 a + (b-a)·s（s = 百分比/100）：
+     *   ① 整组不透明度：0.45 → 1.00（越暗越淡）
+     *   ② 光芒长度：    0.25 → 3.50 DIP
+     * 线条本身的粗细和颜色不变 —— 强弱只由长短表达，线性才一眼读得出来。
      */
     internal const double IconMinOpacity = 0.45;
 
-    /// <summary>光芒线的根数（45° 一根，避开字形自带的四角小刺）。</summary>
+    /// <summary>太阳本体直径（DIP）。和 Windows 亮度图标的大致比例一致。</summary>
+    internal const double CoreDiameter = 6.4;
+
+    /// <summary>光芒线的根数（45° 一根）。</summary>
     internal const int RayCount = 8;
 
-    /// <summary>线条内端离图标中心的距离（DIP）。在字形外缘之外，不压到太阳本体。</summary>
-    internal const double RayInner = 9.0;
+    /// <summary>线条内端离图标中心的距离（DIP）：圆外留 1.5 的缝。</summary>
+    internal const double RayInner = 4.7;
 
-    /// <summary>0% 时的外端距离（≈ 只剩 0.9 DIP 的一小段）。</summary>
-    internal const double RayMinOuter = 9.9;
+    /// <summary>0% 时的线长：只剩一小截，几乎不可见。</summary>
+    internal const double RayMinLength = 0.25;
 
-    /// <summary>100% 时的外端距离（≈ 5.2 DIP 的射线）。</summary>
-    internal const double RayMaxOuter = 14.2;
+    /// <summary>100% 时的线长：原长度 5.2 DIP 的 2/3 ≈ 3.5。</summary>
+    internal const double RayMaxLength = 3.5;
 
-    /// <summary>线宽（DIP）。1.4 在 200% 缩放下是 3 像素，细但仍清楚。</summary>
-    internal const double RayThickness = 1.4;
+    /// <summary>线宽（DIP）。线变短后太粗会显得胖，1.2 和 Windows 那条最接近。</summary>
+    internal const double RayThickness = 1.2;
 
     private readonly Line[] _rays = new Line[RayCount];
     private int _percent;
@@ -113,13 +116,12 @@ public partial class OsdCard : UserControl
     public void SetPalette(Color card, Color text, Color track, Color fill)
     {
         Card.Background = new SolidColorBrush(card);
-        IconText.Foreground = new SolidColorBrush(text);
         ValueText.Foreground = new SolidColorBrush(text);
         TrackBar.Background = new SolidColorBrush(track);
         FillBar.Background = new SolidColorBrush(fill);
 
         _textColor = text;
-        ApplyRayBrush();
+        ApplyIconBrush();
         RefreshIcon();
     }
 
@@ -149,23 +151,23 @@ public partial class OsdCard : UserControl
     }
 
     /// <summary>
-    /// 按当前进度重算太阳的亮度与光芒长度。**全部线性**，无分段：
+    /// 按当前进度重算太阳的明暗与光芒长度。**全部线性**，无分段：
     ///
-    ///   本体不透明度 = 0.45 + 0.55·s
-    ///   光芒长度     = 0.9 + 4.3·s   （DIP）
+    ///   整组不透明度 = 0.45 + 0.55·s
+    ///   光芒长度     = 0.25 + 3.25·s   （DIP）
     /// </summary>
     private void RefreshIcon()
     {
         double s = _iconProgress;
 
-        IconText.Opacity = IconMinOpacity + (1 - IconMinOpacity) * s;
+        IconBox.Opacity = IconMinOpacity + (1 - IconMinOpacity) * s;
 
-        double outer = RayMinOuter + (RayMaxOuter - RayMinOuter) * s;
+        double outer = RayInner + RayMinLength + (RayMaxLength - RayMinLength) * s;
 
         for (int i = 0; i < RayCount; i++)
         {
-            /* 从正上方开始、每 45° 一根。字形自带的是四个斜向小刺，
-             * 这里正好错开，看起来才是"外加的一圈光芒"。 */
+            /* 从正上方开始、每 45° 一根。
+             * 每根都从内端画到外端，中间**不拆段** —— 这才是"一根连续的线"。 */
             double angle = i * (2 * Math.PI / RayCount) - Math.PI / 2;
             double cos = Math.Cos(angle);
             double sin = Math.Sin(angle);
@@ -179,21 +181,22 @@ public partial class OsdCard : UserControl
     }
 
     /// <summary>
-    /// 光芒线用文字色 —— 和太阳本体同一个颜色，仍然是单色。
+    /// 圆和光芒都用文字色 —— 单色，没有色相变化。
     ///
-    /// 注意线的透明度**不随亮度变**：强弱只由长短表达。
-    /// 两样一起变会让"线性"变得说不清，也容易看起来像在闪烁。
+    /// 注意线的透明度**不随亮度变**（整组已经有一个线性 Opacity）：
+    /// 强弱只由长短表达，两样一起变会让"线性"变得说不清。
     /// </summary>
-    private void ApplyRayBrush()
+    private void ApplyIconBrush()
     {
         var brush = new SolidColorBrush(_textColor);
         brush.Freeze();
 
+        Core.Fill = brush;
         foreach (var line in _rays) line.Stroke = brush;
     }
 
-    /// <summary>仅供自检：图标本体的不透明度。</summary>
-    internal double IconOpacityForTest => IconText.Opacity;
+    /// <summary>仅供自检：整只图标的当前不透明度。</summary>
+    internal double IconOpacityForTest => IconBox.Opacity;
 
     /// <summary>仅供自检：光芒线的根数。</summary>
     internal int RayCountForTest => _rays.Length;
@@ -210,14 +213,36 @@ public partial class OsdCard : UserControl
         }
     }
 
+    /// <summary>仅供自检：线条内端半径（必须大于圆的半径，不能插进圆里）。</summary>
+    internal double RayInnerForTest => RayInner;
+
+    /// <summary>仅供自检：太阳本体直径。</summary>
+    internal double CoreDiameterForTest => Core.Width;
+
     /// <summary>仅供自检：光芒线的画刷（查它是不是单色）。</summary>
     internal Brush RayBrushForTest => _rays[0].Stroke;
+
+    /// <summary>
+    /// 仅供自检：图标里还有没有字体字形残留。
+    ///
+    /// 字形自带一圈固定长度的光芒，跟动态线叠在一起就会"两段拼接"、
+    /// 线缩短时还留着一截像底槽 —— 这条守的就是"别再把字形加回来"。
+    /// </summary>
+    internal bool HasGlyphForTest
+    {
+        get
+        {
+            foreach (var child in IconBox.Children)
+                if (child is TextBlock) return true;
+
+            return false;
+        }
+    }
 
     /// <summary>
     /// 仅供自检：卡片里有没有"模糊光晕"这类元素。
     ///
     /// 用户明确不要光晕（径向渐变 / 模糊）—— 光芒只能是线。
-    /// 这条守的是"以后又有人觉得加个 glow 更好看"。
     /// </summary>
     internal bool HasSoftGlowForTest
     {
@@ -226,7 +251,7 @@ public partial class OsdCard : UserControl
             foreach (var child in Rays.Children)
                 if (child is not Line) return true;
 
-            return IconText.Effect != null;
+            return IconBox.Effect != null || Core.Effect != null;
         }
     }
 }
