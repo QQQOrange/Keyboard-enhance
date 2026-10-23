@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 
 namespace CapsLockPlus.UI.Windows;
 
@@ -23,35 +24,48 @@ public partial class OsdCard : UserControl
     /* ── 太阳图标的联动参数 ────────────────────────────────────────
      *
      * 用户要的是"越亮，光芒越强越亮；越暗，光芒越弱越暗淡"，
-     * 并且明确要求**纯线性**、**不加彩色**，就动当前这个字形。
+     * 并且明确要求：**纯线性**、**单色**、**就用当前这个字形**，
+     * 而且光芒必须是"一根根的线，用长短表示强弱" ——
+     * 不要模糊光晕（光晕的观感不是线性的，这一点被明确否掉了）。
      *
-     * 所以只调两个量，都是一次函数 a + (b-a)·s（s = 百分比/100）：
+     * 所以只动两个量，都是一次函数 a + (b-a)·s（s = 百分比/100）：
      *
      *   ① 本体不透明度：0.45 → 1.00
      *      0% 时压在 45%，看得出是太阳但明显发灰；100% 时纯实。
      *      最小值没有取 0：图标是"这是亮度"的唯一标识，全灭会看不懂。
      *
-     *   ② 辉光不透明度：0 → 上限（深色 0.58 / 浅色 0.30）
-     *      0% 时完全没有光晕；100% 时铺满。跟着一起线性变的有**半径**
-     *      （0.62 → 1.12 倍），两者相乘在视觉上就是"光越亮、铺得越开"，
-     *      但每个量单独看仍然是一条直线。
-     *
-     * 光晕颜色不另起一套：直接取文字色（深色主题白、浅色主题黑），
-     * 仍然是单色，只是明暗。
+     *   ② 八根光芒线的**长度**：0.9 → 5.2 DIP（内端固定，只往外伸）
+     *      0% 时只剩贴着本体的一小截，100% 时伸到最开。
+     *      线条本身的颜色和透明度不变 —— 强弱只由长短表达，
+     *      这样"线性"是肉眼能直接读出来的，不用猜。
      */
     internal const double IconMinOpacity = 0.45;
-    internal const double IconGlowMaxOnDark = 0.52;
-    internal const double IconGlowMaxOnLight = 0.28;
-    internal const double IconGlowMinScale = 0.62;
-    internal const double IconGlowMaxScale = 1.12;
 
+    /// <summary>光芒线的根数（45° 一根，避开字形自带的四角小刺）。</summary>
+    internal const int RayCount = 8;
+
+    /// <summary>线条内端离图标中心的距离（DIP）。在字形外缘之外，不压到太阳本体。</summary>
+    internal const double RayInner = 9.0;
+
+    /// <summary>0% 时的外端距离（≈ 只剩 0.9 DIP 的一小段）。</summary>
+    internal const double RayMinOuter = 9.9;
+
+    /// <summary>100% 时的外端距离（≈ 5.2 DIP 的射线）。</summary>
+    internal const double RayMaxOuter = 14.2;
+
+    /// <summary>线宽（DIP）。1.4 在 200% 缩放下是 3 像素，细但仍清楚。</summary>
+    internal const double RayThickness = 1.4;
+
+    private readonly Line[] _rays = new Line[RayCount];
     private int _percent;
     private double _iconProgress;
-    private double _glowCeiling = IconGlowMaxOnDark;
+    private Color _textColor = Colors.White;
 
     public OsdCard()
     {
         InitializeComponent();
+        BuildRays();
+        RefreshIcon();
     }
 
     /// <summary>卡片圆角（DIP）。两个宿主都从这里取，避免各写一份。</summary>
@@ -104,63 +118,115 @@ public partial class OsdCard : UserControl
         TrackBar.Background = new SolidColorBrush(track);
         FillBar.Background = new SolidColorBrush(fill);
 
-        /* 辉光跟着文字走：深色主题是白色外发光，浅色主题是淡淡的墨晕。
-         * 浅色下必须**压低上限** —— 白光晕在浅底上等于没有，而黑光晕
-         * 一旦给到 0.58 就会糊成一团脏印子。 */
-        _glowCeiling = Luma(text) >= 0.5 ? IconGlowMaxOnDark : IconGlowMaxOnLight;
-        ApplyGlowBrush(text);
+        _textColor = text;
+        ApplyRayBrush();
         RefreshIcon();
     }
 
     /// <summary>
-    /// 按当前进度重算太阳的亮度与辉光。**全部线性**，无分段。
+    /// 一次性建好八根线。之后每帧只改端点坐标（X2/Y2），
+    /// 不新建对象 —— 补间是一帧一次，不能每帧分配八个 Line。
+    /// </summary>
+    private void BuildRays()
+    {
+        for (int i = 0; i < RayCount; i++)
+        {
+            var line = new Line
+            {
+                StrokeThickness = RayThickness,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+
+                /* 斜线不要 SnapToDevicePixels：吸附会让 45° 的线在
+                 * 200% 下粗细一跳一跳，看起来像在抖。 */
+                SnapsToDevicePixels = false,
+            };
+
+            RenderOptions.SetEdgeMode(line, EdgeMode.Unspecified);
+            _rays[i] = line;
+            Rays.Children.Add(line);
+        }
+    }
+
+    /// <summary>
+    /// 按当前进度重算太阳的亮度与光芒长度。**全部线性**，无分段：
+    ///
+    ///   本体不透明度 = 0.45 + 0.55·s
+    ///   光芒长度     = 0.9 + 4.3·s   （DIP）
     /// </summary>
     private void RefreshIcon()
     {
         double s = _iconProgress;
 
-        // ① 越亮越实
         IconText.Opacity = IconMinOpacity + (1 - IconMinOpacity) * s;
 
-        // ② 越亮光芒越强、铺得越开
-        IconGlow.Opacity = _glowCeiling * s;
-        double scale = IconGlowMinScale + (IconGlowMaxScale - IconGlowMinScale) * s;
-        IconGlowScale.ScaleX = scale;
-        IconGlowScale.ScaleY = scale;
+        double outer = RayMinOuter + (RayMaxOuter - RayMinOuter) * s;
+
+        for (int i = 0; i < RayCount; i++)
+        {
+            /* 从正上方开始、每 45° 一根。字形自带的是四个斜向小刺，
+             * 这里正好错开，看起来才是"外加的一圈光芒"。 */
+            double angle = i * (2 * Math.PI / RayCount) - Math.PI / 2;
+            double cos = Math.Cos(angle);
+            double sin = Math.Sin(angle);
+
+            var line = _rays[i];
+            line.X1 = RayInner * cos;
+            line.Y1 = RayInner * sin;
+            line.X2 = outer * cos;
+            line.Y2 = outer * sin;
+        }
     }
 
     /// <summary>
-    /// 用文字色做一圈径向渐隐的辉光：中心满，中段 34%，外圈 9%，边缘全透明。
-    /// 这几档是**颜色**的软硬，不随百分比变；强度只由 Opacity 控制 ——
-    /// 这样"线性"只有一个出口，不会因为两处相乘变得不可预期。
+    /// 光芒线用文字色 —— 和太阳本体同一个颜色，仍然是单色。
+    ///
+    /// 注意线的透明度**不随亮度变**：强弱只由长短表达。
+    /// 两样一起变会让"线性"变得说不清，也容易看起来像在闪烁。
     /// </summary>
-    private void ApplyGlowBrush(Color text)
+    private void ApplyRayBrush()
     {
-        var brush = new RadialGradientBrush { MappingMode = BrushMappingMode.RelativeToBoundingBox };
-        brush.GradientStops.Add(new GradientStop(WithAlpha(text, 1.00), 0.00));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(text, 0.34), 0.45));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(text, 0.09), 0.75));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(text, 0.00), 1.00));
+        var brush = new SolidColorBrush(_textColor);
         brush.Freeze();
 
-        IconGlow.Fill = brush;
+        foreach (var line in _rays) line.Stroke = brush;
     }
-
-    private static Color WithAlpha(Color c, double alpha)
-        => Color.FromArgb((byte)Math.Round(Math.Clamp(alpha, 0, 1) * 255), c.R, c.G, c.B);
-
-    private static double Luma(Color c)
-        => (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
 
     /// <summary>仅供自检：图标本体的不透明度。</summary>
     internal double IconOpacityForTest => IconText.Opacity;
 
-    /// <summary>仅供自检：辉光的不透明度。</summary>
-    internal double IconGlowOpacityForTest => IconGlow.Opacity;
+    /// <summary>仅供自检：光芒线的根数。</summary>
+    internal int RayCountForTest => _rays.Length;
 
-    /// <summary>仅供自检：辉光的缩放倍数。</summary>
-    internal double IconGlowScaleForTest => IconGlowScale.ScaleX;
+    /// <summary>仅供自检：第 0 根光芒线的长度（DIP）。</summary>
+    internal double RayLengthForTest
+    {
+        get
+        {
+            var line = _rays[0];
+            return Math.Sqrt(
+                (line.X2 - line.X1) * (line.X2 - line.X1)
+                + (line.Y2 - line.Y1) * (line.Y2 - line.Y1));
+        }
+    }
 
-    /// <summary>仅供自检：辉光的画刷（查它是不是单色）。</summary>
-    internal Brush GlowBrushForTest => IconGlow.Fill;
+    /// <summary>仅供自检：光芒线的画刷（查它是不是单色）。</summary>
+    internal Brush RayBrushForTest => _rays[0].Stroke;
+
+    /// <summary>
+    /// 仅供自检：卡片里有没有"模糊光晕"这类元素。
+    ///
+    /// 用户明确不要光晕（径向渐变 / 模糊）—— 光芒只能是线。
+    /// 这条守的是"以后又有人觉得加个 glow 更好看"。
+    /// </summary>
+    internal bool HasSoftGlowForTest
+    {
+        get
+        {
+            foreach (var child in Rays.Children)
+                if (child is not Line) return true;
+
+            return IconText.Effect != null;
+        }
+    }
 }

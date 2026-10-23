@@ -623,6 +623,27 @@ public static class SettingsStore
             }
         }
 
+        /* 翻译相关的搜索入口也一并清掉（v4.5.10）。
+         *
+         * 默认搜索列表里曾经有 5 个翻译站点（百度/搜狗/谷歌/必应词典 + DeepL），
+         * 翻译功能整块移除后它们就没理由再出现。判据是**链接一字不差** ——
+         * 用户改过链接说明他自己在用，绝不误删。 */
+        string[] retiredSearchUrls =
+        {
+            "https://fanyi.baidu.com/#auto/zh/{q}",
+            "https://fanyi.sogou.com/text?keyword={q}",
+            "https://translate.google.com/?q={q}",
+            "https://cn.bing.com/dict/search?q={q}",
+            "https://www.deepl.com/translator#zh/en/{q}",
+        };
+
+        int retiredSearch = s.Search.RemoveAll(e =>
+            !e.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+            retiredSearchUrls.Contains(e.Value, StringComparer.OrdinalIgnoreCase));
+
+        if (retiredSearch > 0)
+            CoreLog.Info($"[设置] 移除 {retiredSearch} 个翻译搜索入口");
+
         /* 备份保留策略：老配置里没有这两个字段，反序列化后是 0。
          *
          * 0 在业务上是"不限制"，跟默认值 10 完全相反 ——
@@ -810,7 +831,6 @@ public static class DefaultSettings
             new() { Key = "db", Value = "https://dblp.org/search?q={q}", Comment = "DBLP", EngineIcon = "dblp" },
             new() { Key = "dev", Value = "https://dev.to/search?q={q}", Comment = "DEV", EngineIcon = "dev" },
             new() { Key = "da", Value = "https://www.dailymotion.com/search/{q}", Comment = "Dailymotion", EngineIcon = "dailymotion" },
-            new() { Key = "de", Value = "https://www.deepl.com/translator#zh/en/{q}", Comment = "DeepL", EngineIcon = "deepl" },
             new() { Key = "de2", Value = "https://www.deviantart.com/search?q={q}", Comment = "DeviantArt", EngineIcon = "deviantart" },
             new() { Key = "docker", Value = "https://hub.docker.com/search?q={q}", Comment = "Docker Hub", EngineIcon = "docker_hub" },
             new() { Key = "dr", Value = "https://dribbble.com/search/{q}", Comment = "Dribbble", EngineIcon = "dribbble" },
@@ -981,7 +1001,6 @@ public static class DefaultSettings
             new() { Key = "wb", Value = "https://s.weibo.com/weibo/{q}", Comment = "微博", EngineIcon = "wei_bo" },
             new() { Key = "byng3", Value = "https://www.bing.com/images/search?q={q}", Comment = "必应图片", EngineIcon = "bi_ying" },
             new() { Key = "byng2", Value = "https://www.bing.com/maps?q={q}", Comment = "必应地图", EngineIcon = "bi_ying" },
-            new() { Key = "byng", Value = "https://cn.bing.com/dict/search?q={q}", Comment = "必应翻译", EngineIcon = "bi_ying" },
             new() { Key = "kuis", Value = "https://www.kuaishou.com/search/video?searchKey={q}", Comment = "快手", EngineIcon = "kuai_shou" },
             new() { Key = "kuid", Value = "https://www.kuaidi100.com/?nu={q}", Comment = "快递100", EngineIcon = "kuai_di_100" },
             new() { Key = "mkwn", Value = "https://www.imooc.com/search/?words={q}", Comment = "慕课网", EngineIcon = "mu_ke_wang" },
@@ -992,7 +1011,6 @@ public static class DefaultSettings
             new() { Key = "suhs", Value = "https://so.tv.sohu.com/mts?wd={q}", Comment = "搜狐视频", EngineIcon = "sou_hu_shi_pin" },
             new() { Key = "sogou", Value = "https://www.sogou.com/web?query={q}", Comment = "搜狗", EngineIcon = "sou_gou" },
             new() { Key = "sugu2", Value = "https://pic.sogou.com/pics?query={q}", Comment = "搜狗图片", EngineIcon = "sou_gou" },
-            new() { Key = "sugu", Value = "https://fanyi.sogou.com/text?keyword={q}", Comment = "搜狗翻译", EngineIcon = "sou_gou_fan_yi" },
             new() { Key = "wy", Value = "https://yiyan.baidu.com/?q={q}", Comment = "文心一言", EngineIcon = "wen_xin_yi_yan" },
             new() { Key = "xnln", Value = "https://search.sina.com.cn/?q={q}", Comment = "新浪新闻", EngineIcon = "xin_lang_xin_wen" },
             new() { Key = "ych", Value = "https://so.yiche.com/?q={q}", Comment = "易车", EngineIcon = "yi_che" },
@@ -1020,7 +1038,6 @@ public static class DefaultSettings
             new() { Key = "bzd", Value = "https://zhidao.baidu.com/search?word={q}", Comment = "百度知道", EngineIcon = "bai_du_zhi_dao" },
             new() { Key = "bjy", Value = "https://jingyan.baidu.com/search?word={q}", Comment = "百度经验", EngineIcon = "bai_du_jing_yan" },
             new() { Key = "bidw", Value = "https://pan.baidu.com/disk/home?#/search?key={q}", Comment = "百度网盘", EngineIcon = "bai_du_wang_pan" },
-            new() { Key = "bf", Value = "https://fanyi.baidu.com/#auto/zh/{q}", Comment = "百度翻译", EngineIcon = "bai_du_fan_yi" },
             new() { Key = "zd", Value = "https://zhida.zhihu.com/?q={q}", Comment = "知乎直答", EngineIcon = "zhi_hu_zhi_da" },
             new() { Key = "zhwn", Value = "http://epub.cnki.net/kns/brief/default_result.aspx?txt_1_value1={q}&dbPrefix=SCDB&db_opt=CJFQ%2CCJFN%2CCDFD%2CCMFD%2CCPFD%2CIPFD%2CCCND%2CCCJD%2CHBRD&singleDB=SCDB&action=scdbsearch", Comment = "知网", EngineIcon = "zhi_wang" },
             new() { Key = "mt", Value = "https://metaso.cn/?q={q}", Comment = "秘塔AI搜索", EngineIcon = "mi_ta_ai_sou_suo" },
@@ -1052,7 +1069,6 @@ public static class DefaultSettings
             new() { Key = "ggdq", Value = "https://earth.google.com/web/search/{q}", Comment = "谷歌地球", EngineIcon = "gu_ge_di_qiu" },
             new() { Key = "ggxu", Value = "https://scholar.google.com/scholar?hl=zh-CN&q={q}", Comment = "谷歌学术", EngineIcon = "gu_ge_xue_shu" },
             new() { Key = "ggxn", Value = "https://news.google.com/search?q={q}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", Comment = "谷歌新闻", EngineIcon = "gu_ge_xin_wen" },
-            new() { Key = "ggfn", Value = "https://translate.google.com/?q={q}", Comment = "谷歌翻译", EngineIcon = "gu_ge_fan_yi" },
             new() { Key = "doubao", Value = "https://www.doubao.com/chat/?q={q}", Comment = "豆包", EngineIcon = "dou_bao" },
             new() { Key = "db2", Value = "https://www.douban.com/search?q={q}", Comment = "豆瓣", EngineIcon = "dou_ban" },
             new() { Key = "dubn", Value = "https://search.douban.com/movie/subject_search?search_text={q}", Comment = "豆瓣电影", EngineIcon = "dou_ban" },

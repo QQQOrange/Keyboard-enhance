@@ -286,11 +286,15 @@ public sealed class ActionCatalog
         /* 亮度：WMI（内置屏）→ DDC/CI（外接屏）。两条都不通时给明确提示 ——
          * 用户按了没反应会以为按键坏了。 */
         c.Add("brightnessUp", "系统功能", "亮度 +",
-            "屏幕亮度提高（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，按住连续调；外接屏需开启 DDC/CI）",
-            a => ctx.ChangeBrightness(StepOr(a, ctx.BrightnessStep)), shortTitle: "亮+");
+            "屏幕亮度提高（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，"
+            + "按住越久每步越大，约 0.7 秒到满速 2.5 倍；外接屏需开启 DDC/CI）",
+            a => ctx.ChangeBrightness(StepOr(a, ctx.BrightnessStep), IsRepeat(a)),
+            shortTitle: "亮+");
         c.Add("brightnessDown", "系统功能", "亮度 -",
-            "屏幕亮度降低（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，按住连续调；外接屏需开启 DDC/CI）",
-            a => ctx.ChangeBrightness(-StepOr(a, ctx.BrightnessStep)), shortTitle: "亮-");
+            "屏幕亮度降低（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，"
+            + "按住越久每步越大，约 0.7 秒到满速 2.5 倍；外接屏需开启 DDC/CI）",
+            a => ctx.ChangeBrightness(-StepOr(a, ctx.BrightnessStep), IsRepeat(a)),
+            shortTitle: "亮-");
 
         c.Add("openExplorer", "系统功能", "打开文件资源管理器",
             "打开「此电脑」", _ => { ctx.RunProgram("explorer.exe"); return true; }, shortTitle: "资源");
@@ -451,6 +455,15 @@ public sealed class ActionCatalog
     ///
     /// 上限夹到 100：参数是手填的，写成 999 会让"按一下"直接跳到头。
     /// </summary>
+    /// <summary>
+    /// 引擎连发时明确传 arg="1"（见 HotkeyEngine.RepeatState）。
+    /// 用它来区分"按住"和"按一下"—— 比按时间窗口猜稳得多。
+    /// </summary>
+    private static bool IsRepeat(string? arg) => string.Equals(arg, "1", StringComparison.Ordinal);
+
+    /// <summary>仅供自检：连发标记的判定规则。</summary>
+    internal static bool IsRepeatForTest(string? arg) => IsRepeat(arg);
+
     private static int StepOr(string? arg, int fallback)
         => int.TryParse(arg, out var v) && v > 0 ? Math.Clamp(v, 1, 100) : fallback;
 

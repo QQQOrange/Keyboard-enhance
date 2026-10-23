@@ -639,6 +639,15 @@ public sealed class ActionContext
     /// <summary>亮度一次调多少（百分比，设置里可改）。</summary>
     public int BrightnessStep => Math.Clamp(Settings().Global.BrightnessStep, 1, 50);
 
+    /// <summary>按住连发时用的一点点加速状态（见 <see cref="BrightnessAccel"/>）。</summary>
+    private readonly BrightnessAccel _brightnessAccel = new();
+
+    /// <summary>仅供自检：把加速状态清零，模拟"松开后重新按"。</summary>
+    internal void ResetBrightnessAccelForTest() => _brightnessAccel.Reset();
+
+    /// <summary>仅供自检：连发下一步会走多少（不碰硬件）。</summary>
+    internal int NextBrightnessAccelForTest() => _brightnessAccel.Next();
+
     /// <summary>
     /// 音量步进的累计误差（百分比）。
     ///
@@ -769,13 +778,34 @@ public sealed class ActionContext
     /// <summary>
     /// 调整屏幕亮度。<paramref name="delta"/> 为正=调亮，为负=调暗。
     ///
+    /// <paramref name="continuous"/> 为 true 表示这是**按住时的连发**
+    /// （引擎每一步都传 arg="1"）。连发时步进不再固定 1%，
+    /// 而是走 <see cref="BrightnessAccel"/> 的匀加速：按得越久，每步越大，
+    /// 但封顶 2.5 倍 —— 手感上是"越按越快"，不会一下冲到黑屏。
+    ///
     /// 两条通道（见 <see cref="BrightnessService"/>）：
     ///   · 笔记本内置屏 → WMI，快且不闪；
     ///   · 台式机外接屏 → DDC/CI，直接跟显示器对话。
     /// 两条都不通时**明确告诉用户**能力不支持，否则按了没反应会被当成按键坏了。
     /// </summary>
-    public bool ChangeBrightness(int delta)
+    public bool ChangeBrightness(int delta, bool continuous = false)
     {
+        if (continuous)
+        {
+            /* 连发：步长交给加速器算，方向沿用 delta 的符号。
+             *
+             * 为什么不用固定 1%：45ms 一步 = 22%/秒，从 100 调到 0 要 4.5 秒，
+             * 长按到后面会觉得"怎么按都到底了还没到"；但一上来就给大步又太冲。
+             * 匀加速正好：起步细、越按越大。 */
+            int sign = Math.Sign(delta);
+            if (sign != 0) delta = sign * _brightnessAccel.Next();
+        }
+        else
+        {
+            // 单次按键（或松开后重新按）= 新的一轮，加速从头开始
+            _brightnessAccel.Reset();
+        }
+
         /* 只改**目标值**，不等硬件。
          *
          * DDC/CI 写一次要 50~150ms，读一次 50~100ms —— 在按键路径上同步做，
@@ -864,5 +894,58 @@ public sealed class MouseService
         int dist = (int)Math.Round(baseStep * factor);
         InputSender.MoveRelative(dx * dist, dy * dist);
         return true;
+    }
+}
+
+/// <summary>
+/// 亮度长按的匀加速器：按住越久，每一步走得越多。
+///
+/// 手感的来源就是隔壁 <see cref="MouseService"/> 的 dynamic_speed
+/// （按住连续移动会越走越快），这里把同一条思路搬到亮度上：
+///   · 起步 1%/步（和原来一样细，单次微调不吃亏）；
+///   · 每多一步，系数 +0.10，封顶 15 步 → 2.5 倍；
+///   · 45ms 一步时约 0.7 秒到满速，全程 0→100 约 2 秒 ——
+///     既不会"按半天不到底"，也不会一按就黑屏。
+///
+/// 为什么不是"每步直接取整"：1.1 倍写成整数会永远是 1，
+/// 加速感全丢了。这里累计**理想增量**再取整下发，小数部分留到下一步，
+/// 所以平均速率严格等于 1 + streak×0.10，看不出跳格。
+/// </summary>
+public sealed class BrightnessAccel
+{
+    /// <summary>加速到顶需要多少步（45ms/步时约 0.7 秒）。</summary>
+    public const int MaxStreak = 15;
+
+    /// <summary>每多一步，步长增加多少（1.0 → 2.5 倍）。</summary>
+    public const double PerStep = 0.10;
+
+    private int _streak;
+    private double _ideal;
+    private int _sent;
+
+    public int Streak => _streak;
+
+    /// <summary>松开 / 单次按键后重新起步。</summary>
+    public void Reset()
+    {
+        _streak = 0;
+        _ideal = 0;
+        _sent = 0;
+    }
+
+    /// <summary>连发的下一步该走几个百分点（正数，方向由调用方给）。</summary>
+    public int Next()
+    {
+        _streak = Math.Min(_streak + 1, MaxStreak);
+
+        double factor = 1 + _streak * PerStep;
+        _ideal += factor;
+
+        // 四舍五入到最近整数；Math.Floor(x+0.5) 避开 2.5→2 的银行家舍入
+        int target = (int)Math.Floor(_ideal + 0.5);
+        int step = Math.Max(1, target - _sent);
+
+        _sent += step;
+        return step;
     }
 }

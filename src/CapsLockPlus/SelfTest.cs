@@ -226,8 +226,6 @@ public static class SelfTest
         Section("备份策略");
         TestBackupPolicy();
 
-        Section("翻译引擎");
-
         Section("窗口与进程");
         TestWindows();
 
@@ -1190,9 +1188,6 @@ public static class SelfTest
     /// 这是"文字只显示上半部分"那个 bug 的回归测试：
     /// 只要 MinBoxHeight 算出来的高度小于"文字高 + 上下内边距 + 边框"，
     /// 文字就会被裁，所以这里逐字号验证。
-    /// </summary>
-    /// <summary>
-    /// 翻译引擎：数量要够，且每个引擎的 ID / 名称 / 是否需要密钥都合法。
     /// </summary>
     /// <summary>
     /// Qbar 的网址识别与文件路径识别。
@@ -5545,15 +5540,13 @@ public static class SelfTest
 
         int[] steps = { 0, 25, 50, 75, 100 };
         var opacity = new double[steps.Length];
-        var glow = new double[steps.Length];
-        var scale = new double[steps.Length];
+        var rays = new double[steps.Length];
 
         for (int i = 0; i < steps.Length; i++)
         {
             card.SetPercent(steps[i]);
             opacity[i] = card.IconOpacityForTest;
-            glow[i] = card.IconGlowOpacityForTest;
-            scale[i] = card.IconGlowScaleForTest;
+            rays[i] = card.RayLengthForTest;
         }
 
         // 端点：暗要暗得下去、亮要亮得起来，但都不能走极端
@@ -5563,10 +5556,18 @@ public static class SelfTest
             $"opacity={opacity[0]:F3}");
         Check("100% 时太阳完全点亮", Math.Abs(opacity[^1] - 1.0) < 1e-6,
             $"opacity={opacity[^1]:F3}");
-        Check("0% 时没有辉光", glow[0] < 1e-6, $"glow={glow[0]:F3}");
-        Check("100% 时辉光最亮", glow[^1] >= 0.40, $"glow={glow[^1]:F3}");
-        Check("辉光随亮度张开", scale[^1] - scale[0] >= 0.3,
-            $"{scale[0]:F2} → {scale[^1]:F2}");
+
+        // 光芒是"线"，不是光晕：八根，长度随亮度走
+        CheckEqual("光芒线是八根", card.RayCountForTest, 8);
+        Check("0% 时光芒只剩一小截", rays[0] >= 0.3 && rays[0] <= 1.5,
+            $"len={rays[0]:F2}");
+        Check("100% 时光芒伸到最开", rays[^1] >= 4.0, $"len={rays[^1]:F2}");
+        Check("光芒长度跨度够明显（≥ 3 倍）", rays[^1] / rays[0] >= 3.0,
+            $"{rays[0]:F2} → {rays[^1]:F2}");
+
+        // 没有模糊光晕：用户明确要求"一根根的线"来表现强弱
+        Check("卡片里没有光晕/模糊元素（光芒只能是线）", !card.HasSoftGlowForTest,
+            "出现了非 Line 的光芒元素或图标特效");
 
         /* 线性：每个点都必须等于"端点之间的一次函数"。
          * 容差 1e-6 —— 只看浮点误差，任何有意的曲线都过不去。 */
@@ -5574,15 +5575,12 @@ public static class SelfTest
         {
             double s = steps[i] / 100.0;
             double eo = opacity[0] + (opacity[^1] - opacity[0]) * s;
-            double eg = glow[0] + (glow[^1] - glow[0]) * s;
-            double es = scale[0] + (scale[^1] - scale[0]) * s;
+            double er = rays[0] + (rays[^1] - rays[0]) * s;
 
             Check($"{steps[i]}% 的图标亮度落在线性上", Math.Abs(opacity[i] - eo) < 1e-6,
                 $"{opacity[i]:F6} vs {eo:F6}");
-            Check($"{steps[i]}% 的辉光强度落在线性上", Math.Abs(glow[i] - eg) < 1e-6,
-                $"{glow[i]:F6} vs {eg:F6}");
-            Check($"{steps[i]}% 的辉光半径落在线性上", Math.Abs(scale[i] - es) < 1e-6,
-                $"{scale[i]:F6} vs {es:F6}");
+            Check($"{steps[i]}% 的光芒长度落在线性上", Math.Abs(rays[i] - er) < 1e-6,
+                $"{rays[i]:F6} vs {er:F6}");
         }
 
         // 单调：中间任何一段都不许回落（"越来越亮"是这个功能的全部意义）
@@ -5590,8 +5588,7 @@ public static class SelfTest
         for (int i = 1; i < steps.Length; i++)
         {
             if (opacity[i] <= opacity[i - 1]) monotonic = false;
-            if (glow[i] <= glow[i - 1]) monotonic = false;
-            if (scale[i] <= scale[i - 1]) monotonic = false;
+            if (rays[i] <= rays[i - 1]) monotonic = false;
         }
         Check("0→100% 全程单调变亮（不会中途回落）", monotonic);
 
@@ -5601,30 +5598,27 @@ public static class SelfTest
         Check("37% 时图标按 37% 算（和数字同一来源）",
             Math.Abs(card.IconOpacityForTest - e37) < 1e-6);
 
-        /* 单色：辉光就是文字色 + 不同 alpha，没有任何色相偏移。
+        /* 单色：光芒线就是文字色，没有任何色相偏移。
          * 这条挡的是"以后想加点颜色更好看"这类改法。 */
         card.SetPercent(100);
-        var glowBrush = card.GlowBrushForTest as System.Windows.Media.RadialGradientBrush;
-        bool monochrome = glowBrush != null;
-        if (glowBrush != null)
-        {
-            foreach (var stop in glowBrush.GradientStops)
-            {
-                var c = stop.Color;
-                if (c.R != white.R || c.G != white.G || c.B != white.B) monochrome = false;
-            }
-        }
-        Check("辉光是单色的（色标 RGB 全等于文字色）", monochrome,
-            "出现了非文字色的色标");
+        var rayBrush = card.RayBrushForTest as SolidColorBrush;
+        bool monochrome = rayBrush != null
+                          && rayBrush.Color.R == white.R
+                          && rayBrush.Color.G == white.G
+                          && rayBrush.Color.B == white.B;
+        Check("光芒线是单色的（颜色全等于文字色）", monochrome,
+            rayBrush == null ? "画刷类型不是纯色" : $"#{rayBrush.Color.R:X2}{rayBrush.Color.G:X2}{rayBrush.Color.B:X2}");
 
-        // 浅色主题：黑字黑晕，上限必须压低，否则浅底上糊成一团
+        // 浅色主题：线条跟随文字色变黑，长度逻辑不受主题影响
         var black = System.Windows.Media.Color.FromRgb(0x00, 0x00, 0x00);
         card.SetPalette(darkCard, black, black, accent);
         card.SetPercent(100);
-        Check("浅色主题下辉光更克制（≤ 0.32）", card.IconGlowOpacityForTest <= 0.32,
-            $"glow={card.IconGlowOpacityForTest:F3}");
-        Check("浅色主题下辉光仍会随亮度出现", card.IconGlowOpacityForTest > 0.15,
-            $"glow={card.IconGlowOpacityForTest:F3}");
+        var darkRay = card.RayBrushForTest as SolidColorBrush;
+        Check("浅色主题下光芒线跟着变黑（单色、无色相）",
+            darkRay != null && darkRay.Color.R == 0 && darkRay.Color.G == 0 && darkRay.Color.B == 0,
+            darkRay == null ? "画刷类型不是纯色" : "颜色不是黑");
+        Check("浅色主题下光芒长度同样是 100% 饱和",
+            card.RayLengthForTest >= 4.0, $"len={card.RayLengthForTest:F2}");
     }
 
     /// <summary>
@@ -6324,7 +6318,54 @@ public static class SelfTest
             var it = cat.Items.FirstOrDefault(i => i.Id == id);
             Check($"动作 {id} 在「系统功能」", it?.Category == "系统功能");
             Check($"动作 {id} 标明需要显示器支持", it?.Description.Contains("DDC/CI") == true);
+            Check($"动作 {id} 说明里写了长按加速",
+                it?.Description.Contains("按住越久") == true);
         }
+
+        /* ---------- 按住亮度时的加速 ----------
+         *
+         * 用户要求："一直长按，应该有一个逐渐的加速度，但不能加速太离谱"。
+         * 手感照搬隔壁鼠标那套 dynamic_speed（按住越走越快），
+         * 参数是：起步 1%、每步 +0.10、封顶 15 步 = 2.5 倍。
+         *
+         * 直接对着纯逻辑（BrightnessAccel）验，不碰硬件。 */
+        var accel = new Core.Actions.BrightnessAccel();
+        var steps = new List<int>();
+        for (int i = 0; i < 30; i++) steps.Add(accel.Next());
+
+        CheckEqual("连发第一步仍是 1%（起步还是细调）", steps[0], 1);
+        Check("每一步至少 1%（不会出现空步）", steps.All(s => s >= 1));
+        Check("前 3 步只走 4%（起步不冲）", steps.Take(3).Sum() <= 5,
+            $"{steps.Take(3).Sum()}%");
+        Check("前 15 步平均 ≤ 2%/步（加速是渐进的）", steps.Take(15).Sum() <= 30,
+            $"{steps.Take(15).Sum()}%");
+
+        int firstHalf = steps.Take(15).Sum();
+        int secondHalf = steps.Skip(15).Sum();
+        Check("后 15 步明显更快（≥ 1.3 倍）", secondHalf >= firstHalf * 1.3,
+            $"{firstHalf}% → {secondHalf}%");
+        Check("满速不超过 3%/步（不能加速太离谱）", steps.Skip(15).Max() <= 3,
+            $"max={steps.Skip(15).Max()}");
+        Check("30 步（约 1.4 秒）至少能走 60%（够得着）", steps.Sum() >= 60,
+            $"{steps.Sum()}%");
+        Check("30 步也不会一步到底（≤ 100%）", steps.Sum() <= 100,
+            $"{steps.Sum()}%");
+
+        accel.Reset();
+        CheckEqual("松开后再按，重新从 1% 起步", accel.Next(), 1);
+
+        // 接线：ActionContext 里确实挂了一台加速器，而且同样从头起步
+        ctx.ResetBrightnessAccelForTest();
+        CheckEqual("ActionContext 的加速器起步也是 1%", ctx.NextBrightnessAccelForTest(), 1);
+        Check("ActionContext 的加速器第二、三步仍是细调",
+            ctx.NextBrightnessAccelForTest() <= 2 && ctx.NextBrightnessAccelForTest() <= 2);
+
+        Check("引擎连发标记（arg=\"1\"）被认作连续",
+            Core.Actions.ActionCatalog.IsRepeatForTest("1"));
+        Check("普通参数（空 / 步进 3）不被当成连发",
+            !Core.Actions.ActionCatalog.IsRepeatForTest("")
+            && !Core.Actions.ActionCatalog.IsRepeatForTest(null)
+            && !Core.Actions.ActionCatalog.IsRepeatForTest("3"));
     }
 
     /// <summary>
