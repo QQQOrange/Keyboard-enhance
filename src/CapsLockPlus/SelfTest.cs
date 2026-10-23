@@ -161,6 +161,10 @@ public static class SelfTest
         TestOsdIconAnimates();
         TestOsdAboveShellMenu();
         TestOsdScalesAcrossDisplays();
+
+        Section("托盘");
+        TestTrayDoubleClick();
+
         TestToastCoalescing();
         TestDirectSearchCoversAllEngines();
         TestCopyChordEndToEnd();
@@ -5508,6 +5512,40 @@ public static class SelfTest
             return true;
         }, IntPtr.Zero);
         return index;
+    }
+
+    /// <summary>
+    /// 托盘图标：双击直接进「设置」。
+    ///
+    /// 这里守的是**页面名有没有写错**、以及**导航顺序表有没有和侧栏对齐**。
+    /// 后者在 v4.5.10 真的坏过：删页面时索引没前移，点「宏」会高亮到别的项。
+    /// </summary>
+    private static void TestTrayDoubleClick()
+    {
+        CheckEqual("双击托盘落到「设置」页",
+            UI.TrayIcon.DoubleClickPage, "settings");
+
+        var order = UI.Windows.MainWindow.NavOrderForTest;
+
+        Check("导航顺序表里有「设置」页", order.Contains("settings"),
+            string.Join(",", order));
+        Check("导航顺序表没有重复项", order.Distinct().Count() == order.Length,
+            string.Join(",", order));
+        Check("导航顺序表第一项是「快速上手」", order[0] == "guide", order[0]);
+        Check("导航顺序表最后一项是「关于」", order[^1] == "about", order[^1]);
+        Check("导航顺序表是 11 项（与侧栏一致）", order.Length == 11,
+            $"{order.Length} 项");
+
+        /* 托盘提示必须写明能双击 —— 托盘图标本身没有任何可见提示，
+         * 不写出来用户根本不知道有这个操作。
+         * 另外 NotifyIcon.Text 有 63 字符上限，超了会直接抛异常。 */
+        string on = UI.TrayIcon.EnabledTooltip(true);
+        string off = UI.TrayIcon.EnabledTooltip(false);
+
+        Check("正常状态的托盘提示写了双击", on.Contains("双击"), on);
+        Check("暂停状态的托盘提示也写了双击", off.Contains("双击"), off);
+        Check("托盘提示不超过 63 字符（NotifyIcon 上限）",
+            on.Length <= 63 && off.Length <= 63, $"{on.Length}/{off.Length}");
     }
 
     /// <summary>

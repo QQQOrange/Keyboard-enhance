@@ -18,6 +18,15 @@ public sealed class TrayIcon : IDisposable
     private readonly ToolStripMenuItem _capsStateItem;
     private Icon? _customIcon;
 
+    /// <summary>
+    /// 双击托盘图标落到哪一页。
+    ///
+    /// 以前双击只是 `ShowMainWindow()` —— 打开的是**上次停留的页面**，
+    /// 用户从托盘里点进来多半是想改设置，结果停在别的页还得自己找。
+    /// 现在固定进「设置」。
+    /// </summary>
+    internal const string DoubleClickPage = "settings";
+
     public TrayIcon(AppHost host)
     {
         _host = host;
@@ -66,11 +75,14 @@ public sealed class TrayIcon : IDisposable
         _icon = new NotifyIcon
         {
             Icon = _customIcon ?? SystemIcons.Application,
-            Text = AppInfo.ProductName,
+            Text = EnabledTooltip(true),
             Visible = true,
             ContextMenuStrip = context,
         };
-        _icon.DoubleClick += (_, _) => host.ShowMainWindow();
+
+        /* 双击 = 直接进「设置」页。
+         * 单击不做事：托盘图标单击很容易误触，真要点什么走右键菜单。 */
+        _icon.DoubleClick += (_, _) => host.ShowMainWindow(DoubleClickPage);
         _icon.BalloonTipClicked += (_, _) => host.ShowMainWindow();
 
         /* 启动气泡的正文要跟着**实际配置**走。
@@ -133,10 +145,19 @@ public sealed class TrayIcon : IDisposable
         try
         {
             _enabledItem.Text = enabled ? "暂停 " + AppInfo.ShortName : "恢复 " + AppInfo.ShortName;
-            _icon.Text = enabled ? AppInfo.ProductName : AppInfo.ShortName + " 已暂停";
+            _icon.Text = EnabledTooltip(enabled);
         }
         catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
+
+    /// <summary>
+    /// 托盘提示文字。必须带上"双击打开设置" —— 托盘图标没有任何可见提示，
+    /// 不写出来没人知道能双击。
+    /// </summary>
+    internal static string EnabledTooltip(bool enabled)
+        => enabled
+            ? AppInfo.ProductName + "（双击打开设置）"
+            : AppInfo.ShortName + " 已暂停（双击打开设置）";
 
     private static Icon? LoadIcon()
     {

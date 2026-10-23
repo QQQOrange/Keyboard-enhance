@@ -57,27 +57,31 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 侧栏页面的**唯一顺序表**：下标 = NavList 里 ListBoxItem 的位置。
+    ///
+    /// 这张表必须和 MainWindow.xaml 里 NavList 的项**同序**。
+    /// v4.5.10 就吃过一次亏：删掉「翻译」页时只改了 XAML、没改这里的映射，
+    /// 结果点「宏」高亮跑到「触发键与层」、点「关于」拿到越界下标。
+    /// 现在索引统一由这张表算出来，不再散落在一个 switch 里。
+    /// </summary>
+    internal static readonly string[] NavOrderForTest =
+    {
+        "guide", "keys", "qbar", "clipboard", "macros",
+        "layers", "backup", "settings", "test", "help", "about",
+    };
+
+    /// <summary>页面名 → 侧栏下标；未知页面退回第一项（和原来 switch 的 _ => 0 一致）。</summary>
+    private static int NavIndexOf(string page)
+    {
+        int i = Array.IndexOf(NavOrderForTest, page);
+        return i >= 0 ? i : 0;
+    }
+
     public void Navigate(string page)
     {
         _pendingPage = page;
-        /* 导航索引必须和 NavList 里 ListBoxItem 的**顺序**一致。
-         * 「窗口绑定」独立页已移除（改到按键映射里作为动作），
-         * 所以后面的索引整体前移一位。 */
-        int index = page switch
-        {
-            "guide" => 0,
-            "keys" => 1,
-            "qbar" => 2,
-            "clipboard" => 3,
-            "macros" => 4,
-            "layers" => 5,
-            "backup" => 6,
-            "settings" => 7,
-            "test" => 8,
-            "help" => 9,
-            "about" => 10,
-            _ => 0,
-        };
+        int index = NavIndexOf(page);
         if (NavList.SelectedIndex != index) NavList.SelectedIndex = index;
         else ShowPage(page);
     }
