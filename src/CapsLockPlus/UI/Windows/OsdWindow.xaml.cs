@@ -192,7 +192,21 @@ public partial class OsdWindow : Window
     /// <summary>新路径的渲染源：不挂在任何窗口上的卡片实例。</summary>
     private OsdCard? _offscreen;
     private RenderTargetBitmap? _cachedBitmap;
-    private (int Percent, bool Light, double Scale) _cacheKey = (-1, false, 0);
+    private (int Percent, double Icon, bool Light, double Scale) _cacheKey = (-1, -1, false, 0);
+
+    /* ---- 太阳图标的补间 ----
+     *
+     * 图标不是"改一个数就完事"：从 20% 跳到 80% 时，如果一帧到位，
+     * 看起来像闪了一下。这里用 ~150ms 的 ease-out 把明暗推过去，
+     * 连续按键时每次都从**当前已经显示到的位置**接着走，不会跳。
+     *
+     * 两条宿主都要动起来：
+     *   · WPF 窗口路径 —— 改属性即可，WPF 自己重绘；
+     *   · band 16 路径 —— 位图是快照，必须每帧重渲染再 UpdateLayeredWindow
+     *     （见 RepaintBandForIcon）。
+     */
+    private const int IconAnimMs = 150;
+    private DispatcherTimer? _iconTimer;
 
     private OsdWindow()
     {
@@ -301,7 +315,7 @@ public partial class OsdWindow : Window
                 /* 高带路径没有 WPF 窗口要建，真正的冷启动开销在
                  * "第一次离屏渲染"（字体、DropShadowEffect、DIB 创建）。
                  * 先按 100% 渲染一张丢掉，把这条链路焐热。 */
-                _ = _instance.Render(50, 1.0);
+                _ = _instance.Render(50, 0.5, 1.0);
             }
         }
         catch (Exception e)
@@ -335,6 +349,11 @@ public partial class OsdWindow : Window
     internal void PrepareForRender(int percent)
     {
         Apply(percent);
+
+        /* 补间要立刻收尾：截图拍的是"这一档长什么样"，
+         * 不是"刚开始过渡的那个瞬间"。 */
+        SettleIcon();
+
         _hideTimer.Stop();
         _raiseTimer.Stop();
         _fadingOut = false;
@@ -376,7 +395,16 @@ public partial class OsdWindow : Window
     internal uint BandForTest => _band?.BandForTest ?? 0;
 
     /// <summary>仅供自检：按指定缩放渲染一张卡片位图（走的是真实渲染路径）。</summary>
-    internal RenderTargetBitmap RenderForTest(int percent, double scale) => Render(percent, scale);
+    internal RenderTargetBitmap RenderForTest(int percent, double scale) => Render(percent, percent / 100.0, scale);
+
+    /// <summary>仅供自检：太阳此刻的明暗进度（0~1，动画途中是中间值）。</summary>
+    internal double IconProgressForTest => CardView.IconProgress;
+
+    /// <summary>仅供自检：band 路径为重画图标贴过几次位图。</summary>
+    internal int IconRepaintsForTest { get; private set; }
+
+    /// <summary>仅供自检：补间定时器是否还在跑。</summary>
+    internal bool IconTimerRunningForTest => _iconTimer != null;
 
     /// <summary>
     /// 仅供自检：开/关"周期性置顶"。
@@ -435,9 +463,87 @@ public partial class OsdWindow : Window
     private void Apply(int percent)
     {
         percent = Math.Clamp(percent, 0, 100);
+
+        // 动画起点 = 用户此刻看到的样子（连按时会接着上一帧走）
+        double from = CardView.IconProgress;
+
         _percent = percent;
         CardView.SetPercent(percent);
         ApplyPalette();
+
+        StartIconAnimation(from, percent / 100.0);
+    }
+
+    /// <summary>
+    /// 把太阳的明暗从 <paramref name="from"/> 推到 <paramref name="to"/>（0~1）。
+    ///
+    /// 用 ease-out（1-(1-t)²）而不是线性：亮度映射本身是线性的（用户要求），
+    /// 但**时间曲线**缓出更像"亮起来"，而且和横条本身的淡入用同一条曲线。
+    /// </summary>
+    private void StartIconAnimation(double from, double to)
+    {
+        _iconTimer?.Stop();
+        _iconTimer = null;
+
+        // 差距小于半个百分点：肉眼看不出来，不值得每帧重渲染一张位图
+        if (Math.Abs(to - from) < 0.005)
+        {
+            CardView.SetIconProgress(to);
+            return;
+        }
+
+        CardView.SetIconProgress(from);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var timer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+
+        timer.Tick += (_, _) =>
+        {
+            double t = Math.Min(1.0, clock.Elapsed.TotalMilliseconds / IconAnimMs);
+            double eased = 1 - (1 - t) * (1 - t);
+
+            CardView.SetIconProgress(from + (to - from) * eased);
+            RepaintBandForIcon();
+
+            if (t >= 1)
+            {
+                timer.Stop();
+                if (ReferenceEquals(_iconTimer, timer)) _iconTimer = null;
+                CardView.SetIconProgress(to);
+                RepaintBandForIcon();      // 最后一步补齐，别停在 t=0.98 那一帧
+            }
+        };
+
+        _iconTimer = timer;
+        timer.Start();
+    }
+
+    /// <summary>立即结束补间，把图标停在当前档位的终值（离屏渲染/收尾用）。</summary>
+    private void SettleIcon()
+    {
+        _iconTimer?.Stop();
+        _iconTimer = null;
+        CardView.SetIconProgress(_percent / 100.0);
+        _offscreen?.SetIconProgress(_percent / 100.0);
+    }
+
+    /// <summary>
+    /// band 路径的"只重画图标"：位图是快照，属性变了不会自己刷新，
+    /// 所以补间的每一帧都要重新渲染 + 贴一次。
+    /// 尺寸、位置都不变，复用同一块 DIB（<see cref="OsdBandSurface.Present"/> 内部判断）。
+    /// </summary>
+    private void RepaintBandForIcon()
+    {
+        if (_band == null || !_bandVisible) return;
+        if (!TryComputeRect(out var rect, out double scale)) return;
+
+        _band.Present(Render(_percent, CardView.IconProgress, scale),
+                      rect.X, rect.Y, _bandAlpha);
+
+        IconRepaintsForTest++;
     }
 
     private void Present()
@@ -509,7 +615,7 @@ public partial class OsdWindow : Window
             return;
         }
 
-        var bitmap = Render(_percent, scale);
+        var bitmap = Render(_percent, CardView.IconProgress, scale);
         byte alpha = firstShow || wasFadingOut ? (byte)0 : _bandAlpha;
 
         _band.Present(bitmap, rect.X, rect.Y, alpha);
@@ -636,7 +742,7 @@ public partial class OsdWindow : Window
             /* 明暗切换了：高带路径的位图缓存必须作废，
              * 否则下一次按键还会用旧配色渲染。 */
             _lightPalette = light;
-            _cacheKey = (-1, false, 0);
+            _cacheKey = (-1, -1, false, 0);
         }
 
         _cardColor = card;
@@ -788,10 +894,11 @@ public partial class OsdWindow : Window
     /// <summary>
     /// 把卡片渲染成一张位图（Pbgra32，预乘 alpha —— UpdateLayeredWindow 要的就是它）。
     ///
-    /// 缓存键是"百分比 + 明暗 + 缩放"：连按亮度键时同一档位只会渲染一次，
-    /// 中间那些 1% 的变化才需要重画（一张 432×144 大约 1~2ms）。
+    /// 缓存键是"百分比 + 图标进度 + 明暗 + 缩放"：静态档位只渲染一次；
+    /// 补间期间 <paramref name="iconProgress"/> 每帧都不同，自然全部 miss，
+    /// 这正是我们要的（不缓存动画帧）。
     /// </summary>
-    private RenderTargetBitmap Render(int percent, double scale)
+    private RenderTargetBitmap Render(int percent, double iconProgress, double scale)
     {
         double wDip = DesignWidth + ShadowPad * 2;
         double hDip = DesignHeight + ShadowPad * 2;
@@ -799,9 +906,10 @@ public partial class OsdWindow : Window
         int pw = Math.Max(1, (int)Math.Round(wDip * scale));
         int ph = Math.Max(1, (int)Math.Round(hDip * scale));
         double rounded = Math.Round(scale, 3);
+        double iconKey = Math.Round(iconProgress, 4);
 
         if (_cachedBitmap != null
-            && _cacheKey == (percent, _lightPalette, rounded)
+            && _cacheKey == (percent, iconKey, _lightPalette, rounded)
             && _cachedBitmap.PixelWidth == pw
             && _cachedBitmap.PixelHeight == ph)
         {
@@ -817,6 +925,7 @@ public partial class OsdWindow : Window
         _offscreen.Width = wDip;
         _offscreen.Height = hDip;
         _offscreen.SetPercent(percent);
+        _offscreen.SetIconProgress(iconProgress);
         _offscreen.Measure(new Size(wDip, hDip));
         _offscreen.Arrange(new Rect(0, 0, wDip, hDip));
         _offscreen.UpdateLayout();
@@ -829,12 +938,15 @@ public partial class OsdWindow : Window
         bmp.Freeze();
 
         _cachedBitmap = bmp;
-        _cacheKey = (percent, _lightPalette, rounded);
+        _cacheKey = (percent, iconKey, _lightPalette, rounded);
         return bmp;
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        _iconTimer?.Stop();
+        _iconTimer = null;
+
         _bandFadeTimer?.Stop();
         _bandFadeTimer = null;
         _band?.Dispose();

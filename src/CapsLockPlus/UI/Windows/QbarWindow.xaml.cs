@@ -183,13 +183,61 @@ public partial class QbarWindow : Window
         (byte)(a.G + (b.G - a.G) * t),
         (byte)(a.B + (b.B - a.B) * t));
 
+    /// <summary>
+    /// sRGB 相对亮度（WCAG 定义：先线性化再按 0.2126/0.7152/0.0722 加权）。
+    /// 和 <see cref="IsLightColor"/> 那个粗略估计不是一回事 —— 算对比度必须用这个。
+    /// </summary>
+    private static double RelativeLuminance(Color c)
+    {
+        static double Ch(byte v)
+        {
+            double s = v / 255.0;
+            return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Ch(c.R) + 0.7152 * Ch(c.G) + 0.0722 * Ch(c.B);
+    }
+
+    /// <summary>WCAG 对比度（1~21）。</summary>
+    internal static double Contrast(Color a, Color b)
+    {
+        double la = RelativeLuminance(a), lb = RelativeLuminance(b);
+        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
+    }
+
+    /// <summary>
+    /// 在给定底色上挑可读性更高的文字色：纯白 还是 近黑。
+    ///
+    /// 用在"首字色块"上 —— 那块底是各家的品牌色，深浅完全不由我们定
+    /// （百度蓝、必应青、维基灰……）。跟着面板明暗走就会踩雷：
+    /// 浅色面板给深灰字，压在深蓝牌子上等于消失。
+    /// </summary>
+    internal static Color BestTextOn(Color background)
+    {
+        var white = Colors.White;
+
+        /* 浅色牌子上用**纯黑**而不是面板那个 #161A23：
+         * 谷歌红（#EA4335）、中灰（#808080）这类"中间调"底色，
+         * 用 #161A23 只有 4.4:1，差一点点够不着正文可读的 4.5。 */
+        var dark = Colors.Black;
+
+        return Contrast(white, background) >= Contrast(dark, background) ? white : dark;
+    }
+
+    /// <summary>把颜色按给定不透明度叠到底色上（用于算出胶囊的实际底色）。</summary>
+    internal static Color Overlay(Color baseColor, Color veil, double alpha) => Mix(baseColor, veil, alpha);
+
+    /// <summary>面板上"主文字"该用什么色。浅底黑、深底白，胶囊里的引擎名也用它。</summary>
+    internal static Color PrimaryOn(Color panel)
+        => IsLightColor(panel) ? Color.FromRgb(0x16, 0x1A, 0x23) : Colors.White;
+
     /// <summary>把整套配色应用到面板里的每个元素。</summary>
     private void ApplyForegroundPalette(Color panelColor)
     {
         bool light = IsLightColor(panelColor);
 
         // 前景色阶：主文字 → 次级 → 弱化
-        Color primary = light ? Color.FromRgb(0x16, 0x1A, 0x23) : Colors.White;
+        Color primary = PrimaryOn(panelColor);
         Color secondary = light ? Color.FromRgb(0x5B, 0x64, 0x78) : Color.FromRgb(0xC9, 0xD6, 0xEC);
         Color muted = light ? Color.FromRgb(0x8A, 0x93, 0xA6) : Color.FromRgb(0x9F, 0xB0, 0xCC);
         Color faint = light ? Color.FromRgb(0xA8, 0xB0, 0xBF) : Color.FromRgb(0x7F, 0x8D, 0xA8);
@@ -210,13 +258,20 @@ public partial class QbarWindow : Window
         Input.Foreground = bPrimary;
         Input.CaretBrush = bPrimary;
 
-        ChipLabel.Foreground = bSecondary;
+        /* 胶囊里的字是"当前用的是哪个引擎"的唯一提示，用主文字色。
+         * 以前给的是次级灰：深色下偏蓝灰、浅色下偏浅灰，压在胶囊那层
+         * 13% 叠色上就发糊 —— 用户在白天模式里一眼看不出写的什么。 */
+        ChipLabel.Foreground = bPrimary;
         ChipClose.Foreground = bMuted;
         ChipBox.Background = bVeil13;
         ChipBox.BorderBrush = bVeil20;
 
         ChipInitialBox.Background = bVeil13;
-        ChipInitial.Foreground = bPrimary;
+
+        /* 首字块的底色是**品牌色**（每家深浅都不同），不能跟着面板走。
+         * 以前固定用 bPrimary：浅色面板下是深灰字压深蓝牌子（如百度蓝），
+         * 几乎看不见；深色面板下白字反而正常。改成按牌子亮度自己挑黑白。 */
+        ChipInitial.Foreground = Frozen(BestTextOn(_chip?.Accent ?? Colors.SteelBlue));
         HintText.Foreground = bMuted;
         SepLine.Background = bVeil10;
 
@@ -225,24 +280,26 @@ public partial class QbarWindow : Window
 
         /* 结果列表项在 DataTemplate 里，逐个取出来改色。
          * 用 ItemContainerGenerator 拿容器，ContainerFromItem 在虚拟化下
-         * 可能为空，所以这里遍历可视树更可靠。 */
+         * 可能为空，所以这里遍历可视树更可靠。
+         *
+         * 有 x:Name 的都是模板外的固定元素，它们各自有明确语义，
+         * 不该被"按字号猜"这一轮刷掉（ChipLabel 最典型）。 */
         foreach (var tb in FindAll<TextBlock>(this))
         {
-            string? name = tb.Name;
+            if (!string.IsNullOrEmpty(tb.Name)) continue;
+
             // 模板内的元素没有 x:Name，按字号/绑定特征分类
             if (tb.FontSize >= 13.5) tb.Foreground = bPrimary;
             else if (tb.FontSize >= 11) tb.Foreground = bSecondary;
             else tb.Foreground = bFaint;
-            _ = name;
         }
 
         // 再按具体名字覆盖一次（上面那轮会把模板外的也刷成近似色）
         ModeIcon.Foreground = bSecondary;
         Input.Foreground = bPrimary;
-        ChipLabel.Foreground = bSecondary;
+        ChipLabel.Foreground = bPrimary;
         ChipClose.Foreground = bMuted;
         HintText.Foreground = bMuted;
-        ChipInitial.Foreground = bPrimary;
 
         foreach (var bd in FindAll<Border>(this))
         {
@@ -504,6 +561,11 @@ public partial class QbarWindow : Window
             ChipInitialBox.Visibility = Visibility.Visible;
             ChipInitial.Text = chip.Initial;
             ChipInitialBox.Background = new SolidColorBrush(chip.Accent);
+
+            /* 字色按品牌色自身亮度选：深牌子用白字、浅牌子用深字。
+             * 这里必须跟着底色一起设 —— 否则换一个引擎后，
+             * 牌子换了、字色还是上一家的，又会出现"看不见"。 */
+            ChipInitial.Foreground = Frozen(BestTextOn(chip.Accent));
         }
 
         ChipBox.Visibility = Visibility.Visible;

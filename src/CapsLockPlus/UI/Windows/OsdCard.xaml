@@ -26,12 +26,41 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 图标：亮度。和系统那条一样是纯白。 -->
-                <TextBlock x:Name="IconText" Grid.Column="0"
-                           Text="&#xE706;"
-                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                           FontSize="16" Foreground="#FFFFFF"
-                           VerticalAlignment="Center" Margin="0,0,13,0" />
+                <!-- 图标：亮度。和系统那条一样是单色。
+                     太阳会随取值变化（管线见 OsdCard.RefreshIcon）：
+                       · 本体不透明度  0.45 → 1.00  —— 越亮越实；
+                       · 背后一圈辉光  无 → 有、且从小扩到大 —— 越亮"光芒"越强。
+                     两条都是**一次函数**，没有分段、没有色相变化，仍然是同一个字形。 -->
+                <Grid x:Name="IconBox" Grid.Column="0" VerticalAlignment="Center"
+                      Margin="0,0,13,0">
+                    <!-- 0×0 的 Canvas 不参与测量：辉光撑到多大都不会把进度条往右推，
+                         图标在布局里占的宽度仍然只是那一个字。 -->
+                    <Canvas Width="0" Height="0"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Ellipse x:Name="IconGlow" Canvas.Left="-15" Canvas.Top="-15"
+                                 Width="30" Height="30" Opacity="0"
+                                 RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.Fill>
+                                <!-- 颜色运行时按文字色注入（见 ApplyGlowBrush），
+                                     这里给的是设计器预览用的白色。 -->
+                                <RadialGradientBrush>
+                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                    <GradientStop Color="#57FFFFFF" Offset="0.45" />
+                                    <GradientStop Color="#17FFFFFF" Offset="0.75" />
+                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform x:Name="IconGlowScale" ScaleX="1" ScaleY="1" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                    </Canvas>
+
+                    <TextBlock x:Name="IconText" Text="&#xE706;"
+                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="16" Foreground="#FFFFFF"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
 
                 <!-- 进度条：底槽 + 填充（星号比例列，避免布局未完成时宽度为 0）。
                      槽 = 白色 55%，填充 = 系统强调色浅档（运行时注入）。 -->

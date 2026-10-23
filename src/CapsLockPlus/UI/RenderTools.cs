@@ -225,6 +225,8 @@ public static class RenderTools
         foreach (var (file, pct) in new[]
                  {
                      ("osd-brightness.png", 40),
+                     ("osd-p00.png", 0),
+                     ("osd-p100.png", 100),
                  })
         {
             var osd = OsdWindow.CreateDetached();

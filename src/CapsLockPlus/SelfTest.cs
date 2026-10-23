@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Media;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Icons;
@@ -139,6 +140,7 @@ public static class SelfTest
         TestKeycapShortTitles();
         TestWinBindCustomName();
         TestQbarThemeContrast();
+        TestQbarChipTextContrast();
         TestComplexTriggerKey();
         TestTriggerBadgeFollowsLayer();
         TestSubLayers();
@@ -155,6 +157,8 @@ public static class SelfTest
         TestBrightnessPumpStarts();
         TestOsdAndTextInput();
         TestOsdAlwaysOnTop();
+        TestOsdIconFollowsBrightness();
+        TestOsdIconAnimates();
         TestOsdAboveShellMenu();
         TestOsdScalesAcrossDisplays();
         TestToastCoalescing();
@@ -4438,6 +4442,80 @@ public static class SelfTest
     }
 
     /// <summary>
+    /// Qbar 里"引擎胶囊"的文字必须两种明暗下都看得清。
+    ///
+    /// 用户报的是：胶囊里表示引擎（备注）的字颜色不对，白天看着发糊。
+    /// 根因有两个，都出在"字色跟着面板明暗走"这件事上：
+    ///   1. 引擎名用的是**次级灰**（浅色 #5B6478 / 深色 #C9D6EC），
+    ///      压在胶囊那层 13% 叠色上对比度不够；
+    ///   2. 首字块底色是**品牌色**（各家深浅不一），跟着面板走就会出现
+    ///      "浅色面板 → 深灰字压深蓝牌子"这种隐形组合。
+    ///
+    /// 现在：引擎名用主文字色；首字块按品牌色自身亮度挑黑白。
+    /// 这里用 WCAG 对比度把关（≥ 4.5 是正文级可读的下限）。
+    /// </summary>
+    private static void TestQbarChipTextContrast()
+    {
+        Color C(string hex) => (Color)ColorConverter.ConvertFromString(hex);
+
+        // 两种面板底色（跟随主题时的实际取值），以及胶囊那层 13% 叠色
+        var panels = new (string Name, Color Panel, Color Veil)[]
+        {
+            ("浅色面板", C("#F4F5F7"), Colors.Black),
+            ("深色面板", C("#1C1F27"), Colors.White),
+        };
+
+        foreach (var (name, panel, veil) in panels)
+        {
+            Color chipBase = UI.Windows.QbarWindow.Overlay(panel, veil, 0x22 / 255.0);
+            Color text = UI.Windows.QbarWindow.PrimaryOn(panel);
+
+            double ratio = UI.Windows.QbarWindow.Contrast(text, chipBase);
+            Check($"{name}：胶囊里的引擎名对比度 ≥ 4.5", ratio >= 4.5, $"{ratio:F2}:1");
+
+            /* 换回旧的次级灰，必须**明确不达标** —— 否则说明这条断言
+             * 根本没在管颜色（比如两边都算成同一个值）。 */
+            Color old = UI.Windows.QbarWindow.PrimaryOn(panel) == Colors.White
+                ? C("#C9D6EC") : C("#5B6478");
+            double oldRatio = UI.Windows.QbarWindow.Contrast(old, chipBase);
+            Check($"{name}：旧的次级灰确实不达标（回归指向）", oldRatio < ratio,
+                $"旧={oldRatio:F2}:1 新={ratio:F2}:1");
+        }
+
+        // 首字块：品牌色深浅不一，黑白必须自己挑，且都得达到正文级
+        var brands = new (string Name, string Hex)[]
+        {
+            ("百度蓝", "#2932E1"),
+            ("微软蓝", "#0078D4"),
+            ("必应青", "#008373"),
+            ("谷歌红", "#EA4335"),
+            ("必应黄", "#FFB900"),
+            ("白", "#FFFFFF"),
+            ("黑", "#000000"),
+            ("中灰", "#808080"),
+        };
+
+        foreach (var (name, hex) in brands)
+        {
+            Color bg = C(hex);
+            Color picked = UI.Windows.QbarWindow.BestTextOn(bg);
+            double ratio = UI.Windows.QbarWindow.Contrast(picked, bg);
+
+            Check($"首字块（{name}）上的字色对比度 ≥ 4.5", ratio >= 4.5,
+                $"{ratio:F2}:1  color=#{picked.R:X2}{picked.G:X2}{picked.B:X2}");
+
+            // 必须真的是"两者里更高的那个"，不是碰巧蒙对
+            Color other = picked == Colors.White ? C("#161A23") : Colors.White;
+            Check($"首字块（{name}）选的是更清楚的那个颜色",
+                ratio >= UI.Windows.QbarWindow.Contrast(other, bg) - 1e-9);
+        }
+
+        // 深色牌子给白字、浅色牌子给深字 —— 这条最直观，也最能挡住"忘了挑"
+        Check("深蓝品牌色上用白字", UI.Windows.QbarWindow.BestTextOn(C("#2932E1")) == Colors.White);
+        Check("亮黄品牌色上用深字", UI.Windows.QbarWindow.BestTextOn(C("#FFB900")) != Colors.White);
+    }
+
+    /// <summary>
     /// 触发键只允许单一按键。
     ///
     /// v2.5 起明确：组合键不能当触发键 —— 那会和"层内修饰键子层"语义冲突
@@ -5435,6 +5513,215 @@ public static class SelfTest
             return true;
         }, IntPtr.Zero);
         return index;
+    }
+
+    /// <summary>
+    /// 亮度横条上的太阳图标随取值联动（v4.5.10）。
+    ///
+    /// 用户的要求是：越亮光芒越强越亮、越暗光芒越弱越暗淡，
+    /// 而且要**纯线性**、**单色**、就用原来那个字形。
+    ///
+    /// 这里守的就是那三件事：
+    ///   1. 线性 —— 五个采样点必须落在同一条直线上（改成 ease、平方、
+    ///      或者偷偷在中间加个分段阈值，这条立刻红）；
+    ///   2. 有跨度但不夸张 —— 0% 仍然看得清是太阳，100% 也不必刺眼；
+    ///   3. 单色 —— 辉光的所有色标 RGB 都等于文字色，只允许 alpha 变化。
+    /// </summary>
+    private static void TestOsdIconFollowsBrightness()
+    {
+        var app = System.Windows.Application.Current;
+        if (app == null)
+        {
+            Check("太阳图标随亮度联动（无 Application，跳过）", true);
+            return;
+        }
+
+        var card = new UI.Windows.OsdCard();
+
+        var white = System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF);
+        var darkCard = System.Windows.Media.Color.FromRgb(0x2D, 0x2D, 0x2D);
+        var accent = System.Windows.Media.Color.FromRgb(0x4C, 0xC2, 0xFF);
+        card.SetPalette(darkCard, white, white, accent);
+
+        int[] steps = { 0, 25, 50, 75, 100 };
+        var opacity = new double[steps.Length];
+        var glow = new double[steps.Length];
+        var scale = new double[steps.Length];
+
+        for (int i = 0; i < steps.Length; i++)
+        {
+            card.SetPercent(steps[i]);
+            opacity[i] = card.IconOpacityForTest;
+            glow[i] = card.IconGlowOpacityForTest;
+            scale[i] = card.IconGlowScaleForTest;
+        }
+
+        // 端点：暗要暗得下去、亮要亮得起来，但都不能走极端
+        Check("0% 时太阳明显发暗（不透明度 ≤ 0.55）", opacity[0] <= 0.55,
+            $"opacity={opacity[0]:F3}");
+        Check("0% 时太阳仍看得清（不透明度 ≥ 0.35）", opacity[0] >= 0.35,
+            $"opacity={opacity[0]:F3}");
+        Check("100% 时太阳完全点亮", Math.Abs(opacity[^1] - 1.0) < 1e-6,
+            $"opacity={opacity[^1]:F3}");
+        Check("0% 时没有辉光", glow[0] < 1e-6, $"glow={glow[0]:F3}");
+        Check("100% 时辉光最亮", glow[^1] >= 0.40, $"glow={glow[^1]:F3}");
+        Check("辉光随亮度张开", scale[^1] - scale[0] >= 0.3,
+            $"{scale[0]:F2} → {scale[^1]:F2}");
+
+        /* 线性：每个点都必须等于"端点之间的一次函数"。
+         * 容差 1e-6 —— 只看浮点误差，任何有意的曲线都过不去。 */
+        for (int i = 0; i < steps.Length; i++)
+        {
+            double s = steps[i] / 100.0;
+            double eo = opacity[0] + (opacity[^1] - opacity[0]) * s;
+            double eg = glow[0] + (glow[^1] - glow[0]) * s;
+            double es = scale[0] + (scale[^1] - scale[0]) * s;
+
+            Check($"{steps[i]}% 的图标亮度落在线性上", Math.Abs(opacity[i] - eo) < 1e-6,
+                $"{opacity[i]:F6} vs {eo:F6}");
+            Check($"{steps[i]}% 的辉光强度落在线性上", Math.Abs(glow[i] - eg) < 1e-6,
+                $"{glow[i]:F6} vs {eg:F6}");
+            Check($"{steps[i]}% 的辉光半径落在线性上", Math.Abs(scale[i] - es) < 1e-6,
+                $"{scale[i]:F6} vs {es:F6}");
+        }
+
+        // 单调：中间任何一段都不许回落（"越来越亮"是这个功能的全部意义）
+        bool monotonic = true;
+        for (int i = 1; i < steps.Length; i++)
+        {
+            if (opacity[i] <= opacity[i - 1]) monotonic = false;
+            if (glow[i] <= glow[i - 1]) monotonic = false;
+            if (scale[i] <= scale[i - 1]) monotonic = false;
+        }
+        Check("0→100% 全程单调变亮（不会中途回落）", monotonic);
+
+        // 数字和图标看的是同一个百分比
+        card.SetPercent(37);
+        double e37 = opacity[0] + (opacity[^1] - opacity[0]) * 0.37;
+        Check("37% 时图标按 37% 算（和数字同一来源）",
+            Math.Abs(card.IconOpacityForTest - e37) < 1e-6);
+
+        /* 单色：辉光就是文字色 + 不同 alpha，没有任何色相偏移。
+         * 这条挡的是"以后想加点颜色更好看"这类改法。 */
+        card.SetPercent(100);
+        var glowBrush = card.GlowBrushForTest as System.Windows.Media.RadialGradientBrush;
+        bool monochrome = glowBrush != null;
+        if (glowBrush != null)
+        {
+            foreach (var stop in glowBrush.GradientStops)
+            {
+                var c = stop.Color;
+                if (c.R != white.R || c.G != white.G || c.B != white.B) monochrome = false;
+            }
+        }
+        Check("辉光是单色的（色标 RGB 全等于文字色）", monochrome,
+            "出现了非文字色的色标");
+
+        // 浅色主题：黑字黑晕，上限必须压低，否则浅底上糊成一团
+        var black = System.Windows.Media.Color.FromRgb(0x00, 0x00, 0x00);
+        card.SetPalette(darkCard, black, black, accent);
+        card.SetPercent(100);
+        Check("浅色主题下辉光更克制（≤ 0.32）", card.IconGlowOpacityForTest <= 0.32,
+            $"glow={card.IconGlowOpacityForTest:F3}");
+        Check("浅色主题下辉光仍会随亮度出现", card.IconGlowOpacityForTest > 0.15,
+            $"glow={card.IconGlowOpacityForTest:F3}");
+    }
+
+    /// <summary>
+    /// 太阳图标的明暗变化要有补间，不能一帧跳到位。
+    ///
+    /// 两条宿主都得动起来，而且方式不一样：
+    ///   · WPF 窗口路径 —— 改属性 WPF 自己重绘，不需要额外动作；
+    ///   · band 16 路径 —— 显示的是位图**快照**，属性变了没人看，
+    ///     必须每帧重渲染再 UpdateLayeredWindow 贴一次。
+    ///     后者最容易在重构时被漏掉，所以专门用重贴计数守它。
+    /// </summary>
+    private static void TestOsdIconAnimates()
+    {
+        var app = System.Windows.Application.Current;
+        if (app == null)
+        {
+            Check("太阳图标补间（无 Application，跳过）", true);
+            return;
+        }
+
+        var osd = UI.Windows.OsdWindow.CreateDetached();
+        try
+        {
+            osd.PrepareForRender(10);
+            Check("离屏渲染时补间立即收尾（截图拿到的是 10% 终值）",
+                Math.Abs(osd.IconProgressForTest - 0.10) < 1e-6,
+                $"p={osd.IconProgressForTest:F3}");
+
+            int repaintsBefore = osd.IconRepaintsForTest;
+            osd.ShowForTest(100);
+
+            // 刚起步：还停在出发位置 —— 一帧到位的话这里就已经是 1.0 了
+            Check("补间从当前值起步（不是一帧跳到终点）",
+                osd.IconProgressForTest < 0.5, $"p={osd.IconProgressForTest:F3}");
+            Check("补间定时器已启动", osd.IconTimerRunningForTest);
+
+            bool sawMiddle = false;
+            bool reachedEnd = false;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (clock.ElapsedMilliseconds < 800)
+            {
+                DoEvents(16);
+                double p = osd.IconProgressForTest;
+                if (p > 0.15 && p < 0.97) sawMiddle = true;
+                if (Math.Abs(p - 1.0) < 1e-6 && !osd.IconTimerRunningForTest)
+                {
+                    reachedEnd = true;
+                    break;
+                }
+            }
+
+            Check("补间过程中取到过中间帧（是补间，不是瞬变）", sawMiddle);
+            Check("补间最终停在 100%", reachedEnd, $"p={osd.IconProgressForTest:F3}");
+            Check("band 路径每帧都重贴了位图（不是只贴一次）",
+                osd.IconRepaintsForTest - repaintsBefore >= 3,
+                $"重贴 {osd.IconRepaintsForTest - repaintsBefore} 次");
+
+            // 反向：往回降同样要有过渡
+            osd.ShowForTest(10);
+            Check("往回降也从当前值起步", osd.IconProgressForTest > 0.5,
+                $"p={osd.IconProgressForTest:F3}");
+
+            DoEvents(400);
+            Check("往回降最终停在 10%",
+                Math.Abs(osd.IconProgressForTest - 0.10) < 1e-6,
+                $"p={osd.IconProgressForTest:F3}");
+
+            /* 连按：长按亮度键时 Apply 每几十毫秒就来一次。
+             * 每次都必须从"当前已经画到的位置"接着走（否则会跳），
+             * 而且**只能有一个定时器在跑** —— 叠加起来会互相打架、
+             * 停不下来，最后卡在某个中间值。 */
+            osd.ShowForTest(20);
+            DoEvents(40);
+            osd.ShowForTest(40);
+            DoEvents(40);
+            osd.ShowForTest(60);
+
+            bool converged = false;
+            var clock2 = System.Diagnostics.Stopwatch.StartNew();
+            while (clock2.ElapsedMilliseconds < 900)
+            {
+                DoEvents(16);
+                if (Math.Abs(osd.IconProgressForTest - 0.60) < 1e-6
+                    && !osd.IconTimerRunningForTest)
+                {
+                    converged = true;
+                    break;
+                }
+            }
+            Check("连按时最终追到最后一档（60%）", converged,
+                $"p={osd.IconProgressForTest:F3} running={osd.IconTimerRunningForTest}");
+        }
+        finally
+        {
+            osd.CloseForTest();
+            DoEvents(80);
+        }
     }
 
     /// <summary>
