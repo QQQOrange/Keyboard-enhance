@@ -137,6 +137,10 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
+    /// <summary>按类名找顶层窗口（自检要找任务栏 Shell_TrayWnd 验证 Z 序）。</summary>
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
@@ -330,6 +334,21 @@ public static class NativeMethods
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_FRAMECHANGED = 0x0020;
+
+    /// <summary>不发 WM_WINDOWPOSCHANGING（置顶重提升时避免被自己的处理拦下）。</summary>
+    public const uint SWP_NOSENDCHANGING = 0x0400;
+
+    /// <summary>
+    /// 放到 Z 序最前。
+    ///
+    /// 与 <see cref="HWND_TOPMOST"/> 的区别是**关键**：
+    /// HWND_TOPMOST 只保证"在所有非 topmost 窗口之上"，
+    /// 在两个**同为 topmost** 的窗口之间不改变次序 —— 所以任务栏/播放器悬浮条
+    /// 顶上来之后，反复发 HWND_TOPMOST 是抢不回来的（实测一秒没动静）。
+    /// HWND_TOP 才是"放到 Z 序最顶"，对已经 topmost 的窗口来说
+    /// 就等于"站到 topmost 组的最前面"。
+    /// </summary>
+    public static readonly IntPtr HWND_TOP = new(0);
 
     public static readonly IntPtr HWND_TOPMOST = new(-1);
     public static readonly IntPtr HWND_NOTOPMOST = new(-2);

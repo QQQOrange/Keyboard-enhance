@@ -154,6 +154,7 @@ public static class SelfTest
         TestBrightnessMath();
         TestBrightnessPumpStarts();
         TestOsdAndTextInput();
+        TestOsdAlwaysOnTop();
         TestOsdScalesAcrossDisplays();
         TestToastCoalescing();
         TestDirectSearchCoversAllEngines();
@@ -5277,6 +5278,69 @@ public static class SelfTest
         {
             Check("底部按钮布局探针没抛异常", false, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// 亮度横条必须**永远在最上层**（用户报：按亮度键，横条被任务栏挡住）。
+    ///
+    /// 这个 bug 的本质不是"没提置顶"—— 旧实现每 200~320ms 就发一次
+    /// <c>SetWindowPos(HWND_TOPMOST)</c>，但那个参数只保证"在所有非 topmost
+    /// 窗口之上"；任务栏顶上来之后，连发一秒 Z 序纹丝不动。
+    /// 真正能上去的是 <c>HWND_TOP</c>（见 OsdWindow.RaiseInsertAfterForTest）。
+    ///
+    /// 为什么这里只断言"用哪两个参数、什么顺序"，而不是真的把任务栏压上来再抢：
+    /// 试过三种造场景的办法，全都会**假通过** ——
+    ///   · 把真任务栏顶到最前：外壳会自己把它沉回去，几毫秒就不成立了；
+    ///   · 拿我们自己的 topmost 窗口当假想敌：普通 topmost 窗口和任务栏
+    ///     不在同一层，旧代码（只发 HWND_TOPMOST）也能抢回来；
+    ///   · 把横条摆到屏幕外：Z 序表现和真实位置不同。
+    /// 一条测试要能"改回旧代码就变红"才有意义，所以这里守 API 用法，
+    /// 行为验证交给端到端脚本 tools/test_osd_topmost.py（真任务栏，修前红、修后绿）。
+    ///
+    /// 变异验证：把两步砍成一步 HWND_TOPMOST → 本用例立刻红。
+    /// </summary>
+    private static void TestOsdAlwaysOnTop()
+    {
+        var steps = UI.Windows.OsdWindow.RaiseInsertAfterForTest;
+
+        Check("重提升分两步（先保样式、再顶到最前）", steps.Length == 2, $"步数={steps.Length}");
+        Check("第一步是 HWND_TOPMOST（保住 topmost 样式）",
+            steps.Length > 0 && steps[0] == NativeMethods.HWND_TOPMOST);
+        Check("最后一步是 HWND_TOP（抢到任务栏之上）",
+            steps.Length > 0 && steps[^1] == NativeMethods.HWND_TOP,
+            "HWND_TOPMOST 在已经 topmost 的窗口之间不改次序，顶不过任务栏");
+
+        // 顺带守住这两件事：重提升不能挪动/改变横条尺寸
+        Check("重提升带 NOMOVE|NOSIZE 以外的窗口标志不会被误加",
+            (NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE) != 0);
+    }
+
+    /// <summary>
+    /// Z 序里 <paramref name="a"/> 是否压在 <paramref name="b"/> 之上。
+    ///
+    /// 用 EnumWindows 的**相对位次**（谁的数字小谁在上面）：只要两个窗口都在
+    /// 列表里，它们之间相对次序是稳定的，别的窗口开关只会让两个数字一起平移。
+    /// （别写成"让一个窗口自己抢回来"那种需要窗口自己不动的判断 —— 之前用
+    /// GetTopWindow+GW_HWNDNEXT 走链，两个方向都返回 true，白测。）
+    /// </summary>
+    private static bool IsAboveInZOrder(IntPtr a, IntPtr b)
+    {
+        int ia = ZOrderIndex(a), ib = ZOrderIndex(b);
+        return ia >= 0 && ib >= 0 && ia < ib;
+    }
+
+    /// <summary>当前 Z 序里的位次（0 = 最上）。找不到返回 -1。</summary>
+    private static int ZOrderIndex(IntPtr target)
+    {
+        int index = -1;
+        int i = 0;
+        NativeMethods.EnumWindows((h, _) =>
+        {
+            if (h == target) index = i;
+            i++;
+            return true;
+        }, IntPtr.Zero);
+        return index;
     }
 
     /// <summary>

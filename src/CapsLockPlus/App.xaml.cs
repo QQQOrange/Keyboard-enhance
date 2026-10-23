@@ -170,10 +170,22 @@ public partial class App : Application
             int percent = int.TryParse(e.Args.ElementAtOrDefault(osdIndex + 1), out int pv)
                 ? Math.Clamp(pv, 0, 100) : 50;
 
+            /* --osd-hold <毫秒>：横条停留多久（默认 1.9 秒，和系统一致）。
+             *
+             * 只给测试用：验证"永远在最上层"时，要在横条还亮着的时候
+             * 把另一个 topmost 窗口压上去、截图、再等它自己抢回来。
+             * 1.9 秒不够做这几步（见 tools/test_osd_topmost.py）。 */
+            int holdIndex = Array.FindIndex(e.Args,
+                a => a.Equals("--osd-hold", StringComparison.OrdinalIgnoreCase));
+            if (holdIndex >= 0 &&
+                int.TryParse(e.Args.ElementAtOrDefault(holdIndex + 1), out int holdMs))
+                UI.Windows.OsdWindow.HoldOverrideMs = Math.Clamp(holdMs, 500, 60000);
+
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             UI.Windows.OsdWindow.Show(percent);
 
-            var closeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            int lifeMs = Math.Max(3000, UI.Windows.OsdWindow.HoldOverrideMs + 1200);
+            var closeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(lifeMs) };
             closeTimer.Tick += (_, _) =>
             {
                 closeTimer.Stop();

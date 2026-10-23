@@ -106,8 +106,21 @@ public partial class OsdWindow : Window
     /// <summary>淡出（毫秒）。实测系统收得很快。</summary>
     private const int FadeOutMs = 120;
 
-    /// <summary>显示期间多久重新提一次置顶。</summary>
-    private const int RaiseIntervalMs = 320;
+    /// <summary>
+    /// 显示期间多久重新提一次置顶。
+    ///
+    /// 200ms 而不是更长的原因：任务栏从下方滑出时**会**插到我们前面
+    /// （它是 topmost，而且比我们的横条更晚"动"）。这个周期就是"被挡住"
+    /// 的最长可见时间 —— 320ms 能看出来卡了一下，200ms 基本无感。
+    /// 横条本身只活 2.1 秒，多提几次的代价可以忽略。
+    /// </summary>
+    private const int RaiseIntervalMs = 200;
+
+    /// <summary>
+    /// 仅供测试：覆盖"停留多久"（毫秒），0 = 用默认值。
+    /// 见 <c>--osd-hold</c>，验证置顶行为时要把横条多留一会儿。
+    /// </summary>
+    internal static int HoldOverrideMs;
 
     /// <summary>强调色的缓存有效期：连按亮度时 Show 每秒会被调几十次。</summary>
     private const int AccentCacheMs = 5000;
@@ -174,7 +187,10 @@ public partial class OsdWindow : Window
         };
         _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); StartFadeOut(); };
 
-        _raiseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(RaiseIntervalMs) };
+        _raiseTimer = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(RaiseIntervalMs),
+        };
         _raiseTimer.Tick += (_, _) => RaiseToTop();
 
         // 扩展样式必须在拿到 HWND 之后设置，否则 WPF 会用自己的值盖回去
@@ -254,6 +270,52 @@ public partial class OsdWindow : Window
         Opacity = 1;
     }
 
+    /// <summary>
+    /// 仅供自检：用**和真实按键完全一样**的路径（Present）显示出来，但不自动消失。
+    ///
+    /// 为什么不能摆到屏幕外去测：窗口挪到 (-4000,-4000) 之后，Z 序的表现和
+    /// 真实位置**不一样**（实测：屏幕外时只发 HWND_TOPMOST 也能"看起来"抢回
+    /// 最前，一放到屏幕底部就复现不出问题）。这种"在测试环境里自己好了"的
+    /// 用例比没有还糟，所以宁可让横条在自检时真亮一下。
+    /// </summary>
+    internal void ShowForTest(int percent)
+    {
+        int old = HoldOverrideMs;
+        HoldOverrideMs = 20_000;      // 别在断言跑完之前自己淡出
+        try
+        {
+            Apply(percent);
+            Present();
+        }
+        finally
+        {
+            HoldOverrideMs = old;
+        }
+    }
+
+    /// <summary>仅供自检：窗口句柄。</summary>
+    internal IntPtr HandleForTest => new WindowInteropHelper(this).Handle;
+
+    /// <summary>
+    /// 仅供自检：开/关"周期性置顶"。
+    ///
+    /// 验证置顶需要一个"横条已经被压下去"的初始状态 —— 这个状态只能趁
+    /// 重提升没跑的时候制造出来，所以先关掉定时器，压完再打开。
+    /// </summary>
+    internal bool RaiseTimerForTest
+    {
+        get => _raiseTimer.IsEnabled;
+        set { if (value) _raiseTimer.Start(); else _raiseTimer.Stop(); }
+    }
+
+    /// <summary>仅供自检：收尾。</summary>
+    internal void CloseForTest()
+    {
+        _raiseTimer.Stop();
+        _hideTimer.Stop();
+        try { Close(); } catch { /* 自检里关不掉不算失败 */ }
+    }
+
     /// <summary>仅供自检：百分比 → 进度条填充比例。</summary>
     public static double ScaleForTest(int percent) => Math.Clamp(percent, 0, 100) / 100.0;
 
@@ -323,7 +385,8 @@ public partial class OsdWindow : Window
             });
 
         _hideTimer.Stop();
-        _hideTimer.Interval = TimeSpan.FromMilliseconds(HoldMs);
+        _hideTimer.Interval = TimeSpan.FromMilliseconds(
+            HoldOverrideMs > 0 ? HoldOverrideMs : HoldMs);
         _hideTimer.Start();
 
         if (!_raiseTimer.IsEnabled) _raiseTimer.Start();
@@ -473,6 +536,11 @@ public partial class OsdWindow : Window
 
             NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, r.X, r.Y, r.Width, r.Height,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+
+            /* 搬完再顶一次。带坐标的这次 SetWindowPos 虽然给了 HWND_TOPMOST，
+             * 但那只能保证"在所有非 topmost 之上"，越不过同为 topmost 的窗口
+             * （任务栏、播放器悬浮条）—— 详见 RaiseToTop 的注释。 */
+            RaiseToTop();
         }
         catch (Exception e)
         {
@@ -481,20 +549,46 @@ public partial class OsdWindow : Window
     }
 
     /// <summary>
-    /// 提到 topmost 组的最前面。
+    /// 重提升时依次使用的 hWndInsertAfter。**两步缺一不可**：
     ///
-    /// 只靠 <c>Topmost=True</c> 不够：其它同样是 topmost 的窗口
-    /// （播放器、悬浮工具、任务栏）后来者居上，就会盖住横条。
+    ///   ① <c>HWND_TOPMOST</c>：只用来**保住 topmost 样式**（Show/Hide、外壳操作
+    ///      可能把 WS_EX_TOPMOST 摘掉）。它在**已经 topmost** 的窗口之间
+    ///      **不改变相对次序** —— 所以任务栏顶上来之后，光发它永远抢不回来。
+    ///   ② <c>HWND_TOP</c>：这才是"放到 Z 序最顶"。窗口已经是 topmost，
+    ///      于是它落在 topmost 组的最前面，也就是任务栏之上。
+    ///
+    /// 实测（tools/test_osd_topmost.py，真任务栏）：只发 ① 时，任务栏压上来
+    /// 之后连发一秒 Z 序纹丝不动；补上 ② 立刻回到最前。
+    ///
+    /// 为什么单独抽成数组：自检拿它做断言，防的是"把两步简化成一步
+    /// HWND_TOPMOST"这种看起来等价、实际会让 bug 复发的重构。
+    /// </summary>
+    internal static readonly IntPtr[] RaiseInsertAfterForTest =
+    {
+        NativeMethods.HWND_TOPMOST,
+        NativeMethods.HWND_TOP,
+    };
+
+    /// <summary>
+    /// 提到**整个 Z 序的最前面**（高于任务栏、高于其它 topmost 窗口）。
+    ///
+    /// 见 <see cref="RaiseInsertAfterForTest"/> 里两步的分工说明。
+    ///
+    /// 不发 WM_WINDOWPOSCHANGING（SWP_NOSENDCHANGING）：这个窗口自己会响应
+    /// 位置变化，重提升纯属"重排"，没必要惊动消息链。
     /// </summary>
     private void RaiseToTop()
     {
         try
         {
             var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd == IntPtr.Zero) return;
-            NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
-                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
-                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+            if (hwnd == IntPtr.Zero || !IsVisible) return;
+
+            const uint flags = NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE
+                             | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOSENDCHANGING;
+
+            foreach (IntPtr insertAfter in RaiseInsertAfterForTest)
+                NativeMethods.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, flags);
         }
         catch (Exception e)
         {
