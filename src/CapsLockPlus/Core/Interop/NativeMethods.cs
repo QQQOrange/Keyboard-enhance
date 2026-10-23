@@ -245,8 +245,25 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    /* 显示器自己的缩放（Win8.1+，Shcore）。
+     *
+     * GetDpiForWindow 给的是"窗口当前所在显示器"的缩放；而横条要放到
+     * **目标显示器**上（可能是另一块），移动之前必须知道那块屏的缩放，
+     * 否则会拿着 A 屏的倍率去算 B 屏的像素 —— 多屏且缩放不同时必然错位。
+     *
+     * 失败（老系统 / 该 API 不可用）时调用方会退回 GetDpiForWindow。 */
+    [DllImport("Shcore.dll", ExactSpelling = true)]
+    public static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType,
+        out uint dpiX, out uint dpiY);
+
+    /// <summary>MDT_EFFECTIVE_DPI：用户实际设置的缩放（考虑兼容性重定向）。</summary>
+    public const int MDT_EFFECTIVE_DPI = 0;
 
     /* 任务栏矩形（ABM_GETTASKBARPOS）。
      *
@@ -320,6 +337,9 @@ public static class NativeMethods
 
     public const uint GA_ROOT = 2;
     public const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    /// <summary>MonitorFromPoint 的兜底：点不在任何显示器上时给主显示器。</summary>
+    public const uint MONITOR_DEFAULTTOPRIMARY = 1;
 
     // ---------------- 进程 ----------------
     public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;

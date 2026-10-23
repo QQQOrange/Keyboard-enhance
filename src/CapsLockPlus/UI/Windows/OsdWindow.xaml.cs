@@ -6,6 +6,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Interop;
+using CapsLockPlus.Core.Windows;
 using Microsoft.Win32;
 
 namespace CapsLockPlus.UI.Windows;
@@ -23,6 +24,11 @@ namespace CapsLockPlus.UI.Windows;
 ///   | 文字 | 纯白，图标 16、数字 14 | 同 |
 ///   | 位置 | 水平居中、贴工作区底边 14 DIP | 同 |
 ///   | 动画 | 淡入约 150ms、停留约 1.9s、淡出约 120ms（合计 ~2.1s） | 同 |
+///
+/// 卡片尺寸、贴底距离、缩放换算**全部集中在 <see cref="OsdPlacement"/>**：
+/// 那里用 DIP 定义、用目标显示器的缩放换算成物理像素、用工作区的相对关系
+/// 定位，所以换台电脑（4K/1080p、100%/150%/200%）横条的观感都一样。
+/// 本类只负责"把它画出来 + 摆到那个矩形上"。
 ///
 /// 这些数字不是拍脑袋：用全屏截图 + 连通域/边缘分析量出来的
 /// （这台机器 3840×2160 @200%，对应 384×94 像素的卡片）。
@@ -44,9 +50,12 @@ namespace CapsLockPlus.UI.Windows;
 /// </summary>
 public partial class OsdWindow : Window
 {
-    /// <summary>卡片尺寸（DIP）。与系统音量条一致。</summary>
-    public const double DesignWidth = 192;
-    public const double DesignHeight = 48;
+    /// <summary>
+    /// 卡片尺寸（DIP）。与系统音量条一致 —— 定义在 <see cref="OsdPlacement"/>，
+    /// 那里是唯一的一份真相（尺寸、阴影余量、贴底距离、缩放换算都在那儿）。
+    /// </summary>
+    public const double DesignWidth = OsdPlacement.CardWidthDip;
+    public const double DesignHeight = OsdPlacement.CardHeightDip;
 
     /// <summary>
     /// 卡片圆角（DIP）。实测对齐系统音量条 = 7.5。
@@ -78,7 +87,7 @@ public partial class OsdWindow : Window
     /// 窗口必须比卡片大一圈，否则 DropShadowEffect 会被窗口边界裁掉 ——
     /// 系统那条横条是有柔和投影的，没有它看起来像"贴上去的色块"。
     /// </summary>
-    private const double ShadowPad = 12;
+    private const double ShadowPad = OsdPlacement.ShadowPadDip;
 
     /// <summary>
     /// 卡片下沿到工作区底边的距离（DIP）。
@@ -86,7 +95,7 @@ public partial class OsdWindow : Window
     /// 实测系统音量条：屏幕底边往上 28 物理像素，200% 缩放下正好 14 DIP。
     /// （旧值 15 是"看起来差不多"估的，差 1 DIP 会在放大镜级别露馅。）
     /// </summary>
-    private const double BottomGap = 14;
+    private const double BottomGap = OsdPlacement.BottomGapDip;
 
     /// <summary>淡入（毫秒）。实测系统 ~150ms。</summary>
     private const int FadeInMs = 150;
@@ -145,8 +154,8 @@ public partial class OsdWindow : Window
     private long _paletteTick;
     private bool _lightPalette;
 
-    /// <summary>上次摆放的物理坐标，用来跳过无意义的 SetWindowPos。</summary>
-    private (int X, int Y, int W, int H) _placed;
+    /// <summary>上次摆放的物理坐标 + 缩放，用来跳过无意义的 SetWindowPos。</summary>
+    private (int X, int Y, int W, int H, double Scale) _placed;
 
     private OsdWindow()
     {
@@ -170,6 +179,15 @@ public partial class OsdWindow : Window
 
         // 扩展样式必须在拿到 HWND 之后设置，否则 WPF 会用自己的值盖回去
         SourceInitialized += (_, _) => ApplyNoActivateStyle();
+
+        /* 跨屏时 WPF 会收到 WM_DPICHANGED 并按新缩放重排内容。
+         * 窗口尺寸也必须跟着重算一次 —— 横条可能从 200% 的屏挪到 150% 的屏，
+         * 位置和像素尺寸都要按新倍率来。这里清掉缓存强制重摆。 */
+        DpiChanged += (_, e) =>
+        {
+            _placed = default;
+            Place();
+        };
 
         Loaded += (_, _) => { ApplyPalette(force: true); RefreshFill(); };
 
@@ -253,16 +271,20 @@ public partial class OsdWindow : Window
     ///
     /// 阴影留白不参与定位 —— 否则改了阴影大小横条会跟着漂。
     ///
+    /// 参数按 **96 DPI 基准**给（1 单位 = 1 像素 = 1 DIP），
+    /// 所以返回的就是"100% 缩放下会落在哪个像素"。
+    /// 真实运行时由 <see cref="OsdPlacement.Compute"/> 乘上目标显示器的缩放。
+    ///
     /// 基准就是**工作区底边**，不再考虑任务栏矩形：
     /// 任务栏固定时 rcWork 已经扣掉它；自动隐藏时 rcWork 等于整屏，
     /// 而实测系统横条此时照样贴着屏幕底（28 px），并不会让开任务栏。
     /// </summary>
     public static (double Left, double Top) PositionForTest(Rect workArea)
     {
-        double winW = DesignWidth + ShadowPad * 2;
-        double left = Math.Round(workArea.Left + (workArea.Width - winW) / 2);
-        double top = Math.Round(workArea.Bottom - BottomGap - DesignHeight - ShadowPad);
-        return (left, top);
+        var r = OsdPlacement.Compute(
+            (int)workArea.Left, (int)workArea.Top,
+            (int)workArea.Right, (int)workArea.Bottom, 1.0);
+        return (r.X, r.Y);
     }
 
     private void Apply(int percent)
@@ -416,12 +438,18 @@ public partial class OsdWindow : Window
     }
 
     /// <summary>
-    /// 水平居中，卡片下沿贴工作区底边 14 DIP（和系统那条实测一致）。
+    /// 水平居中、卡片下沿贴工作区底边 14 DIP（和系统那条实测一致）。
     ///
-    /// **用物理像素直接 SetWindowPos**，不走 WPF 的 Left/Top：
-    /// WPF 的 Left/Top 是"窗口所在显示器 DPI 下的 DIP"，而
+    /// **全程用物理像素 SetWindowPos**，不走 WPF 的 Left/Top：
+    /// WPF 的 Left/Top 是"窗口所在显示器 DPI 下的 DIP"，
     /// <c>SystemParameters.WorkArea</c> 是"系统 DPI 下的 DIP"，
     /// 200% 缩放下这两个坐标系差一倍，按 DIP 算会把横条送到屏幕外（踩过）。
+    ///
+    /// 换台机器（不同分辨率 / 不同缩放）也不会错位，因为：
+    ///   · 尺寸和间距都是 **DIP**，物理像素 = DIP × 目标显示器的缩放；
+    ///   · 位置是**工作区的相对关系**（居中 + 贴底），不是写死的坐标。
+    /// 具体换算见 <see cref="OsdPlacement.Compute"/>，那里是纯函数，
+    /// 自检用一堆"分辨率 × 缩放"的组合跑过断言。
     ///
     /// 位置没变就不重复调 SetWindowPos：连按时这个方法每 45ms 跑一次，
     /// 多余的调用会让 DWM 反复重组图层，看起来像"横条在抖"。
@@ -433,76 +461,23 @@ public partial class OsdWindow : Window
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
 
-            double scale = DpiScale();
-            if (!TryMonitorWorkArea(hwnd, out int workLeft, out int workTop,
-                                    out int workWidth, out int workHeight))
-            {
-                var wa = SystemParameters.WorkArea;
-                workLeft = (int)Math.Round(wa.Left * scale);
-                workTop = (int)Math.Round(wa.Top * scale);
-                workWidth = (int)Math.Round(wa.Width * scale);
-                workHeight = (int)Math.Round(wa.Height * scale);
-            }
+            if (!OsdPlacement.TryGetTargetWorkArea(hwnd, out var area) || !area.IsValid)
+                return;
 
-            int w = (int)Math.Round((DesignWidth + ShadowPad * 2) * scale);
-            int h = (int)Math.Round((DesignHeight + ShadowPad * 2) * scale);
-            int x = workLeft + (workWidth - w) / 2;
+            var r = OsdPlacement.Compute(
+                area.Left, area.Top, area.Right, area.Bottom, area.DpiScale);
 
-            /* 竖直方向就贴**工作区**底边。
-             *
-             * 不要再拿任务栏矩形来"让开任务栏"：任务栏固定时 rcWork 已经
-             * 扣掉了它；自动隐藏时 rcWork 是整屏，而系统横条实测照样贴着
-             * 屏幕底（28 px）。旧实现多让了 96 px，整条比系统高一格。 */
-            int baseBottom = workTop + workHeight;
-            int y = baseBottom - (int)Math.Round((BottomGap + DesignHeight + ShadowPad) * scale);
+            var key = (r.X, r.Y, r.Width, r.Height, Math.Round(area.DpiScale, 3));
+            if (_placed == key) return;
+            _placed = key;
 
-            if (_placed == (x, y, w, h)) return;
-            _placed = (x, y, w, h);
-
-            NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, x, y, w, h,
+            NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, r.X, r.Y, r.Width, r.Height,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
         }
         catch (Exception e)
         {
             CoreLog.Warn("OSD 定位失败：" + e.Message);
         }
-    }
-
-    /// <summary>显示器工作区（物理像素）。</summary>
-    private static bool TryMonitorWorkArea(IntPtr hwnd,
-        out int left, out int top, out int width, out int height)
-    {
-        left = top = width = height = 0;
-        try
-        {
-            IntPtr monitor = NativeMethods.MonitorFromWindow(
-                hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
-            if (monitor == IntPtr.Zero) return false;
-
-            var mi = new NativeMethods.MONITORINFO
-            {
-                cbSize = System.Runtime.InteropServices.Marshal
-                    .SizeOf<NativeMethods.MONITORINFO>(),
-            };
-            if (!NativeMethods.GetMonitorInfo(monitor, ref mi)) return false;
-
-            left = mi.rcWork.Left;
-            top = mi.rcWork.Top;
-            width = mi.rcWork.Width;
-            height = mi.rcWork.Height;
-            return width > 0 && height > 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>窗口所在显示器的缩放（1.0 = 96 DPI）。</summary>
-    private double DpiScale()
-    {
-        double scale = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
-        return scale > 0 ? scale : 1.0;
     }
 
     /// <summary>
@@ -552,19 +527,25 @@ public partial class OsdWindow : Window
         }
     }
 
-    /// <summary>把实际尺寸 / 位置 / 扩展样式记一笔，出问题时能对账。</summary>
+    /// <summary>把实际尺寸 / 位置 / 缩放 / 扩展样式记一笔，出问题时能对账。</summary>
     private void LogGeometry(string when)
     {
         try
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             int ex = hwnd == IntPtr.Zero ? 0 : NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
-            string work = TryMonitorWorkArea(hwnd, out int wl, out int wt, out int ww, out int wh)
-                ? $"{wl},{wt} {ww}x{wh}"
+
+            string where = OsdPlacement.TryGetTargetWorkArea(hwnd, out var area)
+                ? $"{area.Left},{area.Top} {area.Width}x{area.Height} @{area.DpiScale:F2}x"
                 : "(未知)";
-            CoreLog.Info($"OSD {when}：DIP={ActualWidth:F0}x{ActualHeight:F0} "
-                         + $"pos={Left:F0},{Top:F0} dpi={dpi:F2} 工作区={work} "
+
+            var r = area.IsValid
+                ? OsdPlacement.Compute(area.Left, area.Top, area.Right, area.Bottom, area.DpiScale)
+                : default;
+            var (cw, ch) = OsdPlacement.CardSizeForTest(r);
+
+            CoreLog.Info($"OSD {when}：卡片={cw}x{ch}px 窗口={r.Width}x{r.Height}px "
+                         + $"pos={r.X},{r.Y} 工作区={where} "
                          + $"ex=0x{ex:X8} hwnd=0x{hwnd.ToInt64():X}");
         }
         catch (Exception e)

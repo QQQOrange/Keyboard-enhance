@@ -154,6 +154,7 @@ public static class SelfTest
         TestBrightnessMath();
         TestBrightnessPumpStarts();
         TestOsdAndTextInput();
+        TestOsdScalesAcrossDisplays();
         TestToastCoalescing();
         TestDirectSearchCoversAllEngines();
         TestCopyChordEndToEnd();
@@ -5276,6 +5277,103 @@ public static class SelfTest
         {
             Check("底部按钮布局探针没抛异常", false, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// 横条在**任意一台电脑**上都要长得一样：分辨率、缩放都换了，观感不能变。
+    ///
+    /// 这里穷举常见"分辨率 × 缩放"组合，直接跑纯函数
+    /// <see cref="Core.Windows.OsdPlacement.Compute"/>（不碰窗口），断言四件事：
+    ///   1. **尺寸**按目标显示器缩放换算：物理像素 = DIP × 缩放；
+    ///   2. **位置**是工作区的相对关系：水平居中 + 下沿离工作区底 14 DIP；
+    ///   3. 卡片永远是 4:1，不会因为缩放被拉变形；
+    ///   4. 永远落在工作区内（含负坐标的副屏）。
+    ///
+    /// ⚠ 注意：卡片**不随分辨率变大**，只随缩放变大 —— 这正是系统音量条的
+    /// 行为（它固定 192×48 DIP）。按屏幕百分比做会让 4K 上大得离谱、
+    /// 1366×768 上小到看不清，反而和系统对不上。
+    /// </summary>
+    private static void TestOsdScalesAcrossDisplays()
+    {
+        // 工作区一栏是**物理像素**（缩放不改变物理像素，只改变 1 DIP 等于几像素）
+        var cases = new (string Name, int Left, int Top, int W, int H, double Scale)[]
+        {
+            ("1366×768 @100%",    0,     0, 1366, 728,  1.00),
+            ("1920×1080 @100%",   0,     0, 1920, 1040, 1.00),
+            ("1920×1080 @125%",   0,     0, 1920, 1040, 1.25),
+            ("2560×1440 @150%",   0,     0, 2560, 1400, 1.50),
+            ("2880×1800 @200%",   0,     0, 2880, 1760, 2.00),
+            ("3840×2160 @200%",   0,     0, 3840, 2120, 2.00),
+            ("3840×2160 @150%",   0,     0, 3840, 2120, 1.50),
+            ("副屏 −2560 起 @150%", -2560, -200, 2560, 1400, 1.50),
+        };
+
+        foreach (var c in cases)
+        {
+            int right = c.Left + c.W;
+            int bottom = c.Top + c.H;
+            var r = Core.Windows.OsdPlacement.Compute(c.Left, c.Top, right, bottom, c.Scale);
+
+            double s = c.Scale;
+            int expWinW = (int)Math.Round(216 * s);
+            int expWinH = (int)Math.Round(72 * s);
+
+            Check($"{c.Name}：窗口宽按缩放换算", Math.Abs(r.Width - expWinW) <= 1,
+                $"{r.Width} vs {expWinW}");
+            Check($"{c.Name}：窗口高按缩放换算", Math.Abs(r.Height - expWinH) <= 1,
+                $"{r.Height} vs {expWinH}");
+
+            var (cw, ch) = Core.Windows.OsdPlacement.CardSizeForTest(r);
+            Check($"{c.Name}：卡片宽 = 192 × 缩放",
+                Math.Abs(cw - 192 * s) <= 1, $"{cw} vs {192 * s}");
+            Check($"{c.Name}：卡片高 = 48 × 缩放",
+                Math.Abs(ch - 48 * s) <= 1, $"{ch} vs {48 * s}");
+
+            Check($"{c.Name}：卡片长宽比仍是 4:1",
+                Math.Abs((double)cw / ch - 4.0) < 0.06, $"{cw}x{ch}");
+
+            // 水平居中（相对工作区，不是相对 (0,0)）
+            double cx = r.X + r.Width / 2.0;
+            Check($"{c.Name}：水平居中", Math.Abs(cx - (c.Left + c.W / 2.0)) <= 1.0,
+                $"cx={cx} 期望={(c.Left + c.W / 2.0)}");
+
+            // 卡片下沿离工作区底边 = 14 DIP（换算成像素）
+            int cardBottom = r.Y + (int)Math.Round(60 * s);   // 12 阴影 + 48 卡片
+            int gapPx = (int)Math.Round(14 * s);
+            Check($"{c.Name}：贴底 14 DIP", Math.Abs((bottom - cardBottom) - gapPx) <= 1,
+                $"实际底距={bottom - cardBottom} 期望={gapPx}");
+
+            // 不出工作区
+            Check($"{c.Name}：完整落在工作区内",
+                r.X >= c.Left && r.Y >= c.Top && r.Right <= right && r.Bottom <= bottom,
+                $"({r.X},{r.Y})-({r.Right},{r.Bottom}) 工作区=({c.Left},{c.Top})-({right},{bottom})");
+        }
+
+        /* 同一块屏换个缩放：物理像素尺寸必须跟着变，
+         * 而"折回 DIP"必须还是 192×48 —— 这就是跨机器一致的判据。 */
+        var at100 = Core.Windows.OsdPlacement.Compute(0, 0, 1920, 1040, 1.00);
+        var at200 = Core.Windows.OsdPlacement.Compute(0, 0, 3840, 2120, 2.00);
+        var (w100, h100) = Core.Windows.OsdPlacement.CardSizeForTest(at100);
+        var (w200, h200) = Core.Windows.OsdPlacement.CardSizeForTest(at200);
+        CheckEqual("100% 下卡片 192×48 像素", $"{w100}x{h100}", "192x48");
+        CheckEqual("200% 下卡片 384×96 像素（与系统实测一致）", $"{w200}x{h200}", "384x96");
+        Check("200% 的卡片正好是 100% 的两倍",
+            w200 == w100 * 2 && h200 == h100 * 2, $"{w200}x{h200}");
+
+        /* 缩放值非法时要当 1.0 用，不能把横条算成 0 像素 */
+        var bad = Core.Windows.OsdPlacement.Compute(0, 0, 1920, 1040, 0);
+        Check("缩放为 0 时按 1.0 处理（不会算出空窗口）",
+            bad.Width > 0 && bad.Height > 0, $"{bad.Width}x{bad.Height}");
+
+        /* 极小屏保护：320×240 的屏上别让横条横跨大半个屏幕 */
+        var tiny = Core.Windows.OsdPlacement.Compute(0, 0, 320, 240, 1.0);
+        Check("极小屏上横条被压到工作区的 80% 以内",
+            tiny.Width <= 320 * 0.8 + 1, $"{tiny.Width}");
+
+        /* 工作区无效（离屏 / 还没拿到显示器）时返回空矩形，调用方跳过定位 */
+        var none = Core.Windows.OsdPlacement.Compute(0, 0, 0, 0, 1.0);
+        Check("工作区为空时返回空矩形", none.Width == 0 && none.Height == 0,
+            $"{none.Width}x{none.Height}");
     }
 
     /// <summary>
