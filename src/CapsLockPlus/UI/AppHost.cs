@@ -360,17 +360,16 @@ public sealed class AppHost : IDisposable
         return System.Text.Json.JsonSerializer.Serialize(Settings, SettingsStore.JsonOptions);
     }
 
+    /// <summary>
+    /// 把第 1 层（基础层）的按键恢复成所选方案的默认值，其它层不动。
+    ///
+    /// 具体规则与"为什么必须就地改 List"见
+    /// <see cref="DefaultSettings.ResetLayerOne"/> —— 抽成静态是为了让自检
+    /// 能直接验，不必为了一个纯数据操作起一整套宿主。
+    /// </summary>
     public void ApplyHotkeyScheme(string scheme)
     {
-        Settings.Global.HotkeyScheme = scheme;
-        var preset = scheme == "capslock_plus" ? DefaultSettings.ClassicScheme() : DefaultSettings.CapsloxScheme();
-        // 保留用户自己加过、预设里没有的组合键
-        foreach (var custom in Settings.Keys.Where(k => preset.All(p =>
-                     !p.Combo.Equals(k.Combo, StringComparison.OrdinalIgnoreCase))).ToList())
-        {
-            preset.Add(custom);
-        }
-        Settings.Keys = preset;
+        DefaultSettings.ResetLayerOne(Settings, scheme);
         SaveSettings();
     }
 

@@ -29,27 +29,56 @@
             </Grid>
         </Border>
 
-        <!-- 主体：左键盘 + 右编辑 -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="330" />
-            </Grid.ColumnDefinitions>
+        <!--
+            主体：键盘在上、编辑绑定在下，自上而下排成一列。
+
+            为什么不再左右分栏：右边那栏固定 330 宽，等于从键盘嘴里抢走
+            344 DIP（面板 330 + 间距 14）。108 键键盘「大」档要 1058 DIP，
+            分栏时窗口得 1716 宽才装得下；合成一列后 1393 就够 ——
+            同一块屏幕能选到更大的档位，键帽上的字也更大。
+
+            整页放在一个纵向 ScrollViewer 里：键盘尺寸由档位固定，
+            多出来的高度给下面的编辑区；窗口太矮时整页往下滚，
+            而不是把键盘压扁（那正是之前"字小到看不清"的根因）。
+        -->
+        <ScrollViewer Grid.Row="1" x:Name="PageScroll"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      CanContentScroll="False"
+                      Focusable="False"
+                      PanningMode="VerticalOnly">
+            <StackPanel>
 
             <!-- 键盘 -->
-            <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0" Padding="20,16">
+            <Border Style="{StaticResource Card}" Padding="20,16">
                 <!--
-                    三段式 Dock：顶部说明钉顶、底部控件钉底，中间剩下的全部给键盘。
+                    三段结构（从上到下）：
+                      ① 信息条   —— 触发键 / 当前层 / 键盘大小选择
+                      ② 键盘     —— 尺寸由**档位**决定，不跟窗口变（见 ApplyKeyboardSize）
+                      ③ 控制条   —— 层、层内修饰键、计数、图例
 
-                    以前键盘那行是 Auto、底部那行是 *，键盘只能按"自然宽度"铺开：
-                    窗口一收窄，92 个星列一起被压扁 —— 键帽高度还是 52px，
-                    宽度却只剩十几个像素，字全挤在一起，看起来"整块被压变形"。
-                    现在最外层套 Viewbox 等比缩放（见 BuildKeyboard 里的 NaturalWidth），
-                    窗口怎么变，整把键盘都按同一比例缩，不会只压一个方向。
+                    键盘下方不再放「本层已绑定」清单：键帽本身就是最直接的
+                    状态显示（已绑定深蓝实底、未绑定浅底），再列一遍是重复信息，
+                    还把键盘挤小了。这块空间现在让给键盘和编辑区。
+
+                    ⚠ ② 必须是 Auto（不是 *）：Viewbox 已有显式宽高，
+                    给它 * 只会让它把键盘再拉伸一次，档位就失准了。
                 -->
-                <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
-                        <StackPanel Orientation="Horizontal">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- ① 信息条 -->
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                             <!--
                                 这里是**当前层的触发键**，不是写死的 CapsLock。
                                 不同层可以配不同的触发键（F13、右 Alt、甚至可以组合），
@@ -65,89 +94,145 @@
                                        Style="{StaticResource Text.Secondary}"
                                        VerticalAlignment="Center" Margin="7,0,0,0" />
                             <TextBlock x:Name="LayerHint" Text="当前：基础层" Style="{StaticResource Text.Tertiary}"
-                                       VerticalAlignment="Center" Margin="16,0,0,0" />
+                                       VerticalAlignment="Center" Margin="16,0,0,0"
+                                       TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Ellipse Width="8" Height="8" Fill="{DynamicResource Brush.AccentSoft}"
-                                     Stroke="{DynamicResource Brush.AccentSoftBorder}" StrokeThickness="1"
-                                     VerticalAlignment="Center" />
-                            <TextBlock Text="已绑定" Style="{StaticResource Text.Tertiary}" Margin="6,0,14,0" />
-                            <Ellipse Width="8" Height="8" Fill="{DynamicResource Brush.Keycap}"
-                                     Stroke="{DynamicResource Brush.KeycapBorder}" StrokeThickness="1"
-                                     VerticalAlignment="Center" />
-                            <TextBlock Text="未绑定" Style="{StaticResource Text.Tertiary}" Margin="6,0,0,0" />
-                        </StackPanel>
-                    </StackPanel>
 
-                    <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <!--
+                            键盘大小：选完即存成默认，下次打开这个页面直接就是这一档。
+                            它同时是这个页面的**最小尺寸** —— 换大档窗口会被撑到装得下，
+                            换小档窗口可以缩得更小。
+                        -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Margin="14,0,0,0">
+                            <TextBlock Text="键盘大小" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="SizeBox" Style="{StaticResource ComboBox.Base}" Width="146"
+                                      SelectionChanged="OnKeyboardSizeChanged"
+                                      ToolTip="选一个当作默认大小；这就是这个页面能缩到的最小尺寸" />
+                            <TextBlock x:Name="SizeText" Text="" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!--
+                        ② 键盘本体。
+
+                        纵向滚动**故意关掉**：一层 ScrollViewer 里同时能横能纵，
+                        一旦横向滚动条冒出来（占 17 DIP 高），内容就又高出 17 DIP，
+                        纵向滚动条跟着出现、再吃掉 17 DIP 宽 —— 于是横向的又不够了，
+                        窗口边缘拖动时会看到两条滚动条互相触发着闪。
+                        纵向交给外面整页那个 PageScroll，这里只管横向。
+                    -->
+                    <ScrollViewer Grid.Row="1" x:Name="KeyboardScroll"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  CanContentScroll="False"
+                                  Focusable="False"
+                                  PanningMode="HorizontalOnly">
+                        <!--
+                            Viewbox 只做一件事：把 1058×330 的设计图按档位放大/缩小。
+                            它自己的 Width/Height 由 ApplyKeyboardSize 按档位写死，
+                            所以"窗口多大"和"键帽多大"彻底解耦 ——
+                            不会再出现"拖一下窗口，字就糊一档"。
+
+                            水平居中靠 HorizontalAlignment：ScrollViewer 在内容
+                            **装得下**时会把内容撑到可视区宽度，Center 因此生效；
+                            装不下时内容按自身宽度排版，滚动条接管。两种情况都不用手算。
+                        -->
+                        <Viewbox x:Name="KeyboardPanel" Margin="0,2,0,2"
+                                 Stretch="Uniform" StretchDirection="Both"
+                                 HorizontalAlignment="Center" VerticalAlignment="Top" />
+                    </ScrollViewer>
+
+                    <!-- ③ 控制条 -->
+                    <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal">
                             <TextBlock Text="层" Style="{StaticResource Text.Secondary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <ComboBox x:Name="LayerBox" Style="{StaticResource ComboBox.Base}" Width="260"
+                            <ComboBox x:Name="LayerBox" Style="{StaticResource ComboBox.Base}" Width="240"
                                       SelectionChanged="OnLayerChanged" />
-                        </StackPanel>
-                        <!--
-                            层内修饰键（子层）按钮。
-                            这里**动态生成** —— 每层可以配 0~10 个修饰键组合，
-                            所以不能再写死 5 个固定按钮。
-                        -->
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <!--
+                                层内修饰键（子层）按钮。
+                                这里**动态生成** —— 每层可以配 0~10 个修饰键组合，
+                                所以不能再写死 5 个固定按钮。
+                            -->
                             <TextBlock Text="层内修饰键" Style="{StaticResource Text.Tertiary}"
-                                       VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <StackPanel x:Name="SubLayerPanel" Orientation="Horizontal" />
+                                       VerticalAlignment="Center" Margin="18,0,0,0" />
+                            <StackPanel x:Name="SubLayerPanel" Orientation="Horizontal"
+                                        VerticalAlignment="Center" Margin="8,0,0,0" />
                             <Button Content="设置子层…" x:Name="EditSubLayersButton"
                                     Style="{StaticResource Button.Ghost}" Padding="10,5" Margin="6,0,0,0"
                                     Click="OnEditSubLayers"
                                     ToolTip="配置这一层要用哪些修饰键作为子层（最多 10 个）" />
                         </StackPanel>
-                        <TextBlock x:Name="CountText" Style="{StaticResource Text.Tertiary}"
-                                   Margin="0,10,0,0" TextWrapping="Wrap" />
 
-                        <!-- 颜色图例：不看文字也知道深蓝=已绑定 -->
-                        <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
-                            <Border Width="13" Height="13" CornerRadius="3"
-                                    Background="{DynamicResource Brush.Accent}"
-                                    BorderBrush="{DynamicResource Brush.AccentHover}" BorderThickness="1"
-                                    VerticalAlignment="Center" />
-                            <TextBlock Text="已绑定功能" Style="{StaticResource Text.Tertiary}"
-                                       Margin="6,0,16,0" VerticalAlignment="Center" />
-                            <Border Width="13" Height="13" CornerRadius="3"
-                                    Background="{DynamicResource Brush.AccentSoft}"
-                                    BorderBrush="{DynamicResource Brush.AccentSoftBorder}" BorderThickness="1"
-                                    VerticalAlignment="Center" />
-                            <TextBlock Text="未绑定" Style="{StaticResource Text.Tertiary}"
-                                       Margin="6,0,0,0" VerticalAlignment="Center" />
-                        </StackPanel>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" x:Name="CountText" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+
+                            <!-- 颜色图例：不看文字也知道深蓝=已绑定 -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                        Margin="14,0,0,0">
+                                <Border Width="12" Height="12" CornerRadius="3"
+                                        Background="{DynamicResource Brush.Accent}"
+                                        BorderBrush="{DynamicResource Brush.AccentHover}" BorderThickness="1"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Text="已绑定" Style="{StaticResource Text.Tertiary}"
+                                           Margin="5,0,12,0" VerticalAlignment="Center" />
+                                <Border Width="12" Height="12" CornerRadius="3"
+                                        Background="{DynamicResource Brush.AccentSoft}"
+                                        BorderBrush="{DynamicResource Brush.AccentSoftBorder}" BorderThickness="1"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Text="未绑定" Style="{StaticResource Text.Tertiary}"
+                                           Margin="5,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
-
-                    <!-- 键盘本体：Stretch=Uniform 保证等比例；TwoWay 跟随窗口放大/缩小 -->
-                    <Viewbox x:Name="KeyboardPanel" Margin="0,4,0,4"
-                             Stretch="Uniform" StretchDirection="Both"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </DockPanel>
+                </Grid>
             </Border>
 
-            <!-- 编辑面板 -->
-            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="18,16">
+            <!-- 编辑面板：就在键盘正下方，横向占满整张卡片 -->
+            <Border x:Name="EditorCard" Style="{StaticResource Card}" Padding="18,16" Margin="0,14,0,0">
                 <!--
-                    布局：标题固定 → 中间整块可滚动 → 底部按钮固定。
+                    布局：标题固定 → 中间那块自然长高 → 底部按钮接在最后。
 
-                    ⚠ 以前中间那几行是 Auto 高度：一旦「自定义按键」面板展开
-                    （键 / 应用 / 两个开关 / 等待 / 备注 / 提示），总高度就超过卡片，
-                    把底部的「清除绑定」「测试一下」挤出可视区，怎么滚都看不到
+                    ⚠ 这里**不再有自己的 ScrollViewer**：整页已经有一个纵向滚动
+                    （外层 PageScroll），再套一层就会出现"滚到一半卡住、
+                    得换到里面继续滚"的鼠标陷阱。编辑内容多高就多高，页面往下延伸。
+
+                    ⚠ 以前中间几行是 Auto 高度，一旦「自定义按键」面板展开，
+                    总高度就超过卡片，把底部的「清除绑定」「测试一下」挤出可视区
                     —— 因为溢出的是 Grid 行，不是 ScrollViewer 里的内容。
-                    现在只有 3 行：中间一行是 *，内部整块滚动；按钮永远贴底。
+                    现在页面整体滚动，按钮永远在内容末尾，滚一下就到。
                 -->
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="编辑绑定" Style="{StaticResource Text.H2}" VerticalAlignment="Center" />
+
+                            <!--
+                                当前选中的是哪个键。
+                                编辑区搬到键盘下方之后，两者离得远了 ——
+                                不再有"右边面板永远显示当前键"的空间暗示，
+                                这里必须明确写出来，否则用户滚下来会忘了在改谁。
+                            -->
+                            <Border Style="{StaticResource Keycap}" Padding="9,3" Margin="10,0,0,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock x:Name="EditorKeyText" Text="Q" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.Accent}" />
+                            </Border>
                         </StackPanel>
 
                         <!--
@@ -198,11 +283,8 @@
 
                     </StackPanel>
 
-                    <ScrollViewer Grid.Row="1" x:Name="EditorScroll" Margin="0,18,0,0"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  PanningMode="VerticalOnly">
-                    <StackPanel>
+                    <!-- 编辑主体：内容多高就多高，由整页滚动（不再自己套 ScrollViewer） -->
+                    <StackPanel Grid.Row="1" Margin="0,18,0,0">
                         <!-- ================= 普通分类：分类 + 功能 两级下拉 ================= -->
                         <Grid x:Name="NormalActionPicker">
                             <Grid.ColumnDefinitions>
@@ -369,7 +451,7 @@
                             <TextBox x:Name="TypeNoteBox" Style="{StaticResource TextBox.Base}"
                                      MinHeight="36" VerticalContentAlignment="Center"
                                      TextChanged="OnTypeNoteChanged"
-                                     ToolTip="给这段文字起个好记的名字，会显示在键帽和已绑定列表里" />
+                                     ToolTip="给这段文字起个好记的名字，会显示在键帽上" />
 
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
                                        Text="支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。填了备注就显示备注，否则显示文字开头几个字。" />
@@ -485,7 +567,7 @@
                             <TextBox x:Name="CustomNoteBox" Style="{StaticResource TextBox.Base}"
                                      MinHeight="36" VerticalContentAlignment="Center"
                                      TextChanged="OnCustomNoteChanged"
-                                     ToolTip="给这个键起个好记的名字，会显示在键帽和已绑定列表里" />
+                                     ToolTip="给这个键起个好记的名字，会显示在键帽上" />
 
                             <TextBlock x:Name="CustomKeyHint" Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,12,0,0" />
@@ -583,40 +665,9 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <StackPanel Margin="0,16,0,0">
-                            <Border Style="{StaticResource Divider}" />
-                            <TextBlock Text="本层已绑定" Style="{StaticResource Text.Secondary}"
-                                       Margin="0,4,0,8" />
-                        </StackPanel>
-
-                    <ListBox x:Name="BoundList" Background="Transparent" BorderThickness="0"
-                             ItemContainerStyle="{StaticResource RowItem}"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             MinHeight="80" MaxHeight="240"
-                             SelectionChanged="OnBoundSelected">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="58" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Style="{StaticResource Keycap}" Padding="7,3"
-                                            HorizontalAlignment="Left">
-                                        <TextBlock Text="{Binding Key}" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource Brush.Accent}" />
-                                    </Border>
-                                    <TextBlock Grid.Column="1" Text="{Binding Action}" Margin="8,0,0,0"
-                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                               Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12.5" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
                     </StackPanel>
-                    </ScrollViewer>
 
-                    <!-- 底部操作条：固定在卡片最下方，任何窗口尺寸下都不会被挤走 -->
+                    <!-- 底部操作条：接在编辑内容末尾（页面滚动时一起走） -->
                     <Border Grid.Row="2" Margin="0,10,0,0" Padding="0,10,0,0"
                             BorderThickness="0,1,0,0"
                             BorderBrush="{DynamicResource Brush.Border}">
@@ -632,6 +683,7 @@
                     </Border>
                 </Grid>
             </Border>
-        </Grid>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </UserControl>

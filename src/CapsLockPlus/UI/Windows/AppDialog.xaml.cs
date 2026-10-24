@@ -91,6 +91,26 @@ public partial class AppDialog : Window
             return result;
         }
 
+        var dlg = Build(owner, text, title, kind, showCancel, okText, cancelText);
+        dlg.ShowDialog();
+        return dlg._accepted;
+    }
+
+    /// <summary>
+    /// 造一个和真实对话框**完全一样**的实例，但不显示。
+    ///
+    /// 只给 <c>--render</c> 用：ShowDialog 是模态阻塞的，出图流程会卡在那里；
+    /// 拿到实例后由调用方自己摆位置、Show、RenderTargetBitmap、Close。
+    /// 位置必须让调用方设成屏幕外（见 RenderTools），否则出图时会在桌面上弹窗。
+    /// </summary>
+    internal static AppDialog CreateForRender(DependencyObject? owner, string text, string title,
+        DialogKind kind, bool showCancel, string? okText, string? cancelText)
+        => Build(owner, text, title, kind, showCancel, okText, cancelText);
+
+    /// <summary>建对话框（不显示）：定位、语气、主题外壳都在这里定。</summary>
+    private static AppDialog Build(DependencyObject? owner, string text, string title,
+        DialogKind kind, bool showCancel, string? okText, string? cancelText)
+    {
         var dlg = new AppDialog
         {
             Title = title,
@@ -118,8 +138,7 @@ public partial class AppDialog : Window
             // 云母/圆角只是观感，失败不影响功能
         }
 
-        dlg.ShowDialog();
-        return dlg._accepted;
+        return dlg;
     }
 
     private void ApplyKind(DialogKind kind, string text, string title,

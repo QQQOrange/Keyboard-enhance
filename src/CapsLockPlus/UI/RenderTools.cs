@@ -77,6 +77,12 @@ public static class RenderTools
             if (page == "keys" &&
                 main.GetPage("keys") is CapsLockPlus.UI.Views.KeysView kv)
             {
+                /* 键盘档位先出图：这时页面的分类/选中键都还是初始状态，
+                 * 图里不会残留上一个面板（比如「自定义按键」）的内容。
+                 * 每张图都把窗口设成**该档位的最小尺寸**，所以看到的就是
+                 * 用户打开这个页面时的第一眼。 */
+                RenderKeyboardSizes(main, kv, outDir);
+
                 try
                 {
                     if (kv.ShowWinBindPanelForRender())
@@ -128,6 +134,13 @@ public static class RenderTools
                     {
                         Pump(200);
                         Save(main, Path.Combine(outDir, "keys-customkey.png"));
+
+                        /* 编辑区在键盘**下方**，窗口只有 800 高时它在折叠线以下。
+                         * 滚过去再拍一张，才能确认面板里的键 / 应用 / 开关
+                         * 都真的画出来了，而不是被折叠线挡住、看起来"没做"。 */
+                        kv.ScrollToEditorForRender();
+                        Pump(220);
+                        Save(main, Path.Combine(outDir, "keys-editor.png"));
                     }
                 }
                 catch (Exception ex)
@@ -137,6 +150,35 @@ public static class RenderTools
 
                 kv.ResetRenderState();
                 Pump(120);
+
+                /* 「恢复默认」的二次确认框。
+                 *
+                 * 这是整页唯一的破坏性按钮，必须能被截图回归：警告图标、
+                 * 红色确定键、逐条写清"丢什么 / 留什么 / 能不能撤销"。
+                 * 平时只有点按钮才会出现，而且 ShowDialog 是模态阻塞的 ——
+                 * 这里用 CreateForRender 造实例、摆到屏幕外再截，绝不真弹出来。 */
+                try
+                {
+                    var dlg = AppDialog.CreateForRender(main,
+                        "把基础层的按键全部恢复成默认值？\n"
+                        + "· 你在这一层改过的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n"
+                        + "· 你自己新增的组合键会保留，其它 9 层完全不动；\n"
+                        + "· 这一步不能撤销。",
+                        "恢复默认按键", DialogKind.Warn,
+                        showCancel: true, okText: "恢复默认", cancelText: null);
+                    dlg.WindowStartupLocation = WindowStartupLocation.Manual;
+                    dlg.Left = -32000;
+                    dlg.Top = -32000;
+                    dlg.ShowInTaskbar = false;
+                    dlg.Show();
+                    Pump(220);
+                    Save(dlg, Path.Combine(outDir, "keys-reset-confirm.png"));
+                    dlg.Close();
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染恢复默认确认框失败：" + ex.Message);
+                }
             }
 
             /* 宏页额外截一张"正在录制"的样子。
@@ -246,6 +288,7 @@ public static class RenderTools
         // Qbar 面板（深色浮层，单独渲染）
         var qbar = new QbarWindow(host) { ShowInTaskbar = false, Left = -32000, Top = -32000 };
         qbar.Open("bd 天气");
+        qbar.ParkOffScreenForRender();
         Pump(300);
         qbar.Height = qbar.ActualHeight;
         qbar.UpdateLayout();
@@ -256,6 +299,7 @@ public static class RenderTools
 
         // 标签形态：输入 "bd " 之后 bd 变成标签，输入框只剩搜索词
         qbar.OpenForRender("bd");
+        qbar.ParkOffScreenForRender();
         Pump(260);
         qbar.Height = qbar.ActualHeight;
         qbar.UpdateLayout();
@@ -267,6 +311,7 @@ public static class RenderTools
          * 验证 qbar:<key> 动作绑到按键后，弹出的面板真的已经带上引擎标签
          * （而不是只把 "zh " 当普通文字塞进输入框）。 */
         qbar.Open("zh ");
+        qbar.ParkOffScreenForRender();
         Pump(260);
         qbar.Height = qbar.ActualHeight;
         qbar.UpdateLayout();
@@ -276,6 +321,7 @@ public static class RenderTools
 
         // 标签 + 已输入搜索词
         qbar.OpenForRender("bd", "天气 预报");
+        qbar.ParkOffScreenForRender();
         Pump(260);
         qbar.Height = qbar.ActualHeight;
         qbar.UpdateLayout();
@@ -285,6 +331,7 @@ public static class RenderTools
 
         // 程序标签（自动取 exe 图标）
         qbar.OpenForRender("calc");
+        qbar.ParkOffScreenForRender();
         Pump(260);
         qbar.Height = qbar.ActualHeight;
         qbar.UpdateLayout();
@@ -292,7 +339,16 @@ public static class RenderTools
         Save(qbar, Path.Combine(outDir, "qbar-chip-run.png"));
         count++;
 
-        var math = new MathBoardWindow { ShowInTaskbar = false, Left = -32000, Top = -32000 };
+        /* 这两个窗口的 XAML 写的是 WindowStartupLocation=CenterScreen，
+         * 它会**盖过**手动设的 Left/Top —— 不显式改成 Manual 的话，
+         * 后台渲染时它们会正正地弹在用户屏幕中央。 */
+        var math = new MathBoardWindow
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -32000,
+            Top = -32000,
+        };
         math.Show();
         Pump(200);
         Save(math, Path.Combine(outDir, "mathboard.png"));
@@ -301,7 +357,14 @@ public static class RenderTools
         math.Close();
 
         // 剪贴板历史
-        var clip = new ClipboardHistoryWindow(host) { ShowInTaskbar = false, Left = -32000, Top = -32000 };
+        // 剪贴板历史（同样有 CenterScreen，必须改 Manual 才不会弹在屏幕中央）
+        var clip = new ClipboardHistoryWindow(host)
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -32000,
+            Top = -32000,
+        };
         clip.Show();
         Pump(240);
         Save(clip, Path.Combine(outDir, "clipboard.png"));
@@ -309,8 +372,10 @@ public static class RenderTools
         count++;
         clip.Close();
 
-        // 十字准星点选器：展示“点选窗口”时的遮罩界面
-        var picker = new WindowPickerWindow { ShowInTaskbar = false };
+        // 十字准星点选器：展示“点选窗口”时的遮罩界面。
+        // ⚠ 这个窗口是 Topmost + 铺满虚拟屏的，正常显示会盖住用户整个桌面；
+        //   出图必须走 renderOffScreen，只截内容、不打扰用户。
+        var picker = new WindowPickerWindow(renderOffScreen: true) { ShowInTaskbar = false };
         picker.Show();
         Pump(260);
         Save(picker, Path.Combine(outDir, "window-picker.png"));
@@ -385,6 +450,53 @@ public static class RenderTools
             if (deeper != null) return deeper;
         }
         return null;
+    }
+
+    /// <summary>
+    /// 按四个键盘档位各出一张图，外加一张"高窗口"图。
+    ///
+    /// 每张图都把窗口设成**该档位的最小尺寸**，这样看到的就是用户打开这个页面
+    /// 时的第一眼：键盘刚好铺满，没有多余横向空白。最后那张高窗口图用来看
+    /// "键盘下方原本空着的地方现在装了什么"。
+    /// </summary>
+    private static void RenderKeyboardSizes(MainWindow main, CapsLockPlus.UI.Views.KeysView kv, string outDir)
+    {
+        double savedW = main.Width, savedH = main.Height;
+        double savedMinW = main.MinWidth, savedMinH = main.MinHeight;
+
+        foreach (var preset in CapsLockPlus.Core.Settings.KeyboardSizePreset.All)
+        {
+            kv.SetSizePresetForRender(preset.Id);
+            var (w, h) = kv.RequiredWindowSize();
+
+            /* 先解除最小限制再设尺寸：MinWidth 已经按档位抬上去了，
+             * 直接设更小的 Width 会被它顶回来。 */
+            main.MinWidth = 0;
+            main.MinHeight = 0;
+            main.Width = w;
+            main.Height = h;
+            Pump(300);
+
+            Save(main, Path.Combine(outDir, $"keys-size-{preset.Id}.png"));
+        }
+
+        /* 整页：键盘大小**不变**，多出来的高度全部给下方编辑区。
+         *
+         * 尺寸取「大」档的最小宽度 + 刚好装下编辑卡片的高度（1040）：
+         * 再高就是一片空白，图放到 README 里不好看；再矮编辑卡会被折掉。
+         * 这张用来看"编辑区在键盘正下方"之后的整页观感。 */
+        kv.SetSizePresetForRender("large");
+        main.Width = kv.RequiredWindowSize().Width;
+        main.Height = 1040;
+        Pump(300);
+        Save(main, Path.Combine(outDir, "keys-full.png"));
+
+        kv.ClearSizePresetForRender();
+        main.MinWidth = savedMinW;
+        main.MinHeight = savedMinH;
+        main.Width = savedW;
+        main.Height = savedH;
+        Pump(200);
     }
 
     private static void Pump(int ms = 120)

@@ -21,7 +21,7 @@ dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self
 
 ## 自检
 
-程序内置 1600+ 项自检，覆盖按键模型、表达式求值、Qbar 检索与标签、
+程序内置 2000+ 项自检，覆盖按键模型、表达式求值、Qbar 检索与标签、
 设置读写、旧版 ini 迁移、窗口与进程、输入注入、键盘钩子、组合键状态机、
 加密与备份、横条与连续调节。
 
@@ -53,7 +53,7 @@ tools\bench.ps1
 | --- | --- |
 | `--selftest` | 跑自检并退出 |
 | `--render <目录>` | 离屏渲染全部界面 |
-| `--page=<页面>` | 启动并直接打开某页（guide/keys/qbar/bindings/clipboard/translate/settings/help/about） |
+| `--page=<页面>` | 启动并直接打开某页（guide/keys/qbar/clipboard/macros/layers/backup/settings/test/help/about） |
 | `--qbar [--text=关键词]` | 直接打开 Qbar |
 | `--tray` | 只驻留托盘，不显示窗口 |
 | `--noelevate` | 不请求管理员权限（调试用） |

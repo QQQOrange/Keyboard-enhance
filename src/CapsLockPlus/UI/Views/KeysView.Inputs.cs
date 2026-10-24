@@ -102,7 +102,7 @@ public partial class KeysView : UserControl
     /// <summary>
     /// 备注变化：写进 <see cref="KeyBinding.Note"/>。
     ///
-    /// 备注只影响**显示**（键帽 + 已绑定列表），不参与输入 ——
+    /// 备注只影响**显示**（键帽文字），不参与输入 ——
     /// 用户要把一长串邮箱/地址起个短名字，键帽上才看得清。
     /// 留空即删除备注，键帽回退显示文字开头。
     /// </summary>
@@ -473,18 +473,6 @@ public partial class KeysView : UserControl
         SelectKey(_selectedKey);
     }
 
-
-
-    private void OnBoundSelected(object sender, SelectionChangedEventArgs e)
-    {
-        // 点列表里的条目要把**修饰键一起**还原，否则点了 Ctrl+Shift+K
-        // 只会选中 K，编辑的其实是另一个绑定。
-        if (BoundList.SelectedItem is BoundVm vm)
-        {
-            _layer = vm.Mods;
-            SelectKey(vm.Key);
-        }
-    }
 
 
     private void OnActionChanged(object sender, SelectionChangedEventArgs e)

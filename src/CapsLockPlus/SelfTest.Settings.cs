@@ -903,6 +903,58 @@ public static partial class SelfTest
     ///   * 重复获取被正确判为“已有实例”；
     ///   * 释放后又能重新获取（= 重启流程不会互相卡死）。
     /// </summary>
+    /// <summary>
+    /// 「恢复默认」的数据层：只重置第 1 层、保留自定义组合键、其它层不动，
+    /// 并且 <c>Keys</c> 与 <c>Layers[0].Keys</c> 必须始终是**同一个 List**。
+    ///
+    /// 背景：这段以前写成 <c>settings.Keys = preset</c>，把引用换掉了。
+    /// 引擎与界面都按层读 <c>Layers[0].Keys</c>，于是：
+    ///   · 点「恢复默认」键盘上什么都没变（看着像按钮坏了）；
+    ///   · 落盘重读之后新预设被 NormalizeLayers 反向覆盖，彻底丢失。
+    /// 下面几条专门盯着这个引用同一性和"只动第 1 层"的边界。
+    /// </summary>
+    private static void TestResetLayerOne()
+    {
+        var s = DefaultSettings.Create();
+        var layer1 = s.Layers.First(l => l.Id == 1);
+        var layer3 = s.Layers.First(l => l.Id == 3);
+
+        // 弄乱：改一条默认键、加一条自定义组合键、在别的层加一条
+        layer1.Keys.First(k => k.Combo == "caps_q").Action = "doNothing";
+        layer1.Keys.Add(new KeyBinding { Combo = "caps_ctrl_alt_shift_f24", Action = "copy1", Note = "我的复制" });
+        layer3.Keys.Add(new KeyBinding { Combo = "caps_z", Action = "undoRedo", Note = "第3层" });
+
+        Check("重置前 Keys 与 Layers[0].Keys 是同一份 List",
+            ReferenceEquals(s.Keys, layer1.Keys));
+
+        DefaultSettings.ResetLayerOne(s, "capslox");
+
+        Check("重置后 Keys 与 Layers[0].Keys 仍是同一份 List",
+            ReferenceEquals(s.Keys, layer1.Keys),
+            "换掉引用 = 引擎读不到新预设");
+
+        CheckEqual("恢复默认：改过的默认键被恢复",
+            layer1.Keys.First(k => k.Combo == "caps_q").Action, "qbar");
+
+        Check("恢复默认：用户自己的组合键被保留",
+            layer1.Keys.Any(k => k.Combo == "caps_ctrl_alt_shift_f24" && k.Note == "我的复制"),
+            $"共 {layer1.Keys.Count} 条");
+
+        Check("恢复默认：其它层完全不动",
+            layer3.Keys.Any(k => k.Combo == "caps_z" && k.Note == "第3层"),
+            $"第 3 层 {layer3.Keys.Count} 条");
+
+        var dupes = layer1.Keys.GroupBy(k => k.Combo, StringComparer.OrdinalIgnoreCase)
+                               .Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        Check("恢复默认：不会留下重复组合键", dupes.Count == 0, string.Join(",", dupes));
+
+        // 重置是幂等的：连点两次结果一致
+        int countOnce = layer1.Keys.Count;
+        DefaultSettings.ResetLayerOne(s, "capslox");
+        Check("恢复默认可重复执行（幂等）", layer1.Keys.Count == countOnce,
+            $"{countOnce} → {layer1.Keys.Count}");
+    }
+
     private static void TestSingleInstance()
     {
         // 用一个独立名称测试，避免与真实运行的实例互相干扰

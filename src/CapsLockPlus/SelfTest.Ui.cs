@@ -1131,6 +1131,139 @@ public static partial class SelfTest
         Check("键盘宿主是 Viewbox（等比缩放容器）",
             hostField?.FieldType == typeof(System.Windows.Controls.Viewbox),
             hostField?.FieldType.Name ?? "(null)");
+
+        /* ---------- 键盘档位 = 页面最小尺寸 ----------
+         *
+         * 用户报的问题：「窗口缩小或缩放时 108 个按键等比例缩小，
+         * 键上的文字小到无法辨认」，并且明确否掉了"到下限就出滚动条"的做法：
+         * 「准备好几个 108 键键盘的大小，我能选一个作为默认……而这也就是
+         * 这个页面的最小大小」。
+         *
+         * 现在的规则（三条，缺一不可）：
+         *   ① 键盘大小只由**档位**决定，窗口怎么拖都不影响键帽大小；
+         *   ② 每档给出一个"装下它所需的窗口尺寸"，主窗口拿它设 MinWidth/MinHeight；
+         *   ③ 档位下限 0.75 —— 功能名 8.5 × 0.75 = 6.4 DIP，再小中文笔画就粘了。
+         */
+        try
+        {
+            var view = new UI.Views.KeysView();
+            Check("键盘装在 ScrollViewer 里（屏幕装不下时还能滚着看）",
+                view.KeyboardHostForTest is System.Windows.Controls.ScrollViewer,
+                view.KeyboardHostForTest?.GetType().Name ?? "(null)");
+
+            /* ---------- 布局：编辑区搬到键盘下方 ----------
+             *
+             * 用户的要求：「将编辑绑定界面直接放置在键盘下方，以便 108 键键盘
+             * 能够获得更大的展示空间」。这两条断言把意图钉死：
+             *   · 编辑卡片的顶边必须在键盘底边之下（不是左右并排）；
+             *   · 键盘可用宽度等于整页宽度（不再被 330 宽的编辑栏切掉一块）。
+             */
+            var order = view.VerticalOrderForTest(1400, 900);
+            Check("编辑区在键盘下方（不再左右分栏）",
+                order.EditorTop > order.KeyboardBottom - 0.5,
+                $"keyboardBottom={order.KeyboardBottom:0} editorTop={order.EditorTop:0}");
+            Check("键盘可用宽度 ≈ 整页宽度（编辑栏不再横向占位）",
+                order.PageWidth > 0 && order.KeyboardWidth > order.PageWidth * 0.85,
+                $"keyboard={order.KeyboardWidth:0} page={order.PageWidth:0} "
+                + $"panel={view.KeyboardPanelWidthForTest:0}");
+
+            /* 「本层已绑定」清单已被移除：键帽本身就是绑定状态（深蓝实底 / 浅底）。
+             * 用反射盯着字段，防止哪天又被加回来。 */
+            var boundField = typeof(UI.Views.KeysView).GetField("BoundList",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Check("已移除「本层已绑定」列表（状态直接看键帽）", boundField == null,
+                boundField?.FieldType.Name ?? "(无)");
+
+            // ① 档位表本身
+            var presets = Core.Settings.KeyboardSizePreset.All;
+            Check("键盘档位是 4 档", presets.Count == 4, presets.Count.ToString());
+            Check("档位比例严格递增",
+                presets.Zip(presets.Skip(1)).All(p => p.Second.Scale > p.First.Scale),
+                string.Join(" / ", presets.Select(p => p.Scale.ToString("0.00"))));
+            Check("默认档就是设计尺寸（1.0）",
+                Math.Abs(Core.Settings.KeyboardSizePreset.Resolve(null).Scale - 1.0) < 0.001,
+                Core.Settings.KeyboardSizePreset.Resolve(null).Id);
+            Check("乱写的档位 ID 会退回默认档",
+                Core.Settings.KeyboardSizePreset.Resolve("enormous").Id
+                == Core.Settings.KeyboardSizePreset.DefaultId,
+                Core.Settings.KeyboardSizePreset.Resolve("enormous").Id);
+
+            /* ② 每档的功能名字号必须还在可读范围。
+             *
+             * 8.5 DIP 是键帽上主信息（功能名）的设计字号；乘档位比例就是
+             * 实际字号。6 DIP 是底线：96 DPI 下 6 px 的中文已经很难认，
+             * 再往下就该干脆不做这一档。 */
+            foreach (var p in presets)
+            {
+                double fontSize = 8.5 * p.Scale;
+                Check($"「{p.Name}」档功能名字号 ≥ 6 DIP", fontSize >= 6.0,
+                    $"{fontSize:0.00} DIP");
+            }
+
+            /* ③ 同一窗口尺寸下，档位决定键盘大小 —— 这是与旧版最本质的区别。
+             * 旧版这里会随可用空间变化，也正因为"会变"才会被拖到看不清。 */
+            double prevKeyW = 0;
+            foreach (var p in presets)
+            {
+                UI.Views.KeysView.RenderPresetOverrideForTest = p.Id;
+
+                var wide = view.KeyboardScaleForTest(2400, 1400);   // 足够大，排除滚动干扰
+                Check($"「{p.Name}」档缩放 = {p.Scale:0.00}（不随窗口变）",
+                    Math.Abs(wide.Scale - p.Scale) < 0.001, $"scale={wide.Scale:0.000}");
+
+                double bandW = wide.KeyWidth * declared / 4.0;
+                Check($"「{p.Name}」档整把键盘比上一档更宽", bandW > prevKeyW,
+                    $"{prevKeyW:0} → {bandW:0}");
+                prevKeyW = bandW;
+
+                Check($"「{p.Name}」档装得下时不出横向滚动条", !wide.NeedsScrollX,
+                    $"panelW={bandW:0}");
+            }
+
+            // ④ 窗口小于档位需求 → 键盘一个像素都不缩，改由滚动条兜底
+            UI.Views.KeysView.RenderPresetOverrideForTest = "xlarge";
+            var tight = view.KeyboardScaleForTest(900, 600);
+            Check("窗口装不下时键盘保持档位大小、不缩",
+                Math.Abs(tight.Scale - 1.15) < 0.001, $"scale={tight.Scale:0.000}");
+            Check("窗口装不下时改用横向滚动", tight.NeedsScrollX,
+                $"panelW={tight.KeyWidth * declared / 4.0:0}");
+
+            /* ⑤ 页面最小尺寸 = 键盘宽 + 卡片两侧的固定宽度。
+             *
+             * 这个式子必须和 MainWindow 真正去设的 MinWidth 一致 ——
+             * 差几十像素的表现就是"窗口到了最小尺寸，键盘却还在出滚动条"。 */
+            double prevNeedW = 0;
+            foreach (var p in presets)
+            {
+                UI.Views.KeysView.RenderPresetOverrideForTest = p.Id;
+                var need = view.RequiredWindowSize();
+                double expectW = UI.Views.KeysView.WindowFixedWidth
+                                 + UI.Views.KeysView.NaturalWidth * p.Scale;
+                Check($"「{p.Name}」档最小窗口宽 = 键盘宽 + 固定宽度",
+                    Math.Abs(need.Width - expectW) < 0.5,
+                    $"need={need.Width:0} expect={expectW:0}");
+                Check($"「{p.Name}」档最小窗口宽大于上一档", need.Width > prevNeedW,
+                    $"{prevNeedW:0} → {need.Width:0}");
+                prevNeedW = need.Width;
+            }
+
+            /* ⑥ 窗口刚好等于它自己的最小尺寸时，键盘必须完整可见。
+             *
+             * 传进去的是 KeysView 的尺寸，所以要扣掉侧栏（228）和标题栏（56）。 */
+            UI.Views.KeysView.RenderPresetOverrideForTest = "large";
+            var needLarge = view.RequiredWindowSize();
+            var exact = view.KeyboardScaleForTest(needLarge.Width - 228, needLarge.Height - 56);
+            Check("窗口等于最小尺寸时键盘完整可见（无横向滚动）", !exact.NeedsScrollX,
+                $"need={needLarge.Width:0}×{needLarge.Height:0} panelW={exact.KeyWidth * declared / 4.0:0} "
+                + $"viewport={view.KeyboardViewportWidthForTest:0.0}");
+
+            UI.Views.KeysView.RenderPresetOverrideForTest = null;
+        }
+        catch (Exception ex)
+        {
+            Check("键盘档位探针没抛异常", false, ex.Message);
+            UI.Views.KeysView.RenderPresetOverrideForTest = null;
+        }
     }
 
     private static void TestHelpCoversAllLayers()

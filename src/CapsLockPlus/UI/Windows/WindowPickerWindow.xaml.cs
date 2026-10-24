@@ -73,8 +73,24 @@ public partial class WindowPickerWindow : Window
     /// <summary>这个键此刻是否被按住（查物理状态，不受 UIPI / 钩子影响）。</summary>
     private static bool IsDown(uint vk) => (GetAsyncKeyState((int)vk) & 0x8000) != 0;
 
-    public WindowPickerWindow()
+    /// <summary>
+    /// 仅供 --render：出图时不要把遮罩铺到用户屏幕上。
+    ///
+    /// 这个窗口是 **Topmost + 铺满整个虚拟屏幕** 的。当成后台命令
+    /// （exe --render 出图）跑时，用户根本不知道会弹东西，
+    /// 屏幕上却会突然盖一层半透明遮罩 —— 看起来就像"程序弹了个怪窗口"。
+    /// 走这个构造时尺寸照旧，只把窗口挪到屏幕外，RenderTargetBitmap 仍能截到内容。
+    /// </summary>
+    private readonly bool _renderOffScreen;
+
+    public WindowPickerWindow() : this(false) { }
+
+    internal WindowPickerWindow(bool renderOffScreen)
     {
+        /* 必须在 InitializeComponent / FitToVirtualScreen **之前**赋值：
+         * 位置是在构造里就定下来的，晚一步就已经在屏幕上闪过了。 */
+        _renderOffScreen = renderOffScreen;
+
         InitializeComponent();
         FitToVirtualScreen();          // 先摆好尺寸再显示，避免一帧小窗闪过
         _kbdProc = KeyboardCallback;
@@ -101,10 +117,19 @@ public partial class WindowPickerWindow : Window
     /// </summary>
     private void FitToVirtualScreen()
     {
-        Left = SystemParameters.VirtualScreenLeft;
-        Top = SystemParameters.VirtualScreenTop;
         Width = SystemParameters.VirtualScreenWidth;
         Height = SystemParameters.VirtualScreenHeight;
+
+        if (_renderOffScreen)
+        {
+            // 屏幕外：尺寸保持全屏（截图要那张铺满的效果），位置挪走
+            Left = SystemParameters.VirtualScreenLeft - Width - 200;
+            Top = SystemParameters.VirtualScreenTop - Height - 200;
+            return;
+        }
+
+        Left = SystemParameters.VirtualScreenLeft;
+        Top = SystemParameters.VirtualScreenTop;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

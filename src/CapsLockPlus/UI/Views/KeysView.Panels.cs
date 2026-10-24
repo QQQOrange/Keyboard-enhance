@@ -86,13 +86,17 @@ public partial class KeysView : UserControl
 
     /// <summary>
     /// 自检用：把视图切到「自定义按键」面板（内容最高），强制布局后
-    /// 报出底部两个按钮的位置 —— 用来验证它们不会被挤出可视区。
+    /// 报出底部两个按钮在**整页内容**里的位置 —— 用来验证它们不会被裁掉。
     ///
     /// 为什么这条要专门测：以前中间几行是 Auto 高度，面板一展开就把
     /// 「清除绑定」「测试一下」推到卡片外面，怎么滚都看不到
     /// （溢出的是 Grid 行，不是 ScrollViewer 的内容，滚动条根本不出现）。
+    ///
+    /// 现在编辑区在键盘下方、整页只有一个纵向 ScrollViewer：
+    /// 按钮只要落在内容范围内（Bottom ≤ ContentHeight）就一定滚得到，
+    /// 不会再出现"内容被祖先裁掉、滚也滚不出来"的情况。
     /// </summary>
-    public (bool Visible, double Bottom, double ViewHeight, double ScrollHeight) FooterForTest(
+    public (bool Visible, double Bottom, double ContentHeight, double ViewportHeight) FooterForTest(
         double width, double height)
     {
         ApplyEditorMode(EditorMode.CustomKey);
@@ -104,8 +108,10 @@ public partial class KeysView : UserControl
         double bottom = 0;
         try
         {
-            var p = ClearBindButton.TransformToAncestor(this).Transform(new Point(0, 0));
-            bottom = p.Y + ClearBindButton.ActualHeight;
+            /* 坐标是相对**视口**的，加上当前滚动偏移才是它在内容里的位置。
+             * 这里没有主动滚动，偏移通常是 0，但写全了才不会在别处复用时算错。 */
+            var p = ClearBindButton.TransformToAncestor(PageScroll).Transform(new Point(0, 0));
+            bottom = p.Y + ClearBindButton.ActualHeight + PageScroll.VerticalOffset;
         }
         catch
         {
@@ -117,7 +123,7 @@ public partial class KeysView : UserControl
          * 自检里的视图是"离线"布局的，IsVisible 恒为 false，
          * 用它判断会得到假失败。尺寸不为 0 才说明它真的被排版出来了。 */
         bool laidOut = ClearBindButton.ActualWidth > 0 && ClearBindButton.ActualHeight > 0;
-        return (laidOut, bottom, ActualHeight, EditorScroll.ActualHeight);
+        return (laidOut, bottom, PageScroll.ExtentHeight, PageScroll.ViewportHeight);
     }
 
     /// <summary>
@@ -138,6 +144,13 @@ public partial class KeysView : UserControl
                     break;
                 }
             }
+
+            /* 五个分类下拉必须同步。
+             * 事件被抑制时不会走 OnCategoryChanged，所以这里手动同步，
+             * 否则截图里会出现"面板是自定义按键、上面的分类却写着直达链接"
+             * 这种自相矛盾的画面。 */
+            foreach (var box in new[] { CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType, CategoryBoxCustom })
+                SelectTag(box, CustomKeyCategory);
         }
         finally
         {
@@ -185,13 +198,34 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>仅供渲染：截图后把界面恢复到"当前按键真实状态"。</summary>
-    public void ResetRenderState() => SelectKey(_selectedKey);
+    public void ResetRenderState()
+    {
+        SelectKey(_selectedKey);
+        PageScroll.ScrollToTop();
+    }
+
+    /// <summary>
+    /// 仅供渲染：把页面滚到编辑区，好截一张"键盘下方的编辑面板"完整样子。
+    ///
+    /// 出图时窗口高度通常只有 800，编辑区在折叠线以下 —— 不滚下去的话，
+    /// 后面所有面板（自定义按键 / 窗口绑定…）的截图拍到的都是键盘。
+    /// </summary>
+    public void ScrollToEditorForRender()
+    {
+        UpdateLayout();
+        double top = 0;
+        try { top = EditorCard.TransformToAncestor(PageScroll).Transform(new Point(0, 0)).Y + PageScroll.VerticalOffset; }
+        catch { /* 预期内：还没参与布局时直接滚到顶 */ }
+
+        PageScroll.ScrollToVerticalOffset(Math.Max(0, top - 12));
+        UpdateLayout();
+    }
 
     /// <summary>
     /// 一个绑定在界面上该显示成什么。
     ///
-    /// 键帽和"本层已绑定"列表都用它，保证两处文字一致 ——
-    /// 早先键帽显示程序名、列表显示"覆盖"，用户对不上号。
+    /// 键帽和编辑面板里的说明都用它，保证两处文字一致 ——
+    /// 早先键帽显示程序名、面板显示「覆盖」，用户对不上号。
     /// </summary>
     private string DescribeActionOf(KeyBinding binding)
     {

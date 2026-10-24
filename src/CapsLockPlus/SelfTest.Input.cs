@@ -574,21 +574,22 @@ public static partial class SelfTest
         CheckEqual("键帽文字：没有短名时原样返回",
             UI.Views.KeysView.KeycapTitleOf("copy", "复制到剪贴板", null), "复制到剪贴板");
 
-        /* ---------- 底部按钮必须始终在可视区内 ----------
+        /* ---------- 底部按钮不能被裁掉 ----------
          *
          * 用最矮的常见窗口高度 + 内容最高的「自定义按键」面板来压：
-         * 布局没做好的话，按钮的底边会跑到视图高度之外（被卡片裁掉）。 */
+         * 编辑区在键盘下方、整页滚动，所以判据是"按钮落在可滚动的内容里"，
+         * 而不是"按钮刚好在视口内"。两者都不满足才是真的被裁了。 */
         try
         {
             var view = new UI.Views.KeysView();
             foreach (var (w, h) in new[] { (900.0, 420.0), (1280.0, 700.0), (640.0, 360.0) })
             {
                 var f = view.FooterForTest(w, h);
-                Check($"底部按钮可见（{w}×{h}）", f.Visible,
-                    $"visible={f.Visible} bottom={f.Bottom:F0} view={f.ViewHeight:F0}");
-                Check($"底部按钮没被挤出可视区（{w}×{h}）",
-                    f.ViewHeight > 0 && f.Bottom <= f.ViewHeight + 0.5,
-                    $"bottom={f.Bottom:F0} view={f.ViewHeight:F0} scroll={f.ScrollHeight:F0}");
+                Check($"底部按钮被排版出来了（{w}×{h}）", f.Visible,
+                    $"visible={f.Visible} bottom={f.Bottom:F0} content={f.ContentHeight:F0}");
+                Check($"底部按钮落在可滚动内容里（{w}×{h}）",
+                    f.ContentHeight > 0 && f.Bottom <= f.ContentHeight + 0.5,
+                    $"bottom={f.Bottom:F0} content={f.ContentHeight:F0} viewport={f.ViewportHeight:F0}");
             }
         }
         catch (Exception ex)

@@ -15,7 +15,7 @@ namespace CapsLockPlus.UI.Views;
 
 public partial class KeysView : UserControl
 {
-// 层与子层：层下拉、子层按钮、已绑定列表、选中键、动作参数面板。
+// 层与子层：层下拉、子层按钮、选中键、动作参数面板。
 
     private void BuildLayerBox()
     {
@@ -406,70 +406,6 @@ public partial class KeysView : UserControl
         ShowBindStatus($"「{layer.Name}」现有 {layer.EffectiveSubLayers.Count} 个子层");
     }
 
-    private void RefreshBoundList()
-    {
-        if (_host == null) return;
-        var items = new List<BoundVm>();
-        foreach (var binding in CurrentLayerKeys.Where(k => k.IsBound))
-        {
-            var parsed = KeyName.ParseCombo(binding.Combo);
-            if (parsed == null) continue;
-
-            // 动作已不在动作表里（旧配置残留）→ 不列出来，避免误导
-            if (_host?.Actions.Get(binding.Action) == null) continue;
-
-            var (mods, key) = parsed.Value;
-            if (key == "capslock") continue;
-            // 不再按修饰键过滤：这一层里所有绑定都要列出来，
-            // 否则用自定义按键绑的 Ctrl+Shift+K 之类就"看不见"了。
-            string label = mods == KeyModifiers.None
-                ? KeyName.Display(key)
-                : $"{ModifierText(mods)} {KeyName.Display(key)}";
-
-            /* 非修饰键子层的 combo 形如 caps_tab_q：键名里带下划线。
-             * 拆出子层名前缀显示成 "Tab Q"，别把内部编码露给用户。 */
-            int sep = key.IndexOf('_');
-            if (sep > 0)
-            {
-                string sub = KeyName.Display(key[..sep]);
-                string rest = KeyName.Display(key[(sep + 1)..]);
-                label = mods == KeyModifiers.None
-                    ? $"{sub} {rest}"
-                    : $"{ModifierText(mods)} {sub}+{rest}";
-            }
-
-            /* 列表里的"功能"列要和键帽一致：
-             * 窗口绑定显示程序名，直达网页显示备注/域名 ——
-             * 否则用户看到的是"覆盖""打开网页"，对不上自己绑的东西。 */
-            string action = DescribeActionOf(binding);
-            items.Add(new BoundVm(mods, key, label, action));
-        }
-        BoundList.ItemsSource = items
-            .OrderBy(i => KeyOrder(i.Key))
-            .ThenBy(i => i.Key)
-            .ToList();
-    }
-
-    /// <summary>按键盘上的自然顺序排序，读起来更顺。</summary>
-    private static int KeyOrder(string key)
-    {
-        int idx = KeySequence.IndexOf(key);
-        return idx < 0 ? 999 : idx;
-    }
-
-    private static readonly string[] KeySequence =
-    {
-        "q", "w", "e", "r", "t", "y", "u", "i", "o", "p",
-        "a", "s", "d", "f", "g", "h", "j", "k", "l",
-        "z", "x", "c", "v", "b", "n", "m",
-        "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
-        "backquote", "minus", "equal", "leftSquareBracket", "rightSquareBracket", "backslash",
-        "semicolon", "quote", "comma", "dot", "slash",
-        "backspace", "tab", "enter", "space", "ralt",
-        "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
-        "wheelUp", "wheelDown",
-    };
-
     private void SelectKey(string keyId)
     {
         if (_host == null) return;
@@ -549,6 +485,20 @@ public partial class KeysView : UserControl
         }
 
         BuildKeyboard();
+
+        /* 编辑区现在在键盘**下方**，两者离得远了：标题上必须写清"正在改哪个键"，
+         * 否则用户往下滚之后会忘了自己在改谁（左右分栏时靠位置就能看出来）。 */
+        EditorKeyText.Text = SelectedKeyLabel();
+    }
+
+    /// <summary>当前编辑的键在标题上的写法（含子层与修饰键）。</summary>
+    private string SelectedKeyLabel()
+    {
+        string label = KeyName.Display(_selectedKey);
+        if (!string.IsNullOrEmpty(_subLayerKey) && !IsModifierOnlySubLayer(_subLayerKey))
+            label = $"{KeyName.Display(_subLayerKey)} {label}";
+        if (_layer != KeyModifiers.None) label = $"{ModifierText(_layer)} {label}";
+        return label;
     }
 
     /// <summary>这些动作的"参数"是次数，界面要提示填数字。</summary>

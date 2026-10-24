@@ -605,6 +605,9 @@ public static class SettingsStore
         // 步进允许 1~50：太小没感觉，太大一下到底
         s.Global.VolumeStep = Math.Clamp(s.Global.VolumeStep, 1, 50);
         s.Global.BrightnessStep = Math.Clamp(s.Global.BrightnessStep, 1, 50);
+        /* 键盘档位：老配置没有这个字段（null），手改配置也可能写错。
+         * 统一归一化成合法档位 —— 否则按键映射页算不出该用多大。 */
+        s.Global.KeyboardSize = KeyboardSizePreset.Resolve(s.Global.KeyboardSize).Id;
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
 
         /* 已删除的动作：老配置里可能还绑着，统一改成"什么都不做"。
@@ -1256,4 +1259,47 @@ public static class DefaultSettings
 
     private static KeyBinding B(string combo, string action, string arg = "") =>
         new() { Combo = combo, Action = action, Arg = arg };
+
+    /// <summary>
+    /// 把**第 1 层（基础层）**的绑定重置成指定方案的默认值，其它 9 层不动。
+    ///
+    /// 保留用户自己加过、预设里没有的组合键 —— 宁可少恢复一条默认值，
+    /// 也不能把用户自己攒的组合键清掉。
+    ///
+    /// ⚠ 必须**就地**改第 1 层那份 List，绝不能写 <c>s.Keys = preset</c>。
+    ///
+    /// 为什么（这是一次真实的"点了没反应"）：
+    /// <c>s.Keys</c> 与 <c>Layers[0].Keys</c> 必须是**同一个 List 实例**
+    /// （见 NormalizeLayers 末尾那段）。一旦换掉 s.Keys 的引用：
+    ///   · 引擎按层遍历，读的是 Layers[0].Keys —— 旧数据，等于没重置；
+    ///   · 界面 CurrentLayerKeys 也优先取 Layers —— 同样看不到变化；
+    ///   · 落盘后再读回来，NormalizeLayers 会把 Layers[0].Keys 重新指给
+    ///     s.Keys，新预设被彻底丢掉。
+    /// 症状就是"点了恢复默认，键盘上什么都没变，重启也没变"。
+    /// </summary>
+    public static void ResetLayerOne(AppSettings s, string scheme)
+    {
+        s.Global.HotkeyScheme = scheme;
+        var preset = scheme == "capslock_plus" ? ClassicScheme() : CapsloxScheme();
+
+        var layer1 = s.Layers.FirstOrDefault(l => l.Id == 1);
+        if (layer1 == null)
+        {
+            layer1 = new LayerOptions { Id = 1, Name = "基础层" };
+            s.Layers.Insert(0, layer1);
+        }
+        if (layer1.Keys.Count == 0 && s.Keys.Count > 0) layer1.Keys = s.Keys;
+
+        var target = layer1.Keys;
+        s.Keys = target;                       // 同源，别留两份分叉的 List
+
+        foreach (var custom in target.Where(k => preset.All(p =>
+                     !p.Combo.Equals(k.Combo, StringComparison.OrdinalIgnoreCase))).ToList())
+        {
+            preset.Add(custom);
+        }
+
+        target.Clear();
+        target.AddRange(preset);
+    }
 }

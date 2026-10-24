@@ -186,6 +186,232 @@ public partial class KeysView : UserControl
     /// </summary>
     internal static double NaturalHeight => Layout.Length * (KeycapHeight + KeycapGap);
 
+    /* ---------------- 尺寸：由档位决定，不跟窗口走 ---------------- */
+
+    /// <summary>
+    /// 键盘卡片左右两侧的固定宽度 —— 算"页面最小宽度"用。
+    ///
+    ///   侧栏 228 + 页面左边距 24 + 右边距 20 + 卡片内边距 20+20 + 卡片边框 1+1
+    ///   + 页面纵向滚动条（编辑区在下面，几乎总是有）
+    ///
+    /// 编辑区搬到键盘下方之后，这里**不再包含编辑面板的 330 和它旁边的 14 间距**——
+    /// 那 344 DIP 正是键盘以前被挤小的直接原因（约占"大"档键盘宽度的三分之一）。
+    ///
+    /// 数字必须和 MainWindow.xaml / KeysView.xaml 里的实际值一一对应；
+    /// 改任何一处布局都要回来改这里，否则算出来的最小宽度会差几十像素，
+    /// 表现为"窗口到了所谓的最小尺寸，键盘却还在出横向滚动条"。
+    ///
+    /// 滚动条那 17 DIP 是实测踩出来的：整页滚动条画在 PageScroll **内部**，
+    /// 它一出现就从可用宽度里扣掉 17，键盘于是"刚好差一点"而要横向滚。
+    /// 用 <see cref="SystemParameters.VerticalScrollBarWidth"/> 而不是写死 17，
+    /// 免得不同 DPI 下又对不上。
+    ///
+    /// 末尾的 +4 是取整余量：主窗口开了 UseLayoutRounding，
+    /// 把窗口设成"刚好装下"的宽度时各层取整会抹掉零点几像素，
+    /// 判定就成了"装不下"，键盘明明刚好放下却冒出一条横向滚动条。
+    /// </summary>
+    internal static double WindowFixedWidth =>
+        228 + 24 + 20 + 20 + 20 + 2
+        + SystemParameters.VerticalScrollBarWidth
+        + 4;
+
+    /// <summary>
+    /// 键盘卡片上下那些固定高度加起来（**已含标题栏 56**）：
+    ///
+    ///   页面上下边距 4+20、工具栏 ~46 + 下间距 14、卡片内边距 16+16、
+    ///   信息条 ~39、底部控制条 ~67、卡片边框 2 —— 共约 280，留 10 余量。
+    ///
+    /// 编辑区在卡片之下、由整页滚动承接，所以**不计入**最小高度：
+    /// 窗口再矮也只是要往下滚一下，键盘本身不会被压缩（那才是真正的病）。
+    /// </summary>
+    internal const double WindowFixedHeight = 290;
+
+    /// <summary>渲染期强制档位（只在 --render 里用，不写用户设置）。</summary>
+    internal static string? RenderPresetOverrideForTest;
+
+    /// <summary>当前生效的档位。</summary>
+    internal KeyboardSizePreset EffectivePreset => KeyboardSizePreset.Resolve(
+        RenderPresetOverrideForTest ?? _host?.Settings.Global.KeyboardSize);
+
+    /// <summary>档位下键盘的实际宽度（DIP）。</summary>
+    internal static double WidthOf(KeyboardSizePreset preset) => NaturalWidth * preset.Scale;
+
+    /// <summary>档位下键盘的实际高度（DIP）。</summary>
+    internal static double HeightOf(KeyboardSizePreset preset) => NaturalHeight * preset.Scale;
+
+    /// <summary>档位下标准键（4 列）的宽度。</summary>
+    internal static double StandardKeyWidthOf(KeyboardSizePreset preset) => KeyWidth * preset.Scale;
+
+    /// <summary>档位下键帽高度。</summary>
+    internal static double StandardKeyHeightOf(KeyboardSizePreset preset) => KeycapHeight * preset.Scale;
+
+    /// <summary>
+    /// 装下当前档位键盘所需的**窗口**尺寸。
+    ///
+    /// 这就是"这个页面的最小大小"的来源：主窗口切到按键映射页时
+    /// 拿它去设 MinWidth / MinHeight（见 MainWindow.ApplyPageMinimum），
+    /// 于是窗口最多只能缩到刚好看全整把键盘。
+    /// </summary>
+    internal (double Width, double Height) RequiredWindowSize()
+    {
+        var preset = EffectivePreset;
+        return (WindowFixedWidth + WidthOf(preset),
+                Math.Max(620, WindowFixedHeight + HeightOf(preset)));
+    }
+
+    /// <summary>
+    /// 把键盘设成当前档位的大小。
+    ///
+    /// 这里**不再读可用空间**：档位是多少就是多少。窗口比它宽，多出来的
+    /// 空间是键盘两侧的居中留白；窗口比它窄（屏幕本身装不下），外层
+    /// ScrollViewer 出横向滚动条，键帽一个像素都不缩。
+    /// </summary>
+    internal void ApplyKeyboardSize()
+    {
+        var preset = EffectivePreset;
+        double w = WidthOf(preset);
+        double h = HeightOf(preset);
+
+        KeyboardPanel.Width = w;
+        KeyboardPanel.Height = h;
+        SizeText.Text = $"{w:0} × {h:0}";
+    }
+
+    /// <summary>
+    /// 填「键盘大小」下拉并选中当前档位。
+    ///
+    /// 标签里带上实际像素尺寸：只写"大 / 小"用户没法判断到底多大，
+    /// 而"大 · 1058 × 330"能直接和窗口宽度对起来。
+    /// </summary>
+    private void BuildSizeBox()
+    {
+        if (_host == null) return;
+        /* 用 EffectivePreset 而不是直接读设置：渲染时 override 可能压过设置，
+         * 下拉框必须显示**当前真正生效**的那一档，否则出图时会出现
+         * "键盘是 794 宽、下拉写着 1058" 的自相矛盾。 */
+        var current = EffectivePreset;
+
+        _suppressEvents = true;
+        try
+        {
+            SizeBox.Items.Clear();
+            foreach (var preset in KeyboardSizePreset.All)
+            {
+                SizeBox.Items.Add(new ComboBoxItem
+                {
+                    Content = preset.Label(NaturalWidth),
+                    Tag = preset.Id,
+                    ToolTip = preset.Hint,
+                });
+            }
+            foreach (ComboBoxItem item in SizeBox.Items)
+            {
+                if (item.Tag as string == current.Id) { SizeBox.SelectedItem = item; break; }
+            }
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+    }
+
+    private void OnKeyboardSizeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        if (SizeBox.SelectedItem is not ComboBoxItem { Tag: string id }) return;
+
+        var preset = KeyboardSizePreset.Resolve(id);
+        if (string.Equals(_host.Settings.Global.KeyboardSize, preset.Id, StringComparison.Ordinal))
+            return;
+
+        /* 存的就是"默认档"本身：下次打开这个页面（哪怕重启程序）
+         * 都直接按这一档渲染，不需要用户再选一次。 */
+        _host.Settings.Global.KeyboardSize = preset.Id;
+        _host.SaveSettings();
+
+        ApplyKeyboardSize();
+
+        /* 页面最小尺寸跟着档位走 —— 由主窗口负责改 MinWidth/MinHeight。
+         * 换大档时窗口会被撑到装得下，换小档时窗口可以缩得更小。 */
+        (Window.GetWindow(this) as MainWindow)?.ApplyPageMinimum(this);
+    }
+
+    /// <summary>仅供自检：按指定窗口尺寸完整排一次版，返回键盘最终的大小。</summary>
+    public (double Scale, double KeyWidth, double KeyHeight, bool NeedsScrollX)
+        KeyboardScaleForTest(double width, double height)
+    {
+        Measure(new Size(width, height));
+        Arrange(new Rect(0, 0, width, height));
+        UpdateLayout();
+        ApplyKeyboardSize();
+        UpdateLayout();
+
+        double panelW = KeyboardPanel.Width;
+        if (double.IsNaN(panelW) || panelW <= 0) return (0, 0, 0, false);
+
+        return (panelW / NaturalWidth,
+                panelW / (TotalCols / 4.0),
+                KeyboardPanel.Height / Layout.Length,
+                panelW > KeyboardScroll.ActualWidth + 0.5);
+    }
+
+    /// <summary>
+    /// 仅供 --render：临时按某个档位出图（**不写用户设置**）。
+    ///
+    /// 渲染是独立进程，改设置也不会污染用户的真实配置；但为了保险，
+    /// 这里只动内存里的 override，落盘的事一概不做。
+    /// </summary>
+    public void SetSizePresetForRender(string presetId)
+    {
+        RenderPresetOverrideForTest = KeyboardSizePreset.Resolve(presetId).Id;
+        ApplyKeyboardSize();
+        BuildSizeBox();
+        UpdateLayout();
+    }
+
+    /// <summary>仅供 --render：清掉档位 override，回到用户真实设置。</summary>
+    public void ClearSizePresetForRender()
+    {
+        RenderPresetOverrideForTest = null;
+        ApplyKeyboardSize();
+        BuildSizeBox();
+        UpdateLayout();
+    }
+
+    /// <summary>仅供自检：键盘的直接宿主（应当就是那个 ScrollViewer）。</summary>
+    internal DependencyObject? KeyboardHostForTest => KeyboardPanel.Parent;
+
+    /// <summary>仅供自检：键盘可视区当前有多宽（排完版后才有值）。</summary>
+    internal double KeyboardViewportWidthForTest => KeyboardScroll.ActualWidth;
+
+    /// <summary>仅供自检：键盘（Viewbox）自己声明的宽度。</summary>
+    internal double KeyboardPanelWidthForTest => KeyboardPanel.Width;
+
+    /// <summary>
+    /// 仅供自检：键盘底边与编辑卡片顶边在页面里的纵坐标。
+    ///
+    /// 用来钉住「编辑区在键盘**下方**」这条布局约定 —— 它是"把键盘空间
+    /// 抢回来"的核心：左右分栏时编辑面板固定占 330 宽，键盘只能缩。
+    /// </summary>
+    internal (double KeyboardBottom, double EditorTop, double PageWidth, double KeyboardWidth)
+        VerticalOrderForTest(double width, double height)
+    {
+        Measure(new Size(width, height));
+        Arrange(new Rect(0, 0, width, height));
+        UpdateLayout();
+
+        try
+        {
+            var kb = KeyboardScroll.TransformToAncestor(this).Transform(new Point(0, 0));
+            var ed = EditorCard.TransformToAncestor(this).Transform(new Point(0, 0));
+            return (kb.Y + KeyboardScroll.ActualHeight, ed.Y, ActualWidth, KeyboardScroll.ActualWidth);
+        }
+        catch
+        {
+            return (0, 0, 0, 0);
+        }
+    }
+
     /// <summary>
     /// 需要**纵向合并**的键：小键盘的 + 与回车各跨两行。
     ///
@@ -204,7 +430,18 @@ public partial class KeysView : UserControl
     };
 
 
-    public KeysView() => InitializeComponent();
+    public KeysView()
+    {
+        InitializeComponent();
+
+        /* 搜索结果的浮层是**独立窗口**，页面一滚它不会跟着搜索框走，
+         * 会钉在原来的屏幕位置、和输入框错位。滚一下就收起最省事 ——
+         * 用户把页面滚走时本来也不是在看那几条结果。 */
+        PageScroll.ScrollChanged += (_, e) =>
+        {
+            if (e.VerticalChange != 0 && SearchPopup.IsOpen) SearchPopup.IsOpen = false;
+        };
+    }
 
     /// <summary>
     /// 切到指定层并刷新界面（从「触发键与层」页跳过来时用）。
@@ -237,6 +474,10 @@ public partial class KeysView : UserControl
         BuildCategoryBox();
         _suppressEvents = false;
         BuildLayerBox();
+        /* 每次进这个页面都重新读档位 —— 用户选过"特大"之后，
+         * 下次打开（甚至重启程序）就该直接是特大，不用再选一次。 */
+        BuildSizeBox();
+        ApplyKeyboardSize();
         BuildKeyboard();
         SelectKey(_selectedKey);
     }

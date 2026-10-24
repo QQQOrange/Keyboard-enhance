@@ -552,6 +552,28 @@ public partial class QbarWindow : Window
         RunQuery();
     }
 
+    /// <summary>
+    /// 仅供 --render：Open 会把面板摆到屏幕**上方居中**（那是它给用户看的正常位置），
+    /// 出图时用户并不知道会弹东西，看到的就是"突然冒出个面板"。
+    ///
+    /// 只改 WPF 的 Left/Top 不够：这个窗口是 Topmost + ShowActivated，
+    /// 打开流程里位置还会被重算一次。直接下 Win32 命令挪到虚拟屏外面，
+    /// 绕过属性重算；尺寸不变，RenderTargetBitmap 照样截得到内容。
+    /// </summary>
+    public void ParkOffScreenForRender()
+    {
+        Left = -32000;
+        Top = -32000;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        Core.Interop.NativeMethods.SetWindowPos(
+            hwnd, IntPtr.Zero, -20000, -20000, 0, 0,
+            Core.Interop.NativeMethods.SWP_NOSIZE
+            | Core.Interop.NativeMethods.SWP_NOZORDER
+            | Core.Interop.NativeMethods.SWP_NOACTIVATE);
+    }
+
     private void PlayShowAnimation()
     {
         Panel.BeginAnimation(OpacityProperty, null);

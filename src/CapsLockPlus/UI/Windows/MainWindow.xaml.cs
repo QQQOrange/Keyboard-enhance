@@ -13,6 +13,16 @@ public partial class MainWindow : Window
     private string _current = "";
     private string? _pendingPage;
 
+    /// <summary>
+    /// 基础最小尺寸（= XAML 里写的那两个值）。
+    ///
+    /// 在构造函数里从 XAML 读出来存着，而不是另写一份常量：
+    /// 两份数字一旦不同步，"离开按键映射页之后窗口缩不回原来的大小"
+    /// 这种问题会非常难查。
+    /// </summary>
+    private readonly double _baseMinWidth;
+    private readonly double _baseMinHeight;
+
     /// <summary>当前主窗口实例（AppHost 需要用它导航到某个页面）。</summary>
     public static MainWindow? Instance { get; private set; }
 
@@ -21,6 +31,9 @@ public partial class MainWindow : Window
         _host = host;
         Instance = this;
         InitializeComponent();
+
+        _baseMinWidth = MinWidth;
+        _baseMinHeight = MinHeight;
 
         NavList.SelectedIndex = 0;
         Loaded += OnLoaded;
@@ -132,6 +145,7 @@ public partial class MainWindow : Window
 
         var view = GetPage(page);
         PageHost.Content = view;
+        ApplyPageMinimum(view);
 
         (PageTitle.Text, PageBadge.Text) = page switch
         {
@@ -180,6 +194,42 @@ public partial class MainWindow : Window
     {
         if (NavList.SelectedItem is ListBoxItem item && item.Tag is string tag)
             ShowPage(tag);
+    }
+
+    /// <summary>
+    /// 页面能缩到多小，由页面自己说了算。
+    ///
+    /// 按键映射页要完整显示一把 108 键键盘：窗口太窄只能把键帽压糊，
+    /// 所以它按用户选的档位报一个"装得下"的尺寸，这里设成 MinWidth/MinHeight。
+    ///   · 换大档 → MinWidth 变大，WPF 会顺手把当前窗口撑到装得下；
+    ///   · 换小档 → MinWidth 变小，窗口可以再缩回去；
+    ///   · 换到别的页 → 回到基础值，不让键盘页的尺寸绑住整个程序。
+    ///
+    /// 屏幕本身比要求还小时（1366 笔记本选"特大"）夹到工作区大小：
+    /// 否则窗口会宽到屏幕外面，右边那排按钮点都点不到。
+    /// </summary>
+    internal void ApplyPageMinimum(UserControl view)
+    {
+        if (view is KeysView keys)
+        {
+            var (needW, needH) = keys.RequiredWindowSize();
+            var wa = SystemParameters.WorkArea;
+            MinWidth = Math.Min(needW, Math.Max(480, wa.Width));
+            MinHeight = Math.Min(needH, Math.Max(400, wa.Height));
+
+            /* 窗口被 MinWidth 撑大时是往**右边/下边**长的，Left 不动。
+             * 如果原来窗口居中，长完就会有一部分跑到屏幕外 ——
+             * 表现是右边那排按钮和「恢复默认」点不到。这里把它推回工作区。 */
+            if (WindowState == WindowState.Normal)
+            {
+                if (Left + MinWidth > wa.Right) Left = Math.Max(wa.Left, wa.Right - MinWidth);
+                if (Top + MinHeight > wa.Bottom) Top = Math.Max(wa.Top, wa.Bottom - MinHeight);
+            }
+            return;
+        }
+
+        MinWidth = _baseMinWidth;
+        MinHeight = _baseMinHeight;
     }
 
     private void UpdateStatus()

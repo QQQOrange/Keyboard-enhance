@@ -215,7 +215,7 @@ public partial class KeysView : UserControl
     /// <summary>
     /// 备注。存在 <see cref="KeyBinding.Note"/> 上（不是 spec 里）——
     /// 备注是"这个键叫什么"，属于绑定本身，和"发什么键给哪个程序"无关。
-    /// 键帽与已绑定列表都优先显示它。
+    /// 键帽优先显示它。
     /// </summary>
     private void OnCustomNoteChanged(object sender, TextChangedEventArgs e)
     {
@@ -245,16 +245,34 @@ public partial class KeysView : UserControl
         return "自定义";
     }
 
+    /// <summary>
+    /// 「恢复默认」——这是整页**唯一会一次性丢掉大量配置**的按钮，必须过两道门。
+    ///
+    /// 改错一个键还能改回来；恢复默认会一次覆盖基础层的上百个绑定，
+    /// 点错就是"刚配好的东西全没了"。所以：
+    ///   · 第一道门是按钮本身：它在工具栏最右侧，和"点击某键即可编辑"的说明分开；
+    ///   · 第二道门是 <see cref="AppDialog.ConfirmDanger"/>：警告图标 + 红色确定键，
+    ///     正文逐条写清"丢什么 / 留什么 / 能不能撤销"；
+    ///   · 只有真点了「恢复默认」才执行；点取消、按 Esc、直接关窗口一律不动。
+    ///
+    /// ⚠ 别改成 <c>MessageBox.Show(...) == OK</c> 之类：全程序都用 AppDialog，
+    /// 换回系统对话框会在深色主题下弹一块白底，而且按钮措辞不受控。
+    /// </summary>
     private void OnResetClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        if (!AppDialog.Confirm(Window.GetWindow(this),
-                "把全部按键恢复成所选方案的默认值？你自定义的组合键会被保留。",
-                "恢复默认", DialogKind.Question, okText: "恢复默认")) return;
+
+        const string text =
+            "把基础层的按键全部恢复成默认值？\n" +
+            "· 你在这一层改过的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n" +
+            "· 你自己新增的组合键会保留，其它 9 层完全不动；\n" +
+            "· 这一步不能撤销。";
+
+        if (!AppDialog.ConfirmDanger(Window.GetWindow(this), text,
+                "恢复默认按键", okText: "恢复默认")) return;
+
         _host.ApplyHotkeyScheme(_host.Settings.Global.HotkeyScheme);
         Refresh();
         _host.Notify("按键映射已恢复默认");
     }
-
-    private sealed record BoundVm(KeyModifiers Mods, string Key, string KeyLabel, string Action);
 }

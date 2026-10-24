@@ -186,6 +186,16 @@ public sealed class GlobalOptions
     /// <summary>主题：system / light / dark。</summary>
     public string Theme { get; set; } = "system";
 
+    /// <summary>
+    /// 「按键映射」页的键盘大小档位（small / medium / large / xlarge）。
+    ///
+    /// 这个值同时决定两件事，别只当它是"显示比例"看：
+    ///   · 每次打开按键映射页，键盘直接按这档渲染；
+    ///   · 这个页面的**最小窗口尺寸** = 装下这档键盘所需的尺寸，
+    ///     所以窗口不会被缩到把键帽压糊。
+    /// </summary>
+    public string KeyboardSize { get; set; } = KeyboardSizePreset.DefaultId;
+
     /// <summary>界面语言：zh-CN / en-US。</summary>
     public string Language { get; set; } = "zh-CN";
 

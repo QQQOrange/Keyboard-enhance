@@ -137,6 +137,7 @@ public static partial class SelfTest
         TestQbarEngineActions();
         TestTriggerKeyPosition();
         TestKeyboardLayoutGeometry();
+        TestResetLayerOne();
         TestArbitraryWindowBinding();
         TestWinBindRestoreLogic();
         TestWebPageCategory();
