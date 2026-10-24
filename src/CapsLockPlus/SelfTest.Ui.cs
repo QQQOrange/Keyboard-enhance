@@ -1512,6 +1512,29 @@ public static partial class SelfTest
         view.EditorLayoutForTest(compact: false);   // 还原，别影响后面的用例
     }
 
+    /// <summary>
+    /// 编辑区的按钮不该被容器拉长。
+    ///
+    /// WPF 的 Button 默认 `HorizontalAlignment=Stretch`：一旦它落在 Grid 的
+    /// `*` 列里（或者跨列的单元格），就会横向铺满，看着像一根横条。
+    /// 现在编辑区所有按钮都显式 `HorizontalAlignment="Left"`，这条断言守住它 ——
+    /// 以后谁把按钮塞进 `*` 列，宽度一超就会在这里失败。
+    /// </summary>
+    private static void TestEditorButtonWidths()
+    {
+        var view = new UI.Views.KeysView();
+        var widths = view.EditorButtonWidthsForTest();
+
+        Check("能量到编辑区按钮", widths.Count >= 6, $"{widths.Count} 个");
+
+        foreach (var (label, w) in widths)
+        {
+            /* 最长文案「选择程序文件」「按下要发送的键…」在 14 DIP 字号下约 130 宽；
+             * 200 是给内边距和不同缩放留的余量。被拉伸时通常是 400+。 */
+            Check($"按钮「{label}」没有被拉长", w < 200, $"{w:F0} DIP");
+        }
+    }
+
     private static void TestWindows()
     {
         var fg = WindowService.ForegroundInfo();

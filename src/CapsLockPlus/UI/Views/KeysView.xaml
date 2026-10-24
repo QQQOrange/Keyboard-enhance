@@ -246,11 +246,11 @@
                             </Border>
 
                             <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button x:Name="TestBindButton" Content="测试一下"
+                                <Button HorizontalAlignment="Left" x:Name="TestBindButton" Content="测试一下"
                                         Style="{StaticResource Button.Ghost}" Padding="11,5"
                                         Click="OnTestClick"
                                         ToolTip="执行一次这个功能（可能影响当前窗口）" />
-                                <Button x:Name="ClearBindButton" Content="清除绑定"
+                                <Button HorizontalAlignment="Left" x:Name="ClearBindButton" Content="清除绑定"
                                         Style="{StaticResource Button.Danger}" Padding="11,5" Margin="6,0,0,0"
                                         Click="OnClearClick" />
                             </StackPanel>
@@ -377,7 +377,7 @@
                                     <TextBlock Text="绑定方式" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="PickWindowButton" Style="{StaticResource Button.Primary}"
+                                        <Button HorizontalAlignment="Left" x:Name="PickWindowButton" Style="{StaticResource Button.Primary}"
                                                 Padding="14,6" MinHeight="34" Click="OnPickWindowClick"
                                                 ToolTip="鼠标变成准星，点哪个窗口就绑哪个程序">
                                             <StackPanel Orientation="Horizontal">
@@ -388,7 +388,7 @@
                                                            VerticalAlignment="Center" FontWeight="SemiBold" />
                                             </StackPanel>
                                         </Button>
-                                        <Button x:Name="PickExeButton" Style="{StaticResource Button.Base}"
+                                        <Button HorizontalAlignment="Left" x:Name="PickExeButton" Style="{StaticResource Button.Base}"
                                                 Padding="14,6" MinHeight="34" Margin="10,0,0,0"
                                                 Click="OnPickExeClick"
                                                 ToolTip="从资源管理器挑一个 exe（程序没在运行也能绑）">
@@ -462,11 +462,11 @@
                                      与「标签在上」的组不同，它们只占控件那一行。 -->
                                 <StackPanel Grid.Column="3" Orientation="Horizontal"
                                             VerticalAlignment="Bottom">
-                                    <Button x:Name="BrowseFolderButton" Content="浏览…"
+                                    <Button HorizontalAlignment="Left" x:Name="BrowseFolderButton" Content="浏览…"
                                             Style="{StaticResource Button.Base}" Padding="12,6" MinHeight="36"
                                             Visibility="Collapsed" Click="OnBrowseFolder"
                                             ToolTip="从资源管理器里挑一个文件夹" />
-                                    <Button x:Name="BrowseFileButton" Content="浏览…"
+                                    <Button HorizontalAlignment="Left" x:Name="BrowseFileButton" Content="浏览…"
                                             Style="{StaticResource Button.Base}" Padding="12,6" MinHeight="36"
                                             Margin="8,0,0,0" Visibility="Collapsed" Click="OnBrowseFile"
                                             ToolTip="从资源管理器里挑一个文件" />
@@ -493,7 +493,7 @@
                                            Style="{StaticResource Text.Tertiary}"
                                            VerticalAlignment="Center" Margin="9,0,0,0"
                                            TextWrapping="Wrap" />
-                                <Button Grid.Column="2" x:Name="FetchTitleButton" Content="重新取标题"
+                                <Button HorizontalAlignment="Left" Grid.Column="2" x:Name="FetchTitleButton" Content="重新取标题"
                                         Style="{StaticResource Button.Ghost}" Padding="10,4"
                                         Margin="10,0,0,0" VerticalAlignment="Center"
                                         Click="OnFetchTitleClick"
@@ -606,7 +606,7 @@
                                     <TextBlock Text="要发送的键" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="CustomKeyCaptureButton" Content="按下要发送的键…"
+                                        <Button HorizontalAlignment="Left" x:Name="CustomKeyCaptureButton" Content="按下要发送的键…"
                                                 Style="{StaticResource Button.Base}" Padding="14,6" MinHeight="36"
                                                 Click="OnCustomKeyCapture"
                                                 ToolTip="点一下，然后在键盘上按你想发给应用的键（支持 Ctrl / Shift / Alt 组合）" />
@@ -643,7 +643,7 @@
                                              TextChanged="OnCustomAppChanged"
                                              ToolTip="要接收这个键的程序，例如 C://Program Files\Tencent\Weixin\Weixin.exe" />
                                 </StackPanel>
-                                <Button Grid.Column="1" Content="浏览…" Style="{StaticResource Button.Base}"
+                                <Button HorizontalAlignment="Left" Grid.Column="1" Content="浏览…" Style="{StaticResource Button.Base}"
                                         Padding="12,6" MinHeight="36" VerticalAlignment="Bottom"
                                         Click="OnBrowseCustomApp"
                                         ToolTip="从资源管理器里挑一个 exe" />
@@ -748,7 +748,7 @@
 
                                     <!-- 音量 / 亮度这类"步进"参数：一键回到设置里的幅度。
                                          留空 = 跟随设置页的滑杆，用户不必记自己填过什么。 -->
-                                    <Button x:Name="ArgDefaultButton" Grid.Column="2" Content="用默认"
+                                    <Button HorizontalAlignment="Left" x:Name="ArgDefaultButton" Grid.Column="2" Content="用默认"
                                             Style="{StaticResource Button.Ghost}" Padding="10,5"
                                             Margin="8,0,0,0" VerticalAlignment="Center"
                                             Visibility="Collapsed" Click="OnArgUseDefault"
@@ -805,7 +805,7 @@
                                                    Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
 
-                                    <Button Grid.Column="2" x:Name="WinBindClearButton" Content="清除"
+                                    <Button HorizontalAlignment="Left" Grid.Column="2" x:Name="WinBindClearButton" Content="清除"
                                             Style="{StaticResource Button.Ghost}" Padding="10,5"
                                             VerticalAlignment="Center" Visibility="Collapsed"
                                             Click="OnWinBindClear" />

@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Update;
@@ -58,20 +59,108 @@ public partial class AboutView : UserControl
         RefreshTokenStatus();
     }
 
+    // ---------------- 布局：全屏两列 / 窄窗口单列 ----------------
+
+    /// <summary>
+    /// 关于页切成两列的宽度阈值（DIP）。
+    ///
+    /// 1080 的来源：两列各 540 时，「更新卡」里的令牌行（标签 + 输入框 + 四个按钮）
+    /// 还能排得开；再窄令牌输入框会被压到 200 以下，看不出填了什么。
+    /// 低于它就退回单列（每张卡整行），这也是以前一直用的形态。
+    /// </summary>
+    private const double TwoColumnBreakpoint = 1080;
+
+    /// <summary>上一次的形态；null = 还没算过（首次布局要应用一次）。</summary>
+    private bool? _aboutNarrow;
+
+    /// <summary>
+    /// 窗口宽度变了：决定右列（信息卡 + 致谢卡）并排还是落到下面。
+    ///
+    /// 只改 Grid 的行列，不复制控件 —— 两张卡在两种形态下是同一批对象，
+    /// 里面的文字、链接、事件都不受影响。
+    /// </summary>
+    private void OnAboutScrollSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        bool narrow = e.NewSize.Width > 0 && e.NewSize.Width < TwoColumnBreakpoint;
+        if (_aboutNarrow == narrow) return;
+        _aboutNarrow = narrow;
+
+        if (narrow)
+        {
+            /* 单列：更新卡占满第 2 行，右列整体落到第 3 行。
+             * 顺序仍是"更新在上、信息在下"，和以前一模一样。 */
+            Grid.SetColumnSpan(UpdateCard, 2);
+            UpdateCard.Margin = new Thickness(0);
+
+            Grid.SetRow(AboutRightColumn, 2);
+            Grid.SetColumn(AboutRightColumn, 0);
+            Grid.SetColumnSpan(AboutRightColumn, 2);
+            AboutRightColumn.Margin = new Thickness(0, 16, 0, 0);
+        }
+        else
+        {
+            // 两列：左边更新（操作），右边信息 + 致谢
+            Grid.SetColumnSpan(UpdateCard, 1);
+            UpdateCard.Margin = new Thickness(0, 0, 8, 0);
+
+            Grid.SetRow(AboutRightColumn, 1);
+            Grid.SetColumn(AboutRightColumn, 1);
+            Grid.SetColumnSpan(AboutRightColumn, 1);
+            AboutRightColumn.Margin = new Thickness(8, 0, 0, 0);
+        }
+    }
+
     // ---------------- GitHub 个人访问令牌 ----------------
+
+    /// <summary>
+    /// 已保存令牌在输入框里的占位显示。
+    ///
+    /// 固定 8 个圆点，**不反映真实长度** —— 长度也是信息（20 位是老式 PAT、
+    /// 93 位是 fine-grained），没必要漏。用户只需要知道"这里有东西、已经存好了"。
+    /// </summary>
+    internal const string TokenMask = "••••••••";
+
+    /// <summary>
+    /// 输入框焦点进来时，如果显示的是掩码就全选。
+    ///
+    /// 这样键盘用户 Tab 进来直接打字就替换掉；鼠标用户点进来后按退格也不会
+    /// 一个一个删圆点（全选状态下按一次就清空）。
+    /// </summary>
+    private void OnTokenBoxGotFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (TokenBox.Text == TokenMask) TokenBox.SelectAll();
+    }
+
+    /// <summary>
+    /// 掩码状态下开始打字 = 换一个新令牌：先把圆点清掉，再让这个字符落进去。
+    ///
+    /// 不做这一步的话，用户点进输入框直接敲字会得到「••••••••ghp_new」，
+    /// 保存后令牌无效，而屏幕上看起来"明明填了"。
+    /// </summary>
+    private void OnTokenBoxPreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (TokenBox.Text == TokenMask) TokenBox.Clear();
+    }
+
+    /// <summary>粘贴同理：掩码状态下粘进来的内容应当替换掉圆点，而不是接在后面。</summary>
+    private void OnTokenBoxPasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (TokenBox.Text == TokenMask) TokenBox.Clear();
+    }
 
     /// <summary>
     /// 刷新令牌状态那一行。
     ///
-    /// 输入框里**不回填**完整令牌：掩码回填最容易被"点一下保存"存成星号串，
-    /// 而且令牌摊在屏幕上截图就泄了。已保存的只在这里显示头尾几位。
+    /// 已保存时输入框显示掩码（不是空白）—— 空白会让人以为"没存上"，
+    /// 于是又粘一遍。完整令牌永远不回填：掩码回填最容易被"点一下保存"
+    /// 存成星号串，而且令牌摊在屏幕上截图就泄了。
     /// </summary>
     private void RefreshTokenStatus()
     {
         string saved = _host?.Settings.Global.GitHubToken ?? "";
         bool has = UpdateService.HasToken(saved);
 
-        TokenBox.Text = "";
+        TokenBox.Text = has ? TokenMask : "";
         ClearTokenButton.IsEnabled = has;
 
         TokenStatusText.Text = has
@@ -98,7 +187,11 @@ public partial class AboutView : UserControl
 
         string token = UpdateService.NormalizeToken(TokenBox.Text);
         bool usingSaved = false;
-        if (token.Length == 0)
+
+        /* 掩码（或空）都表示"没输入新的"：验证已保存的那个。
+         * 掩码是固定 8 个圆点，绝不能拿去请求 GitHub —— 那会得到 401，
+         * 用户还以为自己存的令牌坏了。 */
+        if (TokenBox.Text == TokenMask || token.Length == 0)
         {
             string saved = _host.Settings.Global.GitHubToken;
             if (!UpdateService.HasToken(saved))
@@ -144,6 +237,18 @@ public partial class AboutView : UserControl
     private void OnSaveToken(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
+
+        /* 输入框里还是掩码：用户没动过。当作"已保存"，不写盘、不报错 ——
+         * 报错会让人以为要重新填一遍。 */
+        if (TokenBox.Text == TokenMask)
+        {
+            string cur = _host.Settings.Global.GitHubToken;
+            TokenStatusText.Text = UpdateService.HasToken(cur)
+                ? $"令牌没有改动，仍是已保存的那个（{UpdateService.MaskToken(cur)}）。"
+                  + "要换新的，直接在输入框里输入或粘贴即可。"
+                : "输入框里只有占位圆点，先把新令牌粘进来。";
+            return;
+        }
 
         string token = UpdateService.NormalizeToken(TokenBox.Text);
         if (token.Length == 0)

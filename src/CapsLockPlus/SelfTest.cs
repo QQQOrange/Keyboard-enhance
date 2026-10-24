@@ -141,6 +141,7 @@ public static partial class SelfTest
         TestTriggerKeyPosition();
         TestKeyboardLayoutGeometry();
         TestEditorDensity();
+        TestEditorButtonWidths();
         TestResetLayerOne();
         TestArbitraryWindowBinding();
         TestWinBindRestoreLogic();

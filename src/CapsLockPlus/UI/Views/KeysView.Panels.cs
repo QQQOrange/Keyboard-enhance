@@ -462,6 +462,38 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
+    /// 仅供自检：把编辑区四个面板全部显示，回读所有按钮的（文案, 实际宽度），
+    /// 测完把它们藏回去（后续由 ApplyEditorMode 接管）。
+    /// </summary>
+    internal List<(string Label, double Width)> EditorButtonWidthsForTest()
+    {
+        var panels = new FrameworkElement?[] { WinBindPicker, WebPagePicker, TypeTextPicker, CustomKeyPicker };
+        foreach (var p in panels) if (p != null) p.Visibility = Visibility.Visible;
+
+        Measure(new System.Windows.Size(1080, 3000));
+        Arrange(new System.Windows.Rect(0, 0, 1080, 3000));
+        UpdateLayout();
+
+        var result = new List<(string, double)>();
+        CollectButtons(this, result);
+
+        foreach (var p in panels) if (p != null) p.Visibility = Visibility.Collapsed;
+        return result;
+
+        static void CollectButtons(DependencyObject root, List<(string, double)> into)
+        {
+            int n = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < n; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                if (child is Button b && b.Content is string text && text.Length > 0 && b.ActualWidth > 0)
+                    into.Add((text, b.ActualWidth));
+                CollectButtons(child, into);
+            }
+        }
+    }
+
+    /// <summary>
     /// 仅供自检：把编辑区摆成宽/窄两种形态并回读关键分组的位置。
     /// </summary>
     internal EditorLayout EditorLayoutForTest(bool compact)
