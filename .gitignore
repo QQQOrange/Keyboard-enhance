@@ -1,4 +1,4 @@
-# ---- .NET / 构建产物 ----
+﻿# ---- .NET / 构建产物 ----
 bin/
 obj/
 [Dd]ebug/
@@ -48,6 +48,9 @@ _ReSharper*/
 node_modules/
 .pnpm-store/
 *.tsbuildinfo
+
+# ---- 自检/渲染/冒烟的临时目录（out-xxx）----
+out-*/
 
 # ---- 运行时数据（不应进仓库）----
 settings.json
