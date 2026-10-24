@@ -171,6 +171,41 @@ public static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern short VkKeyScanEx(char ch, IntPtr dwhkl);
 
+    /* 「输入文本」走真实按键时，中文/日文/韩文/越南文输入语言下字母会被
+     * 输入法拿去拼候选 —— 用户看到的是候选框，文字没进文本框。
+     *
+     * 摘输入法上下文（ImmAssociateContext）只在老式 IMM32 程序上有效，
+     * 现代程序（Win11 记事本 / Edge / VS Code）都是 TSF 架构，摘不掉。
+     * 唯一通吃的办法：**临时把这个窗口的输入语言切到英文布局**，打完再切回。
+     * 切换是异步的（DefWindowProc 收到消息后才 ActivateKeyboardLayout），
+     * 必须轮询 GetKeyboardLayout 确认生效，不能 post 完就发按键。 */
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr LoadKeyboardLayout(string pwszKLID, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    /// <summary>取某个线程当前真正有焦点的窗口（顶层窗口不认语言切换消息时改投它）。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+
+    /// <summary>请目标窗口换输入语言。DefWindowProc 会转成 ActivateKeyboardLayout。</summary>
+    public const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GUITHREADINFO
+    {
+        public int cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+
     /* 前台锁定超时：Windows 默认 2000ms 内不允许非前台进程抢焦点，
      * 这正是"面板弹出来了但打字进不去"的根因。
      *

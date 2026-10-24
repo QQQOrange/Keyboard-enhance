@@ -7,6 +7,8 @@
   ④ 点任务栏 —— 任务栏不换前台，Deactivated 不触发，只能靠全局鼠标钩子兜底；
   ⑤ 点"窗口内、面板外"的投影区；
   ⑥ 双击结果行 —— 同一个结果只允许执行一次（曾经的 bug：双击=执行两遍）。
+     判定靠日志里的「[Qbar] 执行结果」条数：曾经靠进程数，但 Win11 记事本
+     是标签页复用的，执行两次也只多一个标签、不多进程，会把"执行了"当成"没执行"。
 
 用法：python tools/e2e_qbar_dismiss.py [exe]
 """
@@ -193,6 +195,21 @@ def gone_after(hqbar, wait=3.0):
     return False
 
 
+def action_count(data):
+    """数日志里"执行了结果"的条数 —— 双击只执行一次的可靠观测量。
+
+    以前是数"新起几个记事本进程"，但 Win11 的记事本是标签页复用的：
+    执行两次也只多一个标签、不多进程，测试就会把"执行了"误判成"没执行"。
+    程序每次执行结果都会写一行 [Qbar] 执行结果，跟系统行为无关。
+    """
+    log = os.path.join(data, "logs", "app.log")
+    try:
+        with open(log, encoding="utf-8", errors="replace") as f:
+            return f.read().count("[Qbar] 执行结果：")
+    except OSError:
+        return 0
+
+
 def main():
     stamp = datetime.now().strftime("%H%M%S")
     data = os.path.join(ROOT, f"out-qbar-{stamp}")
@@ -301,8 +318,8 @@ def main():
 
         # ⑥ 双击结果行只执行一次
         #    曾经的 bug：单击已经执行并收起面板，双击的第二击落在还没
-        #    淡出完的面板上，会把同一个结果再执行一遍 —— 这里就会多起
-        #    一个记事本。用进程数来观测，不依赖焦点和剪贴板内容。
+        #    淡出完的面板上，会把同一个结果再执行一遍。
+        #    观测点是程序日志里的"执行结果"条数，不用进程数（见 action_count）。
         if not fifth:
             key(0x1B); key(0x1B, up=True); time.sleep(0.5)
         sixth = True
@@ -319,15 +336,17 @@ def main():
                 ctrl_v()                        # 把关键字粘进输入框（默认绑定没占 Ctrl+V）
                 time.sleep(1.2)                 # 等结果出来
                 r = rect(h)
-                before = notepad_pids()
+                before = action_count(data)
+                before_pids = notepad_pids()
                 print(f"⑥ 双击第一行结果 ({r.left + 200}, {r.top + 250})")
                 double_click(r.left + 200, r.top + 250)
                 time.sleep(2.5)
-                new = notepad_pids() - before
-                sixth = len(new) == 1
+                ran = action_count(data) - before
+                new = notepad_pids() - before_pids
+                sixth = ran == 1
                 results.append(("双击结果行只执行一次", sixth))
-                print(f"   新起记事本 {len(new)} 个：" +
-                      ("✔ 正好一个" if sixth else "✗ 执行了多次或没执行"))
+                print(f"   执行记录 {ran} 次（顺带新起记事本 {len(new)} 个）：" +
+                      ("✔ 正好一次" if sixth else "✗ 执行了多次或没执行"))
                 for pid in new:                 # 清理，只留脚本自己起的那个
                     subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
 

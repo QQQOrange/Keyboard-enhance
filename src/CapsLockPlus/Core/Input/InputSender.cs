@@ -267,11 +267,14 @@ public static class InputSender
     /// <summary>
     /// 用真实按键逐字敲一段纯 ASCII。返回 false = 这条路走不通，调用方应改用 Unicode。
     ///
-    /// 三个关键点：
+    /// 四个关键点：
     ///   1. 用**前台窗口所在线程的键盘布局**做映射（<c>VkKeyScanEx</c>），
     ///      否则德语键盘上打 `@` 会出错；
     ///   2. 需要 Ctrl/Alt 才能打出的字符直接放弃（会干扰系统快捷键）；
-    ///   3. 敲字期间**临时摘掉输入法**，否则中文输入法会把 "abc" 拼成拼音候选框。
+    ///   3. 输入语言是中文/日文/韩文/越南文时，字母会被输入法拼成候选 ——
+    ///      临时把窗口切到英文布局，打完再切回（见 <see cref="ImeGuard"/>）；
+    ///      切不动就放弃，让调用方走 Unicode（那条路不经过布局，同样能落字）；
+    ///   4. 老式 IMM32 程序额外摘一次输入法上下文，便宜且更彻底。
     /// </summary>
     public static bool TryTextAsKeys(string text)
     {
@@ -282,52 +285,100 @@ public static class InputSender
         if (target == IntPtr.Zero) return false;
 
         uint tid = GetWindowThreadProcessId(target, out _);
-        IntPtr layout = tid != 0 ? GetKeyboardLayout(tid) : IntPtr.Zero;
-        if (layout == IntPtr.Zero) return false;
+        if (tid == 0) return false;
 
-        // 先把整段文字映射成 (虚拟键, 是否需要 Shift)，有一个映射不了就整体放弃
-        var plan = new List<(int Vk, bool Shift)>(text.Length);
-        foreach (char ch in text)
+        IntPtr original = GetKeyboardLayout(tid);
+        if (original == IntPtr.Zero) return false;
+
+        /* 中文输入法开着时替用户敲 "hello"，输入法会当成拼音弹候选框，
+         * 文本框里一个字都没有。切到英文布局再敲 —— 也是唯一对 TSF 程序
+         * （Win11 记事本 / Edge / VS Code）有效的办法。
+         *
+         * 干跑（自检 / 离屏渲染）时**不能**真去切：
+         * 那会把用户当时前台窗口的输入语言改掉，等于测试干扰了桌面。 */
+        IntPtr typing = original;
+        bool switched = false;
+        if (!DryRun && ImeGuard.IsComposing(original))
         {
-            short scan = VkKeyScanEx(ch, layout);
-            if (scan == -1) return false;
-
-            int vk = scan & 0xFF;
-            int state = (scan >> 8) & 0xFF;
-            if (vk == 0) return false;
-            if ((state & 0x06) != 0) return false;      // 需要 Ctrl / Alt
-            plan.Add((vk, (state & 0x01) != 0));
+            IntPtr english = ImeGuard.EnglishLayout;
+            if (english == IntPtr.Zero) return false;
+            if (!ImeGuard.SwitchTo(target, english, LayoutSwitchTimeoutMs)) return false;
+            typing = english;
+            switched = true;
         }
 
-        IntPtr oldIme = SuppressIme(target);
         try
         {
-            const int Batch = 32;
-            for (int start = 0; start < plan.Count; start += Batch)
+            // 先把整段文字映射成 (虚拟键, 是否需要 Shift)，有一个映射不了就整体放弃
+            var plan = new List<(int Vk, bool Shift)>(text.Length);
+            foreach (char ch in text)
             {
-                int len = Math.Min(Batch, plan.Count - start);
-                var arr = new List<INPUT>(len * 4);
+                short scan = VkKeyScanEx(ch, typing);
+                if (scan == -1) return false;
 
-                for (int i = start; i < start + len; i++)
+                int vk = scan & 0xFF;
+                int state = (scan >> 8) & 0xFF;
+                if (vk == 0) return false;
+                if ((state & 0x06) != 0) return false;      // 需要 Ctrl / Alt
+                plan.Add((vk, (state & 0x01) != 0));
+            }
+
+            IntPtr oldIme = SuppressIme(target);
+            try
+            {
+                const int Batch = 32;
+                for (int start = 0; start < plan.Count; start += Batch)
                 {
-                    var (vk, shift) = plan[i];
-                    if (shift) arr.Add(KeyInput(VK.Shift, false));
-                    arr.Add(KeyInput(vk, false));
-                    arr.Add(KeyInput(vk, true));
-                    if (shift) arr.Add(KeyInput(VK.Shift, true));
-                }
+                    int len = Math.Min(Batch, plan.Count - start);
+                    var arr = new List<INPUT>(len * 4);
 
-                Send(arr.ToArray());
-                if (start + len < plan.Count) Thread.Sleep(6);
+                    for (int i = start; i < start + len; i++)
+                    {
+                        var (vk, shift) = plan[i];
+                        if (shift) arr.Add(KeyInput(VK.Shift, false));
+                        arr.Add(KeyInput(vk, false));
+                        arr.Add(KeyInput(vk, true));
+                        if (shift) arr.Add(KeyInput(VK.Shift, true));
+                    }
+
+                    Send(arr.ToArray());
+                    if (start + len < plan.Count) Thread.Sleep(6);
+                }
+            }
+            finally
+            {
+                RestoreIme(target, oldIme);
             }
         }
         finally
         {
-            RestoreIme(target, oldIme);
+            /* 还原顺序是硬约束，踩过：
+             * 注入的按键进的是**输入队列**，而 PostMessage 的消息优先级
+             * **高于**输入消息（GetMessage 的取用顺序是 发送消息 > 投递消息 >
+             * 输入消息）。所以 post 完立刻还原，剩下的字母会带着中文布局
+             * 重新翻译 —— 现象是"只有第一个字母落了字，后面全被拼成拼音"。
+             * 必须等目标线程把按键消化完再还。 */
+            if (switched)
+            {
+                Thread.Sleep(TypingSettleMs);
+                ImeGuard.Restore(target, original, LayoutSwitchTimeoutMs);
+            }
         }
 
         return true;
     }
+
+    /// <summary>切换输入语言的等待上限。切换是异步的，要轮询到真正生效。</summary>
+    private const int LayoutSwitchTimeoutMs = 200;
+
+    /// <summary>
+    /// 敲完字到还原输入语言之间必须留的间隔。
+    ///
+    /// 投递消息的优先级高于输入消息，间隔为 0 会让还没被消化的字母
+    /// 在中文布局下重新翻译（被输入法拼成拼音）。100ms 对响应正常的
+    /// 程序有足够余量，慢程序也有逐批 6ms 的节流兜着。
+    /// </summary>
+    private const int TypingSettleMs = 100;
 
     // ---------------- 输入法临时挂起 ----------------
 

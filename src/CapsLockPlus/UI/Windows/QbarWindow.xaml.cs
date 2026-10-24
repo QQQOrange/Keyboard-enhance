@@ -857,6 +857,14 @@ public partial class QbarWindow : Window
         if (_closing) return;
         if (Results.SelectedItem is not QbarItem item) return;
         var result = item.Result;
+
+        /* 记一行日志：这是"到底执行了几次"的唯一可靠观测量。
+         * e2e 曾经靠"新起几个记事本进程"判断双击是否只执行一次，
+         * 但 Win11 的记事本是标签页复用的 —— 执行两次也只多一个标签、
+         * 不多进程，于是测试把"执行了"误判成"没执行"。
+         * 日志不受系统行为影响，也不会被单实例程序带偏。 */
+        CoreLog.Info($"[Qbar] 执行结果：{result.Title}");
+
         HideQbar();
         Dispatcher.BeginInvoke(new Action(() =>
         {

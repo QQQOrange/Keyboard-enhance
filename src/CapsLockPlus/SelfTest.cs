@@ -156,6 +156,7 @@ public static partial class SelfTest
         TestSubLayerCombos();
         TestDirectSearch();
         TestTypeTextAction();
+        TestImeGuard();
 
         Section("自定义按键");
         TestCustomKey();

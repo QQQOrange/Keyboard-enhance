@@ -193,7 +193,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="输入文本方式" Style="{StaticResource Text.Body}" />
-                            <TextBlock Text="「输入文本」怎么把文字打进光标处。密码框打不进去时，改用「真实按键」—— 它带完整扫描码，和手打没区别。"
+                            <TextBlock Text="「输入文本」怎么把文字打进光标处。默认「自动」：英文走真实按键（密码框也认），中文走 Unicode 注入；中文输入法开着时会临时切到英文输入，打完自动切回。密码框仍打不进时改选「真实按键」。"
                                        Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Name="TextInputBox" Style="{StaticResource ComboBox.Base}"

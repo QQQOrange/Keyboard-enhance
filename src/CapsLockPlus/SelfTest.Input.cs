@@ -320,6 +320,54 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// 输入法守卫：判断"这个输入语言会不会把字母拼成候选"，以及切语言的失败路径。
+    ///
+    /// 用户报的现象是"我用中文输入法，按了快捷键，屏幕上弹出英文输入法候选框，
+    /// 文本框里一个字都没有"。根因是输入语言是中文时真实按键会被输入法截走。
+    ///
+    /// 这里钉住的是**判定规则**：宁可多切一次英文布局（多花几十毫秒），
+    /// 也不能漏判 —— 漏判等于用户按了没反应。真实切换行为由
+    /// `tools/e2e_ime_typing.py` 在真机上验证。
+    /// </summary>
+    private static void TestImeGuard()
+    {
+        static IntPtr Hkl(uint lang) => new((long)((lang << 16) | lang));
+
+        // ---- 会被拼成候选的输入语言 ----
+        Check("中文（简体）判定为会拼候选", Core.Input.ImeGuard.IsComposing(Hkl(0x0804)));
+        Check("中文（繁体）判定为会拼候选", Core.Input.ImeGuard.IsComposing(Hkl(0x0404)));
+        Check("中文（香港）判定为会拼候选", Core.Input.ImeGuard.IsComposing(Hkl(0x0C04)));
+        Check("中文（新加坡）判定为会拼候选", Core.Input.ImeGuard.IsComposing(Hkl(0x1004)));
+        Check("日文判定为会拼候选", Core.Input.ImeGuard.IsComposing(Hkl(0x0411)));
+        Check("韩文判定为会拼候选", Core.Input.ImeGuard.IsComposing(Hkl(0x0412)));
+        Check("越南文判定为会拼候选", Core.Input.ImeGuard.IsComposing(Hkl(0x042A)));
+
+        // ---- 不该被误判的（误判只是多花时间，但也不该无缘无故切）----
+        Check("英文（美国）不判定为会拼候选", !Core.Input.ImeGuard.IsComposing(Hkl(0x0409)));
+        Check("德文不判定为会拼候选", !Core.Input.ImeGuard.IsComposing(Hkl(0x0407)));
+        Check("法文不判定为会拼候选", !Core.Input.ImeGuard.IsComposing(Hkl(0x040C)));
+        Check("俄文不判定为会拼候选", !Core.Input.ImeGuard.IsComposing(Hkl(0x0419)));
+        Check("空布局句柄不判定为会拼候选", !Core.Input.ImeGuard.IsComposing(IntPtr.Zero));
+
+        // ---- 必须能拿到英文布局：拿不到就只能退回 Unicode 注入 ----
+        IntPtr english = Core.Input.ImeGuard.EnglishLayout;
+        Check("能加载英文（美国）布局", english != IntPtr.Zero);
+        if (english != IntPtr.Zero)
+        {
+            // kbdus.dll 是系统自带的，语言 ID 必须是 0x0409
+            CheckEqual("英文布局的语言 ID 是 en-US", (int)(english.ToInt64() & 0xFFFF), 0x0409);
+            // 切过去之后不能再被判成"会拼候选"，否则切了也白切
+            Check("英文布局本身不会拼候选", !Core.Input.ImeGuard.IsComposing(english));
+        }
+
+        // ---- 失败路径：句柄不合法时必须返回 false，让调用方退回 Unicode ----
+        Check("没有目标窗口时切换失败",
+            !Core.Input.ImeGuard.SwitchTo(IntPtr.Zero, english, 30));
+        Check("没有目标布局时切换失败",
+            !Core.Input.ImeGuard.SwitchTo(new IntPtr(0x1234), IntPtr.Zero, 30));
+    }
+
+    /// <summary>
     /// 「自定义按键」：参数编解码 + 组合键解析 + 执行流程（启动 / 发送 / 各种失败）。
     ///
     /// 执行流程全部用注入点拦截，不真的启动程序、不真的按键 ——
