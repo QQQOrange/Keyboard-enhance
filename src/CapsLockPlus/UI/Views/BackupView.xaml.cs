@@ -115,6 +115,7 @@ public partial class BackupView : UserControl
         }
         GroupList.ItemsSource = null;
         GroupList.ItemsSource = _groups;
+        RefreshExportLock();   // 初始状态：非隐私组默认勾选，开关应可用
     }
 
     private static readonly Brush PrivateFg =
@@ -421,6 +422,102 @@ public partial class BackupView : UserControl
         }
     }
 
+    // ---------------- 备份维护 ----------------
+
+    /// <summary>维护操作进行中：避免连点两个按钮同时删。</summary>
+    private bool _maintaining;
+
+    /// <summary>
+    /// 从云端恢复：RestoreWindow 默认就停在"云端备份"页签，
+    /// 列表里每行都有时间 / 名称 / 大小，够用户认出是哪一份。
+    /// </summary>
+    private void OnRestoreFromCloud(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        if (!_host.Sync.Configured)
+        {
+            AppDialog.Warn(Window.GetWindow(this),
+                "还没填 WebDAV 地址，云端没有可恢复的备份。\n\n"
+                + "先在上面填好地址与账号，点「测连接」确认能用。",
+                "云端未配置");
+            return;
+        }
+
+        MaintStatus.Text = "正在读取云端备份清单…";
+        var win = new CapsLockPlus.UI.Windows.RestoreWindow(_host)
+        {
+            Owner = Window.GetWindow(this),
+        };
+
+        bool restored = win.ShowDialog() == true;
+        MaintStatus.Text = restored
+            ? "✓ " + (win.Result?.Summary ?? "已从云端恢复")
+            : "";
+        if (restored) RefreshLocalSummary();
+    }
+
+    private async void OnCleanupOld(object sender, RoutedEventArgs e) =>
+        await CleanupAsync(
+            "清理 7 天前的备份",
+            "删除本地和云端**早于 7 天**的备份。\n\n"
+            + $"· 本地目录：{SyncService.BackupDir}\n"
+            + (_host?.Sync.Configured == true
+                ? "· 云端：同样按时间清理\n"
+                : "· 云端：未配置，这次只清本地\n")
+            + "\n最新一份始终保留；当前正在用的配置不受影响。",
+            () => _host!.Sync.CleanupOlderThanAsync(7));
+
+    private async void OnCleanupKeep(object sender, RoutedEventArgs e) =>
+        await CleanupAsync(
+            "只保留最近 10 份备份",
+            "本地和云端都只保留**最新 10 份**，更旧的删掉。\n\n"
+            + (_host?.Sync.Configured == true
+                ? "· 本地与云端一起处理\n"
+                : "· 云端未配置，这次只清本地\n")
+            + "\n最新一份始终保留；当前正在用的配置不受影响。",
+            () => _host!.Sync.KeepNewestAsync(10));
+
+    private async void OnCleanupRedundant(object sender, RoutedEventArgs e) =>
+        await CleanupAsync(
+            "清除云端冗余数据",
+            "只清理**云端**目录里这些东西：\n\n"
+            + "· 上传中断的残留（.tmp / .part / .crdownload / ~$ 开头）\n"
+            + "· 0 字节或小于 64 字节的文件\n"
+            + "· 内容完全重复的备份（只留最新那份）\n"
+            + "· 打不开的：既不是加密备份，也不是明文导出\n\n"
+            + "本地备份目录不会被动 —— 那里可能有你自己的文件。",
+            () => _host!.Sync.CleanupRedundantAsync());
+
+    /// <summary>三个清理按钮共用：确认 → 执行 → 结果弹窗 + 页面内状态。</summary>
+    private async Task CleanupAsync(string title, string confirmText,
+        Func<Task<SyncService.CleanupResult>> action)
+    {
+        if (_host == null || _maintaining) return;
+
+        if (!AppDialog.ConfirmDanger(Window.GetWindow(this), confirmText, title, "开始清理")) return;
+
+        _maintaining = true;
+        MaintStatus.Text = "正在清理…";
+        try
+        {
+            var result = await action();
+            MaintStatus.Text = "✓ " + result.Summary;
+            RefreshLocalSummary();
+            AppDialog.Info(Window.GetWindow(this), result.Summary, title + " · 完成", DialogKind.Success);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn($"{title}失败：{ex.Message}");
+            MaintStatus.Text = "✗ " + ex.Message;
+            AppDialog.Error(Window.GetWindow(this), ex.Message, title + " · 失败");
+        }
+        finally
+        {
+            _maintaining = false;
+        }
+    }
+
     // ---------------- 导出 ----------------
 
     private void OnGroupToggled(object sender, RoutedEventArgs e)
@@ -428,11 +525,44 @@ public partial class BackupView : UserControl
         if (sender is not CheckBox { Tag: string id } box) return;
         var vm = _groups.FirstOrDefault(g => g.Id == id);
         if (vm != null) vm.Checked = box.IsChecked == true;
+        RefreshExportLock();
+    }
+
+    /// <summary>
+    /// 勾了隐私组就强制加密：锁死开关，并把它掰回"加密"。
+    ///
+    /// 这是硬约束不是建议 —— 隐私组里有网盘密码、备份密码，
+    /// 明文文件被转发一次就等于把凭据送出去。
+    /// 界面锁一层，<see cref="ExportImport.WritePlain"/> 里再兜一层。
+    /// </summary>
+    private void RefreshExportLock()
+    {
+        var priv = ExportImport.PrivateNames(_groups.Where(g => g.Checked).Select(g => g.Id));
+        bool mustEncrypt = priv.Count > 0;
+
+        if (mustEncrypt)
+        {
+            if (ExportEncryptedBox.IsChecked != true)
+            {
+                ExportEncryptedBox.IsChecked = true;
+                OnExportModeChanged(this, new RoutedEventArgs());   // 同步徽标与说明
+            }
+            ExportEncryptedBox.IsEnabled = false;
+            ExportEncryptedBox.ToolTip =
+                $"勾选了隐私内容（{string.Join("、", priv)}），导出必须加密 —— "
+                + "这些组里有网盘密码、备份密码这类凭据，明文文件被转发就等于把凭据送出去。";
+        }
+        else
+        {
+            ExportEncryptedBox.IsEnabled = true;
+            ExportEncryptedBox.ToolTip = "加密导出：用备份密码把文件变成密文";
+        }
     }
 
     private void OnSelectNone(object sender, RoutedEventArgs e)
     {
         foreach (var g in _groups) g.Checked = false;
+        RefreshExportLock();
         Rebind();
     }
 
@@ -445,6 +575,7 @@ public partial class BackupView : UserControl
     private void OnSelectAll(object sender, RoutedEventArgs e)
     {
         foreach (var g in _groups) g.Checked = true;
+        RefreshExportLock();
         Rebind();
     }
 
@@ -458,9 +589,20 @@ public partial class BackupView : UserControl
     private void OnExportModeChanged(object sender, RoutedEventArgs e)
     {
         bool enc = ExportEncryptedBox.IsChecked == true;
+
+        /* 徽标 + 文案一起改：用户要求"明确展示当前的加密状态"，
+         * 只靠一个开关的位置不够直观 —— 开关在右边、说明在左边，
+         * 扫一眼分不清现在是哪种。 */
+        ExportStateText.Text = enc ? "已加密" : "明文";
+        ExportStateText.Foreground = (System.Windows.Media.Brush)FindResource(
+            enc ? "Brush.Success" : "Brush.Warning");
+        ExportStateBadge.Background = (System.Windows.Media.Brush)FindResource(
+            enc ? "Brush.SuccessSoft" : "Brush.WarningSoft");
+
         ExportModeHint.Text = enc
-            ? "用备份密码加密，含网盘密码 / 备份密码等全部字段。换台机器导入时输入同一个密码即可。"
-            : "不加密，任何人拿到都能读。为免泄露，会剔除网盘密码与备份密码 —— 适合直接发给别人。";
+            ? "用备份密码加密，含 GitHub 令牌 / 全部配置。换台机器导入时输入同一个密码即可。"
+            : "不加密，任何人拿到都能读 —— 里面的 GitHub 令牌也看得见，别公开分享。"
+              + "为免更严重的泄露，仍会剔除网盘密码与备份密码。";
     }
 
     private void OnExportClick(object sender, RoutedEventArgs e)
@@ -488,15 +630,27 @@ public partial class BackupView : UserControl
             return;
         }
 
-        // 明文导出才需要提醒：文件谁拿到都能读
+        /* 勾了隐私组就必须加密 —— 开关正常情况下已被锁死，这里兜底防绕过。 */
+        var privNow = ExportImport.PrivateNames(selected);
+        if (!encrypted && privNow.Count > 0)
+        {
+            AppDialog.Warn(Window.GetWindow(this),
+                $"勾选了隐私内容（{string.Join("、", privNow)}），只能用加密导出。\n\n"
+                + "这些组里有网盘密码、备份密码这类凭据，明文文件被转发就等于把凭据送出去。",
+                "必须加密导出");
+            return;
+        }
+
+        // 明文导出：说清楚文件里到底有什么（现在含令牌了）
         if (!encrypted)
         {
-            var priv = _groups.Where(g => g.Checked && g.Private).Select(g => g.Name).ToList();
-            string extra = priv.Count > 0
-                ? $"\n\n你勾了隐私内容：\n　{string.Join("\n　", priv)}\n（这些组的密码类字段仍会被剔除）"
+            bool hasToken = Core.Update.UpdateService.HasToken(_host.Settings.Global.GitHubToken);
+            string extra = hasToken
+                ? "\n\n注意：这份文件里包含你的 GitHub 个人访问令牌，以及全部已勾选的配置。"
                 : "";
             if (!AppDialog.Confirm(Window.GetWindow(this),
-                    "这次是明文导出，谁拿到文件都能读到内容。" + extra + "\n\n确定要继续吗？",
+                    "这次是明文导出，谁拿到文件都能读到内容。" + extra
+                    + "\n\n（网盘密码与备份密码仍会剔除）确定要继续吗？",
                     "明文导出", DialogKind.Warn, okText: "继续导出")) return;
         }
 
@@ -516,13 +670,13 @@ public partial class BackupView : UserControl
                 : ExportImport.WritePlain(dlg.FileName, _host.Settings, selected);
 
             string what = encrypted
-                ? $"已导出（加密，{n} 个设置项，含全部字段）"
-                : $"已导出（明文，{n} 个设置项，已剔除密码）";
+                ? $"已导出（加密，{n} 个设置项，含令牌与全部字段）"
+                : $"已导出（明文，{n} 个设置项，含令牌）";
             _host.Notify(what);
             ShowImportResult($"已导出到：{dlg.FileName}\n共 {n} 个设置项，包含 {selected.Count} 个分组。\n"
                              + (encrypted
                                  ? "文件是密文，导入时需要同一个备份密码。"
-                                 : "这是明文文件，可以直接发给别人导入（密码类字段已剔除）。"), true);
+                                 : "这是明文文件：里面的 GitHub 令牌与配置都能被直接读到，别公开分享。"), true);
         }
         catch (Exception ex)
         {

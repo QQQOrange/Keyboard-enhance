@@ -81,11 +81,15 @@ public static partial class SelfTest
         Check("null → 算没填", !UpdateService.HasToken(null));
 
         // ---- 掩码：界面上回显时不能暴露完整令牌 ----
+        /* 掩码只回答"有没有"，一个真实字符都不露 —— 头尾几位同样算泄露
+         * （截图、录屏、远程协助都会带走）。 */
         string mask = UpdateService.MaskToken("ghp_abcdefghijklmnopqrstuvwxyz");
-        Check("掩码只留头尾", mask.StartsWith("ghp_ab") && mask.EndsWith("wxyz"), mask);
-        Check("掩码里不含完整令牌", !mask.Contains("ghp_abcdefghijklmnopqrstuvwxyz"), mask);
-        Check("短令牌全部打码", !UpdateService.MaskToken("ghp_short").Contains("short"),
-            UpdateService.MaskToken("ghp_short"));
+        CheckEqual("掩码是固定 8 个点", mask, new string('•', 8));
+        Check("掩码里没有令牌前缀", !mask.Contains("ghp"), mask);
+        Check("掩码里没有令牌片段", !mask.Contains("abcd") && !mask.Contains("wxyz"), mask);
+        CheckEqual("短令牌也是 8 个点", UpdateService.MaskToken("ghp_x"), new string('•', 8));
+        CheckEqual("长度不同但掩码相同（不泄露长度）",
+            UpdateService.MaskToken("ghp_short"), UpdateService.MaskToken("github_pat_" + new string('a', 80)));
         CheckEqual("空令牌的掩码是空串", UpdateService.MaskToken(null), "");
 
         // ---- 前缀粗判（只用于提示，不拦截保存）----
@@ -100,10 +104,11 @@ public static partial class SelfTest
             && UpdateService.TokenHelpUrl.Contains("personal-access-tokens"),
             UpdateService.TokenHelpUrl);
 
-        // ---- 明文导出绝不能带上令牌 ----
+        /* 令牌**不再**被排除：用户要求"备份与导出都必须带令牌"。
+         * 真正要守的是"隐私组必须加密"，那条在 TestExportGroups 里。 */
         bool tokenExcluded = Core.Sync.ExportImport.NeverExport.Any(p =>
             p.Equals("Global.GitHubToken", StringComparison.OrdinalIgnoreCase));
-        Check("明文导出排除令牌", tokenExcluded);
+        Check("令牌不排除在导出外（备份与导出一致）", !tokenExcluded);
 
         // ---- 归一化：配置里写坏了的令牌会被洗掉，而不是带着报 401 ----
         var s = DefaultSettings.Create();
@@ -180,12 +185,83 @@ public static partial class SelfTest
         CheckEqual("合并时本机有值 → 保留本机的令牌",
             mergeOwn.Global.GitHubToken, "ghp_device2_own_token");
 
-        // ⑦ 明文导出永远不带（和加密备份刻意相反）
+        /* ⑦ 明文导出**也要带令牌**（用户明确要求：备份与导出两条路径一致）。
+         * 代价是明文文件里能读到它，所以界面上必须标清楚"当前是明文"——
+         * 但那是提示的事，不是悄悄把它摘掉。 */
         var node = System.Text.Json.JsonSerializer
             .SerializeToNode(s, SettingsStore.JsonOptions)!.AsObject();
-        Check("导出前的 JSON 里有令牌", node.ToJsonString().Contains(token));
         Core.Sync.ExportImport.Sanitize(node);
-        Check("明文导出会摘掉令牌", !node.ToJsonString().Contains(token));
+        Check("明文导出保留 GitHub 令牌", node.ToJsonString().Contains(token));
+
+        // ⑦b 网盘密码与备份密码仍然要摘（那两个泄露的后果比令牌重得多）
+        var s2 = DefaultSettings.Create();
+        s2.Sync.WebDavPass = "webdav-secret";
+        s2.Sync.BackupPassword = "backup-secret";
+        var node2 = System.Text.Json.JsonSerializer
+            .SerializeToNode(s2, SettingsStore.JsonOptions)!.AsObject();
+        Core.Sync.ExportImport.Sanitize(node2);
+        string plain2 = node2.ToJsonString();
+        Check("明文导出仍摘掉网盘密码", !plain2.Contains("webdav-secret"));
+        Check("明文导出仍摘掉备份密码", !plain2.Contains("backup-secret"));
+    }
+
+    /// <summary>
+    /// 清理规则：按天数、按份数、以及"什么算冗余"。
+    ///
+    /// 本地部分用临时目录真删真数（同一套 <c>PruneFolder</c> 代码路径）；
+    /// 云端只是把同一套规则作用在 PROPFIND 结果上，判定规则在这里验。
+    /// 重点守 **"最新一份永远留"** —— 半月没备份时按天数会把唯一那份也删掉。
+    /// </summary>
+    private static void TestBackupCleanup()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ke_cleanup_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // 3 份 10 天前 + 12 份近期
+            for (int i = 0; i < 15; i++)
+            {
+                /* 文件名精确到秒 —— 前 3 份必须错开分钟，否则会被同一个名字覆盖，
+                 * 那就变成"造了 15 份其实只有 13 个文件"。 */
+                DateTime when = i < 3
+                    ? DateTime.Now.AddDays(-10).AddMinutes(-i * 7)
+                    : DateTime.Now.AddHours(-i);
+                string path = Path.Combine(dir, Core.Sync.SyncService.BackupName(when));
+                File.WriteAllText(path, "payload-" + i);
+                File.SetLastWriteTime(path, when);
+            }
+            CheckEqual("造了 15 份备份", Directory.GetFiles(dir).Length, 15);
+
+            // ① 按 7 天清理：3 份旧的走掉
+            int byDays = Core.Sync.SyncService.PruneFolder(dir, keep: int.MaxValue, days: 7);
+            CheckEqual("按 7 天清理删掉 3 份", byDays, 3);
+            CheckEqual("剩 12 份", Directory.GetFiles(dir).Length, 12);
+
+            // ② 只保留 10 份
+            int byKeep = Core.Sync.SyncService.PruneFolder(dir, keep: 10, days: 0);
+            CheckEqual("保留 10 份时删掉 2 份", byKeep, 2);
+            CheckEqual("剩 10 份", Directory.GetFiles(dir).Length, 10);
+
+            // ③ 只剩一份时，再按天数清也不会删它
+            Core.Sync.SyncService.PruneFolder(dir, keep: 1, days: 0);
+            CheckEqual("最后留 1 份", Directory.GetFiles(dir).Length, 1);
+            int last = Core.Sync.SyncService.PruneFolder(dir, keep: 1, days: 1);
+            CheckEqual("唯一一份过期也不删", last, 0);
+            CheckEqual("仍然还在", Directory.GetFiles(dir).Length, 1);
+
+            // ④ 冗余判定：哪些算"上传残留"
+            Check("识别 .tmp 残留", Core.Sync.SyncService.IsTempArtifact("KeyboardEnhance(1).keyboardenhance.tmp"));
+            Check("识别 .part 残留", Core.Sync.SyncService.IsTempArtifact("backup.part"));
+            Check("识别 .crdownload", Core.Sync.SyncService.IsTempArtifact("x.crdownload"));
+            Check("识别 ~$ 前缀", Core.Sync.SyncService.IsTempArtifact("~$settings.json"));
+            Check("识别 .bak 旧副本", Core.Sync.SyncService.IsTempArtifact("settings.json.bak"));
+            Check("正常备份名不算残留",
+                !Core.Sync.SyncService.IsTempArtifact(Core.Sync.SyncService.BackupName(DateTime.Now)));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
     }
 
     /// <summary>
@@ -576,9 +652,71 @@ public static partial class SelfTest
     /// <summary>
     /// 明文导出 / 导入：往返、拒绝加密备份、**只应用勾选的组**。
     /// </summary>
-    private static void TestExportImport()
+    /// <summary>
+    /// 导出范围必须和"勾了什么"一致。
+    ///
+    /// 用户报过：勾了「同步与备份设置」和「按键映射触发键与层」，导出文件里没有这两块。
+    /// 前者是组的 Keys 与组名不符（只写了 Triggers，漏了 Layers），
+    /// 后者要确认 Sync 整块真的进了文件、而且加密导出不摘密码字段。
+    /// </summary>
+    private static void TestExportGroups()
     {
-        var src = DefaultSettings.Create();
+        var s = DefaultSettings.Create();
+        s.Sync.WebDavUrl = "https://dav.example.com/dav/";
+        s.Sync.WebDavUser = "tester";
+        s.Sync.SyncOnStart = true;
+        s.Sync.BackupPassword = "导出密码";
+        s.Triggers.Add(new Core.Settings.TriggerKey { Key = "capslock", LayerId = 2 });
+
+        // ---- ① 触发键与层：组名承诺了"层"，文件里就必须有 Layers ----
+        var (t1, _) = Core.Sync.ExportImport.Build(s, new[] { "triggers" }, includeSecrets: true);
+        Check("导出含 Triggers", t1.Contains("\"Triggers\""), t1.Length.ToString());
+        Check("导出含 Layers（组名承诺了『层』）", t1.Contains("\"Layers\""),
+            t1.Length > 300 ? t1[..300] : t1);
+        Check("触发键内容真的写进去了", t1.Contains("capslock"));
+
+        // ---- ② 同步与备份设置：整块 Sync 都要在，密码字段也不例外（加密导出）----
+        var (t2, _) = Core.Sync.ExportImport.Build(s, new[] { "syncSettings" }, includeSecrets: true);
+        Check("导出含 Sync", t2.Contains("\"Sync\""), t2.Length.ToString());
+        Check("Sync 里带上了服务器地址", t2.Contains("dav.example.com"));
+        Check("Sync 里带上了用户名", t2.Contains("tester"));
+        Check("Sync 里带上了同步开关", t2.Contains("\"SyncOnStart\""));
+        Check("加密导出保留密码字段", t2.Contains("\"BackupPassword\""));
+
+        // ---- ③ 明文导出仍然要摘凭据（安全边界不能被"修 bug"顺手破坏）----
+        var (t3, _) = Core.Sync.ExportImport.Build(s, new[] { "syncSettings" }, includeSecrets: false);
+        Check("明文导出摘掉网盘密码", !t3.Contains("\"WebDavPass\""));
+        Check("明文导出摘掉备份密码", !t3.Contains("\"BackupPassword\""));
+
+        // ---- ④ 勾了隐私组就不许明文导出（用户明确要求：强制加密）----
+        string tmp = Path.Combine(Path.GetTempPath(), "ke_export_priv.clpconf");
+        bool plainRejected = false;
+        try
+        {
+            Core.Sync.ExportImport.WritePlain(tmp, s, new[] { "syncSettings" });
+        }
+        catch (InvalidOperationException)
+        {
+            plainRejected = true;
+        }
+        finally
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+        }
+        Check("勾了隐私组时明文导出被拒绝", plainRejected);
+        CheckEqual("能报出是哪个隐私组",
+            string.Join(",", Core.Sync.ExportImport.PrivateNames(new[] { "syncSettings" })), "同步与备份设置");
+        Check("不勾隐私组时不拦",
+            Core.Sync.ExportImport.PrivateNames(new[] { "appearance", "keys" }).Count == 0);
+
+        // ---- ⑤ 不勾任何组：文件里不该有配置内容 ----
+        var (t4, count4) = Core.Sync.ExportImport.Build(s, Array.Empty<string>(), includeSecrets: true);
+        CheckEqual("空勾选导出的设置项为 0", count4, 0);
+        Check("空勾选不含 Triggers", !t4.Contains("\"Triggers\""));
+    }
+
+    private static void TestExportImport()
+    {        var src = DefaultSettings.Create();
         src.Sync.WebDavUrl = "https://dav.example.com/dav/";
         src.Sync.BackupPassword = "同步密码";
 

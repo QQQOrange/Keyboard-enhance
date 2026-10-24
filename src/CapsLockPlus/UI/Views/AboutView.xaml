@@ -158,6 +158,10 @@
 
                         <TextBlock x:Name="TokenStatusText" Style="{StaticResource Text.Tertiary}"
                                    TextWrapping="Wrap" Margin="0,7,0,0" />
+                        <!-- 配额：本小时已用多少 / 总共多少。匿名也能读（那就是 60/小时），
+                             所以没填令牌时这行同样有内容，用户能直观看到差别。 -->
+                        <TextBlock x:Name="TokenUsageText" Style="{StaticResource Text.Tertiary}"
+                                   TextWrapping="Wrap" Margin="0,2,0,0" />
                     </StackPanel>
 
                     <Border Style="{StaticResource Divider}" />

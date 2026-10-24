@@ -59,6 +59,43 @@ public partial class AboutView : UserControl
         RefreshTokenStatus();
     }
 
+    // ---------------- 配额 ----------------
+
+    private bool _usageLoading;
+
+    /// <summary>
+    /// 刷新"本小时已用 / 总共"那一行。
+    ///
+    /// 匿名也能查（显示 60/小时），所以没填令牌时这行照样有内容 ——
+    /// 用户一眼就能看出填令牌前后差了一个数量级。
+    /// </summary>
+    private async Task RefreshTokenUsageAsync()
+    {
+        if (_usageLoading) return;
+        _usageLoading = true;
+        try
+        {
+            TokenUsageText.Text = "正在读取配额…";
+            var info = await _updates.FetchRateLimitAsync(_host?.Settings.Global.GitHubToken);
+
+            if (!info.Ok)
+            {
+                TokenUsageText.Text = "配额暂时读不到（" + info.Message + "）";
+                return;
+            }
+
+            string scope = UpdateService.HasToken(_host?.Settings.Global.GitHubToken)
+                ? "按你的账号"
+                : "匿名（按 IP）";
+            string tail = info.Remaining > 0 ? $"还剩 {info.Remaining} 次" : "已用完，整点恢复";
+            TokenUsageText.Text = $"本小时已用 {info.Used} 次 / 共 {info.Limit} 次（{scope} · {tail}）";
+        }
+        finally
+        {
+            _usageLoading = false;
+        }
+    }
+
     // ---------------- 布局：全屏两列 / 窄窗口单列 ----------------
 
     /// <summary>
@@ -162,10 +199,13 @@ public partial class AboutView : UserControl
 
         TokenBox.Text = has ? TokenMask : "";
         ClearTokenButton.IsEnabled = has;
+        _ = RefreshTokenUsageAsync();
 
+        /* 只回答"有没有"，一个字符都不回显 —— 截图/录屏都不会带走东西。
+         * 想看头尾几位？那也算泄露，用户明确要求去掉。 */
         TokenStatusText.Text = has
-            ? $"已保存 {UpdateService.MaskToken(saved)}　·　更新检查按账号限流（5000 次/小时），可以自动下载安装。"
-              + "输入新令牌会覆盖它。令牌会跟着加密备份和网盘同步一起走（明文导出不含）。"
+            ? "已保存（令牌不回显）　·　更新检查按账号限流，可以自动下载安装。"
+              + "输入新令牌会覆盖它。令牌会跟着备份和导出一起走。"
             : "未填写　·　匿名访问每小时只有 60 次（同一网络下多台机器共用），容易撞上限。"
               + "填了才能一键自动下载；不填也行 —— 发现新版本时只提示、并给出 GitHub 下载地址，"
               + "程序内不提供下载按钮。只读公开仓库不需要勾任何权限。"
@@ -244,7 +284,7 @@ public partial class AboutView : UserControl
         {
             string cur = _host.Settings.Global.GitHubToken;
             TokenStatusText.Text = UpdateService.HasToken(cur)
-                ? $"令牌没有改动，仍是已保存的那个（{UpdateService.MaskToken(cur)}）。"
+                ? "令牌没有改动，仍是已保存的那个（不回显）。"
                   + "要换新的，直接在输入框里输入或粘贴即可。"
                 : "输入框里只有占位圆点，先把新令牌粘进来。";
             return;

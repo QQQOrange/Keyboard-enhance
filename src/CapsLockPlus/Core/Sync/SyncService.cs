@@ -373,6 +373,217 @@ public sealed class SyncService
         }
     }
 
+    // ---------------- 维护：清理（本地 + 云端）----------------
+
+    /// <summary>
+    /// 一次清理的结果。
+    /// </summary>
+    /// <param name="RemoteSkipped">云端没配置，只清了本地。</param>
+    /// <param name="Summary">给用户看的一句话，界面上直接用。</param>
+    public sealed record CleanupResult(int LocalDeleted, int RemoteDeleted, long FreedBytes,
+        bool RemoteSkipped, string Summary);
+
+    /// <summary>
+    /// 清理早于 <paramref name="days"/> 天的备份（本地 + 云端）。
+    ///
+    /// **永远保留最新一份** —— 用户半个月没备份时，按天数会把唯一那份也删掉，
+    /// 那就成了"备份功能帮我清空了备份"。
+    /// </summary>
+    public async Task<CleanupResult> CleanupOlderThanAsync(int days, CancellationToken ct = default)
+    {
+        int dayN = Math.Max(1, days);
+
+        // 本地：keep 给 int.MaxValue 等于"只按天数"
+        int local = PruneLocal(keep: int.MaxValue, days: dayN);
+
+        int remote = 0;
+        long bytes = 0;
+        bool skipped = !Configured;
+        if (!skipped)
+        {
+            var (d, b) = await PruneRemoteAsync(keep: 0, dayN, ct).ConfigureAwait(false);
+            remote = d;
+            bytes = b;
+        }
+
+        string summary = BuildCleanupSummary($"早于 {dayN} 天的备份", local, remote, bytes, skipped);
+        CoreLog.Info($"清理旧备份（>{dayN} 天）：本地 {local} 份，云端 {remote} 份");
+        return new CleanupResult(local, remote, bytes, skipped, summary);
+    }
+
+    /// <summary>只保留最近 <paramref name="keep"/> 份（本地 + 云端）。</summary>
+    public async Task<CleanupResult> KeepNewestAsync(int keep, CancellationToken ct = default)
+    {
+        int keepN = Math.Max(1, keep);
+
+        // days 给 0 = 不按天数
+        int local = PruneLocal(keep: keepN, days: 0);
+
+        int remote = 0;
+        long bytes = 0;
+        bool skipped = !Configured;
+        if (!skipped)
+        {
+            var (d, b) = await PruneRemoteAsync(keepN, days: 0, ct).ConfigureAwait(false);
+            remote = d;
+            bytes = b;
+        }
+
+        string summary = BuildCleanupSummary($"只保留最近 {keepN} 份", local, remote, bytes, skipped);
+        CoreLog.Info($"保留最近 {keepN} 份：本地删 {local}，云端删 {remote}");
+        return new CleanupResult(local, remote, bytes, skipped, summary);
+    }
+
+    /// <summary>
+    /// 清掉云端"冗余 / 无效"的东西。判定范围（界面上照这个说）：
+    ///
+    ///   ① 上传残留：`.tmp` / `.part` / `.crdownload` 结尾，或 `~$` 开头的临时文件
+    ///   ② 太小：0 字节，或小于 64 字节（一份正常备份至少几 KB）
+    ///   ③ 内容完全重复：同一份备份被传了多次，只保留**最新**的那份
+    ///   ④ 打不开：既不是合法的加密备份，也不是合法的明文导出
+    ///
+    /// 只动云端 —— 本地目录里有用户自己的东西，不该被"自动判定"删掉。
+    /// </summary>
+    public async Task<CleanupResult> CleanupRedundantAsync(CancellationToken ct = default)
+    {
+        if (!Configured)
+            return new CleanupResult(0, 0, 0, true, "还没填 WebDAV 地址，云端没有可清理的对象。");
+
+        var client = Client();
+        var (all, _) = await client.ListEnsuringDirectoryAsync(ct).ConfigureAwait(false);
+
+        var doomed = new List<RemoteFile>();
+        var keepByHash = new Dictionary<string, string>(StringComparer.Ordinal);
+        int checkedCount = 0;
+
+        /* 降序遍历：第一次见到的同内容文件是**最新**的，留它，后面的都算重复。 */
+        foreach (var f in all.OrderByDescending(x => x.Modified))
+        {
+            if (IsTempArtifact(f.Name)) { doomed.Add(f); continue; }
+            if (f.Size < 64) { doomed.Add(f); continue; }
+
+            // 只有"看起来是备份"的才值得下载校验（别去碰用户放在同目录的其它文件）
+            if (!IsBackupName(f.Name)) continue;
+            if (checkedCount >= MaxRedundantScan) continue;
+            checkedCount++;
+
+            string? text;
+            try { text = await client.DownloadAsync(f.Name, ct).ConfigureAwait(false); }
+            catch (Exception e)
+            {
+                CoreLog.Warn($"冗余检查时读不到 {f.Name}：{e.Message}");
+                continue;
+            }
+            if (text == null) continue;
+
+            // ④ 既不是密文备份，也不是明文导出 → 无效
+            if (!CryptoBox.LooksEncrypted(text) && !text.Contains("\"kind\"", StringComparison.Ordinal))
+            {
+                doomed.Add(f);
+                continue;
+            }
+
+            // ③ 内容重复
+            string hash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(text)));
+            if (keepByHash.ContainsKey(hash)) doomed.Add(f);
+            else keepByHash[hash] = f.Name;
+        }
+
+        int deleted = 0;
+        long bytes = 0;
+        foreach (var f in doomed)
+        {
+            try
+            {
+                await client.DeleteAsync(f.Name, ct).ConfigureAwait(false);
+                deleted++;
+                bytes += f.Size;
+                CoreLog.Info($"清理云端冗余：{f.Name}（{f.Size} 字节）");
+            }
+            catch (Exception e)
+            {
+                CoreLog.Warn($"删不掉云端冗余 {f.Name}：{e.Message}");
+            }
+        }
+
+        string summary = deleted == 0
+            ? $"云端没有冗余或无效数据（检查了 {all.Count} 个文件，其中 {checkedCount} 份备份做了内容比对）。"
+            : $"已清除 {deleted} 个冗余/无效文件，释放约 {bytes / 1024.0:0.#} KB"
+              + $"（检查了 {all.Count} 个文件，其中 {checkedCount} 份备份做了内容比对）。";
+
+        CoreLog.Info("清除云端冗余：" + summary);
+        return new CleanupResult(0, deleted, bytes, false, summary);
+    }
+
+    /// <summary>内容比对最多下载多少份 —— 网盘慢的时候别把"清理"变成"等十分钟"。</summary>
+    private const int MaxRedundantScan = 40;
+
+    /// <summary>上传中断留下的临时文件。</summary>
+    internal static bool IsTempArtifact(string name)
+    {
+        string lower = name.ToLowerInvariant();
+        return lower.EndsWith(".tmp", StringComparison.Ordinal)
+            || lower.EndsWith(".part", StringComparison.Ordinal)
+            || lower.EndsWith(".crdownload", StringComparison.Ordinal)
+            || lower.StartsWith("~$", StringComparison.Ordinal)
+            || lower.EndsWith(".bak", StringComparison.Ordinal);
+    }
+
+    private static string BuildCleanupSummary(string what, int local, int remote, long bytes,
+        bool remoteSkipped)
+    {
+        var parts = new List<string>
+        {
+            local > 0 ? $"本地删除 {local} 份" : "本地没有需要清理的",
+        };
+
+        if (remoteSkipped) parts.Add("云端未配置，已跳过");
+        else parts.Add(remote > 0 ? $"云端删除 {remote} 份" : "云端没有需要清理的");
+
+        string freed = bytes > 0 ? $"，云端释放约 {bytes / 1024.0:0.#} KB" : "";
+        return $"{what}：{string.Join("，", parts)}{freed}。最新一份始终保留。";
+    }
+
+    /// <summary>
+    /// 按"保留 N 份 / 清理 N 天前"清理云端。
+    /// 与本地 <see cref="PruneList"/> 用同一套规则（含"至少留一份"）。
+    /// </summary>
+    private async Task<(int Deleted, long Bytes)> PruneRemoteAsync(int keep, int? days,
+        CancellationToken ct)
+    {
+        var files = await ListBackupsAsync(ct).ConfigureAwait(false);
+        if (files.Count == 0) return (0, 0);
+
+        var client = Client();
+        int deleted = 0;
+        long bytes = 0;
+
+        for (int i = 0; i < files.Count; i++)
+        {
+            var f = files[i];
+            bool tooMany = keep > 0 && i >= keep;
+            bool tooOld = days is > 0 && i > 0 &&        // i > 0：最新一份永不删
+                          (DateTimeOffset.Now - f.Modified).TotalDays > days.Value;
+            if (!tooMany && !tooOld) continue;
+
+            try
+            {
+                await client.DeleteAsync(f.Name, ct).ConfigureAwait(false);
+                deleted++;
+                bytes += f.Size;
+                CoreLog.Info($"清理云端备份：{f.Name}");
+            }
+            catch (Exception e)
+            {
+                CoreLog.Warn($"删不掉云端备份 {f.Name}：{e.Message}");
+            }
+        }
+
+        return (deleted, bytes);
+    }
+
     // ---------------- 本地备份 ----------------
 
     /// <summary>写一份本地备份，返回文件路径。</summary>

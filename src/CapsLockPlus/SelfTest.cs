@@ -235,6 +235,7 @@ public static partial class SelfTest
         TestCrypto();
 
         Section("导入导出");
+        TestExportGroups();
         TestExportImport();
         TestExportImportOnDisk();
 
@@ -247,6 +248,7 @@ public static partial class SelfTest
 
         Section("备份策略");
         TestBackupPolicy();
+        TestBackupCleanup();
 
         Section("窗口与进程");
         TestWindows();

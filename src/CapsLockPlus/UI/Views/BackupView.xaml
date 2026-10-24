@@ -9,9 +9,9 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- 左：WebDAV 同步 -->
-            <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,7,0" Padding="18,16"
-                    VerticalAlignment="Top">
+            <!-- 左：WebDAV 同步 + 备份维护 -->
+            <StackPanel Grid.Column="0" Margin="0,0,7,0">
+            <Border Style="{StaticResource Card}" Padding="18,16" VerticalAlignment="Top">
                 <StackPanel>
                     <TextBlock Text="WebDAV 同步" Style="{StaticResource Text.H2}" />
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
@@ -115,6 +115,37 @@
                                Margin="0,8,0,0" />
                 </StackPanel>
             </Border>
+
+            <!-- 备份维护：恢复与清理都在这儿。
+                 单独一张卡而不是塞进上面的按钮堆里 —— 这些是"偶尔用一次、
+                 但用错代价很大"的操作，和日常的「立即备份」不该混在一起。 -->
+            <Border Style="{StaticResource Card}" Padding="18,16" Margin="0,14,0,0"
+                    VerticalAlignment="Top">
+                <StackPanel>
+                    <TextBlock Text="备份维护" Style="{StaticResource Text.H2}" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Text="清理只动备份文件，不碰当前正在用的配置；两种情况都**至少保留最新一份**。" />
+
+                    <WrapPanel Margin="0,12,0,0">
+                        <Button Content="从云端恢复…" Style="{StaticResource Button.Primary}"
+                                Padding="14,7" Margin="0,0,8,8" Click="OnRestoreFromCloud"
+                                ToolTip="列出云端所有备份，挑一份恢复（含时间、大小）" />
+                        <Button Content="清理 7 天前…" Style="{StaticResource Button.Base}"
+                                Padding="14,7" Margin="0,0,8,8" Click="OnCleanupOld"
+                                ToolTip="删掉本地和云端早于 7 天的备份" />
+                        <Button Content="仅保留最近 10 份…" Style="{StaticResource Button.Base}"
+                                Padding="14,7" Margin="0,0,8,8" Click="OnCleanupKeep"
+                                ToolTip="本地和云端都只留最新 10 份，其余删掉" />
+                        <Button Content="清除冗余数据…" Style="{StaticResource Button.Ghost}"
+                                Padding="14,7" Margin="0,0,8,8" Click="OnCleanupRedundant"
+                                ToolTip="清掉云端的上传残留、0 字节、重复内容和打不开的文件" />
+                    </WrapPanel>
+
+                    <TextBlock x:Name="MaintStatus" Style="{StaticResource Text.Tertiary}"
+                               TextWrapping="Wrap" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+            </StackPanel>
 
             <!-- 右：本地备份 / 导出 / 导入 -->
             <StackPanel Grid.Column="1" Margin="7,0,0,0">
@@ -223,19 +254,29 @@
                     <StackPanel>
                         <TextBlock Text="导出配置" Style="{StaticResource Text.H2}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="勾了哪一组，就导出那一组的**全部内容**。默认加密导出，文件本身是密文；只有关掉加密时才会剔除密码类字段（那种文件可以直接发给别人）。" />
+                                   Text="勾了哪一组，就导出那一组的全部内容 —— **GitHub 个人访问令牌也在里面**，换台机器导入后不用重新填。默认加密导出；关掉加密只是不加密文件，不会少东西（网盘密码与备份密码除外）。" />
 
-                        <!-- 导出模式 -->
+                        <!-- 导出模式：开关旁边直接标出"现在到底是加密还是明文" -->
                         <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="加密导出" Style="{StaticResource Text.Body}" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="加密导出" Style="{StaticResource Text.Body}"
+                                               VerticalAlignment="Center" />
+                                    <Border x:Name="ExportStateBadge" Margin="8,0,0,0" Padding="7,1"
+                                            CornerRadius="6" VerticalAlignment="Center"
+                                            Background="{DynamicResource Brush.SuccessSoft}">
+                                        <TextBlock x:Name="ExportStateText" Text="已加密" FontSize="11.5"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Brush.Success}" />
+                                    </Border>
+                                </StackPanel>
                                 <TextBlock x:Name="ExportModeHint" Style="{StaticResource Text.Tertiary}"
                                            TextWrapping="Wrap" Margin="0,3,0,0"
-                                           Text="用备份密码加密，含网盘密码 / 备份密码 / GitHub 令牌等全部字段。换台机器导入时输入同一个密码即可。" />
+                                           Text="用备份密码加密，含 GitHub 令牌 / 全部配置。换台机器导入时输入同一个密码即可。" />
                             </StackPanel>
                             <CheckBox Grid.Column="1" x:Name="ExportEncryptedBox"
                                       Style="{StaticResource ToggleSwitch}"

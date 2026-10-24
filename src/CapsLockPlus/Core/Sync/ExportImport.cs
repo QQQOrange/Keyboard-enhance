@@ -58,8 +58,10 @@ public static class ExportImport
             new[] { nameof(AppSettings.Keys), nameof(AppSettings.Layers) },
             Private: false, DefaultChecked: true),
 
+        /* Keys 必须把**组名承诺的东西**全列上：这一组叫"触发键与层"，
+         * 以前只写了 Triggers，导出的文件里没有 Layers —— 用户勾了却拿不到层。 */
         new("triggers", "触发键与层", "触发键配置、10 个层的名称与启用状态",
-            new[] { nameof(AppSettings.Triggers) },
+            new[] { nameof(AppSettings.Triggers), nameof(AppSettings.Layers) },
             Private: false, DefaultChecked: true),
 
         new("macros", "宏", "录制好的宏与步骤（不含按键绑定）",
@@ -101,9 +103,15 @@ public static class ExportImport
     {
         "Sync.WebDavPass",
         "Sync.BackupPassword",
-        // GitHub 令牌等于一份可用来读你仓库的凭据：明文导出（"可以直接发给别人"
-        // 的那种文件）里绝不能带。加密导出仍会带上，和备份密码同一个待遇。
-        "Global.GitHubToken",
+
+        /* GitHub 令牌**不再**在这张表里：用户明确要求"备份和导出都必须带令牌"，
+         * 否则换台机器导入后还得重新去 GitHub 建一个。
+         *
+         * 代价是明文导出会把它写进文件 —— 这是有意接受的，因为：
+         *   · 令牌只读公开仓库的更新信息，泄露的后果是"别人用你的配额"；
+         *   · 而备份密码泄露 = 别人能解开你所有云备份，所以那两个仍然摘掉；
+         *   · 界面上会明确标出"当前是明文导出，文件里含令牌"，
+         *     想安全就勾上加密（默认就是勾着的）。 */
     };
 
     /// <summary>把不该出门的字段从**明文**导出数据里摘掉。</summary>
@@ -172,11 +180,40 @@ public static class ExportImport
         return (file.ToJsonString(WriteOpts), data.Count);
     }
 
-    /// <summary>把勾选的组写成一份**明文**文件（会剔除凭据）。返回写进去的设置项个数。</summary>
+    /// <summary>
+    /// 这些组里有没有"隐私组"（含凭据）。
+    ///
+    /// 有就不能明文导出 —— 界面据此锁住加密开关，<see cref="WritePlain"/> 再兜一层。
+    /// 返回它们的显示名，方便直接拼进提示里。
+    /// </summary>
+    public static List<string> PrivateNames(IEnumerable<string> groups)
+    {
+        var names = new List<string>();
+        foreach (string id in groups)
+        {
+            var g = FindGroup(id);
+            if (g is { Private: true } && !names.Contains(g.Name)) names.Add(g.Name);
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// 把勾选的组写成一份**明文**文件。
+    ///
+    /// 勾了隐私组直接拒绝：那些组里有网盘密码、备份密码这类凭据，
+    /// 明文文件一旦被转发就等于把凭据送出去。界面上加密开关会被锁死，
+    /// 这里再兜一层是为了防止别的调用路径（导入侧、命令行）绕过去。
+    /// </summary>
     public static int WritePlain(string path, AppSettings settings,
         IEnumerable<string> selectedGroups)
     {
-        var (text, count) = Build(settings, selectedGroups);
+        var selected = selectedGroups.ToList();
+        var priv = PrivateNames(selected);
+        if (priv.Count > 0)
+            throw new InvalidOperationException(
+                $"勾选了隐私内容（{string.Join("、", priv)}），只能用加密导出。");
+
+        var (text, count) = Build(settings, selected);
         File.WriteAllText(path, text, System.Text.Encoding.UTF8);
         CoreLog.Info($"已导出明文配置：{path}（{count} 个设置项）");
         return count;

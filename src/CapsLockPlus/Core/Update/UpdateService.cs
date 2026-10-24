@@ -144,15 +144,58 @@ public sealed class UpdateService
     }
 
     /// <summary>
-    /// 令牌的显示形式：只留头尾几位（`ghp_a…9f3d`）。
-    /// 界面上回填令牌时用它 —— 完整令牌摊在屏幕上，随便截个图就泄了。
+    /// 令牌的显示形式：**固定 8 个圆点**，不露任何真实字符。
+    ///
+    /// 以前是"头 6 尾 4"（`ghp_a…9f3d`），用户明确说这同样算泄露 ——
+    /// 截图、录屏、远程协助都会把它带出去。现在只回答一个问题："这里有没有东西"。
+    /// 连长度都不透露（20 位是老式 PAT，93 位是 fine-grained）。
     /// </summary>
-    public static string MaskToken(string? raw)
+    public static string MaskToken(string? raw) =>
+        NormalizeToken(raw).Length == 0 ? "" : "••••••••";
+
+    /// <summary>一次配额查询的结果（本小时已用 / 总共）。</summary>
+    public sealed record RateLimitInfo(bool Ok, int Limit, int Used, int Remaining, string Message);
+
+    /// <summary>
+    /// 查当前 GitHub 配额。
+    ///
+    /// 用 <c>/rate_limit</c>：这个端点**不消耗**配额，匿名也能查 ——
+    /// 匿名时看到的就是 60/小时，正好让用户直观知道"没填令牌的代价"。
+    /// </summary>
+    public async Task<RateLimitInfo> FetchRateLimitAsync(string? token, CancellationToken ct = default)
     {
-        string t = NormalizeToken(raw);
-        if (t.Length == 0) return "";
-        if (t.Length <= 10) return new string('•', t.Length);
-        return $"{t[..6]}…{t[^4..]}";
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/rate_limit");
+            string pat = NormalizeToken(token);
+            if (pat.Length > 0)
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pat);
+            req.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
+
+            using var resp = await Http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return new RateLimitInfo(false, 0, 0, 0, $"HTTP {(int)resp.StatusCode}");
+
+            string json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("resources", out var res)
+                || !res.TryGetProperty("core", out var core))
+                return new RateLimitInfo(false, 0, 0, 0, "返回里没有 core 配额");
+
+            int limit = core.TryGetProperty("limit", out var l) ? l.GetInt32() : 0;
+            int used = core.TryGetProperty("used", out var u) ? u.GetInt32() : 0;
+            int remain = core.TryGetProperty("remaining", out var r) ? r.GetInt32() : 0;
+            return new RateLimitInfo(true, limit, used, remain, "");
+        }
+        catch (TaskCanceledException)
+        {
+            return new RateLimitInfo(false, 0, 0, 0, "超时");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("查询 GitHub 配额失败：" + ex.Message);
+            return new RateLimitInfo(false, 0, 0, 0, ex.Message);
+        }
     }
 
     private static readonly string[] TokenPrefixes = { "Bearer", "token", "Authorization" };
