@@ -1,6 +1,11 @@
-"""创建 GitHub Release 并上传 CapsLockPlus.exe。
+"""创建 GitHub Release 并上传发布产物（KeyboardEnhance.exe）。
 
 凭据来自 Windows 凭据管理器（git push 时已在用），无需额外授权。
+
+用法：
+    set CLP_TAG=v4.5.18
+    set CLP_NAME=按键增强 v4.5.18 · ...
+    python tools/publish-release.py dist\\KeyboardEnhance.exe notes.md
 """
 import ctypes
 import ctypes.wintypes as w
@@ -89,7 +94,7 @@ def main():
     st, assets = call(API + f"/releases/{rid}/assets")
     if isinstance(assets, list):
         for a in assets:
-            if a["name"] == "CapsLockPlus.exe":
+            if a["name"] == os.path.basename(exe):
                 call(API + f"/releases/assets/{a['id']}", method="DELETE")
                 print("removed old asset", a["id"])
 
