@@ -16,8 +16,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Version>4.5.19</Version>
-    <FileVersion>4.5.18.0</FileVersion>
-    <AssemblyVersion>4.5.18.0</AssemblyVersion>
+    <FileVersion>4.5.19.0</FileVersion>
+    <AssemblyVersion>4.5.19.0</AssemblyVersion>
     <!-- 不要把源码 commit 拼进 ProductVersion。
          默认行为会生成 "4.5.0+2c574eb…"，而发布时那个 commit 通常**还没包含**
          本次改动（先构建、后提交），用户看文件属性会以为装的是旧版。
