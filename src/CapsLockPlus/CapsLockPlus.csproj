@@ -15,9 +15,9 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>4.5.12</Version>
-    <FileVersion>4.5.12.0</FileVersion>
-    <AssemblyVersion>4.5.12.0</AssemblyVersion>
+    <Version>4.5.13</Version>
+    <FileVersion>4.5.13.0</FileVersion>
+    <AssemblyVersion>4.5.13.0</AssemblyVersion>
     <!-- 不要把源码 commit 拼进 ProductVersion。
          默认行为会生成 "4.5.0+2c574eb…"，而发布时那个 commit 通常**还没包含**
          本次改动（先构建、后提交），用户看文件属性会以为装的是旧版。
@@ -37,6 +37,13 @@
     <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <UseSystemResourceKeys>false</UseSystemResourceKeys>
+
+    <!-- WFO0003：分析器建议把 DPI 设置从 app.manifest 挪到 ApplicationHighDpiMode。
+         这条**不能照做** —— 本项目是 WPF 主体，高 DPI 靠清单里的
+         PerMonitorV2 + WPF 自己的 DPI 感知声明生效；WinForms 只用来托管托盘图标，
+         改成 WinForms 的 API 反而会让 WPF 那条路失去 Per-Monitor 支持。
+         这里只关掉这条针对性建议，其它分析器规则照旧。 -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
 
     <!-- 性能与体积：ReadyToRun 把 IL 预编译成原生代码，理论上省 JIT；
          但**实测在这台机器上没有收益**（本程序 5 轮交替测量：

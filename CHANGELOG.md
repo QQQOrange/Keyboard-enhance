@@ -4,6 +4,124 @@
 
 ---
 
+## v4.5.13 — 全项目代码质量整治（无新功能）
+
+> ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**（本程序不自带运行时，
+> 没装的话双击不会有任何反应）。下载：<https://dotnet.microsoft.com/download/dotnet/10.0>
+> → 选 **.NET Desktop Runtime 10.0.x → Windows → x64**。
+
+这一版不加功能，只做"逐行过一遍"的整治：修掉真 bug、删掉死代码、
+把七千行的测试文件按业务域拆开、把编译警告清到 0。
+
+### 一、真实缺陷（会出问题的那种）
+
+**1. 窗口绑定等待循环里的空引用**（`WindowBindingService`，两处）
+
+```csharp
+var hit = WindowService.EnumerateTopLevel().FirstOrDefault(...);
+if (hit.Handle != IntPtr.Zero) { ... }     // ← hit 可能是 null
+```
+
+`FirstOrDefault` 在"目标窗口还没出现"时返回 `null`，而这正是等待循环的**常态**。
+一旦程序启动慢、路径写错或用户中途关闭，这里就在后台线程上抛
+`NullReferenceException` —— 后台线程没人 catch，整个进程会挂掉。
+改成 `if (hit is { } w && w.Handle != IntPtr.Zero)`。
+
+**影响**：绑定一个"启动较慢/已被卸载"的程序时，不再会让整个按键增强退出。
+
+**2. 自检里的同类空引用**（`SelfTest`，两处）
+
+取一个"任意非本程序窗口"做点选测试，桌面没有可枚举窗口时同样会 NRE ——
+而自检的约定是"依赖桌面的断言在拿不到时**跳过**"，不该崩。
+一并把 `w.ExeName.Equals(...)` 换成 `string.Equals(w.ExeName, ...)`（前者在
+`ExeName` 为 null 时也会炸）。
+
+**3. 一条永远成立的断言**（`SelfTest`）
+
+```csharp
+Check("窗口信息带进程路径", all.All(w => w.ExePath.Length >= 0));   // 恒真
+```
+
+`Length >= 0` 只可能为真，这条测试一直在"假装通过"。改为断言字段非 null
+（路径本身可能为空：受保护进程读不到，那是合法情况）。
+
+**4. 托盘菜单"打开设置…"不打开设置**（`TrayIcon`）
+
+菜单项写着"打开设置…"，调用的却是无参 `ShowMainWindow()` —— 落在**上次停留的页面**。
+名字和行为对不上，用户会以为程序记错了位置。现在它和双击用同一个常量
+（`DoubleClickPage`），两处不会再各改各的。
+
+**5. 启动气泡里的示例键是写死的**（`TrayIcon`）
+
+以前固定输出"试试 A / S / D / F"。默认方案确实是这四个键，但用户改过绑定后
+这句话就是错的 —— 提示是最不该说错话的地方。现在示例键从第 1 层的实际绑定里取
+（最多四个、只取无修饰键的），一条都没绑时退回"按住即可使用层内绑定"。
+顺带把它抽成只依赖 `AppSettings` 的静态方法，自检可以直接构造配置来验。
+
+### 二、结构与冗余
+
+**6. `SelfTest.cs` 7593 行 → 按业务域拆成 7 个 partial 文件**
+
+| 文件 | 行数 | 内容 |
+| --- | --- | --- |
+| `SelfTest.cs` | ~360 | 调度与基础设施（Run/RunAll、断言、DoEvents） |
+| `SelfTest.Osd.cs` | ~1170 | 亮度横条、音量、提示气泡 |
+| `SelfTest.Layers.cs` | ~1400 | 层、触发键、按住判定、连续重复 |
+| `SelfTest.Input.cs` | ~1217 | 按键识别、组合键、自定义键、选区 |
+| `SelfTest.Ui.cs` | ~1313 | 主题、键盘布局、窗口绑定与点选、托盘 |
+| `SelfTest.Qbar.cs` | ~1034 | Qbar、搜索引擎、网址识别 |
+| `SelfTest.Settings.cs` | ~924 | 设置模型、迁移、备份/同步/加密 |
+| `SelfTest.Macros.cs` | ~366 | 宏的录制、编辑与绑定 |
+
+**目的**：找一个用例要先滚三屏的体验，以及"改 A 域的测试要看 B 域的代码"的干扰。
+纯物理搬迁，方法体一字未改 —— 自检项数（1961）与结果完全一致可证。
+
+**7. 重复的 P/Invoke 声明**（`WindowPickerWindow`）
+
+它自己声明了 `SetWindowsHookEx` / `UnhookWindowsHookEx` / `CallNextHookEx` /
+`GetModuleHandle` / `HookProc` 委托，而 `NativeMethods` 里四个都有。
+两处签名各改各的迟早会漂移（`SetLastError`、委托签名都可能不一致）。
+删掉本地那份，改用 `using static` 引入的统一声明。
+
+**8. 删掉遗留字段与变量**
+
+- `HotkeyEngine._physicallyUpTicks`：v4.5.4 删掉了依赖 `GetAsyncKeyState` 的
+  "自愈"逻辑后，这个字段只剩两处赋值、没有任何读取。注释还留着旧语义，
+  会误导下一个读代码的人 —— 删字段、留一段说明为什么不需要它。
+- `UiaSelectionReader.sawPattern`：赋值后从未读取；对应注释"找到了文本模式但
+  选区是空的"也没实际区分行为。删变量、把注释改成描述现状。
+
+**9. `OsdCard` 的冗余字段**
+
+`_percent` 只在 `SetPercent` 里用一次，却存成字段，容易和"图标动画进度"
+（另一个独立的量）混淆。改成局部变量。
+
+### 三、可空性与风格统一
+
+**10. 全部 22 条编译警告清零**（除一条被正确抑制的 WinForms 建议）
+
+- `LayersView`：先算 `triggerName` 再拿它判空，编译器无法把"名字非空"和
+  "trigger 非空"关联 → 改成 `trigger is { } t` 一次判断。
+- `KeysView.Inputs`：`bool isType = b?.Action == "typeText"` 后面跟着 `b!.Arg`，
+  那个 `!` 是在向编译器保证它无法验证的事 → 改成模式匹配；顺带把
+  `_suppressEvents` 放进 `try/finally`，中途抛异常也不会把事件挂死。
+- `KeysView` 的键盘布局数组：显式写元素类型 `new (string, string?, int, int)[]`，
+  消除 6 条元组可空性警告。
+- `SubLayerEditorWindow` / `WindowPickerWindow`：正确的可空标注
+  （`CapturedCombo` 可能为 null；钩子委托在构造函数里一定赋值）。
+- `CapsLockPlus.csproj`：用 `NoWarn` 抑制 `WFO0003` 并写明理由 ——
+  它建议把 DPI 设置从清单挪到 WinForms API，而本项目是 WPF 主体，
+  照做会让 Per-Monitor DPI 失效。
+
+### 验证
+
+- 编译警告：**22 → 0**（`dotnet build -t:Rebuild`）。
+- 自检：**1961 项全绿**（重构前 1956，新增 5 项覆盖启动提示与托盘行为）。
+- 拆分前后自检项数与结果完全一致 → 纯搬迁没有改变任何用例。
+- 变异验证：把启动提示改回硬编码 `A / S / D / F` → 新增的 2 项立刻红。
+
+---
+
 ## v4.5.12 — 双击托盘图标直接进「设置」
 
 > ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**（本程序不自带运行时，

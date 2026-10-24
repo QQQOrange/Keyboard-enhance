@@ -77,13 +77,16 @@ public partial class LayersView : UserControl
 
             /* 显示的触发键**来自配置**，不是写死 CapsLock。
              * 这样"哪个键触发哪一层"一眼可见（正是你反馈的问题）。 */
-            string triggerName = trigger != null ? KeyName.Display(trigger.Key) : null;
+            /* 判空和非空使用必须写在**同一个**模式里。
+             * 之前先算 triggerName 再拿它判空，编译器无法把"名字非空"
+             * 和"trigger 非空"关联起来，于是 trigger.HoldMs 那行是
+             * 一个潜在的空引用（虽然逻辑上走得通）。 */
             rows.Add(new LayerRow(
                 Id: layer.Id,
                 Badge: badge,
                 Name: layer.Name,
-                Detail: triggerName != null
-                    ? $"触发键 {triggerName}（长按 {trigger.HoldMs}ms 进层）　·　{layer.Keys.Count} 个绑定"
+                Detail: trigger is { } t
+                    ? $"触发键 {KeyName.Display(t.Key)}（长按 {t.HoldMs}ms 进层）　·　{layer.Keys.Count} 个绑定"
                     : $"未分配触发键　·　{layer.Keys.Count} 个绑定",
                 IsActiveLayer: layer.Id == activeLayerId));
         }

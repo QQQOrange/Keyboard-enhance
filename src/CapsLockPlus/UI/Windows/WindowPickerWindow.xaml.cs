@@ -52,7 +52,7 @@ public partial class WindowPickerWindow : Window
 
     private IntPtr _selfHandle;
     private IntPtr _kbdHook = IntPtr.Zero;
-    private HookProc? _kbdProc;                   // 必须保存引用，防止被 GC
+    private NativeMethods.HookProc _kbdProc;      // 必须保存引用，防止被 GC（构造函数里赋值）
     private readonly DispatcherTimer _poll;
     private bool _closing;
 
@@ -62,34 +62,16 @@ public partial class WindowPickerWindow : Window
     /// <summary>轮询计数：按键每 20ms 查一次，高亮不必这么勤，每 4 次刷一次。</summary>
     private int _pollTick;
 
-    private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
-
-    private const int WH_KEYBOARD_LL = 13;
-    private const int WM_KEYDOWN = 0x0100;
-    private const int WM_KEYUP = 0x0101;
-    private const int WM_SYSKEYDOWN = 0x0104;
-    private const int WM_SYSKEYUP = 0x0105;
+    /* 只保留这三个"键码"常量 —— 钩子、GetAsyncKeyState、WM_KEY*、
+     * WH_KEYBOARD_LL、HookProc 委托在 NativeMethods 里都已经有一份，
+     * 之前这里重复声明了 5 个 P/Invoke 和 1 个委托，两处签名各改各的
+     * 迟早会漂移。本文件已经 `using static NativeMethods`，直接用统一的那份。 */
     private const uint VK_ESCAPE = 0x1B;
     private const uint VK_LBUTTON = 0x01;
     private const uint VK_RBUTTON = 0x02;
 
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
-
     /// <summary>这个键此刻是否被按住（查物理状态，不受 UIPI / 钩子影响）。</summary>
     private static bool IsDown(uint vk) => (GetAsyncKeyState((int)vk) & 0x8000) != 0;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint threadId);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr GetModuleHandle(string? name);
 
     public WindowPickerWindow()
     {

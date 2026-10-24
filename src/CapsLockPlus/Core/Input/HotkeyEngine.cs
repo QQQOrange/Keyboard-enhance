@@ -150,8 +150,11 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     public const int VolumeRepeatIntervalMs = 70;
 
-    /// <summary>连续多少轮计时器都读到"触发键已松开"（用于防采样抖动）。</summary>
-    private int _physicallyUpTicks;
+    /* v4.5.4 起不再保留"连续多少轮读到已松开"的计数：
+     * 那条自愈逻辑依赖 GetAsyncKeyState，而触发键的按下/抬起都被我们
+     * 自己的钩子吞掉了，系统层面它永远是"未按下"，于是按住一停顿就被
+     * 误判成抬起。自愈改由 Suspended/Enabled 切换和"下次按下"处理，
+     * 这个字段只剩两处赋值、没有任何读取，属于纯遗留，已删除。 */
 
     /// <summary>
     /// 最近一次真实按键事件的时间。
@@ -224,7 +227,6 @@ public sealed class HotkeyEngine : IDisposable
         _swallowedDown.Clear();
         _swallowedUp.Clear();
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
-        _physicallyUpTicks = 0;
         _lastTriggerDownTick = 0;
         _lastKeyActivity = DateTime.Now;
         ClearContinuousRepeat();
@@ -1122,7 +1124,6 @@ public sealed class HotkeyEngine : IDisposable
         _usedCombo = false;
         _usedOtherKey = false;
         _tapHandled = false;
-        _physicallyUpTicks = 0;
 
         /* 只清**自己**的修饰键标记，不能把五个全清。
          *

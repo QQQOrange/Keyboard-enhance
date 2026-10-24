@@ -87,7 +87,6 @@ public static class UiaSelectionReader
             }
 
             // ③ 沿父链找带 TextPattern 的元素
-            bool sawPattern = false;
             foreach (var start in candidates)
             {
                 AutomationElement? cur = start;
@@ -95,7 +94,6 @@ public static class UiaSelectionReader
                 {
                     if (cur.TryGetCurrentPattern(TextPattern.Pattern, out var raw))
                     {
-                        sawPattern = true;
                         if (raw is TextPattern pattern)
                         {
                             string text = ReadSelection(pattern);
@@ -108,8 +106,9 @@ public static class UiaSelectionReader
                 }
             }
 
-            // 找到了文本模式但选区是空的 —— 说明程序不支持"读选区"，
-            // 只能退回模拟复制。
+            /* 走到这儿说明：沿父链确实找到过 TextPattern，但选区是空的。
+             * 这与"完全没找到 TextPattern"对调用方是同一件事 ——
+             * 都只能退回模拟复制，所以统一返回空串，不额外区分。 */
             return "";
         }
         catch

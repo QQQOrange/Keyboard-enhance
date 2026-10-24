@@ -252,13 +252,18 @@ public sealed class WindowBindingService
                 var hit = WindowService.EnumerateTopLevel()
                     .FirstOrDefault(w => string.Equals(w.ExePath, exe,
                         StringComparison.OrdinalIgnoreCase));
-                if (hit.Handle != IntPtr.Zero)
+
+                /* FirstOrDefault 在"还没出现"时返回 null —— 这本来就是
+                 * 等待循环的常态，必须判空再取 Handle。
+                 * 之前直接写 hit.Handle，程序启动慢或路径不对时
+                 * 会在后台线程上抛 NullReferenceException（整个进程会挂）。 */
+                if (hit is { } w2 && w2.Handle != IntPtr.Zero)
                 {
-                    found = hit.Handle;
+                    found = w2.Handle;
                     lock (_gate)
                     {
                         b.WindowIds.Clear();
-                        b.WindowIds.Add(hit.Handle.ToInt64());
+                        b.WindowIds.Add(w2.Handle.ToInt64());
                     }
                     break;
                 }
@@ -556,7 +561,7 @@ public sealed class WindowBindingService
                 var hit = WindowService.EnumerateTopLevel()
                     .FirstOrDefault(w => string.Equals(w.ExePath, exePath,
                         StringComparison.OrdinalIgnoreCase));
-                if (hit.Handle != IntPtr.Zero) found = hit.Handle;
+                if (hit is { } w2 && w2.Handle != IntPtr.Zero) found = w2.Handle;
             }
 
             if (found == IntPtr.Zero)

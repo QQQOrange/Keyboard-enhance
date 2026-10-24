@@ -60,7 +60,6 @@ public partial class OsdCard : UserControl
     internal const double RayThickness = 1.2;
 
     private readonly Line[] _rays = new Line[RayCount];
-    private int _percent;
     private double _iconProgress;
     private Color _textColor = Colors.White;
 
@@ -85,10 +84,13 @@ public partial class OsdCard : UserControl
     /// </summary>
     public void SetPercent(int percent)
     {
-        _percent = Math.Clamp(percent, 0, 100);
-        ValueText.Text = _percent.ToString();
+        /* 只在这里用一次，没必要存成字段 —— 图标那边另有 _iconProgress
+         * 保存"当前动画进度"，两者不是一回事（补间期间数字已经到位、
+         * 图标还在中间帧）。 */
+        int pct = Math.Clamp(percent, 0, 100);
+        ValueText.Text = pct.ToString();
 
-        double s = _percent / 100.0;
+        double s = pct / 100.0;
 
         /* 用两列星号比例（s : 1-s）而不是算像素宽度：
          * 算像素要靠 Track.ActualWidth，离屏渲染时它还是 0，

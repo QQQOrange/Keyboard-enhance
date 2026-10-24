@@ -136,7 +136,7 @@ public partial class SubLayerEditorWindow : Window
         };
         if (capture.ShowDialog() != true) return;
 
-        string combo = capture.CapturedCombo;
+        string? combo = capture.CapturedCombo;
         if (string.IsNullOrWhiteSpace(combo)) return;
 
         // 捕获到的是 combo ID（caps_ctrl_k），取其中的键名部分

@@ -84,7 +84,7 @@ public partial class KeysView : UserControl
     private static readonly (string Label, string? KeyId, int Col, int Span)[][] Layout =
     {
         // ① 功能键行 y=0
-        new[]
+        new (string, string?, int, int)[]
         {
             ("Esc","esc",0,4),
             ("F1","f1",8,4),("F2","f2",12,4),("F3","f3",16,4),("F4","f4",20,4),
@@ -93,7 +93,7 @@ public partial class KeysView : UserControl
             ("PrtSc","printScreen",68,7),("ScrLk","scrollLock",75,7),("Pause","pause",82,7),
         },
         // ② 数字行 y=1
-        new[]
+        new (string, string?, int, int)[]
         {
             ("`","backquote",0,4),
             ("1","1",4,4),("2","2",8,4),("3","3",12,4),("4","4",16,4),
@@ -104,7 +104,7 @@ public partial class KeysView : UserControl
             ("Num","numLock",74,4),("/","numDivide",78,4),("*","numMultiply",82,4),("−","numSubtract",86,4),
         },
         // ③ Tab 行 y=2
-        new[]
+        new (string, string?, int, int)[]
         {
             ("Tab","tab",0,6),
             ("Q","q",6,4),("W","w",10,4),("E","e",14,4),("R","r",18,4),("T","t",22,4),
@@ -116,7 +116,7 @@ public partial class KeysView : UserControl
             // 第 4 列是小键盘 +，跨 y=2..3 两行 → 在 RowMerges 里声明
         },
         // ④ Caps 行 y=3
-        new[]
+        new (string, string?, int, int)[]
         {
             ("Caps","capslock",0,7),
             ("A","a",7,4),("S","s",11,4),("D","d",15,4),("F","f",19,4),("G","g",23,4),
@@ -127,7 +127,7 @@ public partial class KeysView : UserControl
             // 第 4 列仍是被 + 占据（跨行），这里不写
         },
         // ⑤ Shift 行 y=4
-        new[]
+        new (string, string?, int, int)[]
         {
             ("LShift","lshift",0,9),
             ("Z","z",9,4),("X","x",13,4),("C","c",17,4),("V","v",21,4),("B","b",25,4),
@@ -138,7 +138,7 @@ public partial class KeysView : UserControl
             // 第 4 列是小键盘回车，跨 y=4..5 两行 → 在 RowMerges 里声明
         },
         // ⑥ 底行 y=5
-        new[]
+        new (string, string?, int, int)[]
         {
             // 修饰键标签故意用 2~3 个字符：4 列宽（约 26px）放不下 "LCtrl"
             ("Ctrl","lctrl",0,5),("Win","lwin",5,4),("Alt","lalt",9,4),

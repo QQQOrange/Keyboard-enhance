@@ -62,12 +62,22 @@ public partial class KeysView : UserControl
     private void RefreshTypeTextField()
     {
         var b = FindInCurrentLayer(CurrentCombo());
-        bool isType = b?.Action == "typeText";
 
+        /* 用模式匹配一次拿住"确实是 typeText 的绑定"。
+         * 之前是 `bool isType = b?.Action == "typeText"` 再 `b!.Arg`，
+         * 那个 ! 是在向编译器保证一个它无法验证的事实 —— 改成模式后
+         * 非空是**编译器自己推出来的**，以后改逻辑也不会悄悄失效。
+         * `_suppressEvents` 放进 try/finally：中途抛异常时不会把事件挂死。 */
         _suppressEvents = true;
-        TypeTextBox.Text = isType ? (b!.Arg ?? "") : "";
-        TypeNoteBox.Text = isType ? (b.Note ?? "") : "";
-        _suppressEvents = false;
+        try
+        {
+            TypeTextBox.Text = b is { Action: "typeText" } arg ? arg.Arg ?? "" : "";
+            TypeNoteBox.Text = b is { Action: "typeText" } note ? note.Note ?? "" : "";
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
     }
 
     /// <summary>文本框内容变化：写进当前按键的绑定。</summary>

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Forms;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Settings;
 using CapsLockPlus.UI.Theme;
 using Application = System.Windows.Application;
 using MenuItem = System.Windows.Forms.ToolStripMenuItem;
@@ -40,7 +41,11 @@ public sealed class TrayIcon : IDisposable
         };
         _capsStateItem = new ToolStripMenuItem("", null, (_, _) => ToggleCaps()) { Enabled = false };
 
-        var open = new ToolStripMenuItem("打开设置…", null, (_, _) => host.ShowMainWindow());
+        /* 菜单项写着"打开设置…"，就必须真的落到设置页。
+         * 之前这里调的是无参 ShowMainWindow()，打开的是上次停留的页面 ——
+         * 名字和行为对不上，用户会以为程序记错了位置。
+         * 双击和菜单现在指向同一个常量，不会各改各的。 */
+        var open = new ToolStripMenuItem("打开设置…", null, (_, _) => host.ShowMainWindow(DoubleClickPage));
         var qbar = new ToolStripMenuItem("打开 Qbar  (Caps+Q)", null, (_, _) => host.ShowQbar());
         var math = new ToolStripMenuItem("计算器  (Caps+F2)", null, (_, _) => host.ShowMathBoard());
         var bindings = new ToolStripMenuItem("窗口绑定（按键映射页）", null, (_, _) => host.ShowMainWindow("keys"));
@@ -90,37 +95,62 @@ public sealed class TrayIcon : IDisposable
          * 之前写死"按住 CapsLock 试试 A/S/D/F，或按 Caps+Q 打开搜索面板"——
          * 一是还在用旧名 CapsLock，二是用户可能已经把触发键改成 F13、
          * 把打开面板的键从 Q 换掉了，那这句提示就是错的。 */
-        _icon.ShowBalloonTip(1800, AppInfo.ShortName + " 已启动", StartupTip(host),
+        _icon.ShowBalloonTip(1800, AppInfo.ShortName + " 已启动", StartupTip(host.Settings),
             ToolTipIcon.Info);
     }
 
-    /// <summary>根据当前配置生成一句真实的启动提示。</summary>
-    private static string StartupTip(AppHost host)
+    /// <summary>
+    /// 根据当前配置生成一句**真实**的启动提示。
+    ///
+    /// 之前的实现里写死了"试试 A / S / D / F" —— 默认方案确实是这四个键，
+    /// 但用户改过绑定后这句就是错的，而提示是最不该说错话的地方。
+    /// 现在示例键从第 1 层的**实际绑定**里取（最多四个、只取无修饰键的），
+    /// 一个都没绑时退回"按住即可使用层内绑定"，不再猜。
+    ///
+    /// 抽成只依赖 <see cref="AppSettings"/> 的静态方法，自检可以直接构造配置验。
+    /// </summary>
+    internal static string StartupTip(AppSettings s)
     {
         try
         {
-            // 第一个启用的触发键
-            var trigger = host.Settings.Triggers
+            var trigger = s.Triggers
                 .Where(t => t.Enabled)
                 .OrderBy(t => t.LayerId)
                 .FirstOrDefault();
 
             string keyName = trigger != null ? KeyName.Display(trigger.Key) : "触发键";
 
-            /* 找一个"打开面板"类的按键作为示例。
-             * 去第 1 层里找动作是 qbar 的绑定，没找到就退回通用说法。 */
-            string example = "";
-            var layer1 = host.Settings.Layers.FirstOrDefault(l => l.Id == 1);
-            var qbarBinding = layer1?.Keys.FirstOrDefault(k =>
-                k.Action == "qbar" && k.IsBound);
-            if (qbarBinding != null)
+            var keys = s.Layers.FirstOrDefault(l => l.Id == 1)?.Keys ?? new List<KeyBinding>();
+
+            /* 示例键：取前四个"真的绑了东西"的单键。
+             * 带修饰键的组合读起来太长（"Ctrl+K"塞进气泡会换行），跳过。 */
+            var samples = new List<string>();
+            foreach (var k in keys)
             {
-                var parsed = KeyName.ParseCombo(qbarBinding.Combo);
-                if (parsed is { } p && p.Mods == KeyModifiers.None)
-                    example = $"，或按 {keyName}+{KeyName.Display(p.Key)} 打开搜索面板";
+                if (!k.IsBound) continue;
+                if (KeyName.ParseCombo(k.Combo) is not { } parsed) continue;
+                if (parsed.Mods != KeyModifiers.None) continue;
+
+                string label = KeyName.Display(parsed.Key);
+                if (!samples.Contains(label, StringComparer.OrdinalIgnoreCase))
+                    samples.Add(label);
+                if (samples.Count >= 4) break;
             }
 
-            return $"按住 {keyName} 试试 A / S / D / F{example}。";
+            // "打开搜索面板"这个示例同样按真实绑定取
+            string example = "";
+            var qbarBinding = keys.FirstOrDefault(k => k.Action == "qbar" && k.IsBound);
+            if (qbarBinding != null
+                && KeyName.ParseCombo(qbarBinding.Combo) is { } qp
+                && qp.Mods == KeyModifiers.None)
+            {
+                example = $"，或按 {keyName}+{KeyName.Display(qp.Key)} 打开搜索面板";
+            }
+
+            if (samples.Count == 0)
+                return $"按住 {keyName} 即可使用层内绑定{example}。";
+
+            return $"按住 {keyName} 试试 {string.Join(" / ", samples)}{example}。";
         }
         catch
         {
