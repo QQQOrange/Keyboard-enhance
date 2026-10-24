@@ -217,12 +217,16 @@ public static class InputSender
     public enum TextMode
     {
         /// <summary>
-        /// 自动（默认）：纯 ASCII 单行用**真实按键**逐字敲，其它用 Unicode 注入。
+        /// 自动（默认）：长文本走剪贴板粘贴；短文本纯 ASCII 用**真实按键**逐字敲，
+        /// 其它用 Unicode 注入。
         ///
-        /// 为什么默认改成"真实按键"：密码框（浏览器、网银控件、部分安全软件）
+        /// 为什么短文本用"真实按键"：密码框（浏览器、网银控件、部分安全软件）
         /// 会过滤掉 <c>KEYEVENTF_UNICODE</c> 这种"没有扫描码"的合成输入 ——
         /// 表现就是"文字打不进去，但普通输入框正常"。真实按键带完整扫描码，
         /// 和手打没有区别，这类框都认。
+        ///
+        /// 为什么长文本改用剪贴板：逐字注入在长文本上会被目标程序的输入吞吐
+        /// 卡住，实测会零星丢字/错字符（见 <see cref="ClipboardPaster"/>）。
         /// </summary>
         Auto,
 
@@ -238,6 +242,20 @@ public static class InputSender
     {
         if (string.IsNullOrEmpty(text)) return;
 
+        /* 长文本改走剪贴板粘贴。
+         *
+         * 逐字注入在长文本上会被目标程序的输入吞吐卡住 —— 实测 Win11 记事本
+         * 86 字一批能丢 10%，同一段文字在**英文布局**下也照样丢，所以这不是
+         * 输入法的问题，是那条通道本身的上限。剪贴板粘贴一次完成，长度无关。
+         *
+         * 只改 Auto（默认）这一档：显式选了 Keys / Unicode 的用户是有具体理由的
+         * （密码框不许粘贴、目标程序不认 Ctrl+V），不擅自把他们选的通道换掉。
+         * 短文本也不受影响，仍然走原来的路 —— 那条路不碰剪贴板。
+         *
+         * TryPaste 返回 false（剪贴板拿不全 / 写不进去 / 不在 STA 线程）时
+         * 原路继续，一个字都不会少。 */
+        if (mode == TextMode.Auto && ShouldUseClipboard(text) && ClipboardPaster.TryPaste(text)) return;
+
         if (mode == TextMode.Keys || (mode == TextMode.Auto && LooksLikePlainAscii(text)))
         {
             if (TryTextAsKeys(text)) return;
@@ -248,6 +266,15 @@ public static class InputSender
 
         TextUnicode(text);
     }
+
+    /// <summary>
+    /// 这段文字够不够长、值得改走剪贴板粘贴。
+    ///
+    /// 只看长度：换行、中文、emoji 在剪贴板路径里都没有额外风险，
+    /// 反而是逐字注入更难处理的那几种。
+    /// </summary>
+    internal static bool ShouldUseClipboard(string text)
+        => text.Length >= ClipboardPaster.Threshold;
 
     /// <summary>
     /// 这段文字适不适合用"真实按键"逐字敲。

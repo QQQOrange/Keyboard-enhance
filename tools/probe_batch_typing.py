@@ -83,11 +83,67 @@ def unicode_paced(text, ch_ms):
         send([mk(0, False, ord(ch), KEYEVENTF_UNICODE), mk(0, True, ord(ch), KEYEVENTF_UNICODE)], ch_ms)
 
 
+PATTERN = "The quick brown fox jumps over 13 lazy dogs! "
+
+
+def sweep_case(text):
+    """一次长度测试：清空 → 打字 → 读回。
+
+    返回 None = 前台中途被抢，这次样本作废（**必须作废**：字符打进别的窗口
+    会表现成"少字"，那是测试环境的噪声，不是程序的问题）。
+    """
+    if not ensure_focus(HWND):
+        return None
+    clear_editor(HWND)
+    if not ensure_focus(HWND):
+        return None
+    time.sleep(0.15)
+    keys_batched(text, 32, 6)
+    time.sleep(1.0)
+    if u32.GetForegroundWindow() != HWND:
+        return None
+    return read_editor(HWND) or ""
+
+
+def length_sweep():
+    """长度梯度：找出"真实按键还靠得住"的上限。
+
+    `InputSender.Text` 里"多长算长文本、该改走剪贴板粘贴"的阈值就取自这里 ——
+    阈值不能拍脑袋，得知道注入通道从哪一档开始掉字。
+    """
+    print("\n长度梯度（按键-分批32 / 6ms，每档 4 次，前台被抢的样本作废）")
+    for n in (24, 32, 40, 64):
+        text = (PATTERN * 4)[:n]
+        oks = tried = 0
+        last = ""
+        while tried < 4:
+            r = sweep_case(text)
+            if r is None:
+                continue
+            tried += 1
+            last = r
+            if last == text:
+                oks += 1
+        mark = "可靠" if oks == tried else f"{oks}/{tried}"
+        note = ""
+        if last != text:
+            note = f"长度 {len(last)}/{n}"
+            if len(last) == n:
+                d = [(i, text[i], last[i]) for i in range(n) if text[i] != last[i]]
+                note += "  错字 " + " ".join(f"[{i}]{a!r}→{b!r}" for i, a, b in d[:4])
+        print(f"  {n:>2} 字符  {mark:<5} {note}")
+
+
+HWND = 0
+
+
 def main():
+    global HWND
     np_proc, hwnd = start_notepad()
     if not hwnd:
         print("没找到记事本")
         return 1
+    HWND = hwnd
     en = hkl_with_lang(0x0409)
     ensure_focus(hwnd)
     use_layout(hwnd, en)
@@ -124,6 +180,8 @@ def main():
             if oks < 3 and len(last) == len(TEXT):
                 d = [(i, TEXT[i], last[i]) for i in range(len(TEXT)) if TEXT[i] != last[i]]
                 print(f"     错字 {len(d)} 处：" + " ".join(f"[{i}]{a!r}→{b!r}" for i, a, b in d[:6]))
+
+        length_sweep()
     finally:
         if old is not None:
             clip_set(old)

@@ -157,6 +157,7 @@ public static partial class SelfTest
         TestDirectSearch();
         TestTypeTextAction();
         TestImeGuard();
+        TestClipboardPaste();
 
         Section("自定义按键");
         TestCustomKey();

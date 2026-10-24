@@ -587,4 +587,17 @@ public static class NativeMethods
 
     [DllImport("gdi32.dll")]
     public static extern bool DeleteObject(IntPtr ho);
+
+    // ---------------- 剪贴板 ----------------
+
+    /// <summary>
+    /// 剪贴板内容每被改写一次就 +1（读取不加）。用来判断"这期间别人动过剪贴板没有" ——
+    /// 比对比文本内容可靠：用户复制了同样的文字也算被改写。
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
+
+    /// <summary>当前持有剪贴板的窗口；没人持有时为 0。</summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetOpenClipboardWindow();
 }

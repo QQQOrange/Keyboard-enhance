@@ -368,6 +368,58 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// 长文本改走剪贴板粘贴：长短分界 + 三条"不许动用户桌面"的守卫。
+    ///
+    /// 真实粘贴行为由 `tools/e2e_long_text_paste.py` 在真机上验证
+    /// （它会真的写剪贴板、真的发 Ctrl+V、再确认剪贴板被还原）；
+    /// 这里只钉住不该误伤的那部分：多长算长、干跑不许碰剪贴板、
+    /// 非 STA 线程不许碰剪贴板。
+    /// </summary>
+    private static void TestClipboardPaste()
+    {
+        const int min = Core.Input.ClipboardPaster.Threshold;
+
+        // ---- 长短分界（边界两侧都要测：差一个字符是很容易写错的 bug）----
+        Check("空文本不算长文本", !InputSender.ShouldUseClipboard(""));
+        Check("hello 不算长文本", !InputSender.ShouldUseClipboard("hello"));
+        Check($"{min - 1} 字不算长文本", !InputSender.ShouldUseClipboard(new string('a', min - 1)));
+        Check($"{min} 字正好算长文本", InputSender.ShouldUseClipboard(new string('a', min)));
+        Check("200 字算长文本", InputSender.ShouldUseClipboard(new string('a', 200)));
+
+        // 换行 / 中文 / emoji 在剪贴板路径里没有额外风险，一律按长度判
+        Check("多行长文本算长文本", InputSender.ShouldUseClipboard(
+            new string('x', 30) + "\n" + new string('y', 30)));
+        Check("长中文算长文本", InputSender.ShouldUseClipboard(new string('中', 60)));
+
+        // ---- 干跑：自检 / 离屏渲染绝不许碰用户剪贴板 ----
+        bool dryRunSaved = InputSender.DryRun;
+        InputSender.DryRun = true;
+        try
+        {
+            Check("干跑时不粘贴（不会改用户剪贴板）",
+                !ClipboardPaster.TryPaste(new string('a', 200)));
+        }
+        finally
+        {
+            InputSender.DryRun = dryRunSaved;
+        }
+
+        // ---- STA 判定：WPF 剪贴板只在 STA 线程可用，别的线程必须老实返回 false ----
+        Check("自检主线程是 STA", ClipboardPaster.OnStaThread);
+        bool mtaIsSta = true;
+        var mta = new Thread(() => mtaIsSta = ClipboardPaster.OnStaThread);
+        mta.SetApartmentState(ApartmentState.MTA);
+        mta.IsBackground = true;
+        mta.Start();
+        mta.Join(2000);
+        Check("MTA 线程上判定为非 STA", !mtaIsSta);
+
+        // ---- 剪贴板历史过滤：没写过的东西不许被当成自己写的 ----
+        Check("没写过的文本不算自己写的",
+            !ClipboardPaster.IsSelfWrite("自检从来没有把这段文字写进剪贴板"));
+    }
+
+    /// <summary>
     /// 「自定义按键」：参数编解码 + 组合键解析 + 执行流程（启动 / 发送 / 各种失败）。
     ///
     /// 执行流程全部用注入点拦截，不真的启动程序、不真的按键 ——

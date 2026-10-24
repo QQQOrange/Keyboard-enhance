@@ -11,7 +11,12 @@ namespace CapsLockPlus.Core.Text;
 /// </summary>
 public static class TextActions
 {
-    private static readonly object ClipGate = new();
+    /// <summary>
+    /// 剪贴板读写必须串行。取词（先存原文再还原）、替换选区、以及「输入文本」的
+    /// 长文本粘贴都在动系统剪贴板 —— 动作队列和宏播放是两个线程，撞上就会
+    /// 互相把对方的内容覆盖掉。这个锁是**共用**的，别在别处另开一个。
+    /// </summary>
+    internal static readonly object ClipGate = new();
 
     /// <summary>一次“复制”最多等多久（毫秒）。</summary>
     private const int DefaultTimeoutMs = 420;   // 浏览器复制可能较慢，放宽到 420ms

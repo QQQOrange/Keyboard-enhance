@@ -141,12 +141,6 @@ public sealed partial class ActionContext
     }
 
     /// <summary>
-    /// 把一段文字直接输入到当前焦点处。
-    ///
-    /// 走 InputSender.Text（逐字符 Unicode 发送），不用剪贴板 ——
-    /// 既不会破坏用户剪贴板内容，也能正常走 IME。
-    /// </summary>
-    /// <summary>
     /// 「选中即捕获」监听器。用户在任何程序里 Ctrl+C 时，
     /// 这里就存下了选中的文字 —— 比主动取词可靠得多
     /// （Electron / Chromium 会过滤合成输入，但用户的真实按键不会被拦）。
@@ -164,18 +158,23 @@ public sealed partial class ActionContext
     /// </summary>
     public Func<int, string>? ManualCopyWaitForTest { get; set; }
 
+    /// <summary>
+    /// 把一段文字直接输入到当前焦点处（具体走哪条通道见
+    /// <see cref="InputSender.Text"/>：长文本剪贴板粘贴，短文本真实按键 / Unicode）。
+    /// </summary>
     public bool TypeText(string text)
     {
         if (string.IsNullOrEmpty(text)) return true;
 
         try
         {
-            // 太长会有明显延迟（逐字符发送），限制一下避免误操作
+            // 太长会有明显延迟，限制一下避免误操作
             const int maxLen = 2000;
             string payload = text.Length > maxLen ? text[..maxLen] : text;
 
             /* 输入方式跟着设置走：
-             *   auto（默认）→ 纯 ASCII 用真实按键（密码框认这个），其它 Unicode；
+             *   auto（默认）→ 长文本剪贴板粘贴；短文本纯 ASCII 用真实按键
+             *                 （密码框认这个），其它 Unicode；
              *   keys        → 强制真实按键；
              *   unicode     → 强制 Unicode 注入。
              * 老配置里没有这个字段，反序列化后是默认值 auto，行为即"修好密码框"。 */

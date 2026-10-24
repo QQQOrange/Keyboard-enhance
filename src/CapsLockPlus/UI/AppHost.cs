@@ -735,6 +735,11 @@ public sealed class AppHost : IDisposable
             if (!System.Windows.Clipboard.ContainsText()) return;
             string text = System.Windows.Clipboard.GetText();
             if (string.IsNullOrWhiteSpace(text) || text == _lastClipboardText) return;
+
+            /* 「输入文本」的长文本走剪贴板粘贴时会临时写两下（正文 + 还原）
+             * 那份内容不是用户复制的，记进历史纯属噪声。 */
+            if (ClipboardPaster.IsSelfWrite(text)) return;
+
             _lastClipboardText = text;
             Clipboard.RecordHistory(text);
         }
