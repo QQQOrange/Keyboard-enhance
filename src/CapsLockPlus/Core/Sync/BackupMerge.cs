@@ -39,7 +39,11 @@ public static class BackupMerge
     };
 
     /// <summary>合并一份备份进当前设置。返回合并结果（不修改入参）。</summary>
-    public static (AppSettings Merged, int Added, int Replaced) Merge(
+    /// <returns>
+    /// Merged = 合并后的设置；Added/Replaced = 新增与覆盖的条目数；
+    /// TokenAdopted = 是否采用了备份里的 GitHub 令牌（本机原本没有时才会）。
+    /// </returns>
+    public static (AppSettings Merged, int Added, int Replaced, bool TokenAdopted) Merge(
         AppSettings local, AppSettings remote)
     {
         var ln = JsonSerializer.SerializeToNode(local, SettingsStore.JsonOptions)!.AsObject();
@@ -52,12 +56,31 @@ public static class BackupMerge
 
         MergeLayers(ln, rn, ref added, ref replaced);
 
+        /* GitHub 令牌：**本机没有才取备份的**。
+         *
+         * 方向和其它字段相反，是刻意的：合并的语义是"本地独有的保留"，
+         * 而令牌是"这台机器当前能用的那把" —— 多台机器各存各的令牌时，
+         * 互相覆盖只会让人莫名 401；反过来，新机器（本机为空）恢复备份时
+         * 又确实希望把它带过来，省一次重新贴。
+         * 两边都有值 → 保留本机，在恢复结果里说明"没动你的令牌"。 */
+        bool tokenAdopted = false;
+        if (ln["Global"] is JsonObject lg && rn["Global"] is JsonObject rg)
+        {
+            string localToken = Text(lg["GitHubToken"]);
+            string remoteToken = Text(rg["GitHubToken"]);
+            if (localToken.Length == 0 && remoteToken.Length > 0)
+            {
+                lg["GitHubToken"] = remoteToken;
+                tokenAdopted = true;
+            }
+        }
+
         var merged = JsonSerializer.Deserialize<AppSettings>(
             ln.ToJsonString(), SettingsStore.JsonOptions)
             ?? throw new InvalidOperationException("合并后的配置解析失败");
 
         SettingsStore.Normalize(merged);
-        return (merged, added, replaced);
+        return (merged, added, replaced, tokenAdopted);
     }
 
     // ---------------- 通用数组合并 ----------------

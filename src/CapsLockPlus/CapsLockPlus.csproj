@@ -15,7 +15,7 @@
     <RootNamespace>CapsLockPlus</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>4.5.18</Version>
+    <Version>4.5.19</Version>
     <FileVersion>4.5.18.0</FileVersion>
     <AssemblyVersion>4.5.18.0</AssemblyVersion>
     <!-- 不要把源码 commit 拼进 ProductVersion。

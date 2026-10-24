@@ -864,53 +864,13 @@ public partial class KeysView : UserControl
     private static bool IsLinkAction(string? actionId) =>
         actionId is LinkUrlAction or LinkFolderAction or LinkFileAction;
 
-    /// <summary>当前键绑的是「直达链接」里的哪一种（没绑则返回 null）。</summary>
-    private string? CurrentLinkKind()
-    {
-        var b = FindInCurrentLayer(CurrentCombo());
-        return IsLinkAction(b?.Action) ? b!.Action : null;
-    }
-
-    /// <summary>切换「直达网址 / 直达文件夹 / 直达文件」。</summary>
-    private void SetLinkKind(string actionId)
-    {
-        if (_host == null || _suppressEvents) return;
-
-        string combo = CurrentCombo();
-        var binding = FindInCurrentLayer(combo);
-        if (binding == null)
-        {
-            binding = new KeyBinding { Combo = combo };
-            CurrentLayerKeys.Add(binding);
-        }
-
-        if (binding.Action == actionId) return;
-
-        /* 网址、文件夹、文件的 Arg 是三种东西，互相不能复用：
-         * 把 "https://github.com" 当文件夹路径去打开只会弹"文件夹不存在"，
-         * 反过来把 "D:\Work" 当网址更糟（会拼成 http://d:\Work）。
-         * 所以切换类型时清空目标，备注保留（用户起的名字通常还能用）。 */
-        binding.Action = actionId;
-        binding.Arg = "";
-        _host.SaveSettings();
-
-        _suppressEvents = true;
-        WebUrlBox.Text = "";
-        _suppressEvents = false;
-
-        RefreshWebPageFields();
-        BuildKeyboard();
-        ShowBindStatus(actionId switch
-        {
-            LinkUrlAction => "已切换成「直达网址」—— 填一个网址即可",
-            LinkFolderAction => "已切换成「直达文件夹」—— 填路径或点「浏览…」选一个",
-            _ => "已切换成「直达文件」—— 点「浏览…」挑一个文件，或直接填路径",
-        });
-    }
-
-    private void OnLinkKindUrl(object sender, RoutedEventArgs e) => SetLinkKind(LinkUrlAction);
-    private void OnLinkKindFolder(object sender, RoutedEventArgs e) => SetLinkKind(LinkFolderAction);
-    private void OnLinkKindFile(object sender, RoutedEventArgs e) => SetLinkKind(LinkFileAction);
+    /* 这里原本有「直达网址 / 直达文件夹 / 直达文件」三个按钮和 CurrentLinkKind()。
+     * v4.5.19 起类型不再让用户选：输入框边填边识别，
+     * 由 KeysView.Inputs.ApplyLinkDetection 决定绑哪个动作（见 LinkActionFor）。
+     *
+     * 之所以能安全去掉"手动选类型"：三个动作只决定**怎么打开**，
+     * 目标字符串是同一份 Arg，识别结果的 Target 也会在打开时再归一，
+     * 所以认错了改一下文字就自动纠回来，不会像以前那样把 Arg 清空重填。 */
 
     /// <summary>
     /// 挑一个文件夹填进目标框。

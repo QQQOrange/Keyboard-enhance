@@ -16,6 +16,8 @@
                     <TextBlock Text="WebDAV 同步" Style="{StaticResource Text.H2}" />
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Text="把配置备份到网盘（坚果云等）。启动同步、退出同步、自动备份是三个独立开关，可以同时打开。" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="传上去的是密文（用下面的备份密码加密后才上传），里面包含 GitHub 个人访问令牌这类凭据 —— 换台机器用同一个密码恢复，令牌就一起带过去了。" />
 
                     <TextBlock Text="服务器地址" Style="{StaticResource Text.Secondary}" Margin="0,16,0,6" />
                     <TextBox x:Name="UrlBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
@@ -233,7 +235,7 @@
                                 <TextBlock Text="加密导出" Style="{StaticResource Text.Body}" />
                                 <TextBlock x:Name="ExportModeHint" Style="{StaticResource Text.Tertiary}"
                                            TextWrapping="Wrap" Margin="0,3,0,0"
-                                           Text="用备份密码加密，含网盘密码 / 备份密码等全部字段。换台机器导入时输入同一个密码即可。" />
+                                           Text="用备份密码加密，含网盘密码 / 备份密码 / GitHub 令牌等全部字段。换台机器导入时输入同一个密码即可。" />
                             </StackPanel>
                             <CheckBox Grid.Column="1" x:Name="ExportEncryptedBox"
                                       Style="{StaticResource ToggleSwitch}"

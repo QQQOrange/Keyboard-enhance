@@ -1449,6 +1449,69 @@ public static partial class SelfTest
         return Core.Interop.NativeMethods.IsIconic(h);
     }
 
+    /// <summary>
+    /// 「编辑绑定」面板的布局密度。
+    ///
+    /// 这一块最容易悄悄退化回"每个字段占一行"：后来加字段的人往往直接往下堆，
+    /// 谁都不是有意变松，但一屏能装的信息就这么一点点被吃掉。
+    /// 所以这里用**高度**当硬指标，而不是靠看截图觉得"差不多"。
+    /// </summary>
+    private static void TestEditorDensity()
+    {
+        var view = new UI.Views.KeysView();
+        view.Measure(new System.Windows.Size(1080, 2400));
+        view.Arrange(new System.Windows.Rect(0, 0, 1080, 2400));
+        view.UpdateLayout();
+
+        var picker = view.FindName("NormalActionPicker") as System.Windows.Controls.Grid;
+        var search = view.FindName("SearchGroup") as System.Windows.Controls.StackPanel;
+        var category = view.FindName("CategoryBox") as System.Windows.Controls.ComboBox;
+        var clear = view.FindName("ClearBindButton") as System.Windows.Controls.Button;
+
+        Check("编辑区有普通分类行", picker != null && search != null && category != null && clear != null);
+        if (picker == null || search == null || category == null || clear == null) return;
+
+        /* 一行 = 标签(约 24) + 控件(34) + 余量；退回"搜索一行、分类+功能一行"
+         * 会是 100 以上 —— 这条断言就是防止那种退化。 */
+        Check("搜索/分类/功能挤在同一行", picker.ActualHeight is > 40 and < 80,
+            $"行高 {picker.ActualHeight:F0}");
+
+        double searchTop = search.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
+        double categoryTop = category.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
+        Check("搜索框与分类在同一行（顶部差 < 30）", Math.Abs(searchTop - categoryTop) < 30,
+            $"搜索组 {searchTop:F0}，分类控件 {categoryTop:F0}");
+
+        // 两个操作按钮提到标题行：必须比分类控件更靠上
+        double clearTop = clear.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
+        Check("「清除绑定」已提到标题行", clearTop < categoryTop,
+            $"按钮 {clearTop:F0}，分类 {categoryTop:F0}");
+
+        // ---- 宽/窄两种形态（同一批控件重排，不是两套视图）----
+        var wide = view.EditorLayoutForTest(compact: false);
+        CheckEqual("宽窗口：搜索留在主行", wide.SearchRow, 0);
+        CheckEqual("宽窗口：搜索只占一列", wide.SearchSpan, 1);
+        CheckEqual("宽窗口：备注留在主行", wide.NoteRow, 0);
+        CheckEqual("宽窗口：备注只占一列", wide.NoteSpan, 1);
+
+        var narrow = view.EditorLayoutForTest(compact: true);
+        CheckEqual("窄窗口：搜索下沉到第二行", narrow.SearchRow, 1);
+        CheckEqual("窄窗口：搜索横跨整行", narrow.SearchSpan, 3);
+        CheckEqual("窄窗口：备注下沉到第二行", narrow.NoteRow, 1);
+        CheckEqual("窄窗口：备注横跨整行", narrow.NoteSpan, 3);
+        Check("窄窗口：下沉的备注有上方间距", narrow.NoteMarginTop > 0, $"{narrow.NoteMarginTop:F0}");
+
+        // ---- 说明 + 参数：宽时并排吃满一行，窄时参数换行 ----
+        CheckEqual("宽窗口：参数在说明右侧", wide.ArgColumn, 1);
+        CheckEqual("宽窗口：参数只占一列", wide.ArgSpan, 1);
+        Check("宽窗口：参数宽度固定 340", Math.Abs(wide.ArgWidth - 340) < 0.5, $"{wide.ArgWidth:F0}");
+
+        CheckEqual("窄窗口：参数换到第二行", narrow.ArgRow, 1);
+        CheckEqual("窄窗口：参数横跨整行", narrow.ArgSpan, 2);
+        Check("窄窗口：参数改回自适应宽度", double.IsNaN(narrow.ArgWidth), $"{narrow.ArgWidth}");
+
+        view.EditorLayoutForTest(compact: false);   // 还原，别影响后面的用例
+    }
+
     private static void TestWindows()
     {
         var fg = WindowService.ForegroundInfo();
@@ -1462,5 +1525,92 @@ public static partial class SelfTest
         var work = WindowService.WorkArea(IntPtr.Zero);
         Check("能取到工作区", work.Width > 0 && work.Height > 0, $"{work.Width}x{work.Height}");
         Check("进程路径可读", WindowService.GetProcessPath((uint)Environment.ProcessId).Length > 0);
+    }
+
+    /// <summary>
+    /// 关于页的「GitHub 个人访问令牌」区。
+    ///
+    /// 验三件事，都是用户能直接感觉到的：
+    ///   ① 控件真的被排版出来了（不是 Visibility=Collapsed 忘改回来）；
+    ///   ② 问号按钮和输入框**垂直居中对齐**（差几个像素就看得出歪）；
+    ///   ③ 问号是可达的 —— 能 Tab 到、有名字可朗读（AutomationProperties）。
+    ///
+    /// 用离线 Measure/Arrange 而不是开真窗口：自检不该弹窗口抢焦点，
+    /// 而且布局问题在离线下同样会暴露（宽高为 0 或位置算错）。
+    /// </summary>
+    private static void TestAboutTokenUi()
+    {
+        var view = new UI.Views.AboutView();
+        view.Measure(new System.Windows.Size(1180, 2400));
+        view.Arrange(new System.Windows.Rect(0, 0, 1180, 2400));
+        view.UpdateLayout();
+
+        var box = view.FindName("TokenBox") as System.Windows.Controls.TextBox;
+        var help = view.FindName("TokenHelpButton") as System.Windows.Controls.Button;
+        var status = view.FindName("TokenStatusText") as System.Windows.Controls.TextBlock;
+
+        Check("关于页有令牌输入框", box != null);
+        Check("关于页有令牌帮助按钮", help != null);
+        Check("关于页有令牌状态说明", status != null);
+        if (box == null || help == null || status == null) return;
+
+        Check("输入框被排版出来了", box.ActualWidth > 100 && box.ActualHeight > 0,
+            $"{box.ActualWidth:F0}x{box.ActualHeight:F0}");
+        Check("问号按钮被排版出来了", help.ActualWidth > 0 && help.ActualHeight > 0,
+            $"{help.ActualWidth:F0}x{help.ActualHeight:F0}");
+
+        // 对齐：两者中心线的高度差不超过 2 DIP
+        double boxMid = box.TranslatePoint(new System.Windows.Point(0, box.ActualHeight / 2), view).Y;
+        double helpMid = help.TranslatePoint(new System.Windows.Point(0, help.ActualHeight / 2), view).Y;
+        Check("问号与输入框垂直居中对齐", Math.Abs(boxMid - helpMid) <= 2,
+            $"输入框中线 {boxMid:F1}，问号中线 {helpMid:F1}");
+
+        // 可达性：Button 默认可聚焦，但 Focusable 被样式改掉就点不着了
+        Check("问号按钮可用键盘聚焦", help.Focusable, $"Focusable={help.Focusable}");
+        Check("问号按钮的键盘可用性没被 IsTabStop 关掉", help.IsTabStop);
+
+        string? name = System.Windows.Automation.AutomationProperties.GetName(help);
+        Check("问号按钮有可朗读的名字", !string.IsNullOrWhiteSpace(name), name);
+        string? helpText = System.Windows.Automation.AutomationProperties.GetHelpText(help);
+        Check("问号按钮有辅助说明", !string.IsNullOrWhiteSpace(helpText), helpText);
+
+        Check("状态行写明了未填令牌的影响",
+            status.Text.Contains("60 次") || status.Text.Contains("未填写"), status.Text);
+
+        // ---- 验证按钮：能真测一次令牌，而不是只能"存进去再说" ----
+        var verify = view.FindName("VerifyTokenButton") as System.Windows.Controls.Button;
+        Check("关于页有令牌验证按钮", verify != null);
+        if (verify != null)
+        {
+            Check("验证按钮可键盘聚焦", verify.Focusable);
+            Check("验证按钮有文字说明",
+                !string.IsNullOrWhiteSpace(verify.ToolTip?.ToString()), verify.ToolTip?.ToString());
+        }
+
+        /* ---- 没填令牌时：程序内不许有下载入口，只能点链接去浏览器 ---- */
+        const string sampleUrl = "https://github.com/QQQOrange/Keyboard-enhance/releases";
+        view.ShowManualLink(sampleUrl);
+        view.Measure(new System.Windows.Size(1180, 2400));
+        view.Arrange(new System.Windows.Rect(0, 0, 1180, 2400));
+        view.UpdateLayout();
+
+        var download = view.FindName("DownloadButton") as System.Windows.Controls.Button;
+        var panel = view.FindName("ManualLinkPanel") as System.Windows.Controls.StackPanel;
+        var linkButton = view.FindName("UpdateLinkButton") as System.Windows.Controls.Button;
+        var linkText = view.FindName("UpdateLinkText") as System.Windows.Controls.TextBlock;
+
+        Check("无令牌时「下载并安装」必须藏起来",
+            download != null && download.Visibility != System.Windows.Visibility.Visible,
+            download?.Visibility.ToString());
+        Check("无令牌时给出手动下载区", panel != null && panel.Visibility == System.Windows.Visibility.Visible);
+        CheckEqual("链接文字就是下载地址", linkText?.Text, sampleUrl);
+        Check("下载链接可键盘聚焦", linkButton?.Focusable == true);
+        Check("下载链接有无障碍名字",
+            !string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(linkButton)));
+
+        // 帮助地址集中配置：改地址只改 UpdateService.TokenHelpUrl
+        Check("帮助地址指向 GitHub 官方文档",
+            UpdateService.TokenHelpUrl.StartsWith("https://docs.github.com/zh/", StringComparison.Ordinal),
+            UpdateService.TokenHelpUrl);
     }
 }

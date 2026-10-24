@@ -127,87 +127,137 @@ public partial class KeysView : UserControl
     /// 把「直达链接」面板刷成当前绑定的内容：
     /// 类型按钮的高亮、目标框的标签、浏览/取标题按钮的显隐，全部跟着走。
     /// </summary>
+    /// <summary>
+    /// 把「直达链接」面板刷成当前绑定该有的样子：目标框 / 备注回填，
+    /// 再走一遍识别把徽标、说明和浏览按钮摆对。
+    /// </summary>
     private void RefreshWebPageFields()
     {
         var b = FindInCurrentLayer(CurrentCombo());
-        string kind = IsLinkAction(b?.Action) ? b!.Action! : LinkUrlAction;
-        bool isUrl = kind == LinkUrlAction;
-        bool isFolder = kind == LinkFolderAction;
-        bool isFile = kind == LinkFileAction;
+        bool isLink = IsLinkAction(b?.Action);
 
         _suppressEvents = true;
-        WebUrlBox.Text = IsLinkAction(b?.Action) ? (b!.Arg ?? "") : "";
+        WebUrlBox.Text = isLink ? (b!.Arg ?? "") : "";
         WebNoteBox.Text = b?.Note ?? "";
         _suppressEvents = false;
 
-        // 类型按钮：选中的那个用主按钮样式，另外两个用普通样式
-        LinkKindUrlButton.Style = (Style)FindResource(isUrl ? "Button.Primary" : "Button.Base");
-        LinkKindFolderButton.Style = (Style)FindResource(isFolder ? "Button.Primary" : "Button.Base");
-        LinkKindFileButton.Style = (Style)FindResource(isFile ? "Button.Primary" : "Button.Base");
-
-        LinkTargetLabel.Text = isUrl ? "网址" : isFolder ? "文件夹路径" : "文件路径";
-        WebUrlBox.ToolTip = isUrl
-            ? "例如 https://github.com；不带 http 也会自动补全"
-            : isFolder
-                ? @"例如 D:\Work\项目；支持 %USERPROFILE%、~ 和 shell:Downloads"
-                : @"例如 D:\文档\方案.docx；支持 %USERPROFILE%、~ 和正斜杠";
-
-        BrowseFolderButton.Visibility = isFolder ? Visibility.Visible : Visibility.Collapsed;
-        BrowseFileButton.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
-        FetchTitleButton.Visibility = isUrl ? Visibility.Visible : Visibility.Collapsed;
-
-        WebFetchStatus.Text = string.IsNullOrWhiteSpace(b?.Arg) || isUrl
-            ? ""
-            : isFolder
-                ? (Directory.Exists(Core.Actions.ActionContext.ExpandPath(b!.Arg))
-                    ? "文件夹存在，按这个键就会在资源管理器里打开它。"
-                    : "这个路径现在不存在 —— 按下去会提示「文件夹不存在」。")
-                : (File.Exists(Core.Actions.ActionContext.ExpandPath(b!.Arg))
-                    ? "文件存在，按这个键就会用默认程序打开它。"
-                    : "这个路径现在不存在 —— 按下去会提示「文件不存在」。");
-
-        LinkHint.Text = isUrl
-            ? "填网址时会自动抓网页标题当备注（不满意可以改）。备注会显示在键帽上。"
-            : isFolder
-                ? @"不填备注时，键帽上显示文件夹名。路径支持 %USERPROFILE%\Desktop、~\Downloads 和 shell:Downloads 这几种写法。"
-                : "不填备注时，键帽上显示文件名。会按系统文件关联打开（和双击一样），不用选程序。";
+        /* persist = false：只是打开面板看一眼，不能顺手把动作或配置改了。 */
+        ApplyLinkDetection(isLink ? (b!.Arg ?? "") : "", persist: false);
     }
 
     private void OnWebUrlChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppressEvents) return;
         var b = FindInCurrentLayer(CurrentCombo());
-        if (b == null || !IsLinkAction(b.Action)) return;
+        if (b == null) return;
+
+        /* 这个键原来绑的是别的功能（记事本、Qbar…）时，先把动作落到「直达网址」,
+         * 否则下面没地方存这段文字。识别出真实类型后会被立刻改掉。 */
+        if (!IsLinkAction(b.Action)) b.Action = LinkUrlAction;
 
         b.Arg = WebUrlBox.Text.Trim();
+        ApplyLinkDetection(b.Arg, persist: true);
         _host.SaveSettings();
         BuildKeyboard();          // 键帽上要跟着变
 
-        switch (b.Action)
+        MaybeFetchTitle();        // 只有识别成网址时才真去抓（内部有判断）
+    }
+
+    /// <summary>
+    /// 「直达链接」的自动类型识别：把输入框里的内容判成网址 / 文件夹 / 文件。
+    ///
+    /// 只做两件事，**绝不改写输入框里的文字**：
+    ///   ① 决定这个键绑哪个动作（webPage / openFolder / openFile）—— 也就是"怎么打开"；
+    ///   ② 把徽标、说明文字、浏览按钮刷成对的样子。
+    ///
+    /// 为什么不改写文字：用户每敲一个字符都会走到这里，一补协议
+    /// （`git` → `https://git`）光标就会跳到末尾、退格键也就失灵了。
+    /// 真正打开时用的是 <see cref="SmartTarget.Target"/>，由 ActionContext 再归一。
+    ///
+    /// <paramref name="persist"/> 为 false 表示"只是刷新界面"（切键、切层、打开面板），
+    /// 这时不动数据 —— 否则打开面板就等于替用户改了一次绑定。
+    /// </summary>
+    private void ApplyLinkDetection(string text, bool persist)
+    {
+        var hit = SmartTargetDetector.Detect(text);
+        var b = FindInCurrentLayer(CurrentCombo());
+
+        // ① 动作跟着识别结果走
+        string? wanted = LinkActionFor(hit.Kind);
+        if (wanted != null && b != null && IsLinkAction(b.Action) && b.Action != wanted)
         {
-            case LinkUrlAction:
-                // 网址填完就去抓标题当备注（用户要求"一定要先拉一下"）
-                MaybeFetchTitle();
-                break;
-
-            case LinkFolderAction:
-                // 文件夹：立刻反馈"这条路径到底存不存在"，别等用户按了才发现
-                WebFetchStatus.Text = string.IsNullOrWhiteSpace(b.Arg)
-                    ? ""
-                    : (Directory.Exists(Core.Actions.ActionContext.ExpandPath(b.Arg))
-                        ? "文件夹存在，按这个键就会在资源管理器里打开它。"
-                        : "这个路径现在不存在 —— 按下去会提示「文件夹不存在」。");
-                break;
-
-            default:
-                // 文件：同样立刻告诉用户"这个文件在不在"
-                WebFetchStatus.Text = string.IsNullOrWhiteSpace(b.Arg)
-                    ? ""
-                    : (File.Exists(Core.Actions.ActionContext.ExpandPath(b.Arg))
-                        ? "文件存在，按这个键就会用默认程序打开它。"
-                        : "这个路径现在不存在 —— 按下去会提示「文件不存在」。");
-                break;
+            b.Action = wanted;
+            if (persist)
+            {
+                _host?.SaveSettings();
+                BuildKeyboard();
+            }
         }
+
+        // ② 徽标：网址蓝 / 文件夹绿 / 文件橙 / 认不出灰
+        (string name, string brushKey) = hit.Kind switch
+        {
+            SmartKind.Url => ("网址", "Brush.Accent"),
+            SmartKind.Folder or SmartKind.MissingFolder => ("文件夹", "Brush.Success"),
+            SmartKind.File or SmartKind.MissingFile => ("文件", "Brush.Warning"),
+            _ => ("未识别", "Brush.TextTertiary"),
+        };
+        LinkKindText.Text = name;
+
+        /* SetResourceReference 而不是直接赋画刷：它建立的是 DynamicResource 绑定，
+         * 用户切浅色/深色主题时这个颜色会跟着变（赋一个实例就定死在那一刻了）。 */
+        LinkKindText.SetResourceReference(TextBlock.ForegroundProperty, brushKey);
+
+        LinkKindHint.Text = LinkHintFor(hit, text);
+
+        // ③ 浏览按钮：网址用不上；认不出时两个都给（挑一个就认出来了）
+        bool isUrl = hit.Kind == SmartKind.Url;
+        bool isFolder = hit.Kind is SmartKind.Folder or SmartKind.MissingFolder;
+        bool isFile = hit.Kind is SmartKind.File or SmartKind.MissingFile;
+        bool unknown = hit.Kind == SmartKind.None;
+
+        BrowseFolderButton.Visibility =
+            !isUrl && (isFolder || unknown) ? Visibility.Visible : Visibility.Collapsed;
+        BrowseFileButton.Visibility =
+            !isUrl && (isFile || unknown) ? Visibility.Visible : Visibility.Collapsed;
+        FetchTitleButton.Visibility = isUrl ? Visibility.Visible : Visibility.Collapsed;
+
+        /* 抓标题的状态行由 StartTitleFetch 独占；换了目标就先把上一次的残句清掉。 */
+        if (persist) WebFetchStatus.Text = "";
+    }
+
+    /// <summary>
+    /// 识别类型 → 该绑哪个动作；认不出返回 null（保持用户原来选的，不乱改）。
+    /// 抽成静态是为了让自检直接验这张对照表。
+    /// </summary>
+    internal static string? LinkActionFor(SmartKind kind) => kind switch
+    {
+        SmartKind.Url => LinkUrlAction,
+        SmartKind.Folder or SmartKind.MissingFolder => LinkFolderAction,
+        SmartKind.File or SmartKind.MissingFile => LinkFileAction,
+        _ => null,
+    };
+
+    /// <summary>识别结果对应的说明文字 —— 必须写清"按下去会发生什么"。</summary>
+    internal static string LinkHintFor(SmartTarget hit, string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return "网址、文件夹、文件都能填在这里，类型会自动识别，不用自己选。";
+
+        return hit.Kind switch
+        {
+            SmartKind.Url => hit.Target.Length > 0 && hit.Target != input.Trim()
+                ? $"识别为网址 —— 按这个键用默认浏览器打开（会打开 {hit.Target}）"
+                : "识别为网址 —— 按这个键用默认浏览器打开",
+
+            SmartKind.Folder => "识别为文件夹，路径存在 —— 按这个键在资源管理器里打开它",
+            SmartKind.File => "识别为文件，文件存在 —— 按这个键用系统默认程序打开（和双击一样）",
+            SmartKind.MissingFolder => "识别为文件夹，但路径现在不存在 —— 按下去会提示「文件夹不存在」",
+            SmartKind.MissingFile => "识别为文件，但文件现在不存在 —— 按下去会提示「文件不存在」",
+
+            _ => @"看不出这是网址还是路径 —— 网址可以直接粘（github.com 也行）；" +
+                 @"本地路径用 D:\ 开头，或点「浏览…」挑一个",
+        };
     }
 
     /// <summary>

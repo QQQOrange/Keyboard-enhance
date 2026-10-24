@@ -82,6 +82,38 @@ def wait_window(title, timeout=6.0):
     return 0
 
 
+def find_notepad_window():
+    """按类名找记事本窗口 —— Win11 的商店版记事本类名不是 "Notepad"。
+
+    踩坑记录：`FindWindowW("Notepad", None)` 只认老版 Win32 记事本；
+    商店版是 `NotepadWindow`，包在 `ApplicationFrameWindow` 里，
+    标题还可能是"记事本"Tab 恢复页而不是"无标题"。按标题找会漏，
+    于是整条冒烟被跳过 —— 看起来像"程序坏了"，其实只是没找到窗口。
+    """
+    found = []
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def cb(hwnd, _):
+        if not u32.IsWindowVisible(hwnd):
+            return True
+        cls = ctypes.create_unicode_buffer(256)
+        u32.GetClassNameW(hwnd, cls, 256)
+        name = cls.value
+        title = ctypes.create_unicode_buffer(256)
+        u32.GetWindowTextW(hwnd, title, 256)
+        t = title.value
+
+        hit = name.startswith("Notepad") or (
+            name == "ApplicationFrameWindow" and ("记事本" in t or "Notepad" in t))
+        if hit:
+            found.append(hwnd)
+            return False
+        return True
+
+    u32.EnumWindows(cb, 0)
+    return found[0] if found else 0
+
+
 def activate(hwnd):
     u32.ShowWindow(hwnd, 9)                     # SW_RESTORE
     u32.SetForegroundWindow(hwnd)
@@ -111,6 +143,9 @@ def main():
         if not hnote:
             # 标题可能被本地化成别的写法，退一步：找记事本的类名
             hnote = u32.FindWindowW("Notepad", None)
+        if not hnote:
+            # Win11 商店版：类名 NotepadWindow / 包在 ApplicationFrameWindow 里
+            hnote = find_notepad_window()
         if not hnote:
             print("✗ 没能启动记事本，跳过按键冒烟（不影响代码结论）")
             return 1

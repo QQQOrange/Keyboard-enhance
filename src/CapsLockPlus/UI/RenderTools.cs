@@ -98,13 +98,34 @@ public static class RenderTools
                 kv.ResetRenderState();
                 Pump(120);
 
-                // 同理：直达网页面板（网址 + 备注）也只有选那个分类才出现
+                // 同理：直达链接面板（目标 + 自动识别 + 备注）也只有选那个分类才出现。
+                // 一次性把三种识别结果都拍下来：网址 / 文件夹 / 文件。
                 try
                 {
                     if (kv.ShowWebPagePanelForRender())
                     {
+                        /* 编辑区在键盘下方，800 高的窗口里它在折叠线以下。
+                         * 不滚过去的话，这三张图拍到的全是键盘 —— 徽标和提示
+                         * 一个像素都看不见，等于没验。 */
+                        kv.ScrollToEditorForRender();
                         Pump(200);
+
+                        /* 网址：填完立刻拍（不等 700ms 的标题抓取防抖），
+                         * 免得截图里那行状态是"正在获取网页标题…"。 */
+                        kv.FillLinkTargetForRender("https://github.com/QQQOrange/Keyboard-enhance");
+                        Pump(300);
                         Save(main, Path.Combine(outDir, "keys-webpage.png"));
+
+                        /* 文件夹 / 文件：用 C:\Windows 这类任何机器上都存在的路径，
+                         * 徽标才会是"文件夹存在"而不是"路径不存在"，
+                         * 截图不依赖谁在哪台机器上渲染。 */
+                        kv.FillLinkTargetForRender(@"C:\Windows");
+                        Pump(260);
+                        Save(main, Path.Combine(outDir, "keys-link-folder.png"));
+
+                        kv.FillLinkTargetForRender(@"C:\Windows\notepad.exe");
+                        Pump(260);
+                        Save(main, Path.Combine(outDir, "keys-link-file.png"));
                     }
                 }
                 catch (Exception ex)
@@ -482,12 +503,13 @@ public static class RenderTools
 
         /* 整页：键盘大小**不变**，多出来的高度全部给下方编辑区。
          *
-         * 尺寸取「大」档的最小宽度 + 刚好装下编辑卡片的高度（1040）：
-         * 再高就是一片空白，图放到 README 里不好看；再矮编辑卡会被折掉。
+         * 尺寸取「大」档的最小宽度 + 刚好装下编辑卡片的高度（860）：
+         * 编辑区压缩成多列之后内容只要 800 出头，再高就是一片空白，
+         * 图放到 README 里不好看；再矮编辑卡会被折掉。
          * 这张用来看"编辑区在键盘正下方"之后的整页观感。 */
         kv.SetSizePresetForRender("large");
         main.Width = kv.RequiredWindowSize().Width;
-        main.Height = 1040;
+        main.Height = 860;
         Pump(300);
         Save(main, Path.Combine(outDir, "keys-full.png"));
 

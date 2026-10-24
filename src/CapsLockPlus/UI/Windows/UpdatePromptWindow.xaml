@@ -34,6 +34,26 @@
                         <TextBlock x:Name="NotesText" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" />
                     </ScrollViewer>
                 </Border>
+
+                <!-- 没填 GitHub 令牌时**不提供程序内下载**：这里只摆一个可点的下载地址，
+                     点它交给浏览器。底部那个「下载并安装」会被整个藏起来。 -->
+                <Border x:Name="LinkCard" Style="{StaticResource Card.Flat}" Margin="0,10,0,0"
+                        Padding="13,10" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                   Text="没有填写 GitHub 个人访问令牌，这一版不能自动下载。点下面的地址用浏览器下载：" />
+                        <Button x:Name="DownloadLinkButton" Style="{StaticResource Button.Ghost}"
+                                Padding="0" Margin="0,6,0,0" HorizontalAlignment="Left" Cursor="Hand"
+                                Click="OnOpenLinkClick"
+                                ToolTip="在默认浏览器里打开这个版本的下载地址（新标签页）"
+                                AutomationProperties.Name="在浏览器中打开 GitHub 下载地址"
+                                AutomationProperties.HelpText="打开浏览器下载新版本">
+                            <TextBlock x:Name="DownloadLinkText" TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{DynamicResource Brush.Accent}"
+                                       TextDecorations="Underline" />
+                        </Button>
+                    </StackPanel>
+                </Border>
             </StackPanel>
 
             <ProgressBar Grid.Row="1" x:Name="Progress" Height="4" Margin="24,16,24,0" Visibility="Collapsed"

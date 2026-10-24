@@ -230,6 +230,21 @@ public sealed class GlobalOptions
 
     /// <summary>用户点过“跳过这个版本”的版本号。</summary>
     public string SkippedVersion { get; set; } = "";
+
+    /// <summary>
+    /// GitHub 个人访问令牌（PAT），用来把更新检查的接口配额从 60 次/小时
+    /// 提到 5000 次/小时。
+    ///
+    /// 为什么需要它：匿名请求 GitHub API 是按 **IP** 限流的 —— 60 次/小时。
+    /// 公司/校园网、家里多台机器、或开了代理的人，经常在一天里就把这点配额用光，
+    /// 于是"检查更新"永远报"访问频率已达上限"。带上令牌就按**账号**限流，
+    /// 5000 次/小时，正常使用根本碰不到。
+    ///
+    /// 只读公开仓库**不需要勾选任何 scope**（classic token 留空即可，
+    /// fine-grained 只需要 Public repositories 的 read）。令牌只存在本机设置里：
+    /// **明文导出会把它摘掉**（见 ExportImport.NeverExport），加密备份才会带上。
+    /// </summary>
+    public string GitHubToken { get; set; } = "";
 }
 
 /// <summary>

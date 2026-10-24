@@ -12,6 +12,9 @@ public partial class UpdatePromptWindow : Window
     private readonly UpdateService _service = new();
     private bool _busy;
 
+    /// <summary>没填令牌时唯一能用的下载入口：点它交给浏览器。</summary>
+    private string _manualUrl = "";
+
     public UpdatePromptWindow(AppHost host, UpdateInfo info)
     {
         _host = host;
@@ -24,6 +27,56 @@ public partial class UpdatePromptWindow : Window
             ? "（该版本没有填写更新说明）"
             : info.ReleaseNotes;
         StatusText.Text = "";
+
+        /* 没填令牌就**只提示、不自动下载**。
+         *
+         * 自动下载会直接拉一个几 MB 的 exe 并尝试替换自己 —— 这是整条流程里
+         * 最"重"的一步。没填令牌时把选择权交回去：摆出下载地址，用户自己在
+         * 浏览器里下，看到是 GitHub 的域名也更放心。填了令牌才走自动更新。 */
+        if (!UpdateService.HasToken(host.Settings.Global.GitHubToken))
+        {
+            EnableManualDownload(string.IsNullOrWhiteSpace(info.DownloadUrl)
+                ? info.PageUrl
+                : info.DownloadUrl);
+        }
+    }
+
+    /// <summary>
+    /// 没填令牌时的形态：**藏掉「下载并安装」**，只留一个可点的下载地址。
+    ///
+    /// 用户明确要求：没填令牌就算检测到新版本，也不能在程序里点下载。
+    /// 所以这里不是"把按钮改成打开下载页"，而是程序内根本不提供下载入口 ——
+    /// 必须点链接去浏览器，看得见 GitHub 的域名再下载。
+    /// </summary>
+    private void EnableManualDownload(string url)
+    {
+        DownloadButton.Visibility = Visibility.Collapsed;
+
+        DownloadLinkText.Text = url;
+        LinkCard.Visibility = Visibility.Visible;
+        _manualUrl = url;
+    }
+
+    private void OnOpenLinkClick(object sender, RoutedEventArgs e)
+    {
+        if (_manualUrl.Length > 0) OpenDownloadLink(_manualUrl);
+    }
+
+    private void OpenDownloadLink(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            Close();
+        }
+        catch (Exception ex)
+        {
+            // 浏览器没起来（默认浏览器未关联 / 被策略拦）：把地址告诉用户，别只是关窗
+            Core.CoreLog.Swallow(ex, "打开更新下载页");
+            AppDialog.Warn(Application.Current?.MainWindow,
+                "没能自动打开浏览器。\n\n请手动访问：\n" + url,
+                "打开下载页失败");
+        }
     }
 
     private void OnLater(object sender, RoutedEventArgs e) => Close();

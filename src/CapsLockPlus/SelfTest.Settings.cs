@@ -46,6 +46,149 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// GitHub 个人访问令牌：洗涤、掩码、"填没填"的判定。
+    ///
+    /// 这几条都不联网，验的是"用户粘进来的那串东西"能不能被正确处理 ——
+    /// 带前缀、带换行、带引号是真实输入里最常见的三种情况，
+    /// 处理错了的表现都是"令牌无效"，用户根本查不出来。
+    /// </summary>
+    private static void TestGitHubToken()
+    {
+        // ---- 洗涤：把不该在令牌里的东西剥掉 ----
+        CheckEqual("干净令牌原样返回",
+            UpdateService.NormalizeToken("ghp_abcdefghijklmnopqrstuvwxyz0123456789"), "ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+        CheckEqual("去首尾空白",
+            UpdateService.NormalizeToken("  ghp_abc123  "), "ghp_abc123");
+        CheckEqual("去 Bearer 前缀",
+            UpdateService.NormalizeToken("Bearer ghp_abc123"), "ghp_abc123");
+        CheckEqual("去小写 bearer 前缀",
+            UpdateService.NormalizeToken("bearer ghp_abc123"), "ghp_abc123");
+        CheckEqual("去 token 前缀",
+            UpdateService.NormalizeToken("token ghp_abc123"), "ghp_abc123");
+        CheckEqual("叠着的前缀一起剥",
+            UpdateService.NormalizeToken("Authorization: Bearer ghp_abc123"), "ghp_abc123");
+        CheckEqual("只取换行前的那一段",
+            UpdateService.NormalizeToken("ghp_abc123\r\n第二行"), "ghp_abc123");
+        CheckEqual("粘多行时取第一段",
+            UpdateService.NormalizeToken("ghp_abc123 extra"), "ghp_abc123");
+        CheckEqual("null 洗成空串", UpdateService.NormalizeToken(null), "");
+        CheckEqual("空白洗成空串", UpdateService.NormalizeToken("   \r\n  "), "");
+
+        // ---- 填没填：这决定了"能不能自动下载" ----
+        Check("有令牌 → 可以自动下载", UpdateService.HasToken("ghp_abc123"));
+        Check("空令牌 → 不能自动下载", !UpdateService.HasToken(""));
+        Check("只有空格 → 也算没填", !UpdateService.HasToken("   "));
+        Check("null → 算没填", !UpdateService.HasToken(null));
+
+        // ---- 掩码：界面上回显时不能暴露完整令牌 ----
+        string mask = UpdateService.MaskToken("ghp_abcdefghijklmnopqrstuvwxyz");
+        Check("掩码只留头尾", mask.StartsWith("ghp_ab") && mask.EndsWith("wxyz"), mask);
+        Check("掩码里不含完整令牌", !mask.Contains("ghp_abcdefghijklmnopqrstuvwxyz"), mask);
+        Check("短令牌全部打码", !UpdateService.MaskToken("ghp_short").Contains("short"),
+            UpdateService.MaskToken("ghp_short"));
+        CheckEqual("空令牌的掩码是空串", UpdateService.MaskToken(null), "");
+
+        // ---- 前缀粗判（只用于提示，不拦截保存）----
+        Check("ghp_ 是 GitHub 令牌", UpdateService.LooksLikeGitHubToken("ghp_x"));
+        Check("github_pat_ 是 GitHub 令牌", UpdateService.LooksLikeGitHubToken("github_pat_x"));
+        Check("gho_ 是 GitHub 令牌", UpdateService.LooksLikeGitHubToken("gho_x"));
+        Check("随便一串不是 GitHub 令牌", !UpdateService.LooksLikeGitHubToken("hello"));
+
+        // ---- 帮助文档地址：集中配置，界面上的问号读的就是它 ----
+        Check("帮助地址指向 GitHub 官方中文文档",
+            UpdateService.TokenHelpUrl.StartsWith("https://docs.github.com/zh/", StringComparison.Ordinal)
+            && UpdateService.TokenHelpUrl.Contains("personal-access-tokens"),
+            UpdateService.TokenHelpUrl);
+
+        // ---- 明文导出绝不能带上令牌 ----
+        bool tokenExcluded = Core.Sync.ExportImport.NeverExport.Any(p =>
+            p.Equals("Global.GitHubToken", StringComparison.OrdinalIgnoreCase));
+        Check("明文导出排除令牌", tokenExcluded);
+
+        // ---- 归一化：配置里写坏了的令牌会被洗掉，而不是带着报 401 ----
+        var s = DefaultSettings.Create();
+        s.Global.GitHubToken = "  Bearer ghp_abc123\r\n  ";
+        SettingsStore.Normalize(s);
+        CheckEqual("读配置时也洗一遍令牌", s.Global.GitHubToken, "ghp_abc123");
+    }
+
+    /// <summary>
+    /// GitHub 令牌在备份 / 同步里的边界。
+    ///
+    /// 用户要求"个人密钥也要纳入备份与同步"，但边界必须写死清楚，
+    /// 否则就是拿着凭据到处跑：
+    ///   · **加密备份 / WebDAV 同步** → 带（换台机器恢复后能直接用）
+    ///   · **明文导出** → 不带（那种文件会被发给别人）
+    ///   · **覆盖恢复** → 备份有就用备份的，备份没有就保留本机的
+    ///   · **合并恢复** → 本机空才取备份的（多设备各用各的，不互相覆盖）
+    /// </summary>
+    private static void TestTokenInBackup()
+    {
+        const string token = "ghp_backup0123456789abcdefghijklmn";
+        const string pass = "备份口令-for-token";
+
+        var s = DefaultSettings.Create();
+        s.Sync.BackupPassword = pass;
+        s.Global.GitHubToken = token;
+
+        var svc = new Core.Sync.SyncService(() => s);
+        string payload = svc.BuildBackupPayload(out bool encrypted);
+
+        // ① 备份一律密文，且密文里翻不到令牌
+        Check("备份一定是加密的", encrypted);
+        Check("备份文件里不含令牌明文", !payload.Contains(token),
+            payload.Length > 40 ? payload[..40] : payload);
+
+        // ② 解密后能看到它 —— 这是"跨设备恢复"的前提
+        string json = Core.Sync.CryptoBox.Decrypt(payload, pass);
+        Check("解密后备份里有令牌", json.Contains(token));
+
+        // ③ 换台机器（本机没令牌）整份恢复 → 令牌被带过来
+        var fresh = DefaultSettings.Create();
+        fresh.Sync.BackupPassword = pass;
+        var outcome = new Core.Sync.SyncService(() => fresh).RestoreFromText(payload);
+        CheckEqual("整份恢复能带上令牌", fresh.Global.GitHubToken, token);
+        Check("整份恢复会标明令牌来自备份", outcome.TokenAdopted);
+
+        // ④ 覆盖恢复但备份里没有令牌 → 保留本机的（不能把能用的令牌弄没）
+        var noToken = DefaultSettings.Create();
+        noToken.Sync.BackupPassword = pass;
+        noToken.Global.GitHubToken = "";
+        string payloadNoToken = new Core.Sync.SyncService(() => noToken).BuildBackupPayload(out _);
+
+        var keep = DefaultSettings.Create();
+        keep.Sync.BackupPassword = pass;
+        keep.Global.GitHubToken = "ghp_localkeep0123456789";
+        var outcome2 = new Core.Sync.SyncService(() => keep).RestoreFromText(payloadNoToken);
+        CheckEqual("备份没令牌时保留本机的", keep.Global.GitHubToken, "ghp_localkeep0123456789");
+        Check("这种情况不标记为采用了备份令牌", !outcome2.TokenAdopted);
+
+        // ⑤ 合并恢复：本机空 → 取备份的
+        var mergeEmpty = DefaultSettings.Create();
+        mergeEmpty.Sync.BackupPassword = pass;
+        mergeEmpty.Global.GitHubToken = "";
+        new Core.Sync.SyncService(() => mergeEmpty)
+            .RestoreFromText(payload, Core.Sync.RestoreMode.Merge);
+        CheckEqual("合并时本机空 → 取备份的令牌", mergeEmpty.Global.GitHubToken, token);
+
+        // ⑥ 合并恢复：本机有值 → 保留本机（多设备不互相踩）
+        var mergeOwn = DefaultSettings.Create();
+        mergeOwn.Sync.BackupPassword = pass;
+        mergeOwn.Global.GitHubToken = "ghp_device2_own_token";
+        new Core.Sync.SyncService(() => mergeOwn)
+            .RestoreFromText(payload, Core.Sync.RestoreMode.Merge);
+        CheckEqual("合并时本机有值 → 保留本机的令牌",
+            mergeOwn.Global.GitHubToken, "ghp_device2_own_token");
+
+        // ⑦ 明文导出永远不带（和加密备份刻意相反）
+        var node = System.Text.Json.JsonSerializer
+            .SerializeToNode(s, SettingsStore.JsonOptions)!.AsObject();
+        Check("导出前的 JSON 里有令牌", node.ToJsonString().Contains(token));
+        Core.Sync.ExportImport.Sanitize(node);
+        Check("明文导出会摘掉令牌", !node.ToJsonString().Contains(token));
+    }
+
+    /// <summary>
     /// 老用户的设置文件里只有旧引擎，升级后必须自动补齐新引擎，
     /// 否则"扩充了引擎"对老用户等于没发生。
     /// </summary>
@@ -686,8 +829,8 @@ public static partial class SelfTest
         rl1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_q", Action = "copy" });
         rl1.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_e", Action = "qbar" });
 
-        var (merged, added, replaced) =
-            Core.Sync.BackupMerge.Merge(local, remote);
+        var (merged, added, replaced, _) =
+            Core.Sync.BackupMerge.Merge(local, remote);   // 令牌规则单独在 TestTokenInBackup 里验
         var ml1 = merged.Layers.First(l => l.Id == 1);
         var q = ml1.Keys.FirstOrDefault(k => k.Combo == "caps_q");
 

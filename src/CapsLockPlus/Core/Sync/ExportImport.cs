@@ -101,6 +101,9 @@ public static class ExportImport
     {
         "Sync.WebDavPass",
         "Sync.BackupPassword",
+        // GitHub 令牌等于一份可用来读你仓库的凭据：明文导出（"可以直接发给别人"
+        // 的那种文件）里绝不能带。加密导出仍会带上，和备份密码同一个待遇。
+        "Global.GitHubToken",
     };
 
     /// <summary>把不该出门的字段从**明文**导出数据里摘掉。</summary>

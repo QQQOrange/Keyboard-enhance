@@ -608,6 +608,9 @@ public static class SettingsStore
         /* 键盘档位：老配置没有这个字段（null），手改配置也可能写错。
          * 统一归一化成合法档位 —— 否则按键映射页算不出该用多大。 */
         s.Global.KeyboardSize = KeyboardSizePreset.Resolve(s.Global.KeyboardSize).Id;
+        /* 令牌：手改配置时可能带上换行/前缀，读进来先洗一遍。
+         * 洗成空串就是"没填"，所有判断都走匿名路径。 */
+        s.Global.GitHubToken = Core.Update.UpdateService.NormalizeToken(s.Global.GitHubToken);
         s.Qbar.ListCount = Math.Clamp(s.Qbar.ListCount, 3, 12);
 
         /* 已删除的动作：老配置里可能还绑着，统一改成"什么都不做"。

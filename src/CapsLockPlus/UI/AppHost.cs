@@ -501,7 +501,7 @@ public sealed class AppHost : IDisposable
             try
             {
                 var service = new UpdateService();
-                var result = await service.CheckAsync();
+                var result = await service.CheckAsync(Settings.Global.GitHubToken);
                 Settings.Global.LastUpdateCheck = DateTime.Now;
                 SaveSettings();
                 if (!result.Success || !result.IsNewer || result.Update == null) return;

@@ -575,6 +575,47 @@ public static partial class SelfTest
             Core.Actions.SmartTargetDetector.Detect(new string('a', 3000),
                 _ => false, _ => false).Kind, Core.Actions.SmartKind.None);
 
+        // ---------- 2f. 识别结果 → 该绑哪个动作 ----------
+        /* 「直达链接」面板不再让用户选类型：类型由识别结果决定。
+         * 这张对照表错一行，用户就会"填了网址却被当文件夹打开"。 */
+        CheckEqual("网址 → 直达网址",
+            UI.Views.KeysView.LinkActionFor(Core.Actions.SmartKind.Url), "webPage");
+        CheckEqual("文件夹 → 直达文件夹",
+            UI.Views.KeysView.LinkActionFor(Core.Actions.SmartKind.Folder), "openFolder");
+        CheckEqual("不存在的文件夹也算文件夹",
+            UI.Views.KeysView.LinkActionFor(Core.Actions.SmartKind.MissingFolder), "openFolder");
+        CheckEqual("文件 → 直达文件",
+            UI.Views.KeysView.LinkActionFor(Core.Actions.SmartKind.File), "openFile");
+        CheckEqual("不存在的文件也算文件",
+            UI.Views.KeysView.LinkActionFor(Core.Actions.SmartKind.MissingFile), "openFile");
+        CheckEqual("认不出就不动原来的动作",
+            UI.Views.KeysView.LinkActionFor(Core.Actions.SmartKind.None), null);
+
+        // ---------- 2g. 提示文案必须说清"按下去会发生什么" ----------
+        string HintOf(string text) => UI.Views.KeysView.LinkHintFor(Hit(text), text);
+
+        Check("网址提示提到浏览器", HintOf("https://a.com").Contains("浏览器"), HintOf("https://a.com"));
+        /* 只有"整理后的地址和原文不一样"时才把真实地址说出来
+         * （裸域名 a.com 的 https 补全发生在打开时，Detect 不动它）。 */
+        Check("修剪掉的标点不误伤地址",
+            HintOf("https://a.com。").Contains("会打开 https://a.com"), HintOf("https://a.com。"));
+        Check("地址没变化时不啰嗦",
+            !HintOf("https://a.com").Contains("会打开"), HintOf("https://a.com"));
+        Check("存在的文件夹提示用资源管理器",
+            HintOf(@"D:\Work\项目").Contains("资源管理器"), HintOf(@"D:\Work\项目"));
+        Check("存在的文件提示用默认程序",
+            HintOf(@"D:\文档\方案.docx").Contains("默认程序"), HintOf(@"D:\文档\方案.docx"));
+        Check("文件夹不存在要说清",
+            HintOf(@"D:\工作\2026规划").Contains("文件夹不存在"), HintOf(@"D:\工作\2026规划"));
+        Check("文件不存在要说清",
+            HintOf(@"D:\文档\没有这个.docx").Contains("文件不存在"), HintOf(@"D:\文档\没有这个.docx"));
+        Check("认不出时教用户怎么写",
+            HintOf("今天天气不错").Contains("浏览"), HintOf("今天天气不错"));
+        Check("空输入是引导而不是报错",
+            HintOf("").Contains("自动识别"), HintOf(""));
+        Check("空输入时不该报「看不出」",
+            !HintOf("").Contains("看不出"), HintOf(""));
+
         // ---------- 3. 动作执行：三类目标分别落到三个通道 ----------
         string? openedUrl = null, openedFolder = null, openedFile = null;
         Core.Actions.ActionContext.OpenUrlInterceptForTest = u => openedUrl = u;

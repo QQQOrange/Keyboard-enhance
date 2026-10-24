@@ -75,6 +75,68 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- GitHub 个人访问令牌：解除更新检查的接口限流 -->
+                    <StackPanel Margin="0,2,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="GitHub 个人访问令牌" Style="{StaticResource Text.Body}"
+                                           VerticalAlignment="Center" />
+                                <!-- 问号按钮：点开 GitHub 官方文档（新标签页）。
+                                     用 Button 而不是图片图标：它天生能 Tab 到、能用
+                                     空格/回车触发，读屏软件也念得出（AutomationProperties）。
+                                     字形用文字 "?" 而不是图标字体 —— E 系列字形在部分
+                                     Win10 的 Fluent Icons 里是空白方框。 -->
+                                <Button x:Name="TokenHelpButton" Content="?"
+                                        Style="{StaticResource Button.Ghost}"
+                                        Width="22" Height="22" MinWidth="0" Padding="0"
+                                        Margin="6,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                        VerticalAlignment="Center" Click="OnOpenTokenHelp"
+                                        AutomationProperties.Name="什么是 GitHub 个人访问令牌（打开官方帮助）"
+                                        AutomationProperties.HelpText="在浏览器中打开 GitHub 官方中文文档：管理个人访问令牌">
+                                    <Button.ToolTip>
+                                        <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                                                   Text="个人访问令牌（PAT）相当于给程序用的专用密码：填了之后，本程序以你的账号身份调用 GitHub 接口，配额从每小时 60 次提到 5000 次，还能一键自动下载更新。只读公开仓库不需要勾任何权限。&#x0a;&#x0a;点这个问号，在浏览器里打开 GitHub 官方说明（含创建步骤）。" />
+                                    </Button.ToolTip>
+                                </Button>
+                            </StackPanel>
+
+                            <TextBox Grid.Column="1" x:Name="TokenBox" Margin="12,0,0,0"
+                                     Style="{StaticResource TextBox.Base}" MinHeight="34"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="粘进来就行（带不带 Bearer 前缀都可以）；只存在本机设置里" />
+
+                            <!-- 验证：拿这个令牌真请求一次 GitHub，确认它可用，并显示配额。
+                                 先验证再保存，比"存进去之后检查更新才发现是错的"省事得多。 -->
+                            <Button Grid.Column="2" x:Name="VerifyTokenButton" Content="验证"
+                                    Style="{StaticResource Button.Base}" Padding="14,6" Margin="8,0,0,0"
+                                    Click="OnVerifyToken"
+                                    ToolTip="用这个令牌请求一次 GitHub，确认真能用（顺便显示剩余配额）" />
+                            <Button Grid.Column="3" x:Name="SaveTokenButton" Content="保存"
+                                    Style="{StaticResource Button.Primary}" Padding="14,6" Margin="6,0,0,0"
+                                    Click="OnSaveToken" />
+                            <Button Grid.Column="4" x:Name="ClearTokenButton" Content="清除"
+                                    Style="{StaticResource Button.Ghost}" Padding="12,6" Margin="6,0,0,0"
+                                    Click="OnClearToken" />
+                            <Button Grid.Column="5" Content="去创建" Style="{StaticResource Button.Ghost}"
+                                    Padding="12,6" Margin="6,0,0,0" Click="OnOpenTokenPage"
+                                    ToolTip="打开 GitHub 的令牌管理页（只需勾选 Public repositories 只读）" />
+                        </Grid>
+
+                        <TextBlock x:Name="TokenStatusText" Style="{StaticResource Text.Tertiary}"
+                                   TextWrapping="Wrap" Margin="0,7,0,0" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -104,6 +166,24 @@
                             <TextBlock x:Name="StatusText" Style="{StaticResource Text.Body}" TextWrapping="Wrap" />
                             <TextBlock x:Name="ReleaseNotes" Style="{StaticResource Text.Tertiary}"
                                        Margin="0,6,0,0" TextWrapping="Wrap" MaxHeight="160" />
+
+                            <!-- 没填令牌时：这里给下载地址，而且**只能**点它去浏览器下载。
+                                 「下载并安装」会被整个藏起来 —— 程序内不提供下载入口，
+                                 用户必须自己确认过下载地址再动手。 -->
+                            <StackPanel x:Name="ManualLinkPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                                <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                           Text="没有填写 GitHub 个人访问令牌，所以只能提示、不能自动下载。点下面的地址用浏览器下载：" />
+                                <Button x:Name="UpdateLinkButton" Style="{StaticResource Button.Ghost}"
+                                        Padding="0" Margin="0,5,0,0" HorizontalAlignment="Left" Cursor="Hand"
+                                        Click="OnOpenUpdateLink"
+                                        ToolTip="在默认浏览器里打开发布页（新标签页）"
+                                        AutomationProperties.Name="在浏览器中打开这个版本的 GitHub 下载地址"
+                                        AutomationProperties.HelpText="打开浏览器下载新版本">
+                                    <TextBlock x:Name="UpdateLinkText" TextWrapping="Wrap" FontSize="12"
+                                               Foreground="{DynamicResource Brush.Accent}"
+                                               TextDecorations="Underline" />
+                                </Button>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

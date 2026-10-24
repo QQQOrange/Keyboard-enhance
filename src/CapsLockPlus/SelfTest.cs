@@ -104,6 +104,9 @@ public static partial class SelfTest
         Section("界面文案");
         TestUiText();
 
+        Section("关于页 · GitHub 令牌");
+        TestAboutTokenUi();
+
         Section("Qbar 引擎过滤");
         TestQbarEntryFilter();
 
@@ -137,6 +140,7 @@ public static partial class SelfTest
         TestQbarEngineActions();
         TestTriggerKeyPosition();
         TestKeyboardLayoutGeometry();
+        TestEditorDensity();
         TestResetLayerOne();
         TestArbitraryWindowBinding();
         TestWinBindRestoreLogic();
@@ -238,6 +242,7 @@ public static partial class SelfTest
 
         Section("同步载荷");
         TestSyncPayload();
+        TestTokenInBackup();
 
         Section("备份策略");
         TestBackupPolicy();
@@ -262,6 +267,7 @@ public static partial class SelfTest
 
         Section("更新");
         TestUpdateDigest();
+        TestGitHubToken();
     }
 
     /// <summary>写出自检报告（数据目录 + 控制台可用时也打印）。</summary>

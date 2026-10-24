@@ -23,7 +23,15 @@ public enum RestoreMode
 }
 
 /// <summary>恢复结果。</summary>
-public sealed record RestoreOutcome(RestoreMode Mode, int Added, int Replaced, string Summary);
+/// <summary>
+/// 一次恢复的结果。
+/// </summary>
+/// <param name="TokenAdopted">
+/// GitHub 令牌是不是从备份里带过来的。界面上用它决定要不要提醒
+/// "你的令牌被换了"—— 覆盖恢复可能来自别人的机器，这属于要让人知情的变化。
+/// </param>
+public sealed record RestoreOutcome(RestoreMode Mode, int Added, int Replaced, string Summary,
+    bool TokenAdopted = false);
 
 /// <summary>本地备份文件。</summary>
 public sealed record LocalBackup(string Path, string Name, DateTime Time, long Size, bool Encrypted)
@@ -302,11 +310,17 @@ public sealed class SyncService
 
         if (mode == RestoreMode.Merge)
         {
-            var (merged, added, replaced) = BackupMerge.Merge(s, parsed);
+            var (merged, added, replaced, mergeToken) = BackupMerge.Merge(s, parsed);
             SettingsStore.CopyInto(s, merged);
-            CoreLog.Info($"已合并备份：新增 {added} 项，覆盖 {replaced} 项");
+            CoreLog.Info($"已合并备份：新增 {added} 项，覆盖 {replaced} 项" +
+                         (mergeToken ? "，采用了备份里的 GitHub 令牌" : ""));
+
+            /* 令牌不进 added/replaced 的计数（它不是一个"条目"），
+             * 单独用一句话说清楚 —— 用户最关心的是"我的令牌被动了没有"。 */
+            string tokenNote = mergeToken ? "；已带上备份里的 GitHub 令牌" : "";
             return new RestoreOutcome(mode, added, replaced,
-                $"已合并：新增 {added} 项，覆盖 {replaced} 项（本地独有的内容保留）");
+                $"已合并：新增 {added} 项，覆盖 {replaced} 项（本地独有的内容保留）{tokenNote}",
+                mergeToken);
         }
 
         /* 覆盖恢复也要**保留本机的同步与加密设置**。
@@ -321,12 +335,28 @@ public sealed class SyncService
          * 所以恢复只恢复"内容"（按键、层、宏、搜索项、窗口绑定、外观），
          * 不碰"这台机器的身份"。 */
         var localSync = s.Sync;
+        string localToken = s.Global.GitHubToken;
+        string backupToken = parsed.Global.GitHubToken;
+
         SettingsStore.CopyInto(s, parsed);
         s.Sync = localSync;
 
-        CoreLog.Info("已从备份恢复配置（覆盖，同步与加密设置保留本机）");
+        /* GitHub 令牌的边界：
+         *   · 备份里有 → 采用（换台机器恢复后能直接检查更新，不用重新贴）；
+         *   · 备份里没有（老版本备份 / 明文导出再导入，那种本来就不带令牌）
+         *     → 保留本机原有的。清空它等于让用户的更新检查当场退回 60 次/小时，
+         *     而这条恢复大概率不是为了"清掉令牌"。 */
+        bool tokenAdopted = !string.IsNullOrWhiteSpace(backupToken);
+        if (!tokenAdopted && !string.IsNullOrWhiteSpace(localToken))
+            s.Global.GitHubToken = localToken;
+
+        string tokenSummary = tokenAdopted
+            ? "；GitHub 令牌已换成备份里的"
+            : (localToken.Length > 0 ? "；GitHub 令牌保留本机的" : "");
+
+        CoreLog.Info("已从备份恢复配置（覆盖，同步与加密设置保留本机）" + tokenSummary);
         return new RestoreOutcome(mode, 0, 0,
-            "已整份恢复（覆盖，网盘与备份密码保留本机）");
+            "已整份恢复（覆盖，网盘与备份密码保留本机）" + tokenSummary, tokenAdopted);
     }
 
     /// <summary>这份备份能不能用这个口令解开（只试解密，不动任何设置）。</summary>

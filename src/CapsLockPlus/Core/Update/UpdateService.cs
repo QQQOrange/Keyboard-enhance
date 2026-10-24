@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -25,6 +26,16 @@ public sealed record UpdateCheckResult(bool Success, UpdateInfo? Update, string 
 }
 
 /// <summary>
+/// 一次令牌验证的结果。
+/// </summary>
+/// <param name="Ok">令牌能不能用。</param>
+/// <param name="Login">令牌所属账号（fine-grained 只读仓库时可能为空）。</param>
+/// <param name="Message">给用户看的一句话，成功能看到配额。</param>
+/// <param name="Limit">每小时配额（0 = 没读到）。</param>
+/// <param name="Remaining">剩余次数（0 = 没读到或真用完了）。</param>
+public sealed record TokenCheckResult(bool Ok, string Login, string Message, int Limit = 0, int Remaining = 0);
+
+/// <summary>
 /// 更新服务。
 ///
 /// 检查：读取 GitHub Releases 的 latest 发布（公开仓库无需 token），
@@ -43,6 +54,18 @@ public sealed class UpdateService
     public static string GitHubUrl => $"https://github.com/{Owner}/{Repo}";
     public static string ReleasesUrl => $"{GitHubUrl}/releases";
     public static string LatestReleaseApi => $"https://api.github.com/repos/{Owner}/{Repo}/releases/latest";
+
+    /// <summary>
+    /// 「什么是个人访问令牌」的帮助文档（GitHub 官方中文页）。
+    ///
+    /// 地址集中在这一个地方：以后 GitHub 换文档路径，改这里即可，
+    /// 不用满项目找那串 URL（界面上的问号按钮读的就是它）。
+    /// </summary>
+    public static string TokenHelpUrl =>
+        "https://docs.github.com/zh/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens";
+
+    /// <summary>创建令牌的入口页（问号旁边那个「去创建」）。</summary>
+    public static string TokenCreateUrl => "https://github.com/settings/tokens";
 
     private static readonly HttpClient Http = CreateClient();
 
@@ -64,22 +87,124 @@ public sealed class UpdateService
         }
     }
 
-    /// <summary>检查是否有新版本。</summary>
-    public async Task<UpdateCheckResult> CheckAsync(CancellationToken ct = default)
+    /// <summary>
+    /// 把用户粘进来的令牌洗一遍。
+    ///
+    /// 从网页、聊天、curl 示例里复制常常会带上 `Bearer `、`token `、
+    /// `Authorization:` 这些前缀和换行 —— 原样塞进请求头会被 GitHub 判 401，
+    /// 而用户看到的只是"令牌无效"，根本想不到是自己多粘了几个字。
+    ///
+    /// 返回空串表示"没填"，调用方据此走匿名路径（60 次/小时）。
+    /// </summary>
+    public static string NormalizeToken(string? raw)
     {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        string s = raw.Trim();
+
+        // 前缀可能叠着来（"Authorization: Bearer xxx"），剥到剥不动为止
+        bool stripped = true;
+        while (stripped)
+        {
+            stripped = false;
+            foreach (string prefix in TokenPrefixes)
+            {
+                if (!s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                s = s[prefix.Length..].TrimStart(' ', ':', '\t');
+                stripped = true;
+                break;
+            }
+        }
+
+        // 令牌本身不含空格；空格/换行之后的内容不属于它
+        int cut = s.IndexOfAny(new[] { ' ', '\r', '\n', '\t' });
+        if (cut > 0) s = s[..cut];
+
+        return s.Trim();
+    }
+
+    /// <summary>用户是否填了令牌（决定"能不能自动下载"这件事，见 UpdatePromptWindow）。</summary>
+    public static bool HasToken(string? raw) => NormalizeToken(raw).Length > 0;
+
+    /// <summary>
+    /// 粗判是不是 GitHub 的令牌。
+    ///
+    /// 只用来给提示（"看着不像，你核对一下"），**不作为保存前的拦截**：
+    /// GitHub 将来可能启用新前缀，卡死格式等于把用户挡在门外。
+    /// </summary>
+    public static bool LooksLikeGitHubToken(string? raw)
+    {
+        string t = NormalizeToken(raw);
+        if (t.Length == 0) return false;
+        return t.StartsWith("ghp_", StringComparison.Ordinal)
+            || t.StartsWith("gho_", StringComparison.Ordinal)
+            || t.StartsWith("ghu_", StringComparison.Ordinal)
+            || t.StartsWith("ghs_", StringComparison.Ordinal)
+            || t.StartsWith("ghr_", StringComparison.Ordinal)
+            || t.StartsWith("github_pat_", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 令牌的显示形式：只留头尾几位（`ghp_a…9f3d`）。
+    /// 界面上回填令牌时用它 —— 完整令牌摊在屏幕上，随便截个图就泄了。
+    /// </summary>
+    public static string MaskToken(string? raw)
+    {
+        string t = NormalizeToken(raw);
+        if (t.Length == 0) return "";
+        if (t.Length <= 10) return new string('•', t.Length);
+        return $"{t[..6]}…{t[^4..]}";
+    }
+
+    private static readonly string[] TokenPrefixes = { "Bearer", "token", "Authorization" };
+
+    /// <summary>检查是否有新版本。</summary>
+    /// <param name="token">
+    /// GitHub 个人访问令牌（可选）。带上它把接口配额从 60 次/小时（按 IP）
+    /// 提到 5000 次/小时（按账号），见 <see cref="NormalizeToken"/>。
+    /// </param>
+    public async Task<UpdateCheckResult> CheckAsync(string? token = null, CancellationToken ct = default)
+    {
+        string pat = NormalizeToken(token);
         try
         {
-            using var resp = await Http.GetAsync(LatestReleaseApi, ct).ConfigureAwait(false);
+            using var req = new HttpRequestMessage(HttpMethod.Get, LatestReleaseApi);
+
+            /* 令牌走**每次请求的报文头**，不放进静态 HttpClient 的默认头：
+             * ① 用户在界面里改令牌后要立刻生效，改默认头容易漏掉旧的；
+             * ② 请求头里带着令牌的报文不该被任何 HttpClient 级别的缓存/复用搞混。 */
+            if (pat.Length > 0)
+            {
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pat);
+                req.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
+            }
+
+            using var resp = await Http.SendAsync(req, ct).ConfigureAwait(false);
+
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return UpdateCheckResult.Fail("仓库还没有发布任何版本");
-            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden &&
-                resp.Headers.TryGetValues("X-RateLimit-Remaining", out var remain) &&
-                remain.FirstOrDefault() == "0")
+
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return UpdateCheckResult.Fail(
+                    "GitHub 令牌无效或已过期 —— 到「更新」里重新填一个，或者清空它改回匿名访问");
+
+            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
-                // 匿名访问 GitHub API 有频率限制（每 IP 每小时 60 次），
-                // 同网络下多台机器同时检查就可能撞上。给出可操作的提示。
-                return UpdateCheckResult.Fail("GitHub 接口访问频率已达上限，请稍后再试");
+                bool quotaGone = resp.Headers.TryGetValues("X-RateLimit-Remaining", out var remain) &&
+                                 remain.FirstOrDefault() == "0";
+
+                // 填了令牌还 403：多半是令牌本身没权限（fine-grained 没勾 Public repositories）
+                if (pat.Length > 0)
+                    return UpdateCheckResult.Fail(quotaGone
+                        ? "这个令牌的接口配额也用完了（5000 次/小时），一小时后再试"
+                        : "令牌没有读取公开仓库的权限 —— fine-grained 令牌请勾上 Public repositories (read)");
+
+                // 没填令牌：直接告诉用户怎么彻底解决，而不是只让他"稍后再试"
+                return UpdateCheckResult.Fail(quotaGone
+                    ? "GitHub 接口访问频率已达上限（未填令牌时每小时 60 次）。"
+                      + "到「更新」里填一个个人访问令牌，可提到 5000 次/小时"
+                    : "GitHub 拒绝了这次请求（HTTP 403）—— 可以试着填一个个人访问令牌");
             }
+
             if (!resp.IsSuccessStatusCode)
                 return UpdateCheckResult.Fail($"无法访问 GitHub（HTTP {(int)resp.StatusCode}）");
 
@@ -372,7 +497,69 @@ public sealed class UpdateService
         try { if (File.Exists(path)) File.Delete(path); } catch { }   /* 预期内：清理动作，失败无副作用 */
     }
 
+    /// <summary>
+    /// 验证一个令牌是否真的能用。
+    ///
+    /// 为什么不用 `/rate_limit`：那个端点**匿名也能调**，随便填一串乱码它照样返回
+    /// 200 和一份"配额" —— 用它验证等于什么都没验。这里打 `/user`：
+    /// 必须带有效凭据才会 200，同时顺手把配额头（X-RateLimit-*）读回来，
+    /// 用户能直接看到"这个令牌是 5000/小时还是 60/小时"。
+    /// </summary>
+    public async Task<TokenCheckResult> VerifyTokenAsync(string? token, CancellationToken ct = default)
+    {
+        string pat = NormalizeToken(token);
+        if (pat.Length == 0) return new TokenCheckResult(false, "", "先填一个令牌再验证");
+
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/user");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pat);
+            req.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
+
+            using var resp = await Http.SendAsync(req, ct).ConfigureAwait(false);
+
+            int limit = ReadIntHeader(resp, "X-RateLimit-Limit");
+            int remain = ReadIntHeader(resp, "X-RateLimit-Remaining");
+
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new TokenCheckResult(false, "", "令牌无效、已过期或已被撤销（HTTP 401）");
+
+            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return new TokenCheckResult(false, "",
+                    remain == 0
+                        ? "令牌本身有效，但这个 IP 的配额刚好用完了，一小时后再试"
+                        : "令牌被拒绝（HTTP 403）—— fine-grained 令牌需要至少 Public repositories 的读权限");
+
+            if (!resp.IsSuccessStatusCode)
+                return new TokenCheckResult(false, "", $"GitHub 返回 HTTP {(int)resp.StatusCode}");
+
+            var user = await resp.Content.ReadFromJsonAsync<GitHubUser>(cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            string who = string.IsNullOrWhiteSpace(user?.Login) ? "（仓库只读，账号名不可见）" : "@" + user!.Login;
+            return new TokenCheckResult(true, user?.Login ?? "",
+                $"令牌有效：{who}　·　配额 {limit}/小时，当前剩余 {remain}", limit, remain);
+        }
+        catch (TaskCanceledException)
+        {
+            return new TokenCheckResult(false, "", "验证超时，检查一下网络或代理");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("验证 GitHub 令牌失败：" + ex.Message);
+            return new TokenCheckResult(false, "", "验证失败：" + ex.Message);
+        }
+    }
+
+    private static int ReadIntHeader(HttpResponseMessage resp, string name) =>
+        resp.Headers.TryGetValues(name, out var v) && int.TryParse(v.FirstOrDefault(), out int n) ? n : 0;
+
     // ---------------- GitHub API 模型 ----------------
+
+    private sealed class GitHubUser
+    {
+        [JsonPropertyName("login")] public string? Login { get; set; }
+    }
 
     private sealed class GitHubRelease
     {
