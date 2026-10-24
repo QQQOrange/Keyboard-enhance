@@ -236,6 +236,7 @@ public static partial class SelfTest
 
         Section("导入导出");
         TestExportGroups();
+        TestExportRoundTrip();
         TestExportImport();
         TestExportImportOnDisk();
 

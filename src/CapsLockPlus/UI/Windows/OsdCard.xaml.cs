@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -193,7 +193,10 @@ public partial class OsdCard : UserControl
         var brush = new SolidColorBrush(_textColor);
         brush.Freeze();
 
-        Core.Fill = brush;
+        /* 圆是**空心描边**（见 XAML），所以这里设 Stroke 而不是 Fill。
+         * 以前设 Fill：XAML 里改成 Transparent 也会被运行时重新填成实心 ——
+         * 改了等于没改，图上一看还是实心圆。 */
+        Core.Stroke = brush;
         foreach (var line in _rays) line.Stroke = brush;
     }
 
@@ -219,7 +222,17 @@ public partial class OsdCard : UserControl
     internal double RayInnerForTest => RayInner;
 
     /// <summary>仅供自检：太阳本体直径。</summary>
-    internal double CoreDiameterForTest => Core.Width;
+    /// <summary>
+    /// 太阳圆的**外径**（描边外缘到外缘）。
+    ///
+    /// 描边是骑在路径上的，所以视觉外径 = Width + StrokeThickness ——
+    /// 只看 Width 会把"外径没变"这件事算错。
+    /// </summary>
+    internal double CoreDiameterForTest => Core.Width + Core.StrokeThickness;
+
+    /// <summary>仅供自检：圆心是不是空的（透明填充 = 空心描边）。</summary>
+    internal bool CoreIsHollowForTest =>
+        Core.Fill is not System.Windows.Media.SolidColorBrush b || b.Color.A == 0;
 
     /// <summary>仅供自检：光芒线的画刷（查它是不是单色）。</summary>
     internal Brush RayBrushForTest => _rays[0].Stroke;

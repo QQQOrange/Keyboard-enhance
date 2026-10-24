@@ -378,8 +378,10 @@ public static partial class SelfTest
         Check("线内端在圆心之外（不插进圆里）",
             card.RayInnerForTest > card.CoreDiameterForTest / 2 + 0.5,
             $"inner={card.RayInnerForTest:F2} r={card.CoreDiameterForTest / 2:F2}");
-        Check("太阳本体是 6.4 DIP 的圆", Math.Abs(card.CoreDiameterForTest - 6.4) < 0.01,
+        Check("太阳外径仍是 6.4 DIP（描边不改尺寸）",
+            Math.Abs(card.CoreDiameterForTest - 6.4) < 0.01,
             $"d={card.CoreDiameterForTest:F2}");
+        Check("太阳中间是空的（空心描边，对齐 Win11）", card.CoreIsHollowForTest);
         Check("图标里没有字体字形残留（否则会和线拼接）", !card.HasGlyphForTest,
             "还存在 TextBlock 字形");
 

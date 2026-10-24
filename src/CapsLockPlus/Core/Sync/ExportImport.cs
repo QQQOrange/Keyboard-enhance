@@ -239,17 +239,24 @@ public static class ExportImport
     // ---------------- 导入 ----------------
 
     /// <summary>
-    /// 读一份导出文件（加密或明文都行）。
+    /// 读一份配置文件（导出文件或备份文件，加密或明文都行）。
     ///
     /// 三道闸，全部是"宁可拒绝也别冲掉用户配置"：
     ///   1. **加密内容先解密**：口令不对就抛 <see cref="BackupPasswordException"/>，
     ///      让界面去问密码 —— 不能把密文当坏 JSON 报个看不懂的错；
-    ///   2. `kind` 必须是 clp-config —— 整份备份没有这个字段，照样拒
-    ///      （全量恢复是备份页的事，按项导入不该悄悄变成全量覆盖）；
+    ///   2. 有 `kind` 就必须是 clp-config；
     ///   3. `items` 必须是字符串数组，`data` 必须是非空对象。
+    ///
+    /// **备份文件也接受**：它解密出来就是一份完整的 AppSettings，只是没有
+    /// kind/items 这层包装。用户经常分不清 `.keyboardenhance`（备份）和
+    /// `.clpconf`（导出）—— "另一台电脑导入不了"多半就是拿错了文件。
+    /// 与其报一句"这不是导出文件"再让他去别的页面，不如按整份导入处理
+    /// （<paramref name="wasBackup"/> 会告诉界面，好把确认文案说清楚）。
     /// </summary>
     /// <param name="password">解密口令；null = 用当前设置里的备份密码（由调用方决定）。</param>
-    public static (List<string> Groups, JsonObject Data) Parse(string text, string? password = null)
+    /// <returns>Groups = 认得的组；Data = 要应用的数据；WasBackup = 来自备份文件。</returns>
+    public static (List<string> Groups, JsonObject Data, bool WasBackup) Parse(
+        string text, string? password = null)
     {
         if (CryptoBox.LooksEncrypted(text))
         {
@@ -277,9 +284,25 @@ public static class ExportImport
             throw new InvalidOperationException("文件内容不是一个 JSON 对象");
 
         string? kind = root["kind"]?.GetValue<string>();
+
+        /* 没有 kind：可能是整份备份。看它像不像一份配置 —— 有 Layers / Keys / Sync
+         * 任一顶层字段就认，然后按"全部组"整份导入。 */
         if (kind == null)
-            throw new InvalidOperationException(
-                "这份文件不是明文导出的配置（缺少 kind 字段）—— 若它是备份文件，请去「同步与备份」页");
+        {
+            bool looksLikeBackup =
+                root.ContainsKey(nameof(AppSettings.Layers))
+                || root.ContainsKey(nameof(AppSettings.Keys))
+                || root.ContainsKey(nameof(AppSettings.Sync));
+
+            if (!looksLikeBackup)
+                throw new InvalidOperationException(
+                    "这个文件既不是导出配置、也不是备份（里面没有可识别的配置字段）。"
+                    + "请确认选的是 KeyboardEnhance 导出的 .clpconf 或备份的 .keyboardenhance 文件。");
+
+            var allIds = Groups.Select(g => g.Id).ToList();
+            return (allIds, root, true);
+        }
+
         if (!kind.Equals(ExportKind, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"不支持的文件类型：{kind}");
 
@@ -295,11 +318,12 @@ public static class ExportImport
 
         // 只保留认得的组
         var known = ids.Where(i => FindGroup(i) != null).ToList();
-        return (known, data);
+        return (known, data, false);
     }
 
-    /// <summary>从文件读一份导出（加密或明文）。</summary>
-    public static (List<string> Groups, JsonObject Data) ReadPlain(string path, string? password = null)
+    /// <summary>从文件读一份导出（加密或明文；备份文件也认）。</summary>
+    public static (List<string> Groups, JsonObject Data, bool WasBackup) ReadPlain(
+        string path, string? password = null)
     {
         var info = new FileInfo(path);
         if (info.Length > MaxBytes)

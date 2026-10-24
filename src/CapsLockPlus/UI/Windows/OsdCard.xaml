@@ -37,10 +37,15 @@
                     <Canvas x:Name="Rays" Width="0" Height="0"
                             HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-                    <!-- 太阳本体：直径 6.4 DIP（Windows 亮度图标的大致比例）。 -->
-                    <Ellipse x:Name="Core" Width="6.4" Height="6.4"
+                    <!-- 太阳本体：**空心描边**，跟 Windows 11 自带的亮度横条一致。
+                         实心圆看着太重，和八根细光芒也不搭。
+
+                         外径仍保持 6.4 DIP：描边是"骑"在路径上的（内外各占一半），
+                         所以直径取 6.4 - 1.2 = 5.2，加上 1.2 的描边正好铺满原来的圆。
+                         这样光环外缘位置不变，和光芒内端（4.7）的缝隙也还是 1.5。 -->
+                    <Ellipse x:Name="Core" Width="5.2" Height="5.2"
                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                             Fill="#FFFFFF" />
+                             Fill="Transparent" Stroke="#FFFFFF" StrokeThickness="1.2" />
                 </Grid>
 
                 <!-- 进度条：底槽 + 填充（星号比例列，避免布局未完成时宽度为 0）。

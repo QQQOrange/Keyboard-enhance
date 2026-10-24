@@ -206,6 +206,85 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// 导出 → 换台机器 → 导入 的完整往返。
+    ///
+    /// 用户报过"导出的文件在另一台电脑上根本导入不了"。这条把整条链路跑一遍：
+    /// 加密导出 → 新机器（没有备份密码）解析 → 要求输密码 → 输对 → 应用，
+    /// 逐段确认到底卡在哪一环，而不是靠猜。
+    /// </summary>
+    private static void TestExportRoundTrip()
+    {
+        var src = DefaultSettings.Create();
+        src.Global.GitHubToken = "ghp_roundtrip0123456789";
+        src.Sync.BackupPassword = "导出时的密码";
+        src.Triggers.Add(new Core.Settings.TriggerKey { Key = "capslock", LayerId = 2 });
+
+        string tmp = Path.Combine(Path.GetTempPath(),
+            "ke_rt_" + Guid.NewGuid().ToString("N")[..6] + Core.Sync.ExportImport.Extension);
+        try
+        {
+            var all = Core.Sync.ExportImport.Groups.Select(g => g.Id).ToList();
+            int n = Core.Sync.ExportImport.WriteEncrypted(tmp, src, all, "导出时的密码");
+            Check("加密导出写出了设置项", n > 0, n.ToString());
+
+            string text = File.ReadAllText(tmp);
+
+            // ① 新机器：备份密码是空的 → 必须抛"密码问题"，界面据此弹输入框
+            var fresh = DefaultSettings.Create();
+            bool asksForPassword = false;
+            try { Core.Sync.ExportImport.Parse(text, ""); }
+            catch (Core.Sync.BackupPasswordException) { asksForPassword = true; }
+            Check("新机器空密码时会要求输入密码（而不是报文件损坏）", asksForPassword);
+
+            // ② 输入正确密码 → 能解析出分组
+            var (groups, data, wasBackup) = Core.Sync.ExportImport.Parse(text, "导出时的密码");
+            Check("解析出分组", groups.Count > 0, string.Join(",", groups));
+            Check("导出文件不被认成备份", !wasBackup);
+
+            // ③ 先看导出文件本身：层与触发键的引用在文件里对不对
+            Check("文件里 Layers 是完整 10 层",
+                data["Layers"] is System.Text.Json.Nodes.JsonArray la && la.Count == src.Layers.Count,
+                data["Layers"]?.ToJsonString()?.Length.ToString() ?? "null");
+            /* 触发键有两层各一条（默认给的是第 1 层），所以不能只看第 0 条。 */
+            bool hasLayer2 = data["Triggers"] is System.Text.Json.Nodes.JsonArray ta
+                && ta.Any(t => t!["LayerId"]!.GetValue<int>() == 2);
+            Check("文件里有绑到第 2 层的触发键", hasLayer2,
+                data["Triggers"]?.ToJsonString() ?? "null");
+
+            // ④ 应用后内容真的过来了
+            Core.Sync.ExportImport.Apply(fresh, groups, data);
+            CheckEqual("令牌带过来了", fresh.Global.GitHubToken, "ghp_roundtrip0123456789");
+            CheckEqual("层数一致", fresh.Layers.Count, src.Layers.Count);
+            CheckEqual("触发键一致", fresh.Triggers.Count, src.Triggers.Count);
+            Check("导入后仍有一条绑在第 2 层",
+                fresh.Triggers.Any(t => t.LayerId == 2),
+                string.Join(",", fresh.Triggers.Select(t => t.LayerId)));
+
+            /* ⑤ 备份文件也能直接导入（用户分不清 .keyboardenhance 和 .clpconf）。
+             *   备份是整份 AppSettings，没有 kind/items 包装。 */
+            string backupText = Core.Sync.CryptoBox.Encrypt(
+                System.Text.Json.JsonSerializer.Serialize(src, SettingsStore.JsonOptions),
+                "导出时的密码");
+            var (bGroups, bData, bWasBackup) = Core.Sync.ExportImport.Parse(backupText, "导出时的密码");
+            Check("备份文件被认成备份", bWasBackup);
+            Check("备份文件覆盖全部组", bGroups.Count == Core.Sync.ExportImport.Groups.Length,
+                $"{bGroups.Count}/{Core.Sync.ExportImport.Groups.Length}");
+            Check("备份文件里有 Layers", bData.ContainsKey("Layers"));
+
+            // ⑥ 错误密码必须继续报"密码问题"，不能变成"文件损坏"
+            bool wrongPw = false;
+            try { Core.Sync.ExportImport.Parse(text, "错的密码"); }
+            catch (Core.Sync.BackupPasswordException) { wrongPw = true; }
+            catch { }
+            Check("密码错了报的是密码问题", wrongPw);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { }
+        }
+    }
+
+    /// <summary>
     /// 清理规则：按天数、按份数、以及"什么算冗余"。
     ///
     /// 本地部分用临时目录真删真数（同一套 <c>PruneFolder</c> 代码路径）；
@@ -392,7 +471,7 @@ public static partial class SelfTest
                 Core.Sync.CryptoBox.LooksEncrypted(File.ReadAllText(file)));
             Check("加密导出写入了设置项", n > 0, n.ToString());
 
-            var (groups, data) = Core.Sync.ExportImport.ReadPlain(file, "export-pw");
+            var (groups, data, _) = Core.Sync.ExportImport.ReadPlain(file, "export-pw");
             Check("加密导出能读回来", groups.Count == all.Count, $"{groups.Count}/{all.Count}");
 
             var dst = DefaultSettings.Create();
@@ -736,7 +815,7 @@ public static partial class SelfTest
         Check("确实写入了设置项", count > 0, count.ToString());
 
         // ---- 往返：导出再导入，按键映射能恢复 ----
-        var (groups, data) = Core.Sync.ExportImport.Parse(text);
+        var (groups, data, _) = Core.Sync.ExportImport.Parse(text);
         CheckEqual("解析出 1 个组", groups.Count, 1);
         var dst = DefaultSettings.Create();
         int beforeKeys = dst.Keys.Count;
@@ -749,7 +828,7 @@ public static partial class SelfTest
         {"kind":"clp-config","items":["keys"],
          "data":{"Keys":[],"Sync":{"WebDavUrl":"https://attacker/dav/","WebDavPass":"x"}}}
         """;
-        var (eg, ed) = Core.Sync.ExportImport.Parse(evil);
+        var (eg, ed, _) = Core.Sync.ExportImport.Parse(evil);
         var victim = DefaultSettings.Create();
         victim.Sync.WebDavUrl = "https://my-own/dav/";
         Core.Sync.ExportImport.Apply(victim, eg, ed);
@@ -763,7 +842,7 @@ public static partial class SelfTest
          * 那导入侧就得跟着支持 —— 否则导出的东西自己读不回来。
          * 关键是不能把"密码不对"退化成"文件坏了"，否则用户会去怀疑文件。 */
         string encrypted = Core.Sync.CryptoBox.Encrypt(text, "pw");
-        var (encGroups, _) = Core.Sync.ExportImport.Parse(encrypted, "pw");
+        var (encGroups, _, _) = Core.Sync.ExportImport.Parse(encrypted, "pw");
         Check("加密导出能被正确密码导入", encGroups.Count == 1 && encGroups[0] == "keys",
             string.Join(",", encGroups));
 
@@ -772,11 +851,13 @@ public static partial class SelfTest
         catch (Core.Sync.BackupPasswordException) { wrongPw = true; }
         Check("加密导出用错密码被判为密码问题", wrongPw);
 
-        // ---- 没有 kind 字段的（整份备份）也要拒 ----
-        bool noKind = false;
-        try { Core.Sync.ExportImport.Parse("{\"Keys\":[],\"data\":{}}"); }
-        catch (InvalidOperationException e) { noKind = e.Message.Contains("kind"); }
-        Check("没有 kind 字段的文件被拒绝", noKind);
+        /* ---- 既不是导出、也不是备份的 JSON 必须拒 ----
+         * 注意别用 {"Keys":[]} 这种来测：它**确实**是一份合法配置（的片段），
+         * 现在会被当成"整份备份"接受。要测拒绝就用完全无关的 JSON。 */
+        bool junk = false;
+        try { Core.Sync.ExportImport.Parse("{\"foo\":1,\"bar\":[]}"); }
+        catch (InvalidOperationException) { junk = true; }
+        Check("看不出配置结构的 JSON 被拒绝", junk);
 
         // ---- items 类型不对要拒 ----
         bool badItems = false;
@@ -1088,7 +1169,7 @@ public static partial class SelfTest
                 !Core.Sync.CryptoBox.LooksEncrypted(File.ReadAllText(file)));
 
             // 读回来
-            var (groups, data) = Core.Sync.ExportImport.ReadPlain(file);
+            var (groups, data, _) = Core.Sync.ExportImport.ReadPlain(file);
             CheckEqual("读回 1 个组", groups.Count, 1);
             CheckEqual("组名正确", groups[0], "macros");
 

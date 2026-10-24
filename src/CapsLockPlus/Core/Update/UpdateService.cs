@@ -69,11 +69,28 @@ public sealed class UpdateService
 
     private static readonly HttpClient Http = CreateClient();
 
+    /// <summary>
+    /// 下载专用客户端：**超时给足 5 分钟**。
+    ///
+    /// 查询接口 20 秒够（几百 KB 的 JSON），但安装包有 3MB ——
+    /// 用 20 秒那个客户端下载，在 1 Mbps 的网或慢代理下**必然超时**，
+    /// 现象就是"点下载，转几秒然后报下载失败"。HttpClient.Timeout 是
+    /// 覆盖整个响应体读取的，不是只算首字节。
+    /// </summary>
+    private static readonly HttpClient DownloadHttp = CreateDownloadClient();
+
     private static HttpClient CreateClient()
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         c.DefaultRequestHeaders.UserAgent.ParseAdd("CapsLockPlus-Updater/1.0");
         c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return c;
+    }
+
+    private static HttpClient CreateDownloadClient()
+    {
+        var c = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("CapsLockPlus-Updater/1.0");
         return c;
     }
 
@@ -328,24 +345,64 @@ public sealed class UpdateService
         }
         try
         {
-            using var resp = await Http.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct)
-                .ConfigureAwait(false);
-            resp.EnsureSuccessStatusCode();
-            long total = resp.Content.Headers.ContentLength ?? info.Size;
-            await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            await using var dst = File.Create(temp);
-
-            var buffer = new byte[81920];
+            /* 两次重试：GitHub 的下载会 302 到 objects.githubusercontent.com，
+             * 国内网络下偶发一次连接重置 —— 一次失败就报错，用户会觉得"更新坏了"。
+             * 重试前把临时文件清掉，避免追加写。 */
             long read = 0;
-            int n;
-            while ((n = await src.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+            long total = info.Size;
+            Exception? last = null;
+
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                await dst.WriteAsync(buffer.AsMemory(0, n), ct).ConfigureAwait(false);
-                read += n;
-                if (total > 0) progress?.Report((double)read / total);
+                if (attempt > 0)
+                {
+                    TryDelete(temp);
+                    await Task.Delay(TimeSpan.FromSeconds(1.5 * attempt), ct).ConfigureAwait(false);
+                    progress?.Report(0);
+                }
+
+                try
+                {
+                    using var resp = await DownloadHttp
+                        .GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct)
+                        .ConfigureAwait(false);
+                    resp.EnsureSuccessStatusCode();
+
+                    total = resp.Content.Headers.ContentLength ?? info.Size;
+                    await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                    await using var dst = File.Create(temp);
+
+                    var buffer = new byte[81920];
+                    read = 0;
+                    int n;
+                    while ((n = await src.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+                    {
+                        await dst.WriteAsync(buffer.AsMemory(0, n), ct).ConfigureAwait(false);
+                        read += n;
+                        if (total > 0) progress?.Report((double)read / total);
+                    }
+                    await dst.FlushAsync(ct).ConfigureAwait(false);
+                    dst.Close();
+
+                    last = null;
+                    break;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                    CoreLog.Warn($"下载第 {attempt + 1} 次失败：{ex.Message}");
+                }
             }
-            await dst.FlushAsync(ct).ConfigureAwait(false);
-            dst.Close();
+
+            if (last != null)
+            {
+                TryDelete(temp);
+                return (false, "", "下载失败：" + last.Message);
+            }
 
             if (info.Size > 0 && read != info.Size)
             {

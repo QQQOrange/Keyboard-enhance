@@ -693,8 +693,13 @@ public partial class BackupView : UserControl
 
         var dlg = new OpenFileDialog
         {
-            Title = "导入配置（加密或明文）",
-            Filter = $"KeyboardEnhance 配置|*{ExportImport.Extension}|所有文件|*.*",
+            Title = "导入配置（导出文件或备份文件都行）",
+            /* 两种文件都能导入：.clpconf 是导出、.keyboardenhance 是备份。
+             * 用户经常分不清，以前只列 .clpconf，拿去导入备份就"看不到文件"。 */
+            Filter = $"KeyboardEnhance 配置|*{ExportImport.Extension};*{SyncService.Extension}"
+                     + $"|导出的配置 (*{ExportImport.Extension})|*{ExportImport.Extension}"
+                     + $"|备份文件 (*{SyncService.Extension})|*{SyncService.Extension}"
+                     + "|所有文件|*.*",
             InitialDirectory = SyncService.BackupDir,
         };
         if (dlg.ShowDialog() != true) return;
@@ -706,9 +711,10 @@ public partial class BackupView : UserControl
 
             List<string> groups;
             System.Text.Json.Nodes.JsonObject data;
+            bool wasBackup = false;
             try
             {
-                (groups, data) = ExportImport.Parse(text, password);
+                (groups, data, wasBackup) = ExportImport.Parse(text, password);
             }
             catch (BackupPasswordException)
             {
@@ -726,8 +732,13 @@ public partial class BackupView : UserControl
                 {
                     Owner = Window.GetWindow(this),
                 };
-                if (prompt.ShowDialog() != true) return;
-                (groups, data) = ExportImport.Parse(text, prompt.Password ?? "");
+                if (prompt.ShowDialog() != true)
+                {
+                    // 以前这里静默返回，用户以为"点了导入没反应"
+                    ShowImportResult("已取消导入：没有输入这份文件当时的密码。", false);
+                    return;
+                }
+                (groups, data, wasBackup) = ExportImport.Parse(text, prompt.Password ?? "");
             }
 
             if (groups.Count == 0)
@@ -737,9 +748,13 @@ public partial class BackupView : UserControl
             }
 
             var names = groups.Select(g => ExportImport.FindGroup(g)?.Name ?? g).ToList();
-            if (!AppDialog.Confirm(Window.GetWindow(this),
-                    $"将导入以下内容（会覆盖当前对应的项）：\n\n　{string.Join("\n　", names)}\n\n继续吗？",
-                    "导入配置", DialogKind.Question, okText: "导入")) return;
+            string question = wasBackup
+                ? "这是一份**备份文件**（整份配置，不是按项导出）。\n\n"
+                  + "导入会按整份配置覆盖对应的项；导入前建议先点「现在就备份一次」。\n\n继续吗？"
+                : $"将导入以下内容（会覆盖当前对应的项）：\n\n　{string.Join("\n　", names)}\n\n继续吗？";
+
+            if (!AppDialog.Confirm(Window.GetWindow(this), question,
+                    wasBackup ? "导入备份文件" : "导入配置", DialogKind.Question, okText: "导入")) return;
 
             ExportImport.Apply(_host.Settings, groups, data);
             _host.SaveSettings();
@@ -750,8 +765,10 @@ public partial class BackupView : UserControl
         }
         catch (Exception ex)
         {
+            // 页面里那行小字容易被忽略，失败时再弹一次，把原文给出来
             ShowImportResult("导入失败：" + ex.Message, false);
             _host.Notify("导入失败：" + ex.Message);
+            AppDialog.Error(Window.GetWindow(this), ex.Message, "导入失败");
         }
     }
 
