@@ -155,6 +155,58 @@ public partial class QbarWindow : Window
     /// </summary>
     internal static bool ShouldHideOnDeactivate(int elapsedMs) => elapsedMs >= OpenGraceMs;
 
+    // ---------------- 点击面板外面就收起 ----------------
+
+    /// <summary>
+    /// 打开期间盯着全局鼠标按键。
+    ///
+    /// 为什么除了 Deactivated 还要这个：任务栏这类"不换前台"的地方，
+    /// 点了它前台窗口不变，Deactivated 根本不触发，面板会一直挂着。
+    /// 用户要求"点任何地方都消失"，这个全局钩子就是兜底。
+    ///
+    /// 窗口**内部**（投影、透明边距）不归钩子管：那些点击会穿透到下
+    /// 层窗口、由 Deactivated 收走，与加钩子之前的行为完全一致 ——
+    /// 所以只做"矩形外就收"，不做花哨的命中测试。
+    /// </summary>
+    private void StartOutsideWatch()
+    {
+        // 先摘再挂：重复 Open() 不会叠出多个回调
+        _host.Engine.MouseDownEvent -= OnGlobalMouseDown;
+        _host.Engine.MouseDownEvent += OnGlobalMouseDown;
+    }
+
+    private void StopOutsideWatch() => _host.Engine.MouseDownEvent -= OnGlobalMouseDown;
+
+    /// <summary>钩子线程回调：只做判断，收起动作丢回界面线程。</summary>
+    private void OnGlobalMouseDown(int x, int y, int mouseMessage)
+    {
+        if (_hwnd == IntPtr.Zero) return;
+
+        /* 先看这一击落在谁身上：本进程自己弹出的东西（输入框的右键
+         * 菜单、提示气泡）虽然在面板矩形之外，也不算"外面" ——
+         * 否则右键菜单里点「粘贴」会把面板一起收走。 */
+        var hit = Core.Interop.NativeMethods.WindowFromPoint(new Core.Interop.NativeMethods.POINT { X = x, Y = y });
+        if (hit != IntPtr.Zero)
+        {
+            Core.Interop.NativeMethods.GetWindowThreadProcessId(hit, out uint pid);
+            if (pid == Core.Interop.NativeMethods.GetCurrentProcessId()) return;
+        }
+
+        if (!Core.Interop.NativeMethods.GetWindowRect(_hwnd, out var r)) return;
+        if (!IsOutsidePanel(x, y, r.Left, r.Top, r.Right, r.Bottom)) return;
+        // 与 Deactivated 共用同一套宽限期：刚打开时正在抢前台，别被误关
+        if ((DateTime.Now - _openedAt).TotalMilliseconds < OpenGraceMs) return;
+        Dispatcher.BeginInvoke(new Action(HideQbar));
+    }
+
+    /// <summary>
+    /// 一次全局按键是否落在面板窗口之外（纯函数，便于自检）。
+    /// 右/下边界取开区间，与 Windows 的命中测试一致：点在最右一列
+    /// 或最下一行像素上，算窗外。
+    /// </summary>
+    internal static bool IsOutsidePanel(int x, int y, int left, int top, int right, int bottom)
+        => x < left || x >= right || y < top || y >= bottom;
+
     private SolidColorBrush? _panelBrush;
     private SolidColorBrush? _borderBrush;
     private string _styleStamp = "";
@@ -423,6 +475,7 @@ public partial class QbarWindow : Window
 
     public void Open(string? prefill = null)
     {
+        if (_closing) ReopenFromFade();
         ApplyStyle();
         ClearChip();
         if (!IsVisible)
@@ -454,6 +507,7 @@ public partial class QbarWindow : Window
          * 面板显示在最上面，但打字仍然打在原来的程序里。
          * 这就是用户说的"换出 Qbar 之后打的字不落在面板里"。 */
         _openedAt = DateTime.Now;
+        StartOutsideWatch();
         BeginForceFocus();
 
         /* prefill 有两种形态：
@@ -509,14 +563,31 @@ public partial class QbarWindow : Window
         Slide.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
+    /// <summary>
+    /// 收起淡出进行中又被打开：当场作废这次收起。
+    ///
+    /// 没有这一步的话，旧淡出动画跑完时的 Completed 会把**刚打开**的
+    /// 面板 Hide 掉 —— 现象是"点一下外面、紧接着再按热键，面板不出来"。
+    /// </summary>
+    private void ReopenFromFade()
+    {
+        Panel.BeginAnimation(OpacityProperty, null);
+        Panel.Opacity = 1;
+        _closing = false;
+    }
+
     public void HideQbar()
     {
         if (!IsVisible || _closing) return;
         StopFocusTimer();
+        StopOutsideWatch();
         _closing = true;
         var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(90));
         fade.Completed += (_, _) =>
         {
+            // 收起途中又被 Open() 打开（ReopenFromFade 把 _closing 清了）：
+            // 这次收起作废，不能把新打开的面板 Hide 掉。
+            if (!_closing) return;
             Hide();
             Panel.BeginAnimation(OpacityProperty, null);
             Panel.Opacity = 1;
@@ -682,8 +753,8 @@ public partial class QbarWindow : Window
             _ => item.Result.Title,
         };
         SetInputText(completion);
-        if (TryMakeChip()) RunQuery();
-        else RunQuery();
+        TryMakeChip();      // 成了标签就等于换了引擎，没成就只是段文字 —— 两种情况都要重搜
+        RunQuery();
     }
 
     private void OnInputChanged(object sender, TextChangedEventArgs e)
@@ -779,6 +850,11 @@ public partial class QbarWindow : Window
 
     private void ExecuteSelected()
     {
+        /* 面板一开始淡出就不再执行：双击手势的两次点击间隔很短
+         * （第二次抬起常常落在 90ms 淡出还没结束的时间里），没有这道
+         * 闸门的话同一个结果会被执行两遍 —— 启动程序开两个窗口、
+         * 打开网址开两个标签页。淡出期间的 Enter 同理。 */
+        if (_closing) return;
         if (Results.SelectedItem is not QbarItem item) return;
         var result = item.Result;
         HideQbar();
@@ -863,7 +939,10 @@ public partial class QbarWindow : Window
             ExecuteSelected();
     }
 
-    private void OnResultDoubleClick(object sender, MouseButtonEventArgs e) => ExecuteSelected();
+    /* 原来这里还有一个 OnResultDoubleClick（XAML MouseDoubleClick 也挂着）：
+     * 单击已经会执行并收起面板，它纯属重复，而且不像单击那样判断点没点
+     * 中条目 —— 双击列表空白处也会把当前选中项执行一遍。
+     * 已删除；"双击只执行一次"由 ExecuteSelected 里的 _closing 闸门保证。 */
 
     private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
     {

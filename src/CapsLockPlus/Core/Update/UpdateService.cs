@@ -277,11 +277,25 @@ public sealed class UpdateService
             string dir = System.IO.Path.GetDirectoryName(current)!;
             string old = System.IO.Path.Combine(dir,
                 System.IO.Path.GetFileNameWithoutExtension(current) + $".old-{DateTime.Now:HHmmss}.exe");
+            string staged = current + ".new";
 
-            // 1) 当前 exe 改名（不会失败于“正在使用”）
+            /* 顺序很重要：**先落盘到最终位置旁边 → 再改名换岗**。
+             * 复制是整个流程里最容易失败的一步（磁盘满、杀毒锁文件），
+             * 它必须在不影响现状的前提下进行 —— 直接往 current 上复制，
+             * 一旦失败，程序名已经被改掉，用户手上什么都没有。 */
+            File.Copy(downloadedPath, staged, true);
+
+            /* 去掉下载文件自带的"来自互联网"标记（Zone.Identifier 流）。
+             * File.Copy 会把这个流一起带过来，不清掉的话第一次程序内更新
+             * 会被 SmartScreen 拦一道（"Windows 保护了你的电脑"），
+             * 用户手一滑点"不运行"，这台机器上就再也没有 KeyboardEnhance 了。 */
+            try { Core.Interop.NativeMethods.DeleteFile(staged + ":Zone.Identifier"); }
+            catch { }   /* 预期内：清理动作，失败无副作用 */
+
+            // 1) 当前 exe 改名（不会失败于"正在使用"）
             File.Move(current, old, true);
-            // 2) 新文件就位
-            File.Copy(downloadedPath, current, true);
+            // 2) 新文件就位（同目录同卷，一次原子改名）
+            File.Move(staged, current, true);
 
             // 3) 启动新版本（只有一个 exe，就是它自己）。
             //    带 --elevated，避免再次弹 UAC
@@ -313,6 +327,9 @@ public sealed class UpdateService
                 {
                     try { File.Delete(f); } catch { /* 可能仍被占用，下次再删 */ }
                 }
+                // 换岗没走完留下的 .new（见 ApplyAndRestart 的暂存逻辑）
+                string stagedNew = current + ".new";
+                try { if (File.Exists(stagedNew)) File.Delete(stagedNew); } catch { }
             }
         }
         catch (Exception ex)

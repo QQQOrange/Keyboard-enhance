@@ -149,6 +149,7 @@ public static partial class SelfTest
         TestWinBindCustomName();
         TestQbarThemeContrast();
         TestQbarChipTextContrast();
+        TestQbarOutsideClick();
         TestComplexTriggerKey();
         TestTriggerBadgeFollowsLayer();
         TestSubLayers();

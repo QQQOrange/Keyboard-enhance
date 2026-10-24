@@ -13,6 +13,9 @@ public static class NativeMethods
     public const int WM_SYSKEYUP = 0x0105;
     public const int WM_MOUSEWHEEL = 0x020A;
     public const int WM_MOUSEHWHEEL = 0x020E;
+    public const int WM_LBUTTONDOWN = 0x0201;
+    public const int WM_RBUTTONDOWN = 0x0204;
+    public const int WM_MBUTTONDOWN = 0x0207;
 
     public const int WH_KEYBOARD_LL = 13;
     public const int WH_MOUSE_LL = 14;
@@ -130,6 +133,13 @@ public static class NativeMethods
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    /// <summary>
+    /// 删文件（也能删交替数据流，如 "xxx.exe:Zone.Identifier"）。
+    /// .NET 没有删 ADS 的托管 API，只能走这层。
+    /// </summary>
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool DeleteFile(string lpFileName);
 
     // ---------------- 窗口 ----------------
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);

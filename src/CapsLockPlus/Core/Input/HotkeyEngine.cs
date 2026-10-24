@@ -672,6 +672,18 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>重装钩子（自愈用）。</summary>
     public void RestartHook() => _hook.Restart();
 
+    /// <summary>
+    /// 全局鼠标按键事件透传（屏幕物理坐标 + 鼠标消息）。
+    /// Qbar 面板打开期间订阅，实现"点面板外面就收起" ——
+    /// 任务栏不换前台、Deactivated 不触发，只能靠这个兜底。
+    /// 回调运行在钩子线程：只做判断，别碰界面。
+    /// </summary>
+    public event Action<int, int, int>? MouseDownEvent
+    {
+        add => _hook.MouseDownEvent += value;
+        remove => _hook.MouseDownEvent -= value;
+    }
+
     /// <summary>诊断：让钩子把收到的按键写进日志。</summary>
     public void EnableKeyTrace() => _hook.TraceKeys = true;
 

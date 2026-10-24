@@ -27,6 +27,15 @@ public sealed class KeyboardHook : IDisposable
     /// <summary>鼠标滚轮回调：滚动格数（上正下负）、是否按住 Caps。</summary>
     public event Action<int, bool, bool>? WheelEvent;
 
+    /// <summary>
+    /// 鼠标按键回调：屏幕物理坐标 x、y 和鼠标消息（WM_LBUTTONDOWN 等）。
+    /// 只在本程序自己没注入时才触发。回调运行在钩子线程，必须极快。
+    ///
+    /// 用途：Qbar 面板打开期间判断"点没点到面板外面" —— 任务栏这类
+    /// 不会换前台的地方不会产生 Deactivated，只能靠全局钩子兜底。
+    /// </summary>
+    public event Action<int, int, int>? MouseDownEvent;
+
     private HookProc? _mouseProc;
     private IntPtr _mouseHook = IntPtr.Zero;
 
@@ -143,7 +152,8 @@ public sealed class KeyboardHook : IDisposable
         if (nCode < 0) return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         try
         {
-            if ((int)wParam == WM_MOUSEWHEEL)
+            int msg = (int)wParam;
+            if (msg == WM_MOUSEWHEEL)
             {
                 var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
                 // 与键盘钩子保持一致：只忽略本程序自己发的滚轮事件。
@@ -154,6 +164,12 @@ public sealed class KeyboardHook : IDisposable
                     if (delta != 0)
                         WheelEvent?.Invoke(delta > 0 ? 1 : -1, false, false);
                 }
+            }
+            else if (msg is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN)
+            {
+                var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                if (data.dwExtraInfo != InputSender.InjectionTag)
+                    MouseDownEvent?.Invoke(data.pt.X, data.pt.Y, msg);
             }
         }
         catch (Exception ex)

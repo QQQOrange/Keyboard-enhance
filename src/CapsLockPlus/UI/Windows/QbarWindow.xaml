@@ -95,7 +95,6 @@
                 <ListBox Grid.Row="2" x:Name="Results" Margin="8,8,8,4" Background="Transparent"
                          BorderThickness="0" MaxHeight="420"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         MouseDoubleClick="OnResultDoubleClick"
                          PreviewMouseLeftButtonUp="OnResultClick"
                          ItemContainerStyle="{StaticResource QbarRow}">
                     <ListBox.ItemTemplate>

@@ -791,6 +791,38 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// Qbar 打开期间"点面板外面就收起"的判定。
+    ///
+    /// 用户要求：面板出来之后，点任何不是面板的地方都该消失。
+    /// 任务栏是最容易漏的一种 —— 点了它前台窗口不变，Deactivated 不
+    /// 触发，面板会一直挂着；所以打开期间挂一个全局鼠标钩子兜底，
+    /// 落在窗口矩形外就收起。这里验的就是那个纯矩形判定。
+    /// </summary>
+    private static void TestQbarOutsideClick()
+    {
+        // 窗口矩形（物理像素）：左上 (100,100)，右下 (900,500)
+        const int L = 100, T = 100, R = 900, B = 500;
+
+        Check("点面板中心不收起", !UI.Windows.QbarWindow.IsOutsidePanel(500, 300, L, T, R, B));
+        Check("点左上外要收起", UI.Windows.QbarWindow.IsOutsidePanel(50, 50, L, T, R, B));
+        Check("点右上外要收起", UI.Windows.QbarWindow.IsOutsidePanel(1000, 300, L, T, R, B));
+        Check("点左下外要收起", UI.Windows.QbarWindow.IsOutsidePanel(500, 900, L, T, R, B));
+        Check("点右下外要收起", UI.Windows.QbarWindow.IsOutsidePanel(1000, 900, L, T, R, B));
+
+        // 左/上取闭区间、右/下取开区间 —— 与 Windows 的命中测试一致
+        Check("点最左一列不算窗外", !UI.Windows.QbarWindow.IsOutsidePanel(L, 300, L, T, R, B));
+        Check("点最右一列算窗外", UI.Windows.QbarWindow.IsOutsidePanel(R, 300, L, T, R, B));
+        Check("点最上一行不算窗外", !UI.Windows.QbarWindow.IsOutsidePanel(500, T, L, T, R, B));
+        Check("点最下一行算窗外", UI.Windows.QbarWindow.IsOutsidePanel(500, B, L, T, R, B));
+
+        /* 回归：删掉的双击处理器不许回来。它和"单击即执行"叠加，
+         * 双击手势会把同一个结果执行两遍（开两个窗口/两个标签页）。 */
+        var dbl = typeof(UI.Windows.QbarWindow).GetMethod("OnResultDoubleClick",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Check("QbarWindow 没有双击执行处理器（执行只由单击负责）", dbl == null);
+    }
+
+    /// <summary>
     /// 「直接搜索」：用选中文本 + 指定引擎，在默认浏览器里搜索。
     /// </summary>
     private static void TestDirectSearch()

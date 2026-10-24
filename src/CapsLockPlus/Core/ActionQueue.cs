@@ -94,6 +94,10 @@ public static class AppPaths
         {
             try
             {
+                // 必须规范化成绝对路径：托盘程序的当前目录常常是 System32，
+                // 相对路径会让数据目录、备份路径甚至 Process.Start 的目标
+                // 全都随 CWD 漂移，排查时完全对不上。
+                custom = Path.GetFullPath(custom);
                 Directory.CreateDirectory(custom);
                 return custom;
             }
