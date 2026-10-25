@@ -344,6 +344,30 @@ public partial class App : Application
 
         ThemeManager.Apply(ThemeManager.Parse(settings.Global.Theme));
 
+        /* ---- 启动密码门：密码不对，软件就不启动 ----
+         *
+         * 位置是刻意的：在提权重启、数据解锁、主题应用之后，
+         * 建 Host（钩子 / 托盘 / 主窗口）之前 —— 校验不过就到此为止，
+         * 键盘钩子都不会装，更不会出现"界面拦下来了、热键还能用"的半开状态。
+         *
+         * 校验真相在数据目录的 startup.json（见 StartupPassword），
+         * 与备份密码完全独立：那一个管数据加密，这一个只卡启动。
+         * 忘记密码的退路 = 删掉 startup.json（其他设置不受影响）。 */
+        if (!StartupPassword.ShouldSkip(e.Args) && StartupPassword.IsSet())
+        {
+            StartupPassword.MirrorTo(settings.Security);   // 镜像与文件对齐（用户可能手动删过）
+
+            if (!AskStartupPassword(settings))
+            {
+                CoreLog.Info("启动密码校验未通过 —— 本次启动终止");
+                try { CoreLog.Flush(); } catch { }
+                SingleInstance.Release();
+                Environment.Exit(0);
+                return;
+            }
+            CoreLog.Info("启动密码校验通过");
+        }
+
         Host = new AppHost(settings, Dispatcher);
         Host.Start();
 
@@ -428,6 +452,33 @@ public partial class App : Application
 
         // 自动备份：与"启动/退出同步"独立，两个开关可以同时开着互不干扰。
         Host.RestartAutoBackupTimer();
+    }
+
+    /// <summary>
+    /// 弹启动密码窗，返回用户是否给出了正确密码。
+    ///
+    /// 打不开窗口时返回 false（不许进）：宁可这次进不去，
+    /// 也不能把"弹窗失败"当成"没有密码"悄悄放行。
+    /// </summary>
+    private static bool AskStartupPassword(AppSettings settings)
+    {
+        try
+        {
+            var dlg = new UI.Windows.StartupPasswordWindow(
+                p => Core.Settings.StartupPassword.Verify(p),
+                "启动密码",
+                "这个软件已设置启动密码，请输入密码进入主界面。\n\n" +
+                "启动密码与备份密码相互独立：这一个只决定谁能打开本软件，" +
+                "改了它也不会影响备份与数据加密。",
+                "进入", "退出");
+            dlg.ShowDialog();
+            return dlg.Passed;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("启动密码窗口打开失败", ex);
+            return false;
+        }
     }
 
     /// <summary>支持 --page=keys 这样的参数，直接打开某个页面（也方便做截图验收）。</summary>

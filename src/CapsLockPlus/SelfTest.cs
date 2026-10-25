@@ -88,6 +88,9 @@ public static partial class SelfTest
         TestSettings();
         TestDataLocationAndEncryptedExport();
 
+        Section("启动密码");
+        TestStartupPassword();
+
         Section("旧版 ini 迁移");
         TestLegacyImport();
 

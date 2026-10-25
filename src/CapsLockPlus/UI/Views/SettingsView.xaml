@@ -130,6 +130,45 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!--
+                        启动密码：和「同步与备份」页的备份密码完全是两回事。
+                        那一个给备份文件和本地数据加密；这一个只卡启动 ——
+                        用户点名要求分开，所以字段、校验、入口全都独立。
+                    -->
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="启动密码保护" Style="{StaticResource Text.Body}" />
+                                <TextBlock Text="每次启动软件时先要求输入密码，正确才进入主界面"
+                                           Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1" x:Name="StartupPwBox" Style="{StaticResource ToggleSwitch}"
+                                      VerticalAlignment="Center" Click="OnStartupPasswordChanged"
+                                      ToolTip="开启时需要先设置一个新密码；关闭时需要验证当前密码" />
+                        </Grid>
+
+                        <!-- 状态行 + 修改密码按钮（设了才显示） -->
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="StartupPwStateText" Grid.Column="0"
+                                       Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="ChangeStartupPwButton" Grid.Column="1"
+                                    Style="{StaticResource Button.Base}" Padding="12,5"
+                                    Content="修改密码" Visibility="Collapsed"
+                                    Click="OnChangeStartupPassword" />
+                        </Grid>
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />

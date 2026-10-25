@@ -171,24 +171,58 @@ internal static class OsdPlacement
     /// </summary>
     public const double ValueLiftDip = 0.5;
 
-    /// <summary>
-    /// 太阳字形的字号（DIP）。E706 的墨迹正好铺满一个 em，所以字号就是墨迹高度。
-    ///
-    /// 取 12 的依据是实测（3200×2000 @200%，逐档抓图求墨迹外框）：
-    /// 系统那条在 100% 时墨迹 24×24 px = 12×12 DIP，0% 时 18×17 px。
-    /// 太阳是满 em 字形 → 字号 12 DIP 画出来刚好 24 px，分毫不差。
-    /// （13 DIP 会画出 26 px，比系统大一圈。）
-    /// </summary>
-    public const double IconGlyphSizeDip = 12;
+    /* ── 太阳图标（自绘，全部 DIP） ───────────────────────────────
+     *
+     * 2026-10-25 之前用 Segoe Fluent Icons 的 E706 字形 + ScaleTransform
+     * 缩放（0.70→1.00）复刻系统横条。用户随后点名改了需求，改为自绘太阳：
+     *   ① 中心圆直径**固定**，禁止随亮度缩放 —— 只有外围放射线可以动；
+     *   ② 整体尺寸偏小，要放大；
+     *   ③ 亮度变化时放射线除伸缩外还要绕中心圆旋转，转速与亮度变化速度联动。
+     * 卡片/进度条/数字的实测值全部保持原样（见上方注释），
+     * 只有图标这一块换成下面的几何常量。 */
 
     /// <summary>
-    /// 0% 时太阳缩到满格的几成。系统调亮度时太阳会跟着变大变小。
-    ///
-    /// 实测系统：0% 墨迹高 17 px、100% 墨迹高 24 px → 17/24 = 0.708，
-    /// 取 0.70（24 × 0.70 = 16.8 ≈ 17 px），中间档 50% 得 20.4 ≈ 20 px，
-    /// 与系统实测的 20 px 一致。缩放是**关于亮度线性的**（不是分档跳变）。
+    /// 太阳**中心圆**的直径（DIP）。**固定值，任何亮度下都不变** ——
+    /// 这是用户点名要求的第一条：能随亮度动的只有外围放射线。
     /// </summary>
-    public const double IconMinScale = 0.70;
+    public const double SunCoreDip = 6.0;
+
+    /// <summary>
+    /// 放射线**外端点**离圆心的距离（DIP），0% 时最短。
+    /// 线端是圆帽，视觉半径还要多半个线粗（见 <see cref="SunRayThicknessDip"/>），
+    /// 所以 0% 时墨迹直径 = 2×(4.5+0.75) = 10.5 DIP。
+    /// </summary>
+    public const double SunRayReachMinDip = 4.5;
+
+    /// <summary>
+    /// 放射线外端点离圆心的距离（DIP），100% 时最长。
+    /// 视觉墨迹直径 = 2×(7.25+0.75) = 16.0 DIP —— 正好铺满图标槽，
+    /// 不会伸进图标与进度条之间的间距（进度条起点 42.0 不受影响）。
+    /// </summary>
+    public const double SunRayReachMaxDip = 7.25;
+
+    /// <summary>放射线粗细（DIP）。200% 缩放下是 3 px，够实、不笨。</summary>
+    public const double SunRayThicknessDip = 1.5;
+
+    /// <summary>放射线条数：8 根，每 45° 一根，第一根指向正上方。</summary>
+    public const int SunRayCount = 8;
+
+    /// <summary>
+    /// 满量程旋转角（度）：亮度 0% → 100% 整组放射线转过一整圈。
+    ///
+    /// 旋转角 = <see cref="SunTwistDeg"/> × 进度，是进度的**纯函数**：
+    /// 角速度 = 360°×d(进度)/dt，亮度变化越快转得越快，停下来就静止 ——
+    /// 正好是"转速与亮度变化速度联动"。纯函数还保证两个宿主
+    /// （WPF 窗口 / band 16 离屏位图）同一进度画出同一帧，位图缓存不会错。
+    /// </summary>
+    public const double SunTwistDeg = 360.0;
+
+    /// <summary>
+    /// 放射线内端点相对圆芯半径的收缩量（DIP）：
+    /// 线端起点藏到圆芯轮廓内侧一点点，圆芯画在线上层盖住接缝，
+    /// 45° 斜线的平帽角才不会在圆芯边缘露出小三角。
+    /// </summary>
+    public const double SunRayInsetDip = 0.1;
 
     /* 极小屏保护：正常显示器永远不会触发。
      * 存在的意义是别在 640×480 这种屏上让横条横跨大半个屏幕

@@ -73,6 +73,12 @@ public partial class OsdWindow
     /// <summary>仅供自检：太阳此刻的明暗进度（0~1，动画途中是中间值）。</summary>
     internal double IconProgressForTest => CardView.IconProgress;
 
+    /// <summary>仅供自检：太阳此刻的旋转角（度，动画途中随进度连续变化）。</summary>
+    internal double SunSpinAngleForTest => CardView.SunSpinAngleForTest;
+
+    /// <summary>仅供自检：放射线外端点当前离圆心的距离（DIP）。</summary>
+    internal double SunRayReachForTest => CardView.SunRayReachForTest;
+
     /// <summary>仅供自检：band 路径为重画图标贴过几次位图。</summary>
     internal int IconRepaintsForTest { get; private set; }
 

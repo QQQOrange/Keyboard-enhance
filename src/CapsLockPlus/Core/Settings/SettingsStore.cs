@@ -84,6 +84,7 @@ public static class SettingsStore
         target.Global = copy.Global;
         target.Qbar = copy.Qbar;
         target.Sync = copy.Sync;
+        target.Security = copy.Security;
         target.Keys = copy.Keys;
         target.Layers = copy.Layers;
         target.Triggers = copy.Triggers;

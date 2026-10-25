@@ -297,6 +297,40 @@ public sealed class SyncOptions
 }
 
 /// <summary>
+/// 启动密码（有人叫它"应用密码"）。
+///
+/// ⚠ 与 <see cref="SyncOptions.BackupPassword"/>（备份密码）**完全不是一回事**，
+/// 用户点名强调过：备份密码管"备份文件和本地数据加密"，设在「同步与备份」页；
+/// 启动密码只管"谁能打开这个软件"，设在「设置」页。两套字段、两套校验、
+/// 互不影响 —— 关掉启动密码，备份加密照旧；改备份密码，启动密码也不动。
+///
+/// 这里只存**镜像**（盐 + PBKDF2 派生值 + 迭代次数），随 settings.json 走；
+/// 启动时的校验真相在数据目录的 startup.json（见 <see cref="StartupPassword"/>）——
+/// 因为 settings.json 可能被备份密码加密，解锁失败时读不出来，
+/// 那时要是只认 settings.json，密码门会被悄悄跳过。
+/// </summary>
+public sealed class SecurityOptions
+{
+    /// <summary>是否开着启动密码（与 startup.json 的存在状态保持一致）。</summary>
+    public bool StartupPasswordEnabled { get; set; }
+
+    /// <summary>PBKDF2 盐（base64）。空 = 没设过。</summary>
+    public string StartupPasswordSalt { get; set; } = "";
+
+    /// <summary>PBKDF2 派生值（base64）。不存明文，也不可逆推密码。</summary>
+    public string StartupPasswordHash { get; set; } = "";
+
+    /// <summary>设密码时的 PBKDF2 迭代次数（调参后老密码照样能验）。</summary>
+    public int StartupPasswordIterations { get; set; }
+
+    /// <summary>设置里有没有一份可用的密码记录（不等于门开着 —— 门看 startup.json）。</summary>
+    [JsonIgnore]
+    public bool HasPassword => !string.IsNullOrEmpty(StartupPasswordSalt)
+                            && !string.IsNullOrEmpty(StartupPasswordHash)
+                            && StartupPasswordIterations > 0;
+}
+
+/// <summary>
 /// 触发键（Trigger）配置。
 ///
 /// 参照键盘驱动的做法：用户按下一个"触发键"，
@@ -665,6 +699,9 @@ public sealed class AppSettings
     public GlobalOptions Global { get; set; } = new();
     public QbarOptions Qbar { get; set; } = new();
     public SyncOptions Sync { get; set; } = new();
+
+    /// <summary>启动密码（与备份密码独立的另一套，见 <see cref="SecurityOptions"/>）。</summary>
+    public SecurityOptions Security { get; set; } = new();
     public List<KeyBinding> Keys { get; set; } = new();
     public List<QEntry> Search { get; set; } = new();
     public List<QEntry> Run { get; set; } = new();

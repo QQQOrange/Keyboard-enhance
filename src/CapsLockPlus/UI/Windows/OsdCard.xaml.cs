@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using CapsLockPlus.Core.Windows;
 
 namespace CapsLockPlus.UI.Windows;
@@ -18,48 +20,48 @@ namespace CapsLockPlus.UI.Windows;
 ///
 /// 版式全部来自 <see cref="OsdPlacement"/> 的常量，那些数是从系统横条
 /// 的截图上一个像素一个像素量出来的（见那边的注释）。这里只负责
-/// 把它们套到控件上，并在亮度变化时改太阳的大小。
+/// 把它们套到控件上，并在亮度变化时改太阳的放射线与旋转。
 /// </summary>
 public partial class OsdCard : UserControl
 {
-    /* ── 太阳图标：用 Windows 自己的字形，不手绘 ────────────────────
+    /* ── 太阳图标：自绘，圆心固定、放射线伸缩 + 旋转 ──────────────
      *
-     * 系统横条里的图标就是 **Segoe Fluent Icons** 的字形：
-     * 音量是 E767 系列，亮度是 **E706 "Brightness"**（一个空心圆 + 八根短线）。
-     * 所以这里也直接用这个字形 —— 同一个字体、同一个码位，
-     * 形状（圆的大小、线的粗细/长短/角度）必然是逐点一致的，
-     * 手绘再准也只能"接近"。
+     * 2026-10-25 之前这里用的是 Segoe Fluent Icons 的 E706 字形
+     * （"空心圆 + 八根短线"）配 ScaleTransform 0.70→1.00 整字形缩放，
+     * 为了和 Win11 系统横条逐像素一致。用户随后点名改了设计：
+     *   ① 中心圆直径必须**固定**，禁止随亮度缩放 —— 只有外围放射线可以动；
+     *   ② 整体图标偏小，要放大；
+     *   ③ 亮度变化时放射线除长度变化外还要绕中心圆旋转，
+     *      转速与亮度变化速度联动。
      *
-     * 随亮度变化的**只有大小**：Windows 在调亮度时太阳会跟着变大变小。
-     * 所以用 ScaleTransform 绕图标中心缩放，槽位尺寸不变 ——
-     * 图标永远居中，右边进度条的起点也不会跟着抖。
+     * 实现（逐条对应）：
+     *   · SunCore 是直径恒定的椭圆（OsdPlacement.SunCoreDip），
+     *     任何亮度下都不碰它的大小 —— 旧方案整字形缩放等于圆心也跟着
+     *     放大，正是用户不要的；
+     *   · 8 根放射线在 ReachMin→ReachMax 之间随进度**线性**伸缩，
+     *     满档墨迹 16 DIP（旧字形满档 12 DIP），整体大一圈；
+     *   · 旋转角 = SunTwistDeg × 进度，是进度的**纯函数**：
+     *     角速度 = 360°×d(进度)/dt，亮度变化快就转得快、停就停；
+     *     纯函数还保证 WPF 窗口与 band 16 离屏位图在同一进度画出
+     *     同一帧，位图缓存（Render 的 cacheKey 含进度）不会错。
      *
-     * 以前是手绘八根线、长度 0.25→3.5 DIP 线性生长、整组不透明度 0.45→1.0：
-     * 结果是暗的时候几乎看不见、也没有"字形"该有的观感，
-     * 而且和系统那条并排时一眼就能看出不是一套东西。
+     * 这个控件保持"给什么进度画什么样子"的纯函数本质：补间动画仍由
+     * 窗口那边的定时器逐帧推 <see cref="SetIconProgress"/>
+     * （见 OsdWindow.StartIconAnimation），离屏渲染和自检拿到的
+     * 永远是确定值，不会被"正在补间"干扰。
      */
-    internal const string IconGlyphChar = "\uE706";
-
-    /// <summary>字形名字。Segoe Fluent Icons 的 E706 官方名就是 Brightness。</summary>
-    internal const string IconFontFamilyName = "Segoe Fluent Icons, Segoe MDL2 Assets";
-
-    /// <summary>满格时太阳缩放到几成（1.0 = 字号原样）。</summary>
-    internal const double IconMaxScale = 1.0;
-
-    /// <summary>0% 时太阳缩放到几成（见 OsdPlacement.IconMinScale 的说明）。</summary>
-    internal const double IconMinScale = OsdPlacement.IconMinScale;
-
-    private readonly ScaleTransform _iconScale;
+    private readonly List<Line> _rays = new();
     private double _iconProgress;
+    private double _sunReach;
     private Color _textColor = Colors.White;
 
     public OsdCard()
     {
         InitializeComponent();
 
-        _iconScale = IconScale;
-
         ApplyLayout();
+        BuildSun();
+        ApplyIconBrush();
         RefreshIcon();
     }
 
@@ -84,9 +86,13 @@ public partial class OsdCard : UserControl
 
         IconBox.Width = OsdPlacement.IconSlotDip;
         IconBox.Height = OsdPlacement.IconSlotDip;
-        IconGlyph.FontFamily = new FontFamily(IconFontFamilyName);
-        IconGlyph.FontSize = OsdPlacement.IconGlyphSizeDip;
-        IconGlyph.Text = IconGlyphChar;
+
+        /* 太阳：放射线层铺满槽（线在层内绕槽中心排布），
+         * 中心圆按恒定直径定位。具体每根线的端点由 RefreshIcon 每帧算。 */
+        SunRays.Width = OsdPlacement.IconSlotDip;
+        SunRays.Height = OsdPlacement.IconSlotDip;
+        SunCore.Width = OsdPlacement.SunCoreDip;
+        SunCore.Height = OsdPlacement.SunCoreDip;
 
         Track.Height = OsdPlacement.TrackHeightDip;
         TrackBar.CornerRadius = new CornerRadius(OsdPlacement.TrackHeightDip / 2);
@@ -96,6 +102,30 @@ public partial class OsdCard : UserControl
         ValueText.FontSize = OsdPlacement.ValueFontSizeDip;
         ValueText.MinWidth = OsdPlacement.ValueColumnDip;
         ValueText.Margin = new Thickness(0, 0, 0, OsdPlacement.ValueLiftDip);
+    }
+
+    /// <summary>
+    /// 建出 8 根放射线（只建一次；之后每帧只改端点坐标，不增删元素）。
+    /// 内端点藏到圆芯轮廓内侧 <see cref="OsdPlacement.SunRayInsetDip"/>，
+    /// 由画在上层的 <c>SunCore</c> 盖住接缝；外端点带圆帽，
+    /// 视觉半径比端点距离多半个线粗。
+    /// </summary>
+    private void BuildSun()
+    {
+        SunRays.Children.Clear();
+        _rays.Clear();
+
+        for (int i = 0; i < OsdPlacement.SunRayCount; i++)
+        {
+            var line = new Line
+            {
+                StrokeThickness = OsdPlacement.SunRayThicknessDip,
+                StrokeStartLineCap = PenLineCap.Flat,     // 内端平帽，贴圆芯
+                StrokeEndLineCap = PenLineCap.Round,      // 外端圆帽，柔和不戳
+            };
+            _rays.Add(line);
+            SunRays.Children.Add(line);
+        }
     }
 
     /// <summary>卡片圆角（DIP）。两个宿主都从这里取，避免各写一份。</summary>
@@ -127,8 +157,9 @@ public partial class OsdCard : UserControl
     }
 
     /// <summary>
-    /// 单独推进太阳的大小（0~1）。运行时由窗口的补间定时器逐帧调用，
+    /// 单独推进太阳的进度（0~1）。运行时由窗口的补间定时器逐帧调用，
     /// 是**这个控件里唯一会每帧变的东西**；数字和进度条不受它影响。
+    /// 进度决定两件事：放射线的长度、整组线的旋转角。
     /// </summary>
     public void SetIconProgress(double s)
     {
@@ -153,74 +184,95 @@ public partial class OsdCard : UserControl
     }
 
     /// <summary>
-    /// 按当前进度改太阳的大小。**一次函数**，无分段：
+    /// 按当前进度画太阳。**只有放射线在动，中心圆永远不动**：
     ///
-    ///   缩放 = 0.70 + 0.30·s     （s = 百分比/100，两端取自系统实测 17→24 px）
+    ///   · 放射线长度：ReachMin → ReachMax，关于进度**线性**（一次函数，
+    ///     无分段 —— "按两下大了多少"要说得清）；
+    ///   · 中心圆：直径恒定 <see cref="OsdPlacement.SunCoreDip"/>，
+    ///     不随进度缩放（用户点名要求，旧版整字形缩放已废弃）；
+    ///   · 旋转：SunSpin.Angle = SunTwistDeg × 进度，纯函数 ——
+    ///     角速度天然与亮度变化速度成正比（360°×d进度/dt），
+    ///     亮度停稳旋转就停，不需要额外的减速定时器。
     ///
-    /// 线性和单调是用户点名要的（"越亮越大"），任何曲线都会让
-    /// "按两下大了多少"变得说不清。字号本身不变 —— 缩放绕图标中心走，
-    /// 所以墨迹永远居中，槽位尺寸恒定。
+    /// 线在槽中心呈风车状排布（第一根指正上方，每 45° 一根），
+    /// 槽位尺寸不变，所以图标永远居中、右边进度条的起点也不会跟着抖。
     /// </summary>
     private void RefreshIcon()
     {
         double s = _iconProgress;
-        double scale = IconMinScale + (IconMaxScale - IconMinScale) * s;
 
-        _iconScale.ScaleX = scale;
-        _iconScale.ScaleY = scale;
+        _sunReach = OsdPlacement.SunRayReachMinDip
+                  + (OsdPlacement.SunRayReachMaxDip - OsdPlacement.SunRayReachMinDip) * s;
+
+        // 槽中心即太阳中心（槽 IconSlotDip×IconSlotDip → 中心在正中间）
+        double cx = OsdPlacement.IconSlotDip / 2;
+        double cy = OsdPlacement.IconSlotDip / 2;
+        double rIn = OsdPlacement.SunCoreDip / 2 - OsdPlacement.SunRayInsetDip;
+
+        for (int i = 0; i < _rays.Count; i++)
+        {
+            double rad = (i * 360.0 / OsdPlacement.SunRayCount - 90.0) * Math.PI / 180.0;
+            double dx = Math.Cos(rad);
+            double dy = Math.Sin(rad);
+
+            var line = _rays[i];
+            line.X1 = cx + dx * rIn;
+            line.Y1 = cy + dy * rIn;
+            line.X2 = cx + dx * _sunReach;
+            line.Y2 = cy + dy * _sunReach;
+        }
+
+        SunSpin.Angle = OsdPlacement.SunTwistDeg * s;
     }
 
     /// <summary>
-    /// 字形用文字色 —— 单色，没有色相变化。
-    /// 系统横条里的图标就是纯色（夜间纯白、日间近黑），不透明。
+    /// 太阳用文字色 —— 单色，没有色相变化。
+    /// 系统横条里的图标就是纯色（夜间纯白、日间近黑），不透明、无光晕。
     /// </summary>
     private void ApplyIconBrush()
     {
         var brush = new SolidColorBrush(_textColor);
         brush.Freeze();
-        IconGlyph.Foreground = brush;
+
+        foreach (var line in _rays) line.Stroke = brush;
+        SunCore.Fill = brush;
     }
 
-    /// <summary>仅供自检：整只图标的当前不透明度（字形时代恒为 1）。</summary>
-    internal double IconOpacityForTest => IconGlyph.Opacity;
+    /// <summary>仅供自检：放射线条数（设计值 8）。</summary>
+    internal int SunRayCountForTest => _rays.Count;
 
-    /// <summary>仅供自检：当前画出来的字形（必须是 Windows 的 E706）。</summary>
-    internal string IconGlyphForTest => IconGlyph.Text;
+    /// <summary>仅供自检：中心圆**实际生效**的直径（DIP）—— 必须恒定。</summary>
+    internal double SunCoreDipForTest => SunCore.Width;
 
-    /// <summary>仅供自检：图标用的字体（必须是 Segoe Fluent Icons）。</summary>
-    internal string IconFontForTest => IconGlyph.FontFamily.Source;
+    /// <summary>仅供自检：放射线外端点当前离圆心的距离（DIP）。</summary>
+    internal double SunRayReachForTest => _sunReach;
 
-    /// <summary>仅供自检：太阳当前的缩放倍数。</summary>
-    internal double IconScaleForTest => _iconScale.ScaleX;
+    /// <summary>仅供自检：太阳墨迹总直径（DIP，含放射线外端圆帽）。</summary>
+    internal double SunInkDipForTest =>
+        (_sunReach + OsdPlacement.SunRayThicknessDip / 2) * 2;
 
-    /// <summary>仅供自检：字形的画刷（查它是不是单色、有没有跟着主题走）。</summary>
-    internal Brush IconGlyphBrushForTest => IconGlyph.Foreground;
+    /// <summary>仅供自检：太阳当前旋转角（度）= SunTwistDeg × 进度。</summary>
+    internal double SunSpinAngleForTest => SunSpin.Angle;
 
-    /// <summary>仅供自检：图标里还有没有手绘的线。</summary>
-    internal bool HasHandDrawnRaysForTest
-    {
-        get
-        {
-            foreach (var child in IconBox.Children)
-                if (child is not TextBlock) return true;
-
-            return false;
-        }
-    }
+    /// <summary>仅供自检：太阳的画刷（查它是不是单色、有没有跟着主题走）。</summary>
+    internal Brush IconBrushForTest => SunCore.Fill;
 
     /// <summary>
     /// 仅供自检：图标里有没有"模糊光晕"这类元素。
-    /// 用户明确不要光晕（径向渐变 / 模糊）—— 图标只能是字形本身。
+    /// 用户明确不要光晕（径向渐变 / 模糊）—— 图标只能是干净的几何形。
     /// </summary>
     internal bool HasSoftGlowForTest =>
-        IconBox.Effect != null || IconGlyph.Effect != null;
+        IconBox.Effect != null || SunRays.Effect != null || SunCore.Effect != null;
+
+    /// <summary>仅供自检：8 根手绘放射线都在位（新设计的地基）。</summary>
+    internal bool HasSunRaysForTest => _rays.Count == OsdPlacement.SunRayCount;
 
     /// <summary>仅供自检：图标墨迹相对卡片左上角的位置（DIP）。</summary>
     internal (double Left, double Top, double Width, double Height) IconInkForTest()
     {
         double slotLeft = OsdPlacement.IconLeftDip;
         double slotTop = (OsdPlacement.CardHeightDip - OsdPlacement.IconSlotDip) / 2;
-        double ink = OsdPlacement.IconGlyphSizeDip * _iconScale.ScaleX;
+        double ink = SunInkDipForTest;
         double pad = (OsdPlacement.IconSlotDip - ink) / 2;
 
         return (slotLeft + pad, slotTop + pad, ink, ink);

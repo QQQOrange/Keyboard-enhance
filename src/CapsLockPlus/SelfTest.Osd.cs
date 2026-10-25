@@ -317,19 +317,23 @@ public static partial class SelfTest
     }
 
     /// <summary>
-    /// 亮度横条上的太阳图标：**Windows 自己的字形** + 随亮度缩放（v4.5.23）。
+    /// 亮度横条上的太阳图标：**自绘** —— 圆心固定、放射线伸缩 + 旋转。
     ///
-    /// 用户的要求（对着系统那条横条看出来的）：
-    ///   · 图标要和 Win11 原版**完全一致** —— 那就不能手绘，
-    ///     系统画的就是 Segoe Fluent Icons 的 E706 "Brightness"；
-    ///   · 随亮度增减要有形态变化 —— 系统在调亮度时太阳会变大变小，
-    ///     所以这里缩放，而不是改线条长度或者整组透明度。
+    /// 2026-10-25 之前用的是 Segoe Fluent Icons 的 E706 字形配
+    /// ScaleTransform 0.70→1.00 整字形缩放（为了和系统横条逐像素一致）。
+    /// 用户随后点名改了设计：
+    ///   ① 中心圆直径必须**固定**，禁止随亮度缩放，只有外围放射线可以动；
+    ///   ② 整体图标偏小，要放大；
+    ///   ③ 亮度变化时放射线除长度变化外还要绕中心圆旋转，
+    ///      转速与亮度变化速度联动。
     ///
-    /// 这里守四件事：
-    ///   1. 字形/字体/单色 —— 形状与系统同源，不掺任何色相；
-    ///   2. 缩放**线性**（五个采样点落在同一条直线上）且单调；
-    ///   3. 跨度有但不夸张（0.70 → 1.00），0% 仍看得出是一轮太阳；
-    ///   4. 图标槽、进度条槽位不跟着动（缩放绕中心，布局不变）。
+    /// 这里守六件事：
+    ///   1. 结构：8 根放射线 + 1 个恒定圆芯，单色、无光晕；
+    ///   2. **圆心直径五档亮度下恒定**（诉求①；改回整字形缩放立刻红）；
+    ///   3. 放射线长度随亮度线性、单调（诉求①允许动的部分）；
+    ///   4. 整体墨迹放大且不越槽（诉求②：满档 16 DIP > 旧字形 12）；
+    ///   5. 旋转角 = 360°×进度，线性且确定（诉求③ + 两个宿主同帧）；
+    ///   6. 墨迹中心不动（20.25, 23.5），进度条起点不受亮度影响。
     /// </summary>
     private static void TestOsdIconFollowsBrightness()
     {
@@ -347,96 +351,123 @@ public static partial class SelfTest
         var accent = System.Windows.Media.Color.FromRgb(0x4C, 0xC2, 0xFF);
         card.SetPalette(darkCard, white, white, accent);
 
-        /* 字形与字体：必须是 Windows 自己画亮度图标用的那一个。
-         * 换回手绘、或者换成别的码位（比如音量 E767），这条立刻红。 */
-        CheckEqual("图标用 Segoe Fluent Icons 的 E706（Brightness）",
-            card.IconGlyphForTest, "\uE706");
-        Check("图标字体是 Segoe Fluent Icons",
-            card.IconFontForTest.StartsWith("Segoe Fluent Icons"),
-            card.IconFontForTest);
-        Check("图标里没有手绘的线（只剩字形）", !card.HasHandDrawnRaysForTest,
-            "还存在 Line/Ellipse 之类的手绘元素");
+        /* ---- 1. 结构：8 根放射线 + 恒定圆芯，单色、无光晕 ---- */
+        CheckEqual("太阳由 8 根放射线组成", card.SunRayCountForTest,
+            Core.Windows.OsdPlacement.SunRayCount);
+        Check("8 根手绘放射线都在位", card.HasSunRaysForTest);
+        Check("图标里没有光晕/模糊元素", !card.HasSoftGlowForTest, "出现了 Effect");
 
         int[] steps = { 0, 25, 50, 75, 100 };
-        var scale = new double[steps.Length];
+        var core = new double[steps.Length];
+        var reach = new double[steps.Length];
+        var angle = new double[steps.Length];
+        var ink = new double[steps.Length];
 
         for (int i = 0; i < steps.Length; i++)
         {
             card.SetPercent(steps[i]);
-            scale[i] = card.IconScaleForTest;
+            core[i] = card.SunCoreDipForTest;
+            reach[i] = card.SunRayReachForTest;
+            angle[i] = card.SunSpinAngleForTest;
+            ink[i] = card.SunInkDipForTest;
         }
 
-        // 端点：暗的时候太阳小一圈，满格时是完整大小
-        double minScale = Core.Windows.OsdPlacement.IconMinScale;
-        Check($"0% 时太阳缩到 {minScale:F2}（看得出小一圈，但不是没有）",
-            Math.Abs(scale[0] - minScale) < 1e-6, $"scale={scale[0]:F3}");
-        Check("100% 时太阳是满格大小（1.00）",
-            Math.Abs(scale[^1] - 1.00) < 1e-6, $"scale={scale[^1]:F3}");
+        /* ---- 2. 中心圆直径五档恒定（诉求①）---- */
+        double coreDip = Core.Windows.OsdPlacement.SunCoreDip;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            Check($"{steps[i]}% 时中心圆直径恒为 {coreDip:F1} DIP（不随亮度缩放）",
+                Math.Abs(core[i] - coreDip) < 1e-6, $"core={core[i]:F3}");
+        }
 
-        // 单色、不透明：系统横条里的图标就是纯色实心，没有渐隐
-        Check("图标不随亮度变淡（系统那条也不变）",
-            Math.Abs(card.IconOpacityForTest - 1.0) < 1e-6,
-            $"opacity={card.IconOpacityForTest:F3}");
-        Check("卡片里没有光晕/模糊元素（图标只能是字形）",
-            !card.HasSoftGlowForTest, "出现了 Effect");
+        /* ---- 3. 放射线长度：线性、单调、端点等于常量 ---- */
+        double reachMin = Core.Windows.OsdPlacement.SunRayReachMinDip;
+        double reachMax = Core.Windows.OsdPlacement.SunRayReachMaxDip;
+        Check($"0% 时放射线最短（端点 {reachMin:F2} DIP）",
+            Math.Abs(reach[0] - reachMin) < 1e-6, $"reach={reach[0]:F3}");
+        Check($"100% 时放射线最长（端点 {reachMax:F2} DIP）",
+            Math.Abs(reach[^1] - reachMax) < 1e-6, $"reach={reach[^1]:F3}");
 
-        /* 线性：每个点都必须等于"端点之间的一次函数"。
-         * 容差 1e-6 —— 只看浮点误差，任何有意的曲线都过不去。 */
         for (int i = 0; i < steps.Length; i++)
         {
             double s = steps[i] / 100.0;
-            double expect = scale[0] + (scale[^1] - scale[0]) * s;
-            Check($"{steps[i]}% 的太阳大小落在线性上",
-                Math.Abs(scale[i] - expect) < 1e-6, $"{scale[i]:F6} vs {expect:F6}");
+            double expect = reachMin + (reachMax - reachMin) * s;
+            Check($"{steps[i]}% 的放射线长度落在线性上",
+                Math.Abs(reach[i] - expect) < 1e-6, $"{reach[i]:F6} vs {expect:F6}");
         }
 
-        // 单调：中间任何一段都不许回落
         bool monotonic = true;
         for (int i = 1; i < steps.Length; i++)
-            if (scale[i] <= scale[i - 1]) monotonic = false;
-        Check("0→100% 太阳只变大不变小（不会中途回落）", monotonic);
+            if (reach[i] <= reach[i - 1]) monotonic = false;
+        Check("0→100% 放射线只变长不变短（不会中途回落）", monotonic);
 
-        /* 缩放只改墨迹，不改槽位：图标中心始终在槽中心，
-         * 所以右边进度条的起点不会随亮度左右挪。 */
+        /* ---- 4. 整体放大、不越槽（诉求②）---- */
+        Check($"100% 时墨迹 {ink[^1]:F1} DIP（旧字形满档 12，放大约 1/3）",
+            Math.Abs(ink[^1] - 16.0) < 1e-6, $"ink={ink[^1]:F2}");
+        Check($"0% 时墨迹也有 {ink[0]:F1} DIP（旧字形 0% 时只有 8.4）",
+            ink[0] > 8.4 + 1e-6, $"ink={ink[0]:F2}");
+        Check("满档墨迹不超出图标槽（右缘不进间距区，进度条起点不抖）",
+            ink[^1] <= Core.Windows.OsdPlacement.IconSlotDip + 1e-6,
+            $"ink={ink[^1]:F2} slot={Core.Windows.OsdPlacement.IconSlotDip}");
+
+        /* ---- 5. 旋转 = 360°×进度，线性且确定（诉求③）---- */
+        double twist = Core.Windows.OsdPlacement.SunTwistDeg;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            double s = steps[i] / 100.0;
+            Check($"{steps[i]}% 时旋转 {twist * s:F0}°（= 360°×进度）",
+                Math.Abs(angle[i] - twist * s) < 1e-6, $"angle={angle[i]:F3}");
+        }
+
+        // 转速与亮度变化量成正比：±10% → ∓36°
+        card.SetPercent(50);
+        double a50 = card.SunSpinAngleForTest;
+        card.SetPercent(60);
+        Check("亮度 +10% 旋转 +36°（变化越多转得越多）",
+            Math.Abs(card.SunSpinAngleForTest - a50 - 36.0) < 1e-6,
+            $"Δangle={card.SunSpinAngleForTest - a50:F3}");
+        card.SetPercent(40);
+        Check("亮度 −10% 旋转 −36°（反向等量，来回对称）",
+            Math.Abs(card.SunSpinAngleForTest - a50 + 36.0) < 1e-6,
+            $"Δangle={card.SunSpinAngleForTest - a50:F3}");
+
+        /* 确定性：同一进度两次进卡，线长与角度必须分毫不差。
+         * band 16 的离屏位图和 WPF 窗口是**两个卡片实例**，
+         * 靠这份纯函数关系保证同一进度画出同一帧（位图缓存才不会错）。 */
+        card.SetPercent(63);
+        var first = (card.SunRayReachForTest, card.SunSpinAngleForTest);
+        card.SetPercent(20);
+        card.SetPercent(63);
+        var again = (card.SunRayReachForTest, card.SunSpinAngleForTest);
+        Check("同一进度画出同一帧（两个宿主不会长歪）",
+            Math.Abs(first.Item1 - again.Item1) < 1e-9
+            && Math.Abs(first.Item2 - again.Item2) < 1e-9,
+            $"{first} vs {again}");
+
+        /* ---- 6. 墨迹居中、版式不动 ---- */
+        card.SetPercent(100);       // 前面几步把卡片停在 63%，这里回到满档再量墨迹
         var (inkL, inkT, inkW, inkH) = card.IconInkForTest();
-        double expectedInk = Core.Windows.OsdPlacement.IconGlyphSizeDip * scale[^1];
-        Check($"100% 时图标墨迹 {expectedInk:F0}×{expectedInk:F0} DIP"
-              + $"（{expectedInk * 2:F0} px @200%，与系统图标实测的 24 px 一致）",
-            Math.Abs(inkW - expectedInk) < 1e-6 && Math.Abs(inkH - expectedInk) < 1e-6,
-            $"{inkW:F2}x{inkH:F2}");
-        /* 槽从 12.25 开始、宽 16，字形在槽里居中 ——
-         * 所以墨迹左边缘 = 12.25 + (16 − 字号)/2，中心恒为 20.25。
-         * 系统那条的音符墨迹是 13.5..27（更宽的字形），中心同为 20.25：
-         * 对齐的是**中心**，不是左边缘。 */
         double slotLeft = Core.Windows.OsdPlacement.IconLeftDip;
         double slotW = Core.Windows.OsdPlacement.IconSlotDip;
-        double glyph = Core.Windows.OsdPlacement.IconGlyphSizeDip;
-        double expectLeft = slotLeft + (slotW - glyph) / 2;
-        Check($"图标墨迹居中在 {slotW} DIP 的槽里（左边缘 {expectLeft:F2} DIP）",
-            Math.Abs(inkL - expectLeft) < 1e-6, $"{inkL:F2}");
-        Check("图标墨迹中心与系统一致（20.25 DIP）",
-            Math.Abs(inkL + inkW / 2 - 20.25) < 0.6, $"{inkL + inkW / 2:F2}");
+        Check($"100% 时墨迹铺满槽（左边缘 {slotLeft:F2} DIP）",
+            Math.Abs(inkL - slotLeft) < 1e-6 && Math.Abs(inkW - slotW) < 1e-6,
+            $"left={inkL:F2} w={inkW:F2}");
+        Check("图标墨迹中心恒定（20.25 DIP，与系统那条对齐的点）",
+            Math.Abs(inkL + inkW / 2 - 20.25) < 1e-6, $"{inkL + inkW / 2:F2}");
         Check("图标在卡片里垂直居中（47 高的卡片，墨迹中心 23.5）",
             Math.Abs(inkT + inkH / 2 - 47.0 / 2) < 1e-6,
             $"center={inkT + inkH / 2:F2}");
+        Check("墨迹右缘不越过槽右边（进度条起点 42.0 不受亮度影响）",
+            inkL + inkW <= slotLeft + slotW + 1e-6, $"right={inkL + inkW:F2}");
 
-        // 数字和图标看的是同一个百分比
-        card.SetPercent(37);
-        card.SetIconProgress(0.37);
-        Check("37% 时太阳按 37% 算（和数字同一来源）",
-            Math.Abs(card.IconScaleForTest - (minScale + (1.0 - minScale) * 0.37)) < 1e-6,
-            $"scale={card.IconScaleForTest:F4}");
-
-        // 浅色主题：字形跟随文字色变黑，缩放逻辑不受主题影响
+        // 单色：浅色主题下放射线与圆芯都跟随文字色变黑
         var black = System.Windows.Media.Color.FromRgb(0x00, 0x00, 0x00);
         card.SetPalette(darkCard, black, black, accent);
         card.SetPercent(100);
-        var ink = (card.IconGlyphBrushForTest as SolidColorBrush);
-        Check("浅色主题下图标跟着变黑（单色、无色相）",
-            ink != null && ink.Color.R == 0 && ink.Color.G == 0 && ink.Color.B == 0,
-            ink == null ? "画刷类型不是纯色" : "颜色不是黑");
-        Check("浅色主题下 100% 仍是满格大小",
-            Math.Abs(card.IconScaleForTest - 1.0) < 1e-6);
+        var brush = card.IconBrushForTest as SolidColorBrush;
+        Check("浅色主题下太阳跟着文字变黑（单色、无色相）",
+            brush != null && brush.Color.R == 0 && brush.Color.G == 0 && brush.Color.B == 0,
+            brush == null ? "画刷类型不是纯色" : "颜色不是黑");
     }
 
     /// <summary>
@@ -475,6 +506,7 @@ public static partial class SelfTest
 
             bool sawMiddle = false;
             bool reachedEnd = false;
+            bool angleTracks = true;      // 旋转角必须始终 = 360°×进度
             var clock = System.Diagnostics.Stopwatch.StartNew();
             while (clock.ElapsedMilliseconds < 800)
             {
@@ -486,10 +518,18 @@ public static partial class SelfTest
                     reachedEnd = true;
                     break;
                 }
+                /* 边伸缩边旋转：每一帧的旋转角都由当帧进度算出。
+                 * 这条守住"转速与亮度变化速度联动"的实现方式 ——
+                 * 角度一旦和进度脱节（比如用了独立定时器），这里就红。 */
+                if (Math.Abs(osd.SunSpinAngleForTest
+                             - Core.Windows.OsdPlacement.SunTwistDeg * p) > 1e-6)
+                    angleTracks = false;
             }
 
             Check("补间过程中取到过中间帧（是补间，不是瞬变）", sawMiddle);
             Check("补间最终停在 100%", reachedEnd, $"p={osd.IconProgressForTest:F3}");
+            Check("补间中放射线边变长边旋转（角度始终 = 360°×进度）", angleTracks,
+                $"p={osd.IconProgressForTest:F3} angle={osd.SunSpinAngleForTest:F2}");
             Check("band 路径每帧都重贴了位图（不是只贴一次）",
                 osd.IconRepaintsForTest - repaintsBefore >= 3,
                 $"重贴 {osd.IconRepaintsForTest - repaintsBefore} 次");

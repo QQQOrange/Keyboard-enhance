@@ -65,6 +65,7 @@ public partial class SettingsView : UserControl
             _ => 0,
         };
         DataPathText.Text = $"设置文件：{AppPaths.SettingsFile}\n日志：{CoreLog.LogPath}";
+        RefreshStartupPwState();
         _suppress = false;
     }
 
@@ -224,6 +225,128 @@ public partial class SettingsView : UserControl
             return;
         }
         _host.ExitApp(restart: true);
+    }
+
+    /* ---- 启动密码（与备份密码完全独立的一套） ----------------------------
+     *
+     * 开启：先弹"设置新密码"（两遍确认），落库后才算开；
+     * 关闭：先验当前密码，证明了才让关 —— 否则路过的人顺手一拨就解开了；
+     * 修改：先验旧密码，再设新密码。
+     *
+     * 密码的存取全在 Core.Settings.StartupPassword（文件是真相），
+     * 这里只做流程；设置里的 Security 区段是镜像，供界面显示与随设置持久化。
+     */
+
+    /// <summary>刷新开关、状态行与「修改密码」按钮（真相以 startup.json 为准）。</summary>
+    private void RefreshStartupPwState()
+    {
+        if (_host == null) return;
+
+        StartupPassword.MirrorTo(_host.Settings.Security);
+        bool on = _host.Settings.Security.StartupPasswordEnabled;
+
+        _suppress = true;
+        StartupPwBox.IsChecked = on;
+        _suppress = false;
+
+        StartupPwStateText.Text = on
+            ? "已开启：下次启动软件时先要输入密码。忘记密码可删除数据目录里的 startup.json 解除保护（其他设置不受影响）。"
+            : "未开启：启动软件不需要密码。";
+
+        ChangeStartupPwButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnStartupPasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+
+        bool enable = StartupPwBox.IsChecked == true;
+        var sec = _host.Settings.Security;
+
+        if (enable)
+        {
+            var dlg = new NewPasswordWindow(
+                "设置启动密码",
+                "设好后，每次启动本软件都要先输入这个密码才能进入主界面。");
+            dlg.ShowDialog();
+            if (dlg.Password == null)
+            {
+                RevertStartupPwBox(false);
+                return;
+            }
+
+            if (!StartupPassword.TrySet(dlg.Password, out string err))
+            {
+                AppDialog.Error(Window.GetWindow(this), err, "设置启动密码");
+                RevertStartupPwBox(false);
+                return;
+            }
+
+            StartupPassword.MirrorTo(sec);
+            Save();
+            RefreshStartupPwState();
+            _host.Notify("已设置启动密码，下次启动软件时生效");
+        }
+        else
+        {
+            // 关保护要先证明是机主：路过的人不能顺手一拨就解开
+            var verify = new StartupPasswordWindow(
+                p => StartupPassword.Verify(p),
+                "关闭启动密码",
+                "请输入当前的启动密码。验证通过后才能关闭保护。",
+                "关闭保护", "取消");
+            verify.ShowDialog();
+            if (!verify.Passed)
+            {
+                RevertStartupPwBox(true);
+                return;
+            }
+
+            StartupPassword.Clear();
+            StartupPassword.MirrorTo(sec);
+            Save();
+            RefreshStartupPwState();
+            _host.Notify("已关闭启动密码");
+        }
+    }
+
+    /// <summary>修改启动密码：验旧 → 设新。</summary>
+    private void OnChangeStartupPassword(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var verify = new StartupPasswordWindow(
+            p => StartupPassword.Verify(p),
+            "修改启动密码",
+            "请输入当前的启动密码。",
+            "下一步", "取消");
+        verify.ShowDialog();
+        if (!verify.Passed) return;
+
+        var dlg = new NewPasswordWindow(
+            "修改启动密码",
+            "设个好记的新密码。下次启动就要用它了。");
+        dlg.ShowDialog();
+        if (dlg.Password == null) return;
+
+        if (!StartupPassword.TrySet(dlg.Password, out string err))
+        {
+            AppDialog.Error(Window.GetWindow(this), err, "修改启动密码");
+            return;
+        }
+
+        StartupPassword.MirrorTo(_host.Settings.Security);
+        Save();
+        RefreshStartupPwState();
+        _host.Notify("已修改启动密码");
+    }
+
+    /// <summary>把开关拨回真实状态（用户取消流程时用，避免界面撒谎）。</summary>
+    private void RevertStartupPwBox(bool on)
+    {
+        _suppress = true;
+        StartupPwBox.IsChecked = on;
+        _suppress = false;
     }
 
     private void OnFeedbackChanged(object sender, RoutedEventArgs e)
@@ -428,7 +551,8 @@ public partial class SettingsView : UserControl
     {
         if (_host == null) return;
         if (!AppDialog.ConfirmDanger(Window.GetWindow(this),
-                "把全部设置恢复成默认值？\n（按键映射、Qbar 条目、窗口绑定、外观都会被重置）",
+                "把全部设置恢复成默认值？\n（按键映射、Qbar 条目、窗口绑定、外观都会被重置）\n\n" +
+                "启动密码不受影响 —— 要关掉它请用上面的开关（需要验证当前密码）。",
                 "重置全部设置", okText: "恢复默认")) return;
         _host.Settings = DefaultSettings.Create();
         _host.SaveSettings();

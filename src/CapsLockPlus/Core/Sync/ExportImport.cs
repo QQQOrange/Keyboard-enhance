@@ -104,6 +104,17 @@ public static class ExportImport
         "Sync.WebDavPass",
         "Sync.BackupPassword",
 
+        /* 启动密码整套都不出门：它是"本机上的一把锁"——
+         *   · 哈希跟着配置走的话，换台机器导入完会向用户要一个
+         *     他从没在本机设过的密码，直接把自己锁在门外；
+         *   · 而启动密码的真相（startup.json）本来就不随备份走，
+         *     设置里这份只是镜像，两边必须一致。
+         * 想在新机器上用启动密码，到那台机器的设置里再设一次。 */
+        "Security.StartupPasswordEnabled",
+        "Security.StartupPasswordSalt",
+        "Security.StartupPasswordHash",
+        "Security.StartupPasswordIterations",
+
         /* GitHub 令牌**不再**在这张表里：用户明确要求"备份和导出都必须带令牌"，
          * 否则换台机器导入后还得重新去 GitHub 建一个。
          *
