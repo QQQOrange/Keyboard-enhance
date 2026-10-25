@@ -260,15 +260,15 @@ public static partial class SelfTest
             osd.UsesBandSurfaceForTest, "回退到了 WPF 窗口，开始菜单会盖住它");
         CheckEqual("横条宿主的 band", osd.BandForTest, 16u);
 
-        /* 渲染：200% 下卡片是 216×72 DIP → 432×144 像素；
+        /* 渲染：200% 下卡片是 216×71 DIP → 432×142 像素；
          * 四角必须透明（圆角+阴影留白），中心必须不透明（卡片）。
          * 这条能挡住"忘了设 dpi"（位图尺寸对但内容只有一半大）
          * 和"位图全透明"（窗口在，但什么都看不见）。 */
         var bmp = osd.RenderForTest(60, 2.0);
         CheckEqual("位图宽度 = 216×缩放", bmp.PixelWidth, 432);
-        CheckEqual("位图高度 = 72×缩放", bmp.PixelHeight, 144);
+        CheckEqual("位图高度 = 71×缩放", bmp.PixelHeight, 142);
 
-        if (bmp.PixelWidth == 432 && bmp.PixelHeight == 144)
+        if (bmp.PixelWidth == 432 && bmp.PixelHeight == 142)
         {
             int stride = bmp.PixelWidth * 4;
             var pixels = new byte[stride * bmp.PixelHeight];
@@ -278,10 +278,10 @@ public static partial class SelfTest
 
             Check("位图左上角透明（阴影/圆角留白）", AlphaAt(2, 2) < 16,
                 $"alpha={AlphaAt(2, 2)}");
-            Check("位图中心不透明（卡片本体）", AlphaAt(216, 72) > 200,
-                $"alpha={AlphaAt(216, 72)}");
-            Check("位图右侧留白也透明", AlphaAt(429, 72) < 16,
-                $"alpha={AlphaAt(429, 72)}");
+            Check("位图中心不透明（卡片本体）", AlphaAt(216, 71) > 200,
+                $"alpha={AlphaAt(216, 71)}");
+            Check("位图右侧留白也透明", AlphaAt(429, 71) < 16,
+                $"alpha={AlphaAt(429, 71)}");
         }
 
         osd.CloseForTest();
@@ -317,16 +317,19 @@ public static partial class SelfTest
     }
 
     /// <summary>
-    /// 亮度横条上的太阳图标随取值联动（v4.5.10）。
+    /// 亮度横条上的太阳图标：**Windows 自己的字形** + 随亮度缩放（v4.5.23）。
     ///
-    /// 用户的要求是：越亮光芒越强越亮、越暗光芒越弱越暗淡，
-    /// 而且要**纯线性**、**单色**、就用原来那个字形。
+    /// 用户的要求（对着系统那条横条看出来的）：
+    ///   · 图标要和 Win11 原版**完全一致** —— 那就不能手绘，
+    ///     系统画的就是 Segoe Fluent Icons 的 E706 "Brightness"；
+    ///   · 随亮度增减要有形态变化 —— 系统在调亮度时太阳会变大变小，
+    ///     所以这里缩放，而不是改线条长度或者整组透明度。
     ///
-    /// 这里守的就是那三件事：
-    ///   1. 线性 —— 五个采样点必须落在同一条直线上（改成 ease、平方、
-    ///      或者偷偷在中间加个分段阈值，这条立刻红）；
-    ///   2. 有跨度但不夸张 —— 0% 仍然看得清是太阳，100% 也不必刺眼；
-    ///   3. 单色 —— 辉光的所有色标 RGB 都等于文字色，只允许 alpha 变化。
+    /// 这里守四件事：
+    ///   1. 字形/字体/单色 —— 形状与系统同源，不掺任何色相；
+    ///   2. 缩放**线性**（五个采样点落在同一条直线上）且单调；
+    ///   3. 跨度有但不夸张（0.70 → 1.00），0% 仍看得出是一轮太阳；
+    ///   4. 图标槽、进度条槽位不跟着动（缩放绕中心，布局不变）。
     /// </summary>
     private static void TestOsdIconFollowsBrightness()
     {
@@ -344,101 +347,96 @@ public static partial class SelfTest
         var accent = System.Windows.Media.Color.FromRgb(0x4C, 0xC2, 0xFF);
         card.SetPalette(darkCard, white, white, accent);
 
+        /* 字形与字体：必须是 Windows 自己画亮度图标用的那一个。
+         * 换回手绘、或者换成别的码位（比如音量 E767），这条立刻红。 */
+        CheckEqual("图标用 Segoe Fluent Icons 的 E706（Brightness）",
+            card.IconGlyphForTest, "\uE706");
+        Check("图标字体是 Segoe Fluent Icons",
+            card.IconFontForTest.StartsWith("Segoe Fluent Icons"),
+            card.IconFontForTest);
+        Check("图标里没有手绘的线（只剩字形）", !card.HasHandDrawnRaysForTest,
+            "还存在 Line/Ellipse 之类的手绘元素");
+
         int[] steps = { 0, 25, 50, 75, 100 };
-        var opacity = new double[steps.Length];
-        var rays = new double[steps.Length];
+        var scale = new double[steps.Length];
 
         for (int i = 0; i < steps.Length; i++)
         {
             card.SetPercent(steps[i]);
-            opacity[i] = card.IconOpacityForTest;
-            rays[i] = card.RayLengthForTest;
+            scale[i] = card.IconScaleForTest;
         }
 
-        // 端点：暗要暗得下去、亮要亮得起来，但都不能走极端
-        Check("0% 时太阳明显发暗（不透明度 ≤ 0.55）", opacity[0] <= 0.55,
-            $"opacity={opacity[0]:F3}");
-        Check("0% 时太阳仍看得清（不透明度 ≥ 0.35）", opacity[0] >= 0.35,
-            $"opacity={opacity[0]:F3}");
-        Check("100% 时太阳完全点亮", Math.Abs(opacity[^1] - 1.0) < 1e-6,
-            $"opacity={opacity[^1]:F3}");
+        // 端点：暗的时候太阳小一圈，满格时是完整大小
+        double minScale = Core.Windows.OsdPlacement.IconMinScale;
+        Check($"0% 时太阳缩到 {minScale:F2}（看得出小一圈，但不是没有）",
+            Math.Abs(scale[0] - minScale) < 1e-6, $"scale={scale[0]:F3}");
+        Check("100% 时太阳是满格大小（1.00）",
+            Math.Abs(scale[^1] - 1.00) < 1e-6, $"scale={scale[^1]:F3}");
 
-        // 光芒是"线"，不是光晕：八根，长度随亮度走
-        CheckEqual("光芒线是八根", card.RayCountForTest, 8);
-        Check("0% 时光芒只剩一小截（几乎不可见）", rays[0] >= 0.15 && rays[0] <= 0.45,
-            $"len={rays[0]:F2}");
-        Check("100% 时光芒约为原来的 2/3（3.5 DIP）",
-            Math.Abs(rays[^1] - 3.5) <= 0.05, $"len={rays[^1]:F2}");
-        Check("光芒长度跨度够明显（≥ 8 倍）", rays[^1] / rays[0] >= 8.0,
-            $"{rays[0]:F2} → {rays[^1]:F2}");
-
-        /* 图标是手绘的：中间一个圆 + 八根线。
-         * 线必须从圆外面开始（不能插进圆里），而且不能残留字体字形 ——
-         * 字形自带一圈固定长度的光芒，和动态线叠在一起就是"两段拼接"。 */
-        Check("线内端在圆心之外（不插进圆里）",
-            card.RayInnerForTest > card.CoreDiameterForTest / 2 + 0.5,
-            $"inner={card.RayInnerForTest:F2} r={card.CoreDiameterForTest / 2:F2}");
-        Check("太阳外径仍是 6.4 DIP（描边不改尺寸）",
-            Math.Abs(card.CoreDiameterForTest - 6.4) < 0.01,
-            $"d={card.CoreDiameterForTest:F2}");
-        Check("太阳中间是空的（空心描边，对齐 Win11）", card.CoreIsHollowForTest);
-        Check("图标里没有字体字形残留（否则会和线拼接）", !card.HasGlyphForTest,
-            "还存在 TextBlock 字形");
-
-        // 没有模糊光晕：用户明确要求"一根根的线"来表现强弱
-        Check("卡片里没有光晕/模糊元素（光芒只能是线）", !card.HasSoftGlowForTest,
-            "出现了非 Line 的光芒元素或图标特效");
+        // 单色、不透明：系统横条里的图标就是纯色实心，没有渐隐
+        Check("图标不随亮度变淡（系统那条也不变）",
+            Math.Abs(card.IconOpacityForTest - 1.0) < 1e-6,
+            $"opacity={card.IconOpacityForTest:F3}");
+        Check("卡片里没有光晕/模糊元素（图标只能是字形）",
+            !card.HasSoftGlowForTest, "出现了 Effect");
 
         /* 线性：每个点都必须等于"端点之间的一次函数"。
          * 容差 1e-6 —— 只看浮点误差，任何有意的曲线都过不去。 */
         for (int i = 0; i < steps.Length; i++)
         {
             double s = steps[i] / 100.0;
-            double eo = opacity[0] + (opacity[^1] - opacity[0]) * s;
-            double er = rays[0] + (rays[^1] - rays[0]) * s;
-
-            Check($"{steps[i]}% 的图标亮度落在线性上", Math.Abs(opacity[i] - eo) < 1e-6,
-                $"{opacity[i]:F6} vs {eo:F6}");
-            Check($"{steps[i]}% 的光芒长度落在线性上", Math.Abs(rays[i] - er) < 1e-6,
-                $"{rays[i]:F6} vs {er:F6}");
+            double expect = scale[0] + (scale[^1] - scale[0]) * s;
+            Check($"{steps[i]}% 的太阳大小落在线性上",
+                Math.Abs(scale[i] - expect) < 1e-6, $"{scale[i]:F6} vs {expect:F6}");
         }
 
-        // 单调：中间任何一段都不许回落（"越来越亮"是这个功能的全部意义）
+        // 单调：中间任何一段都不许回落
         bool monotonic = true;
         for (int i = 1; i < steps.Length; i++)
-        {
-            if (opacity[i] <= opacity[i - 1]) monotonic = false;
-            if (rays[i] <= rays[i - 1]) monotonic = false;
-        }
-        Check("0→100% 全程单调变亮（不会中途回落）", monotonic);
+            if (scale[i] <= scale[i - 1]) monotonic = false;
+        Check("0→100% 太阳只变大不变小（不会中途回落）", monotonic);
+
+        /* 缩放只改墨迹，不改槽位：图标中心始终在槽中心，
+         * 所以右边进度条的起点不会随亮度左右挪。 */
+        var (inkL, inkT, inkW, inkH) = card.IconInkForTest();
+        double expectedInk = Core.Windows.OsdPlacement.IconGlyphSizeDip * scale[^1];
+        Check($"100% 时图标墨迹 {expectedInk:F0}×{expectedInk:F0} DIP"
+              + $"（{expectedInk * 2:F0} px @200%，与系统图标实测的 24 px 一致）",
+            Math.Abs(inkW - expectedInk) < 1e-6 && Math.Abs(inkH - expectedInk) < 1e-6,
+            $"{inkW:F2}x{inkH:F2}");
+        /* 槽从 12.25 开始、宽 16，字形在槽里居中 ——
+         * 所以墨迹左边缘 = 12.25 + (16 − 字号)/2，中心恒为 20.25。
+         * 系统那条的音符墨迹是 13.5..27（更宽的字形），中心同为 20.25：
+         * 对齐的是**中心**，不是左边缘。 */
+        double slotLeft = Core.Windows.OsdPlacement.IconLeftDip;
+        double slotW = Core.Windows.OsdPlacement.IconSlotDip;
+        double glyph = Core.Windows.OsdPlacement.IconGlyphSizeDip;
+        double expectLeft = slotLeft + (slotW - glyph) / 2;
+        Check($"图标墨迹居中在 {slotW} DIP 的槽里（左边缘 {expectLeft:F2} DIP）",
+            Math.Abs(inkL - expectLeft) < 1e-6, $"{inkL:F2}");
+        Check("图标墨迹中心与系统一致（20.25 DIP）",
+            Math.Abs(inkL + inkW / 2 - 20.25) < 0.6, $"{inkL + inkW / 2:F2}");
+        Check("图标在卡片里垂直居中（47 高的卡片，墨迹中心 23.5）",
+            Math.Abs(inkT + inkH / 2 - 47.0 / 2) < 1e-6,
+            $"center={inkT + inkH / 2:F2}");
 
         // 数字和图标看的是同一个百分比
         card.SetPercent(37);
-        double e37 = opacity[0] + (opacity[^1] - opacity[0]) * 0.37;
-        Check("37% 时图标按 37% 算（和数字同一来源）",
-            Math.Abs(card.IconOpacityForTest - e37) < 1e-6);
+        card.SetIconProgress(0.37);
+        Check("37% 时太阳按 37% 算（和数字同一来源）",
+            Math.Abs(card.IconScaleForTest - (minScale + (1.0 - minScale) * 0.37)) < 1e-6,
+            $"scale={card.IconScaleForTest:F4}");
 
-        /* 单色：光芒线就是文字色，没有任何色相偏移。
-         * 这条挡的是"以后想加点颜色更好看"这类改法。 */
-        card.SetPercent(100);
-        var rayBrush = card.RayBrushForTest as SolidColorBrush;
-        bool monochrome = rayBrush != null
-                          && rayBrush.Color.R == white.R
-                          && rayBrush.Color.G == white.G
-                          && rayBrush.Color.B == white.B;
-        Check("光芒线是单色的（颜色全等于文字色）", monochrome,
-            rayBrush == null ? "画刷类型不是纯色" : $"#{rayBrush.Color.R:X2}{rayBrush.Color.G:X2}{rayBrush.Color.B:X2}");
-
-        // 浅色主题：线条跟随文字色变黑，长度逻辑不受主题影响
+        // 浅色主题：字形跟随文字色变黑，缩放逻辑不受主题影响
         var black = System.Windows.Media.Color.FromRgb(0x00, 0x00, 0x00);
         card.SetPalette(darkCard, black, black, accent);
         card.SetPercent(100);
-        var darkRay = card.RayBrushForTest as SolidColorBrush;
-        Check("浅色主题下光芒线跟着变黑（单色、无色相）",
-            darkRay != null && darkRay.Color.R == 0 && darkRay.Color.G == 0 && darkRay.Color.B == 0,
-            darkRay == null ? "画刷类型不是纯色" : "颜色不是黑");
-        Check("浅色主题下光芒长度同样是 100% 饱和",
-            card.RayLengthForTest >= 3.2, $"len={card.RayLengthForTest:F2}");
+        var ink = (card.IconGlyphBrushForTest as SolidColorBrush);
+        Check("浅色主题下图标跟着变黑（单色、无色相）",
+            ink != null && ink.Color.R == 0 && ink.Color.G == 0 && ink.Color.B == 0,
+            ink == null ? "画刷类型不是纯色" : "颜色不是黑");
+        Check("浅色主题下 100% 仍是满格大小",
+            Math.Abs(card.IconScaleForTest - 1.0) < 1e-6);
     }
 
     /// <summary>
@@ -575,7 +573,7 @@ public static partial class SelfTest
 
             double s = c.Scale;
             int expWinW = (int)Math.Round(216 * s);
-            int expWinH = (int)Math.Round(72 * s);
+            int expWinH = (int)Math.Round(71 * s);
 
             Check($"{c.Name}：窗口宽按缩放换算", Math.Abs(r.Width - expWinW) <= 1,
                 $"{r.Width} vs {expWinW}");
@@ -585,11 +583,11 @@ public static partial class SelfTest
             var (cw, ch) = Core.Windows.OsdPlacement.CardSizeForTest(r);
             Check($"{c.Name}：卡片宽 = 192 × 缩放",
                 Math.Abs(cw - 192 * s) <= 1, $"{cw} vs {192 * s}");
-            Check($"{c.Name}：卡片高 = 48 × 缩放",
-                Math.Abs(ch - 48 * s) <= 1, $"{ch} vs {48 * s}");
+            Check($"{c.Name}：卡片高 = 47 × 缩放",
+                Math.Abs(ch - 47 * s) <= 1, $"{ch} vs {47 * s}");
 
-            Check($"{c.Name}：卡片长宽比仍是 4:1",
-                Math.Abs((double)cw / ch - 4.0) < 0.06, $"{cw}x{ch}");
+            Check($"{c.Name}：卡片长宽比仍是 192:47（与系统一致）",
+                Math.Abs((double)cw / ch - 192.0 / 47.0) < 0.06, $"{cw}x{ch}");
 
             // 水平居中（相对工作区，不是相对 (0,0)）
             double cx = r.X + r.Width / 2.0;
@@ -597,7 +595,7 @@ public static partial class SelfTest
                 $"cx={cx} 期望={(c.Left + c.W / 2.0)}");
 
             // 卡片下沿离工作区底边 = 14 DIP（换算成像素）
-            int cardBottom = r.Y + (int)Math.Round(60 * s);   // 12 阴影 + 48 卡片
+            int cardBottom = r.Y + (int)Math.Round(59 * s);   // 12 阴影 + 47 卡片
             int gapPx = (int)Math.Round(14 * s);
             Check($"{c.Name}：贴底 14 DIP", Math.Abs((bottom - cardBottom) - gapPx) <= 1,
                 $"实际底距={bottom - cardBottom} 期望={gapPx}");
@@ -609,15 +607,15 @@ public static partial class SelfTest
         }
 
         /* 同一块屏换个缩放：物理像素尺寸必须跟着变，
-         * 而"折回 DIP"必须还是 192×48 —— 这就是跨机器一致的判据。 */
+         * 而"折回 DIP"必须还是 192×47 —— 这就是跨机器一致的判据。 */
         var at100 = Core.Windows.OsdPlacement.Compute(0, 0, 1920, 1040, 1.00);
         var at200 = Core.Windows.OsdPlacement.Compute(0, 0, 3840, 2120, 2.00);
         var (w100, h100) = Core.Windows.OsdPlacement.CardSizeForTest(at100);
         var (w200, h200) = Core.Windows.OsdPlacement.CardSizeForTest(at200);
-        CheckEqual("100% 下卡片 192×48 像素", $"{w100}x{h100}", "192x48");
-        CheckEqual("200% 下卡片 384×96 像素（与系统实测一致）", $"{w200}x{h200}", "384x96");
-        Check("200% 的卡片正好是 100% 的两倍",
-            w200 == w100 * 2 && h200 == h100 * 2, $"{w200}x{h200}");
+        CheckEqual("100% 下卡片 192×47 像素", $"{w100}x{h100}", "192x47");
+        CheckEqual("200% 下卡片 384×94 像素（与系统实测一致）", $"{w200}x{h200}", "384x94");
+        Check("200% 下卡片高度是 100% 的两倍（94 = 47×2）",
+            w200 == w100 * 2 && h200 == 94, $"{w200}x{h200}");
 
         /* 缩放值非法时要当 1.0 用，不能把横条算成 0 像素 */
         var bad = Core.Windows.OsdPlacement.Compute(0, 0, 1920, 1040, 0);
@@ -652,7 +650,7 @@ public static partial class SelfTest
         CheckEqual("进度条越界会被夹住（上）", UI.Windows.OsdWindow.ScaleForTest(180), 1.0);
         CheckEqual("进度条越界会被夹住（下）", UI.Windows.OsdWindow.ScaleForTest(-20), 0.0);
 
-        /* 位置与尺寸：全部对齐系统音量条（192×48、贴工作区底边 14 DIP）。
+        /* 位置与尺寸：全部对齐系统横条（192×47、贴工作区底边 14 DIP）。
          * 数字来自对系统横条的全屏截图测量，见 OsdWindow 的注释。 */
         double ow = UI.Windows.OsdWindow.DesignWidth;
         double oh = UI.Windows.OsdWindow.DesignHeight;
@@ -680,9 +678,9 @@ public static partial class SelfTest
             $"{topWithBar} vs {osdTop - 48}");
 
         CheckEqual("卡片宽度与系统一致（192）", ow, 192.0);
-        CheckEqual("卡片高度与系统一致（48）", oh, 48.0);
-        Check("横条长宽比与系统一致（4 : 1）",
-            Math.Abs(ow / oh - 4.0) < 0.05, $"{ow / oh:F2}");
+        CheckEqual("卡片高度与系统一致（47）", oh, 47.0);
+        Check("横条长宽比与系统一致（192 : 47 ≈ 4.085）",
+            Math.Abs(ow / oh - 192.0 / 47.0) < 0.01, $"{ow / oh:F3}");
 
         /* 圆角也要一致。以前是 6 DIP，比系统"更方" —— 用户一眼就看出来了：
          * 200% 缩放下差 2 DIP 只有 4 个像素，单看没感觉，并排就很明显。

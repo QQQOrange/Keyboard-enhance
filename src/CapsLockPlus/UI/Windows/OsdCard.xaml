@@ -10,63 +10,68 @@
            · OsdWindow  —— 普通 WPF 窗口（band 上不去时的老路径）；
            · OsdBandSurface —— band 16 的分层窗口（离屏渲染成位图）。
 
-         卡片 192×48 DIP、圆角 7.5、四周留 12 DIP 给阴影，
-         所以控件整体 216×72 DIP。数值的实测依据见 OsdWindow 的注释。 -->
+         卡片 192×47 DIP、圆角 7.5、四周留 12 DIP 给阴影，
+         所以控件整体 216×71 DIP。
+
+         ⚠ 这里写的尺寸只是"设计器的默认值"。真正生效的每一个数
+         都由 OsdCard 的构造函数从 Core/Windows/OsdPlacement.cs 的常量
+         覆盖一遍 —— 那边是唯一的真相，因为它们是从系统横条的
+         截图上逐像素量出来的（见 OsdPlacement 的注释）。 -->
     <Grid x:Name="Root">
         <Border x:Name="Card" Margin="12" CornerRadius="7.5" Background="#F02D2D2D"
-                BorderThickness="0" Padding="13,0,12,0">
+                BorderThickness="0" Padding="12.25,0,13,0">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.24" Color="#000000" />
             </Border.Effect>
 
-            <Grid>
+            <Grid x:Name="Layout">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
+                    <!-- 图标槽 → 图标到进度条的间距 → 进度条（弹性）→ 数字 -->
+                    <ColumnDefinition x:Name="IconColumn" Width="16" />
+                    <ColumnDefinition x:Name="IconGapColumn" Width="13.75" />
+                    <ColumnDefinition x:Name="TrackColumn" Width="*" />
+                    <ColumnDefinition x:Name="ValueColumn" Width="27" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 图标：亮度。**整只是手绘的**（一个圆 + 八根线），不用字体字形。
-                     原因见 OsdCard 的注释：字形自带一圈固定长度的光芒，
-                     跟我们叠加的动态线拼在一起会出现"两段接不上"的割裂感，
-                     线缩短时字形那截还会留着，看起来像底槽。
-                     现在每根光芒只有一根线：内端贴着圆固定，外端随亮度外伸。 -->
+                <!-- 图标：**Windows 自己的字体字形**（Segoe Fluent Icons E706 "Brightness"）。
+                     不是手绘的 —— 系统横条里的图标就是这个字体的字形，
+                     用同一个字形、同一个字号，形状才可能"完全一致"。
+                     随亮度变化的只是**大小**（系统在调亮度时太阳会变大变小），
+                     用 ScaleTransform 绕中心缩放，槽位尺寸不变，
+                     所以图标永远居中、右边进度条的起点也不会跟着抖。 -->
                 <Grid x:Name="IconBox" Grid.Column="0" Width="16" Height="16"
-                      VerticalAlignment="Center" Margin="0,0,13,0">
-                    <!-- 0×0 的 Canvas 不参与测量：光芒线画多长都不会把进度条往右推。 -->
-                    <Canvas x:Name="Rays" Width="0" Height="0"
-                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-
-                    <!-- 太阳本体：**空心描边**，跟 Windows 11 自带的亮度横条一致。
-                         实心圆看着太重，和八根细光芒也不搭。
-
-                         外径仍保持 6.4 DIP：描边是"骑"在路径上的（内外各占一半），
-                         所以直径取 6.4 - 1.2 = 5.2，加上 1.2 的描边正好铺满原来的圆。
-                         这样光环外缘位置不变，和光芒内端（4.7）的缝隙也还是 1.5。 -->
-                    <Ellipse x:Name="Core" Width="5.2" Height="5.2"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                             Fill="Transparent" Stroke="#FFFFFF" StrokeThickness="1.2" />
+                      VerticalAlignment="Center">
+                    <TextBlock x:Name="IconGlyph" Text="&#xE706;"
+                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextAlignment="Center"
+                               RenderTransformOrigin="0.5,0.5">
+                        <TextBlock.RenderTransform>
+                            <ScaleTransform x:Name="IconScale" ScaleX="1" ScaleY="1" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
                 </Grid>
 
                 <!-- 进度条：底槽 + 填充（星号比例列，避免布局未完成时宽度为 0）。
                      槽 = 白色 55%，填充 = 系统强调色浅档（运行时注入）。 -->
-                <Grid x:Name="Track" Grid.Column="1" Height="5" VerticalAlignment="Center">
-                    <Border x:Name="TrackBar" CornerRadius="2.5" Background="#8CFFFFFF" />
+                <Grid x:Name="Track" Grid.Column="2" Height="4" VerticalAlignment="Center">
+                    <Border x:Name="TrackBar" CornerRadius="2" Background="#8CFFFFFF" />
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition x:Name="FillColumn" />
                             <ColumnDefinition x:Name="RestColumn" />
                         </Grid.ColumnDefinitions>
-                        <Border x:Name="FillBar" Grid.Column="0" CornerRadius="2.5"
+                        <Border x:Name="FillBar" Grid.Column="0" CornerRadius="2"
                                 Background="#4CC2FF" />
                     </Grid>
                 </Grid>
 
-                <TextBlock x:Name="ValueText" Grid.Column="2" Text="0"
+                <TextBlock x:Name="ValueText" Grid.Column="3" Text="0"
                            FontSize="14" FontWeight="Normal"
                            Foreground="#FFFFFF"
-                           VerticalAlignment="Center" Margin="4,0,0,0"
-                           MinWidth="26" TextAlignment="Right" />
+                           VerticalAlignment="Center"
+                           MinWidth="27" TextAlignment="Right" />
             </Grid>
         </Border>
     </Grid>
