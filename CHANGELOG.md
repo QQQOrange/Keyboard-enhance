@@ -65,6 +65,17 @@ advance 差 4 px（11 vs 15），"100" 整体宽 1 DIP。现在字体族写成
 `Segoe UI Variable Display → Text → Segoe UI → Microsoft YaHei UI`，
 "100" 的三段墨迹（158.5~162.5 / 164.5~171.0 / 172.0~178.5）与系统逐像素重合。
 
+### 五、把三个被 .gitignore 误伤的源码文件找回来了
+
+清理缓存时 `icons/` 这条忽略规则把 `src/CapsLockPlus/Core/Icons/`（IconCache.cs /
+SvgBatch.cs / SvgRenderer.cs，共 1139 行）一起当成缓存删了。这三个文件**从没进过仓库**，
+只能从 v4.5.23 的发布版反编译（ilspycmd）恢复：
+
+- 代码逻辑与发布版一致（自检 2179 项逐条相同，0 失败）
+- 反编译丢掉的注释没能找回，文件头已写明来源
+- 补回了可空标注，恢复"0 警告 0 错误"的干净构建
+- `.gitignore` 加了 `!src/CapsLockPlus/Core/Icons/`，以后不会再被误删
+
 ### 验证
 
 - 实测：卡片 384×94 px、圆角、水平居中、距工作区底 28.5 px、

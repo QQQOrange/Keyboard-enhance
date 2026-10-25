@@ -58,7 +58,10 @@ settings.json.bak
 settings.json.broken
 selftest.log
 logs/
+# ⚠️ icons/ 只忽略运行时生成的图标缓存，Core/Icons/ 是**源码**，必须跟踪
+#    （2026-10-25 误删过一次，靠反编译才找回来）。
 icons/
+!src/CapsLockPlus/Core/Icons/
 render/
 shots/
 
