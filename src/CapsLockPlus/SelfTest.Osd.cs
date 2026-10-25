@@ -317,23 +317,21 @@ public static partial class SelfTest
     }
 
     /// <summary>
-    /// 亮度横条上的太阳图标：**自绘** —— 圆心固定、放射线伸缩 + 旋转。
+    /// 亮度横条上的太阳图标：自绘，**几何照 Windows 11 原版**（Segoe Fluent Icons E706）。
     ///
-    /// 2026-10-25 之前用的是 Segoe Fluent Icons 的 E706 字形配
-    /// ScaleTransform 0.70→1.00 整字形缩放（为了和系统横条逐像素一致）。
-    /// 用户随后点名改了设计：
-    ///   ① 中心圆直径必须**固定**，禁止随亮度缩放，只有外围放射线可以动；
-    ///   ② 整体图标偏小，要放大；
-    ///   ③ 亮度变化时放射线除长度变化外还要绕中心圆旋转，
-    ///      转速与亮度变化速度联动。
+    /// 这块改了三回，教训一句话：原版是「**空心圆环 + 8 根离环 2 DIP 的胶囊射线**」，
+    /// 不是「实心圆盘 + 贴着圆的线」。v4.5.24 把圆画成实心盘、射线内端插进圆里
+    /// （半径 − 0.1，靠圆盖住接缝），结果圆和线连成一整块黑饼 —— 用户原话
+    /// "黏连、不美观，比之前更差"。
     ///
-    /// 这里守六件事：
-    ///   1. 结构：8 根放射线 + 1 个恒定圆芯，单色、无光晕；
-    ///   2. **圆心直径五档亮度下恒定**（诉求①；改回整字形缩放立刻红）；
-    ///   3. 放射线长度随亮度线性、单调（诉求①允许动的部分）；
-    ///   4. 整体墨迹放大且不越槽（诉求②：满档 16 DIP > 旧字形 12）；
-    ///   5. 旋转角 = 360°×进度，线性且确定（诉求③ + 两个宿主同帧）；
-    ///   6. 墨迹中心不动（20.25, 23.5），进度条起点不受亮度影响。
+    /// 这里守七件事：
+    ///   1. 结构：环是**描边**（Fill 为空）+ 8 根射线，单色、无光晕；
+    ///   2. **环线分离**：间隙恒等于原版的 2.0 DIP，五档亮度下不变（本次的核心）；
+    ///   3. 环尺寸恒定且等于原版（墨迹外径 8.0 / 内径 6.0），不随亮度变；
+    ///   4. 射线内端恒定、外端线性伸缩、单调（诉求①允许动的部分）；
+    ///   5. 满档墨迹 16 DIP（诉求②的放大；原版 12）；
+    ///   6. 旋转角 = 360°×进度，线性且确定（诉求③ + 两个宿主同帧）；
+    ///   7. 墨迹中心 20.0 DIP、垂直居中、不越槽。
     /// </summary>
     private static void TestOsdIconFollowsBrightness()
     {
@@ -351,14 +349,20 @@ public static partial class SelfTest
         var accent = System.Windows.Media.Color.FromRgb(0x4C, 0xC2, 0xFF);
         card.SetPalette(darkCard, white, white, accent);
 
-        /* ---- 1. 结构：8 根放射线 + 恒定圆芯，单色、无光晕 ---- */
+        /* ---- 1. 结构：描边圆环 + 8 根射线，单色、无光晕 ---- */
         CheckEqual("太阳由 8 根放射线组成", card.SunRayCountForTest,
             Core.Windows.OsdPlacement.SunRayCount);
         Check("8 根手绘放射线都在位", card.HasSunRaysForTest);
         Check("图标里没有光晕/模糊元素", !card.HasSoftGlowForTest, "出现了 Effect");
+        Check("中心是描边圆环，不是实心圆盘（Fill 为空）",
+            card.SunRingIsStrokeOnlyForTest,
+            "Fill 不为空 → 又退回实心饼，圆和线必然黏连");
 
         int[] steps = { 0, 25, 50, 75, 100 };
-        var core = new double[steps.Length];
+        var ringOuter = new double[steps.Length];
+        var ringInner = new double[steps.Length];
+        var rayInner = new double[steps.Length];
+        var gap = new double[steps.Length];
         var reach = new double[steps.Length];
         var angle = new double[steps.Length];
         var ink = new double[steps.Length];
@@ -366,46 +370,81 @@ public static partial class SelfTest
         for (int i = 0; i < steps.Length; i++)
         {
             card.SetPercent(steps[i]);
-            core[i] = card.SunCoreDipForTest;
+            ringOuter[i] = card.SunRingOuterDipForTest;
+            ringInner[i] = card.SunRingInnerDipForTest;
+            rayInner[i] = card.SunRayInnerEdgeForTest;
+            gap[i] = card.SunGapForTest;
             reach[i] = card.SunRayReachForTest;
             angle[i] = card.SunSpinAngleForTest;
             ink[i] = card.SunInkDipForTest;
         }
 
-        /* ---- 2. 中心圆直径五档恒定（诉求①）---- */
-        double coreDip = Core.Windows.OsdPlacement.SunCoreDip;
+        /* ---- 2. 环线分离：间隙恒定 2.0 DIP（本次核心诉求）---- */
+        double gapDip = Core.Windows.OsdPlacement.SunGapDip;
+        Check($"原版间隙是射线内端 6.0 − 环外半径 4.0 = {gapDip:F1} DIP",
+            Math.Abs(gapDip - 2.0) < 1e-6, $"gap={gapDip:F3}");
+
         for (int i = 0; i < steps.Length; i++)
         {
-            Check($"{steps[i]}% 时中心圆直径恒为 {coreDip:F1} DIP（不随亮度缩放）",
-                Math.Abs(core[i] - coreDip) < 1e-6, $"core={core[i]:F3}");
+            Check($"{steps[i]}% 时环与射线之间仍留 {gapDip:F1} DIP 空隙（不黏连）",
+                Math.Abs(gap[i] - gapDip) < 1e-6, $"gap={gap[i]:F3}");
         }
 
-        /* ---- 3. 放射线长度：线性、单调、端点等于常量 ---- */
-        double reachMin = Core.Windows.OsdPlacement.SunRayReachMinDip;
-        double reachMax = Core.Windows.OsdPlacement.SunRayReachMaxDip;
-        Check($"0% 时放射线最短（端点 {reachMin:F2} DIP）",
+        Check("任何亮度下间隙都不会闭合（最小 ≥ 1.5 DIP）",
+            gap.Min() >= 1.5, $"min={gap.Min():F3} DIP");
+        Check("间隙随亮度完全不变（射线只在外端伸缩）",
+            gap.Max() - gap.Min() < 1e-9, $"Δ={gap.Max() - gap.Min():F9}");
+
+        /* ---- 3. 圆环：尺寸恒定且等于原版 ---- */
+        double ringOuterExp = Core.Windows.OsdPlacement.SunRingOuterDip;
+        double ringInnerExp = Core.Windows.OsdPlacement.SunRingOuterDip
+                            - Core.Windows.OsdPlacement.SunRingStrokeDip * 2;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            Check($"{steps[i]}% 时圆环墨迹外径恒为 {ringOuterExp:F1} DIP（原版比例，不随亮度缩放）",
+                Math.Abs(ringOuter[i] - ringOuterExp) < 1e-6, $"outer={ringOuter[i]:F3}");
+            Check($"{steps[i]}% 时圆环墨迹内径恒为 {ringInnerExp:F1} DIP",
+                Math.Abs(ringInner[i] - ringInnerExp) < 1e-6, $"inner={ringInner[i]:F3}");
+        }
+
+        Check($"圆环线宽 {Core.Windows.OsdPlacement.SunRingStrokeDip:F1} DIP（200% 下 2 px，实心不糊）",
+            Math.Abs(Core.Windows.OsdPlacement.SunRingStrokeDip - 1.0) < 1e-6);
+
+        /* ---- 4. 射线：内端恒定、外端线性伸缩、单调 ---- */
+        double rayInnerExp = Core.Windows.OsdPlacement.SunRayInnerDip;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            Check($"{steps[i]}% 时射线内端恒定在 {rayInnerExp:F1} DIP",
+                Math.Abs(rayInner[i] - rayInnerExp) < 1e-6, $"inner={rayInner[i]:F3}");
+        }
+
+        double reachMin = Core.Windows.OsdPlacement.SunRayOuterMinDip;
+        double reachMax = Core.Windows.OsdPlacement.SunRayOuterMaxDip;
+        Check($"0% 时射线外端最短（{reachMin:F2} DIP，仍在外圈，不会缩回环里）",
             Math.Abs(reach[0] - reachMin) < 1e-6, $"reach={reach[0]:F3}");
-        Check($"100% 时放射线最长（端点 {reachMax:F2} DIP）",
+        Check($"100% 时射线外端最长（{reachMax:F2} DIP，等于原版满档）",
             Math.Abs(reach[^1] - reachMax) < 1e-6, $"reach={reach[^1]:F3}");
+        Check("0% 的外端也在环外面（射线不会捅进圆环）",
+            reach[0] > ringOuterExp / 2 + 1.0, $"reach={reach[0]:F2} 环半径={ringOuterExp / 2:F2}");
 
         for (int i = 0; i < steps.Length; i++)
         {
             double s = steps[i] / 100.0;
             double expect = reachMin + (reachMax - reachMin) * s;
-            Check($"{steps[i]}% 的放射线长度落在线性上",
+            Check($"{steps[i]}% 的射线外端落在线性上",
                 Math.Abs(reach[i] - expect) < 1e-6, $"{reach[i]:F6} vs {expect:F6}");
         }
 
         bool monotonic = true;
         for (int i = 1; i < steps.Length; i++)
             if (reach[i] <= reach[i - 1]) monotonic = false;
-        Check("0→100% 放射线只变长不变短（不会中途回落）", monotonic);
+        Check("0→100% 射线只变长不变短（不会中途回落）", monotonic);
 
-        /* ---- 4. 整体放大、不越槽（诉求②）---- */
-        Check($"100% 时墨迹 {ink[^1]:F1} DIP（旧字形满档 12，放大约 1/3）",
+        /* ---- 5. 满档墨迹 = 16 DIP（原版 12 的 4/3 倍）---- */
+        Check($"100% 时墨迹 {ink[^1]:F1} DIP（原版 12，用户要求放大 1/3）",
             Math.Abs(ink[^1] - 16.0) < 1e-6, $"ink={ink[^1]:F2}");
-        Check($"0% 时墨迹也有 {ink[0]:F1} DIP（旧字形 0% 时只有 8.4）",
-            ink[0] > 8.4 + 1e-6, $"ink={ink[0]:F2}");
+        Check($"0% 时墨迹 {ink[0]:F1} DIP（收得克制，不靠缩水撑动感）",
+            ink[0] > 14.0, $"ink={ink[0]:F2}");
         Check("满档墨迹不超出图标槽（右缘不进间距区，进度条起点不抖）",
             ink[^1] <= Core.Windows.OsdPlacement.IconSlotDip + 1e-6,
             $"ink={ink[^1]:F2} slot={Core.Windows.OsdPlacement.IconSlotDip}");
@@ -452,8 +491,8 @@ public static partial class SelfTest
         Check($"100% 时墨迹铺满槽（左边缘 {slotLeft:F2} DIP）",
             Math.Abs(inkL - slotLeft) < 1e-6 && Math.Abs(inkW - slotW) < 1e-6,
             $"left={inkL:F2} w={inkW:F2}");
-        Check("图标墨迹中心恒定（20.25 DIP，与系统那条对齐的点）",
-            Math.Abs(inkL + inkW / 2 - 20.25) < 1e-6, $"{inkL + inkW / 2:F2}");
+        Check("图标墨迹中心恒定（20.0 DIP = 系统那条图标墨迹的中心）",
+            Math.Abs(inkL + inkW / 2 - 20.0) < 1e-6, $"{inkL + inkW / 2:F2}");
         Check("图标在卡片里垂直居中（47 高的卡片，墨迹中心 23.5）",
             Math.Abs(inkT + inkH / 2 - 47.0 / 2) < 1e-6,
             $"center={inkT + inkH / 2:F2}");

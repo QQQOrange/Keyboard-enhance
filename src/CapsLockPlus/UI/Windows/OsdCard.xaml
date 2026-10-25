@@ -33,19 +33,19 @@
                     <ColumnDefinition x:Name="ValueColumn" Width="27" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 图标：自绘太阳（2026-10-25 起，替代 E706 字形方案）。
-                     用户点名三条：
-                       ① 中心圆直径固定，禁止随亮度缩放 —— 只有外围放射线能动；
-                       ② 整体放大（旧字形 12 DIP 满墨迹，现在满档 16 DIP）；
-                       ③ 亮度变化时放射线边伸缩边绕中心圆旋转，转速跟亮度
-                          变化速度联动（旋转角 = 360°×进度，纯函数）。
-                     结构：SunRays 里 8 根放射线（代码生成，长度随亮度线性伸缩），
-                     外面套 RotateTransform 绕槽中心旋转；SunCore 是直径恒定的
-                     中心圆，画在线上层，盖住放射线的内端接缝。
+                <!-- 图标：自绘太阳 —— 几何照 Windows 11 原版（Segoe Fluent Icons E706）。
+                     原版是"**空心圆环** + 8 根分离的胶囊状射线"，环与线之间有
+                     2 DIP 的空气。旧版画成实心圆盘、射线内端插进圆里，两者必然
+                     连成一整块 —— 用户说的"黏连"就是这个。
+                     用户另外要求（仍然有效）：中心圆直径固定不缩放、整体放大、
+                     射线边伸缩边旋转且转速与亮度变化联动。
+                     结构：SunRays 里 8 根射线（代码生成，外端随亮度伸缩），
+                     外面套 RotateTransform 绕槽中心旋转；SunRing 是**描边**椭圆
+                     （不是填充盘），画在射线上层，尺寸恒定。
                      几何常量全部在 Core/Windows/OsdPlacement.cs。 -->
                 <Grid x:Name="IconBox" Grid.Column="0" Width="16" Height="16"
                       VerticalAlignment="Center">
-                    <!-- 放射线层：关掉像素吸附 —— 旋转时端点会连续移动，
+                    <!-- 射线层：关掉像素吸附 —— 旋转时端点会连续移动，
                          吸附到整像素会让细线出现台阶式抖动。 -->
                     <Grid x:Name="SunRays" Width="16" Height="16"
                           SnapsToDevicePixels="False" UseLayoutRounding="False"
@@ -54,8 +54,10 @@
                             <RotateTransform x:Name="SunSpin" Angle="0" />
                         </Grid.RenderTransform>
                     </Grid>
-                    <!-- 中心圆：直径固定 6 DIP，任何亮度下都不缩放。 -->
-                    <Ellipse x:Name="SunCore" Width="6" Height="6"
+                    <!-- 圆环：描边椭圆，Stroke 在代码里给（跟随文字色）。
+                         Fill 必须为 null —— 填成实心就退回旧版那团黑饼了。 -->
+                    <Ellipse x:Name="SunRing" Width="7" Height="7"
+                             Fill="{x:Null}" StrokeThickness="1"
                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Grid>
 

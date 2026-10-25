@@ -24,31 +24,31 @@ namespace CapsLockPlus.UI.Windows;
 /// </summary>
 public partial class OsdCard : UserControl
 {
-    /* ── 太阳图标：自绘，圆心固定、放射线伸缩 + 旋转 ──────────────
+    /* ── 太阳图标：自绘，几何完全照 Windows 11 原版（E706 字形） ──────
      *
-     * 2026-10-25 之前这里用的是 Segoe Fluent Icons 的 E706 字形
-     * （"空心圆 + 八根短线"）配 ScaleTransform 0.70→1.00 整字形缩放，
-     * 为了和 Win11 系统横条逐像素一致。用户随后点名改了设计：
-     *   ① 中心圆直径必须**固定**，禁止随亮度缩放 —— 只有外围放射线可以动；
-     *   ② 整体图标偏小，要放大；
-     *   ③ 亮度变化时放射线除长度变化外还要绕中心圆旋转，
-     *      转速与亮度变化速度联动。
+     * 三代方案的来龙去脉，免得下次再走一遍：
+     *   v4.5.23：直接用 Segoe Fluent Icons 的 E706 字形 + ScaleTransform
+     *            0.70→1.00 整字形缩放，和系统横条逐像素一致 —— 但整枚图标
+     *            跟着亮度一起缩放，用户不要（要"圆心不缩放"）。
+     *   v4.5.24：改自绘。圆画成**实心圆盘**，射线内端画到圆**里面**
+     *            （半径 − 0.1）让圆盖住接缝。结果圆和线连成一整块黑饼，
+     *            用户评为"比之前更差" —— 这就是"黏连"。
+     *   v4.5.25：把 E706 的几何重新量出来（见 OsdPlacement 里的量法注释），
+     *            发现原版根本不是"实心盘 + 贴着的线"，而是
+     *            **空心圆环 + 8 根离环 2 DIP 的胶囊射线**。
      *
-     * 实现（逐条对应）：
-     *   · SunCore 是直径恒定的椭圆（OsdPlacement.SunCoreDip），
-     *     任何亮度下都不碰它的大小 —— 旧方案整字形缩放等于圆心也跟着
-     *     放大，正是用户不要的；
-     *   · 8 根放射线在 ReachMin→ReachMax 之间随进度**线性**伸缩，
-     *     满档墨迹 16 DIP（旧字形满档 12 DIP），整体大一圈；
-     *   · 旋转角 = SunTwistDeg × 进度，是进度的**纯函数**：
-     *     角速度 = 360°×d(进度)/dt，亮度变化快就转得快、停就停；
-     *     纯函数还保证 WPF 窗口与 band 16 离屏位图在同一进度画出
-     *     同一帧，位图缓存（Render 的 cacheKey 含进度）不会错。
+     * 现在结构（逐条对应原版）：
+     *   · SunRing 是**描边**椭圆：几何直径 7.0、线宽 1.0 → 墨迹外径 8.0，
+     *     与环内径 6.0，环宽 1.0 —— 三个数都是原版量出来的；
+     *   · 射线内端固定在 6.0 DIP（墨迹，含圆帽），所以**环线间隙恒为 2.0 DIP**，
+     *     任何亮度下都不会重新黏上；
+     *   · 射线外端随进度从 7.4 伸到 8.0（满档 = 原版 16 DIP 墨迹）；
+     *   · 旋转角 = SunTwistDeg × 进度，纯函数 → 角速度与亮度变化速度成正比，
+     *     停就停，且两个宿主（WPF 窗口 / band 16 离屏位图）同一进度同帧。
      *
-     * 这个控件保持"给什么进度画什么样子"的纯函数本质：补间动画仍由
-     * 窗口那边的定时器逐帧推 <see cref="SetIconProgress"/>
-     * （见 OsdWindow.StartIconAnimation），离屏渲染和自检拿到的
-     * 永远是确定值，不会被"正在补间"干扰。
+     * 这个控件保持"给什么进度画什么样子"的纯函数本质：补间动画仍由窗口那边的
+     * 定时器逐帧推 <see cref="SetIconProgress"/>（见 OsdWindow.StartIconAnimation），
+     * 离屏渲染和自检拿到的永远是确定值，不会被"正在补间"干扰。
      */
     private readonly List<Line> _rays = new();
     private double _iconProgress;
@@ -87,12 +87,16 @@ public partial class OsdCard : UserControl
         IconBox.Width = OsdPlacement.IconSlotDip;
         IconBox.Height = OsdPlacement.IconSlotDip;
 
-        /* 太阳：放射线层铺满槽（线在层内绕槽中心排布），
-         * 中心圆按恒定直径定位。具体每根线的端点由 RefreshIcon 每帧算。 */
+        /* 太阳：射线层铺满槽（线在层内绕槽中心排布），圆环按原版比例定位。
+         * 具体每根线的端点由 RefreshIcon 每帧算。 */
         SunRays.Width = OsdPlacement.IconSlotDip;
         SunRays.Height = OsdPlacement.IconSlotDip;
-        SunCore.Width = OsdPlacement.SunCoreDip;
-        SunCore.Height = OsdPlacement.SunCoreDip;
+
+        // 环是**描边**椭圆：Width/Height 是几何线直径（外径 − 线宽），
+        // 描边再向两侧各长半个线宽，墨迹才是 8.0 外径 / 6.0 内径。
+        SunRing.Width = OsdPlacement.SunRingDiameterDip;
+        SunRing.Height = OsdPlacement.SunRingDiameterDip;
+        SunRing.StrokeThickness = OsdPlacement.SunRingStrokeDip;
 
         Track.Height = OsdPlacement.TrackHeightDip;
         TrackBar.CornerRadius = new CornerRadius(OsdPlacement.TrackHeightDip / 2);
@@ -106,9 +110,10 @@ public partial class OsdCard : UserControl
 
     /// <summary>
     /// 建出 8 根放射线（只建一次；之后每帧只改端点坐标，不增删元素）。
-    /// 内端点藏到圆芯轮廓内侧 <see cref="OsdPlacement.SunRayInsetDip"/>，
-    /// 由画在上层的 <c>SunCore</c> 盖住接缝；外端点带圆帽，
-    /// 视觉半径比端点距离多半个线粗。
+    ///
+    /// 原版的射线是**两端圆帽的胶囊**：量出来的墨迹内端 6.0、外端 8.0，
+    /// 两头都是圆弧。所以两端都用 <see cref="PenLineCap.Round"/>，
+    /// 线端坐标取"圆帽圆心"（墨迹 ± 半个线粗），实际画出来的墨迹才和量到的一致。
     /// </summary>
     private void BuildSun()
     {
@@ -120,8 +125,8 @@ public partial class OsdCard : UserControl
             var line = new Line
             {
                 StrokeThickness = OsdPlacement.SunRayThicknessDip,
-                StrokeStartLineCap = PenLineCap.Flat,     // 内端平帽，贴圆芯
-                StrokeEndLineCap = PenLineCap.Round,      // 外端圆帽，柔和不戳
+                StrokeStartLineCap = PenLineCap.Round,    // 内端圆帽（原版如此）
+                StrokeEndLineCap = PenLineCap.Round,      // 外端圆帽
             };
             _rays.Add(line);
             SunRays.Children.Add(line);
@@ -184,30 +189,38 @@ public partial class OsdCard : UserControl
     }
 
     /// <summary>
-    /// 按当前进度画太阳。**只有放射线在动，中心圆永远不动**：
+    /// 按当前进度画太阳。**圆环永远不动，只有射线的外端在动**：
     ///
-    ///   · 放射线长度：ReachMin → ReachMax，关于进度**线性**（一次函数，
-    ///     无分段 —— "按两下大了多少"要说得清）；
-    ///   · 中心圆：直径恒定 <see cref="OsdPlacement.SunCoreDip"/>，
-    ///     不随进度缩放（用户点名要求，旧版整字形缩放已废弃）；
+    ///   · 圆环：几何直径恒为 <see cref="OsdPlacement.SunRingDiameterDip"/>，
+    ///     不随进度缩放（用户要求，整字形缩放已废弃）；
+    ///   · 射线内端：**恒定**在 <see cref="OsdPlacement.SunRayInnerDip"/>，
+    ///     所以环线间隙恒为 <see cref="OsdPlacement.SunGapDip"/>（2.0 DIP）——
+    ///     这是"圆与光芒分离"的结构性保证，不靠画上去盖；
+    ///   · 射线外端：OuterMin → OuterMax，关于进度**线性**（一次函数，
+    ///     无分段 —— "按两下长了多少"要说得清）；
     ///   · 旋转：SunSpin.Angle = SunTwistDeg × 进度，纯函数 ——
     ///     角速度天然与亮度变化速度成正比（360°×d进度/dt），
     ///     亮度停稳旋转就停，不需要额外的减速定时器。
     ///
-    /// 线在槽中心呈风车状排布（第一根指正上方，每 45° 一根），
-    /// 槽位尺寸不变，所以图标永远居中、右边进度条的起点也不会跟着抖。
+    /// 线端坐标用"圆帽圆心"而不是墨迹端点：Round 帽会让墨迹两端各外扩
+    /// 半个线粗，所以线段端点 = 墨迹 ∓ 0.5。这样 OsdPlacement 里的
+    /// 常量就是**看得见的墨迹**，和原版实测值一一对应。
     /// </summary>
     private void RefreshIcon()
     {
         double s = _iconProgress;
+        double half = OsdPlacement.SunRayThicknessDip / 2;
 
-        _sunReach = OsdPlacement.SunRayReachMinDip
-                  + (OsdPlacement.SunRayReachMaxDip - OsdPlacement.SunRayReachMinDip) * s;
+        // 外端（墨迹）在 OuterMin→OuterMax 之间线性伸缩；内端恒定
+        _sunReach = OsdPlacement.SunRayOuterMinDip
+                  + (OsdPlacement.SunRayOuterMaxDip - OsdPlacement.SunRayOuterMinDip) * s;
 
         // 槽中心即太阳中心（槽 IconSlotDip×IconSlotDip → 中心在正中间）
         double cx = OsdPlacement.IconSlotDip / 2;
         double cy = OsdPlacement.IconSlotDip / 2;
-        double rIn = OsdPlacement.SunCoreDip / 2 - OsdPlacement.SunRayInsetDip;
+
+        double rIn = OsdPlacement.SunRayInnerDip + half;    // 内端圆帽圆心
+        double rOut = _sunReach - half;                     // 外端圆帽圆心
 
         for (int i = 0; i < _rays.Count; i++)
         {
@@ -218,8 +231,8 @@ public partial class OsdCard : UserControl
             var line = _rays[i];
             line.X1 = cx + dx * rIn;
             line.Y1 = cy + dy * rIn;
-            line.X2 = cx + dx * _sunReach;
-            line.Y2 = cy + dy * _sunReach;
+            line.X2 = cx + dx * rOut;
+            line.Y2 = cy + dy * rOut;
         }
 
         SunSpin.Angle = OsdPlacement.SunTwistDeg * s;
@@ -228,6 +241,7 @@ public partial class OsdCard : UserControl
     /// <summary>
     /// 太阳用文字色 —— 单色，没有色相变化。
     /// 系统横条里的图标就是纯色（夜间纯白、日间近黑），不透明、无光晕。
+    /// 环是描边、线是描边，都吃这个画刷；环的 Fill 永远是 null。
     /// </summary>
     private void ApplyIconBrush()
     {
@@ -235,34 +249,67 @@ public partial class OsdCard : UserControl
         brush.Freeze();
 
         foreach (var line in _rays) line.Stroke = brush;
-        SunCore.Fill = brush;
+        SunRing.Stroke = brush;
     }
 
     /// <summary>仅供自检：放射线条数（设计值 8）。</summary>
     internal int SunRayCountForTest => _rays.Count;
 
-    /// <summary>仅供自检：中心圆**实际生效**的直径（DIP）—— 必须恒定。</summary>
-    internal double SunCoreDipForTest => SunCore.Width;
+    /// <summary>
+    /// 仅供自检：圆环的**墨迹**外径（DIP）= 几何直径 + 线宽。
+    /// 必须恒定，且等于原版量出来的 8.0。
+    /// </summary>
+    internal double SunRingOuterDipForTest => SunRing.Width + SunRing.StrokeThickness;
 
-    /// <summary>仅供自检：放射线外端点当前离圆心的距离（DIP）。</summary>
+    /// <summary>仅供自检：圆环的**墨迹**内径（DIP）= 几何直径 − 线宽。</summary>
+    internal double SunRingInnerDipForTest => SunRing.Width - SunRing.StrokeThickness;
+
+    /// <summary>仅供自检：圆环是不是描边（Fill 必须为空，否则又成实心饼了）。</summary>
+    internal bool SunRingIsStrokeOnlyForTest => SunRing.Fill == null && SunRing.Stroke != null;
+
+    /// <summary>
+    /// 仅供自检：射线**墨迹内端**离圆心的距离（DIP）——
+    /// 直接取第一根线的起点（圆帽圆心）再**减去**半个线粗：圆帽是向圆心一侧
+    /// 鼓出半个线粗的，所以墨迹比端点更靠近圆心。
+    /// </summary>
+    internal double SunRayInnerEdgeForTest
+    {
+        get
+        {
+            if (_rays.Count == 0) return 0;
+            double cx = OsdPlacement.IconSlotDip / 2;
+            double cy = OsdPlacement.IconSlotDip / 2;
+            var l = _rays[0];
+            double d = Math.Sqrt((l.X1 - cx) * (l.X1 - cx) + (l.Y1 - cy) * (l.Y1 - cy));
+            return d - OsdPlacement.SunRayThicknessDip / 2;
+        }
+    }
+
+    /// <summary>
+    /// 仅供自检：**环线之间的净间隙**（DIP）。必须恒 > 0 ——
+    /// 用户这次的核心诉求就是"圆与光线彼此分离"，这条是它的量化判据。
+    /// </summary>
+    internal double SunGapForTest =>
+        SunRayInnerEdgeForTest - SunRingOuterDipForTest / 2;
+
+    /// <summary>仅供自检：射线外端（墨迹）当前离圆心的距离（DIP）。</summary>
     internal double SunRayReachForTest => _sunReach;
 
-    /// <summary>仅供自检：太阳墨迹总直径（DIP，含放射线外端圆帽）。</summary>
-    internal double SunInkDipForTest =>
-        (_sunReach + OsdPlacement.SunRayThicknessDip / 2) * 2;
+    /// <summary>仅供自检：太阳墨迹总直径（DIP，含射线外端圆帽）。</summary>
+    internal double SunInkDipForTest => _sunReach * 2;
 
     /// <summary>仅供自检：太阳当前旋转角（度）= SunTwistDeg × 进度。</summary>
     internal double SunSpinAngleForTest => SunSpin.Angle;
 
     /// <summary>仅供自检：太阳的画刷（查它是不是单色、有没有跟着主题走）。</summary>
-    internal Brush IconBrushForTest => SunCore.Fill;
+    internal Brush IconBrushForTest => SunRing.Stroke;
 
     /// <summary>
     /// 仅供自检：图标里有没有"模糊光晕"这类元素。
     /// 用户明确不要光晕（径向渐变 / 模糊）—— 图标只能是干净的几何形。
     /// </summary>
     internal bool HasSoftGlowForTest =>
-        IconBox.Effect != null || SunRays.Effect != null || SunCore.Effect != null;
+        IconBox.Effect != null || SunRays.Effect != null || SunRing.Effect != null;
 
     /// <summary>仅供自检：8 根手绘放射线都在位（新设计的地基）。</summary>
     internal bool HasSunRaysForTest => _rays.Count == OsdPlacement.SunRayCount;
