@@ -69,9 +69,12 @@ dotnet --list-runtimes | findstr WindowsDesktop
 | 你的系统 | 下载哪个 | 运行时要求 |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
-| Windows 10 1809+，**32 位** | `KeyboardEnhance-…-32位-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
-| **Windows 7 SP1**，64 位 | `KeyboardEnhance-…-64位-Win7专用-自带运行时.exe` | **不用装任何运行时** |
-| **Windows 7 SP1**，32 位 | `KeyboardEnhance-…-32位-Win7专用-自带运行时.exe` | **不用装任何运行时** |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.23-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.23-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.23-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
+
+> 发布页文件名用 `x86 / x64 / Win7 / SelfContained` 标注，是因为 GitHub 会自动把资产文件名里的
+> 非字母数字字符（含中文）改写成点号；本地构建产物可以保留中文名，不影响使用。
 
 > **Win7 专用版说明**：.NET 10 官方不支持 Win7（最低 Win10 1809），所以 Win7 版基于
 > **.NET 7**（最后一个支持 Win7 SP1 的 .NET）单独构建，运行时打进 exe 里，
