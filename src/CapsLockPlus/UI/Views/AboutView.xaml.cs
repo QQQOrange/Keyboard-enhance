@@ -385,7 +385,7 @@ public partial class AboutView : UserControl
         try
         {
             var result = await _updates.CheckAsync(_host?.Settings.Global.GitHubToken);
-            _host?.Settings.Global.LastUpdateCheck = DateTime.Now;
+            if (_host != null) _host.Settings.Global.LastUpdateCheck = DateTime.Now;
             _host?.SaveSettings();
 
             if (!result.Success)

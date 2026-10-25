@@ -61,14 +61,14 @@ internal static class ClipboardPaster
     /// 前四个是"用户数据"（丢了就是数据丢失），后两个是富文本格式
     /// （丢了会把粘贴降级成纯文本，用户能感觉到）。
     /// </summary>
-    private static readonly string[] MustKeepFormats =
-    [
+    private static readonly string[] MustKeepFormats = new[]
+    {
         "FileDrop", "FileNameW", "DeviceIndependentBitmap", "PNG",
         "HTML Format", "Rich Text Format",
-    ];
+    };
 
     private static readonly object TagGate = new();
-    private static readonly List<(string Text, DateTime At)> SelfWrites = [];
+    private static readonly List<(string Text, DateTime At)> SelfWrites = new();
 
     /// <summary>WPF 的剪贴板 API 要求 STA 线程（动作队列本身就是 STA）。</summary>
     public static bool OnStaThread =>

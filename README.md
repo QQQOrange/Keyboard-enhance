@@ -8,7 +8,7 @@
 >
 > 运行文件是 **`KeyboardEnhance.exe`**，数据目录是 **`KeyboardEnhance Data`**。
 
-**版本 v4.5.23** ｜ **Windows 10 1809+ / Windows 11 · x64** ｜ **单文件约 2.9 MB** ｜ **依赖 .NET 10 桌面运行时**
+**版本 v4.5.23** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 60 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -61,10 +61,25 @@ dotnet --list-runtimes | findstr WindowsDesktop
 :: 应能看到 Microsoft.WindowsDesktop.App 10.0.x
 ```
 
-### 2. 下载并放置程序
+### 2. 选版本下载
 
-到 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases) 页面下载
-**`KeyboardEnhance.exe`**（约 2.9 MB），放到任意目录。
+到 [Releases](https://github.com/QQQOrange/Keyboard-enhance/releases) 页面下载对应版本，
+放到任意目录：
+
+| 你的系统 | 下载哪个 | 运行时要求 |
+| --- | --- | --- |
+| Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-…-32位-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-…-64位-Win7专用-自带运行时.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-…-32位-Win7专用-自带运行时.exe` | **不用装任何运行时** |
+
+> **Win7 专用版说明**：.NET 10 官方不支持 Win7（最低 Win10 1809），所以 Win7 版基于
+> **.NET 7**（最后一个支持 Win7 SP1 的 .NET）单独构建，运行时打进 exe 里，
+> 体积约 60 MB，但拿到机器上双击就能跑。系统必须是 **SP1**。
+> Win10/11 专属特性在 Win7 上自动降级：窗口是经典方角（无云母/圆角）、
+> DPI 按 system 模式缩放、亮度横条照常工作（WMI 调光不受影响）。
+>
+> 四条线共用**同一份源码**，差异只在构建目标（详见「十六、开发与构建」）。
 
 运行时会自动在它旁边建两个文件夹：
 
@@ -574,12 +589,25 @@ Windows Hello（指纹/PIN）或设置一个短的无操作自动锁定时间。
 需要 **.NET 10 SDK**。详细说明见 [BUILD.md](BUILD.md)。
 
 ```powershell
-# 构建
-dotnet build src\CapsLockPlus\CapsLockPlus.csproj
+# 主版本：Win10 1809+ / Win11，64 位，框架依赖（约 2.9 MB）
+dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net10.0-windows -c Release -r win-x64 --self-contained false -o dist
 
-# 单文件发布（框架依赖，约 2.9 MB）
-dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self-contained false -o dist
+# 32 位：Win10 1809+ / Win11，框架依赖
+dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net10.0-windows -c Release -r win-x86 --self-contained false -o dist-x86
 
+# Win7 专用：.NET 7 + 自带运行时（约 60 MB），x64 / x86 各一条
+dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net7.0-windows -c Release -r win-x64 --self-contained true -p:EnableCompressionInSingleFile=true -o dist-win7-x64
+dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net7.0-windows -c Release -r win-x86 --self-contained true -p:EnableCompressionInSingleFile=true -o dist-win7-x86
+```
+
+> csproj 用 `<TargetFrameworks>net10.0-windows;net7.0-windows</TargetFrameworks>` 多目标，
+> 两条线共用同一份源码：net7 线的 LangVersion 锁 C# 11、换 System.Management 8.0.0、
+> 用 `app-win7.manifest`（补 Win7 supportedOS GUID、去掉 PerMonitorV2）。
+> 少数 .NET 8+ 的便利 API（`JsonNode.DeepClone`、`AesGcm(byte[],int)`、
+> `OpenFolderDialog`）已统一改成两条线都能编译的等价写法，行为不走条件编译、
+> 永远一致。
+
+```powershell
 # 自检（2181 项，覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、横条比例穷举）
 dist\KeyboardEnhance.exe --selftest
 

@@ -882,20 +882,26 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
 
-        var dlg = new Microsoft.Win32.OpenFolderDialog
+        // 用 WinForms 的 FolderBrowserDialog，而不是 .NET 8 起才有的
+        // Microsoft.Win32.OpenFolderDialog —— Win7 线（net7.0-windows）没有后者。
+        // 代价是 Win7 上是经典样式对话框；换来的是两条线同一份代码。
+        using var dlg = new System.Windows.Forms.FolderBrowserDialog
         {
-            Title = "选择要直达的文件夹",
-            Multiselect = false,
+            Description = "选择要直达的文件夹",
+            ShowNewFolderButton = true,
+            UseDescriptionForTitle = true,
         };
 
         // 已经有合法路径时从那里开始浏览，省得每次从"此电脑"点起
         string current = Core.Actions.ActionContext.ExpandFolderPath(WebUrlBox.Text);
-        if (Directory.Exists(current)) dlg.InitialDirectory = current;
+        if (Directory.Exists(current)) dlg.SelectedPath = current;
 
-        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.FolderName)) return;
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+        string folder = dlg.SelectedPath;
+        if (string.IsNullOrWhiteSpace(folder)) return;
 
-        WebUrlBox.Text = dlg.FolderName;          // TextChanged 会负责落盘
-        ShowBindStatus($"文件夹已设置：{dlg.FolderName}");
+        WebUrlBox.Text = folder;               // TextChanged 会负责落盘
+        ShowBindStatus($"文件夹已设置：{folder}");
     }
 
     /// <summary>

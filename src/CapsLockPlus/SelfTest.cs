@@ -60,7 +60,12 @@ public static partial class SelfTest
     {
         Section("环境");
         Check("Windows 版本 >= 10", Environment.OSVersion.Version.Major >= 10);
-        Check("64 位进程", Environment.Is64BitProcess);
+        // 早期只有 x64 一条线，这里断言"必须是 64 位进程"。现在多了 32 位专线
+        // （net7/win-x86），位宽本身不再是正确性标准 —— 改成信息性断言：
+        // 真出现"构建与进程位宽不符"这类灵异事件时，detail 一眼可见。
+        Check("进程位宽与 IntPtr 一致",
+            Environment.Is64BitProcess == (IntPtr.Size == 8),
+            $"IntPtr.Size={IntPtr.Size}, Is64BitProcess={Environment.Is64BitProcess}");
         Check("数据目录可创建", TryCreateDataDir());
 
         Section("按键模型");

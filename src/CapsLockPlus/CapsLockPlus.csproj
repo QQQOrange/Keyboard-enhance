@@ -2,12 +2,18 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- 多目标：net10 是主线（Win10 1809+）；net7.0-windows 是 Win7 专用线
+         （.NET 10 官方不支持 Win7，最后一个支持 Win7 SP1 的是 .NET 7）。
+         两条线共用同一份源码，差异全部在条件编译/条件包里，见本文件末尾。 -->
+    <TargetFrameworks>net10.0-windows;net7.0-windows</TargetFrameworks>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
+    <!-- net10 用最新 C#；net7 线必须锁到 C# 11（SDK 10 的 Roslyn 默认是 C# 14，
+         里面主构造函数/params collection/field 关键字在 .NET 7 的 ref 程序集上
+         不一定编译得过，锁 11 最稳）。 -->
+    <LangVersion Condition="'$(TargetFramework)' != 'net7.0-windows'">latest</LangVersion>
     <!-- 只有一个 exe（框架依赖）。.NET 10 桌面运行时需要另行安装，
          下载地址见 README 顶部与每次的 Release 说明。
          不再拆"启动器 + 主程序"两个文件 —— 用户不知道该点哪个。 -->
@@ -88,9 +94,20 @@
   <ItemGroup>
     <!-- UI Automation：直接读取选区，不受 UIPI 限制 -->
     <PackageReference Include="Interop.UIAutomationClient" Version="10.16299.0" />
-    <!-- WMI：调屏幕亮度（root\wmi） -->
-    <PackageReference Include="System.Management" Version="10.0.13" />
-    <!-- DPAPI（ProtectedData）在 net10.0-windows 目标框架里已自带，无需额外引用 -->
+    <!-- WMI：调屏幕亮度（root\wpi）。
+         net7 线只能用 8.0.0（10.x 要求 .NET 8+ 运行时）。 -->
+    <PackageReference Include="System.Management" Version="10.0.13"
+                      Condition="'$(TargetFramework)' != 'net7.0-windows'" />
+    <PackageReference Include="System.Management" Version="8.0.0"
+                      Condition="'$(TargetFramework)' == 'net7.0-windows'" />
+  </ItemGroup>
+
+  <!-- Win7 线用自己的清单：补 Win7 的 supportedOS GUID，并去掉 Win10 才认的
+       PerMonitorV2 / longPathAware（Win7 会忽略它们，写上只会误导排查）。
+       Win7 只支持 system-DPI-aware，靠清单里 true/pm 那行落到 system 模式。 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net7.0-windows'">
+    <ApplicationManifest Remove="app.manifest" />
+    <ApplicationManifest Include="app-win7.manifest" />
   </ItemGroup>
 
   <!-- P1-5：精简发布形态。这两个文件只服务于自检与离屏渲染两个入口，

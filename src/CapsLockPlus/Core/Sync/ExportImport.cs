@@ -159,7 +159,7 @@ public static class ExportImport
         foreach (string key in allow)
         {
             if (all.TryGetPropertyValue(key, out var v) && v != null)
-                data[key] = v.DeepClone();
+                data[key] = JsonNodeTool.DeepClone(v);
         }
 
         var file = new JsonObject
@@ -349,7 +349,7 @@ public static class ExportImport
         foreach (string key in allow)
         {
             if (data.TryGetPropertyValue(key, out var v) && v != null)
-                filtered[key] = v.DeepClone();
+                filtered[key] = JsonNodeTool.DeepClone(v);
         }
 
         // 走与读设置文件同一套反序列化：clamp、默认值补齐全部复用，两边行为一致

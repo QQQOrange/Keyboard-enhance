@@ -1070,8 +1070,11 @@ public static partial class SelfTest
 
     private static void TestInput()
     {
-        Check("INPUT 结构体大小正确（x64 为 40）",
-            Marshal.SizeOf<NativeMethods.INPUT>() == 40,
+        // INPUT 的大小随进程位宽变：x64 是 40，x86 是 28（实测）。
+        // 早期只有 x64 线、这里写死 40；现在 32 位专线也要过自检，按位宽分支断言。
+        int expectInput = IntPtr.Size == 8 ? 40 : 28;
+        Check($"INPUT 结构体大小正确（x64 为 40 / x86 为 28）",
+            Marshal.SizeOf<NativeMethods.INPUT>() == expectInput,
             Marshal.SizeOf<NativeMethods.INPUT>().ToString());
         /* 自检必须"干跑"：这些调用会经过 SendInput，
          * 不拦的话就是往用户当时的前台窗口里打字

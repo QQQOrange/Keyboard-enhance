@@ -65,7 +65,41 @@ advance 差 4 px（11 vs 15），"100" 整体宽 1 DIP。现在字体族写成
 `Segoe UI Variable Display → Text → Segoe UI → Microsoft YaHei UI`，
 "100" 的三段墨迹（158.5~162.5 / 164.5~171.0 / 172.0~178.5）与系统逐像素重合。
 
-### 五、把三个被 .gitignore 误伤的源码文件找回来了
+### 五、多架构 / 多系统构建线：32 位与 Windows 7
+
+.csproj 改成 `<TargetFrameworks>net10.0-windows;net7.0-windows</TargetFrameworks>` 多目标，
+同一份源码出四条线：
+
+| 线 | 目标 | 形态 |
+| --- | --- | --- |
+| 主版本 | Win10 1809+ / Win11 x64 | 框架依赖单文件，2.9 MB |
+| 32 位 | Win10 1809+ / Win11 x86 | 框架依赖单文件，2.9 MB |
+| Win7 64 | Win7 SP1 x64 | .NET 7 自带运行时单文件，64 MB |
+| Win7 32 | Win7 SP1 x86 | .NET 7 自带运行时单文件，59 MB |
+
+（.NET 10 官方不支持 Win7，最后一个支持 Win7 SP1 的是 .NET 7；Win7 版把运行时
+打进 exe，用户机器不用装任何东西，但系统必须 SP1。）
+
+为让 net7 线编译通过而做的改动**全部是等价降级，不走条件编译、行为不分叉**：
+
+- `ExpressionEvaluator.Parser` 的主构造函数（C# 12）改回传统字段 + 构造
+- 两处集合表达式（C# 12）与一处 null 条件分配（C# 14）改回传统写法
+- `JsonNode.DeepClone()` / `JsonNode.DeepEquals()`（.NET 8）→ 自建
+  `Core/Sync/JsonNodeTool.cs`（序列化深拷贝 + 结构递归比较），两条线共用
+- `new AesGcm(key, tagLen)`（.NET 8 构造）→ `new AesGcm(key.AsSpan())`
+- `Microsoft.Win32.OpenFolderDialog`（.NET 8）→ WinForms `FolderBrowserDialog`
+- System.Management：net10 用 10.0.13，net7 用 8.0.0
+- 新增 `app-win7.manifest`：补 Win7 的 supportedOS GUID，去掉 Win10 才认的
+  PerMonitorV2 / longPathAware（Win7 忽略它们，写了只会误导排查）
+
+Win7 上的自动降级（无需改代码）：云母/圆角窗口调用失败被 try/catch 吞掉、
+DPI 落到 system 模式（100% 缩放的 Win7 机器观感与主线一致）、
+`GetDpiForMonitor` 不可用时亮度横条改走 `GetDpiForWindow`（原有回退路径）。
+
+自检同步支持 32 位：「64 位进程」改为信息性断言，INPUT 结构体大小按位宽分支
+（x64=40 / x86=28）。
+
+### 六、把三个被 .gitignore 误伤的源码文件找回来了
 
 清理缓存时 `icons/` 这条忽略规则把 `src/CapsLockPlus/Core/Icons/`（IconCache.cs /
 SvgBatch.cs / SvgRenderer.cs，共 1139 行）一起当成缓存删了。这三个文件**从没进过仓库**，
@@ -81,6 +115,10 @@ SvgBatch.cs / SvgRenderer.cs，共 1139 行）一起当成缓存删了。这三�
 - 实测：卡片 384×94 px、圆角、水平居中、距工作区底 28.5 px、
   图标/进度条/数字的每个外框都与系统那条**逐像素相同**（0/5/50/100 四档）
 - 自检：**2181 项通过、0 失败**（含 1366×768@100% ~ 3840×2160@200%、负坐标副屏的比例穷举）
+- 四条构建线逐一实跑自检，**全部 0 失败**：
+  Win10+ x64、Win10+ x86、Win7 x64（.NET 7 自包含）、Win7 x86（.NET 7 自包含）。
+  其中 x86 线确认运行在 32 位进程（INPUT 结构体 28 字节，断言按位宽分支通过）；
+  Win7 线在 .NET 7 运行时下全量功能逻辑正常（含加密备份、JSON 合并、表达式求值）。
 
 ---
 

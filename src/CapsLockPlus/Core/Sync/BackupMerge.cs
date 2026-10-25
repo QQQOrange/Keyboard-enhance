@@ -92,7 +92,7 @@ public static class BackupMerge
 
         if (local[prop] is not JsonArray la)
         {
-            local[prop] = ra.DeepClone();
+            local[prop] = JsonNodeTool.DeepClone(ra);
             added += ra.Count;
             return;
         }
@@ -113,7 +113,7 @@ public static class BackupMerge
             int idx = IndexOf(local, key, k);
             if (idx < 0)
             {
-                local.Add(rv.DeepClone());
+                local.Add(JsonNodeTool.DeepClone(rv));
                 added++;
             }
             else
@@ -123,8 +123,8 @@ public static class BackupMerge
                  * 两边的默认配置有几百条相同的内置项，全算成"覆盖"的话，
                  * 用户会看到"合并完成：覆盖 326 项"，以为配置被改得面目全非，
                  * 实际上一条都没变。计数得反映真实的改动量。 */
-                if (JsonNode.DeepEquals(local[idx], rv)) continue;
-                local[idx] = rv.DeepClone();
+                if (JsonNodeTool.DeepEquals(local[idx], rv)) continue;
+                local[idx] = JsonNodeTool.DeepClone(rv);
                 replaced++;
             }
         }
@@ -157,7 +157,7 @@ public static class BackupMerge
 
         if (local["Layers"] is not JsonArray la)
         {
-            local["Layers"] = ra.DeepClone();
+            local["Layers"] = JsonNodeTool.DeepClone(ra);
             added += ra.Count;
             return;
         }
@@ -171,7 +171,7 @@ public static class BackupMerge
             int idx = IndexOf(la, "Id", id);
             if (idx < 0)
             {
-                la.Add(rv.DeepClone());
+                la.Add(JsonNodeTool.DeepClone(rv));
                 added++;
                 continue;
             }
@@ -185,9 +185,9 @@ public static class BackupMerge
                 lo["Name"] = name;
                 replaced++;
             }
-            if (ro["Enabled"] != null && !JsonNode.DeepEquals(lo["Enabled"], ro["Enabled"]))
+            if (ro["Enabled"] != null && !JsonNodeTool.DeepEquals(lo["Enabled"], ro["Enabled"]))
             {
-                lo["Enabled"] = ro["Enabled"]!.DeepClone();
+                lo["Enabled"] = JsonNodeTool.DeepClone(ro["Enabled"]!);
                 replaced++;
             }
 
@@ -197,7 +197,7 @@ public static class BackupMerge
                     MergeKeyed(lk, rk, "Combo", ref added, ref replaced);
                 else
                 {
-                    lo["Keys"] = rk.DeepClone();
+                    lo["Keys"] = JsonNodeTool.DeepClone(rk);
                     added += rk.Count;
                 }
             }

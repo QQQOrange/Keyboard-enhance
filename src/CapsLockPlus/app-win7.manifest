@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="CapsLockPlus.app" type="win32" processorArchitecture="*" />
+
+  <!--
+    ── Win7 专用清单（net7.0-windows 线专用，主版本用 app.manifest）──
+
+    和主清单只有两处差别：
+
+    1) supportedOS 补上 **Windows 7** 的 GUID（{35138b9a-5d96-4fbd-8e2d-a2440225f93a}）。
+       不声明 GUID 程序在 Win7 上也能跑，但声明后 comctl32 等会用对版本、
+       也不会被系统误判成"老程序"而禁用视觉样式。
+
+    2) 去掉 PerMonitorV2 和 longPathAware 两行（SMI/2016 命名空间是 Win10 1703
+       才引入的，Win7 直接忽略；写了只会让排查问题的人以为生效了）。
+       Win7 的 DPI 上限就是 system-DPI-aware —— 靠上面 SMI/2005 的 true/pm
+       落到 system 模式，100% 缩放的 Win7 机器上观感与主线一致；
+       高 DPI 的 Win7 机器会略有缩放模糊，这是 Win7 的系统限制，不是本程序的问题。
+
+    trustInfo 段与主清单完全一致（asInvoker / uiAccess=false）：
+    Win7 上同样不需要 UAC 提权即可运行，锁屏后不可用也是同样的安全桌面限制。
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 7 -->
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}" />
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+      <!-- Windows 10 / 11（Win7 版拿到 Win10 机器上也能跑，一并声明） -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+    </windowsSettings>
+  </application>
+</assembly>

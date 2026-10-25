@@ -73,18 +73,23 @@ public static class ExpressionEvaluator
         return sb.ToString();
     }
 
-    private sealed class Parser(string text)
+    // 不用 C# 12 主构造函数：net7.0-windows 线的 LangVersion 锁在 C# 11，
+    // 主构造在那儿编译不过。传统字段 + 构造对两条线完全等价。
+    private sealed class Parser
     {
+        private readonly string _text;
         private int _pos;
 
-        public bool AtEnd => _pos >= text.Length;
-        public char Peek() => text[_pos];
-        public void SkipSpaces() { while (_pos < text.Length && char.IsWhiteSpace(text[_pos])) _pos++; }
+        public Parser(string text) { _text = text; _pos = 0; }
+
+        public bool AtEnd => _pos >= _text.Length;
+        public char Peek() => _text[_pos];
+        public void SkipSpaces() { while (_pos < _text.Length && char.IsWhiteSpace(_text[_pos])) _pos++; }
 
         private bool Match(char c)
         {
             SkipSpaces();
-            if (_pos < text.Length && text[_pos] == c) { _pos++; return true; }
+            if (_pos < _text.Length && _text[_pos] == c) { _pos++; return true; }
             return false;
         }
 
@@ -106,9 +111,9 @@ public static class ExpressionEvaluator
             while (true)
             {
                 SkipSpaces();
-                if (_pos >= text.Length) return left;
-                char c = text[_pos];
-                if (c == '*' && _pos + 1 < text.Length && text[_pos + 1] == '*')
+                if (_pos >= _text.Length) return left;
+                char c = _text[_pos];
+                if (c == '*' && _pos + 1 < _text.Length && _text[_pos + 1] == '*')
                 {
                     _pos += 2;
                     left = Math.Pow(left, ParseUnary());
@@ -142,7 +147,7 @@ public static class ExpressionEvaluator
         {
             double baseVal = ParsePrimary();
             SkipSpaces();
-            if (_pos < text.Length && text[_pos] == '^')
+            if (_pos < _text.Length && _text[_pos] == '^')
             {
                 _pos++;
                 double exp = ParseUnary();
@@ -154,8 +159,8 @@ public static class ExpressionEvaluator
         private double ParsePrimary()
         {
             SkipSpaces();
-            if (_pos >= text.Length) throw new FormatException("表达式不完整");
-            char c = text[_pos];
+            if (_pos >= _text.Length) throw new FormatException("表达式不完整");
+            char c = _text[_pos];
 
             if (c == '(')
             {
@@ -168,20 +173,20 @@ public static class ExpressionEvaluator
             if (char.IsDigit(c) || c == '.')
             {
                 int start = _pos;
-                while (_pos < text.Length && (char.IsDigit(text[_pos]) || text[_pos] == '.')) _pos++;
+                while (_pos < _text.Length && (char.IsDigit(_text[_pos]) || _text[_pos] == '.')) _pos++;
                 // 科学计数法
-                if (_pos < text.Length && (text[_pos] == 'e' || text[_pos] == 'E'))
+                if (_pos < _text.Length && (_text[_pos] == 'e' || _text[_pos] == 'E'))
                 {
                     int save = _pos;
                     _pos++;
-                    if (_pos < text.Length && (text[_pos] == '+' || text[_pos] == '-')) _pos++;
-                    if (_pos < text.Length && char.IsDigit(text[_pos]))
+                    if (_pos < _text.Length && (_text[_pos] == '+' || _text[_pos] == '-')) _pos++;
+                    if (_pos < _text.Length && char.IsDigit(_text[_pos]))
                     {
-                        while (_pos < text.Length && char.IsDigit(text[_pos])) _pos++;
+                        while (_pos < _text.Length && char.IsDigit(_text[_pos])) _pos++;
                     }
                     else _pos = save;
                 }
-                var num = text[start.._pos];
+                var num = _text[start.._pos];
                 if (!double.TryParse(num, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out double v))
                     throw new FormatException($"无法识别的数字：{num}");
@@ -191,8 +196,8 @@ public static class ExpressionEvaluator
             if (char.IsLetter(c))
             {
                 int start = _pos;
-                while (_pos < text.Length && (char.IsLetterOrDigit(text[_pos]) || text[_pos] == '_')) _pos++;
-                string name = text[start.._pos].ToLowerInvariant();
+                while (_pos < _text.Length && (char.IsLetterOrDigit(_text[_pos]) || _text[_pos] == '_')) _pos++;
+                string name = _text[start.._pos].ToLowerInvariant();
                 switch (name)
                 {
                     case "pi": return Math.PI;

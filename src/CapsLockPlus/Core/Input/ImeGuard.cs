@@ -37,8 +37,8 @@ internal static class ImeGuard
     /// 用语言 ID 至少是"宁可多切一次"：误判的代价只是多花几十毫秒，
     /// 漏判的代价是用户按了快捷键却什么都没打出来。
     /// </summary>
-    private static readonly ushort[] ComposingLanguages =
-        [0x0804, 0x0404, 0x0C04, 0x1004, 0x0411, 0x0412, 0x042A];
+    private static readonly ushort[] ComposingLanguages = new ushort[]
+        { 0x0804, 0x0404, 0x0C04, 0x1004, 0x0411, 0x0412, 0x042A };
 
     /// <summary>切换生效后再等一会儿，让目标线程真正落稳（输入队列是按序处理的）。</summary>
     private const int SettleMs = 20;
