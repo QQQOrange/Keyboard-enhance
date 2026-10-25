@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Update;
 using CapsLockPlus.UI;
@@ -343,6 +344,11 @@ public partial class App : Application
         MigrateVaultIfPasswordSet(settings);
 
         ThemeManager.Apply(ThemeManager.Parse(settings.Global.Theme));
+
+        /* 界面语言：**必须在这里**（主题之后、密码门之前）——
+         * 密码窗、主窗口、托盘菜单都要用当前语言，晚一步就会先闪一下中文。
+         * 之后用户在设置里切换时走 Loc.Apply，不需要重启。 */
+        Loc.Initialize(settings.Global.Language);
 
         /* ---- 启动密码门：密码不对，软件就不启动 ----
          *

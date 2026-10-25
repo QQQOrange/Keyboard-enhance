@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Localization;
 using CapsLockPlus.UI.Windows;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.UI.Theme;
@@ -64,6 +65,7 @@ public partial class SettingsView : UserControl
             "system" => 2,
             _ => 0,
         };
+        BindLanguageBox(g.Language);
         DataPathText.Text = $"设置文件：{AppPaths.SettingsFile}\n日志：{CoreLog.LogPath}";
         RefreshStartupPwState();
         _suppress = false;
@@ -488,6 +490,48 @@ public partial class SettingsView : UserControl
                 WindowChrome.Apply(w, dark);
             }
         }
+    }
+
+    /// <summary>
+    /// 把内置语言包填进下拉框。条目直接来自 <see cref="Loc.Available"/> ——
+    /// 往 Assets/Lang 丢一个新 json，这里就自动多一项，不用改代码。
+    /// </summary>
+    private void BindLanguageBox(string? current)
+    {
+        if (!ReferenceEquals(LanguageBox.ItemsSource, Loc.Available))
+            LanguageBox.ItemsSource = Loc.Available;
+
+        string code = Loc.Normalize(current);
+        LanguageBox.SelectedItem = Loc.Available.FirstOrDefault(l => l.Code == code)
+                                   ?? Loc.Available.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// 切界面语言：**不重启**。
+    ///   ① <see cref="Loc.Apply"/> 换字典并通知所有 {loc:T} 绑定 → XAML 自己重画；
+    ///   ② <c>Load()</c> 重跑一遍 —— 代码里 set 的文本（数字/步长/路径这些
+    ///      带单位的串）不会自己变，得重算；
+    ///   ③ 存盘，下次启动直接是这门语言。
+    /// </summary>
+    private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        if (LanguageBox.SelectedItem is not LocLanguage lang) return;
+        if (string.Equals(_host.Settings.Global.Language, lang.Code, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _host.Settings.Global.Language = lang.Code;
+        Save();
+
+        /* 顺序有讲究：
+         * 1) 先 Loc.Apply —— 换字典并把所有 {loc:T} 令牌作废，XAML 上的文字**自己**重画；
+         * 2) 再 Refresh —— 代码里拼出来的文本（"设置文件：…"这类）刷新时才会重算；
+         * 3) 最后重建常驻界面 —— 托盘菜单、动作目录、提示气泡是长生命周期对象，
+         *    它们的文本在构造时就定死了，只能靠事件重建。
+         * Refresh() 内部自己管 _suppress，这里不要在外层再动它。 */
+        Loc.Apply(lang.Code);
+        Refresh();
+        _host.NotifyLocalizedSurfaces();
     }
 
     private void OnImportLegacy(object sender, RoutedEventArgs e)

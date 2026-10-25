@@ -353,6 +353,22 @@
                             <ComboBoxItem Content="跟随系统" Tag="system" />
                         </ComboBox>
                     </Grid>
+
+                    <!-- 界面语言：条目来自内置语言包（Assets/Lang/*.json），
+                         丢一个新 json 进来就会自动出现在这个下拉里，不用改代码。 -->
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="界面语言" Style="{StaticResource Text.Body}" />
+                            <TextBlock Text="切换后立即生效，不用重启" Style="{StaticResource Text.Tertiary}"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="LanguageBox" Style="{StaticResource ComboBox.Base}"
+                                  DisplayMemberPath="DisplayName" SelectionChanged="OnLanguageChanged" />
+                    </Grid>
                 </StackPanel>
             </Border>
 

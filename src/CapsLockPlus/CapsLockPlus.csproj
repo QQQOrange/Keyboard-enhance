@@ -89,6 +89,11 @@
     <!-- 内置引擎图标（由 QuickSearch 的图标库转换而来，见 tools/qs_gen.py）。
          以 Resource 形式打包进程序，运行时不依赖磁盘或网络。 -->
     <Resource Include="Assets\engine-icons\*.png" />
+    <!-- 界面语言包（Core/Localization/Loc.cs）。
+         一个 json 一种语言，嵌进程序集 = 单文件发布后也在 exe 里，
+         不依赖磁盘目录，也不怕用户删了文件夹。
+         **加语言只需往这里丢一个 xx-YY.json，不用改代码。** -->
+    <EmbeddedResource Include="Assets\Lang\*.json" />
   </ItemGroup>
 
   <ItemGroup>

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Forms;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.UI.Theme;
 using Application = System.Windows.Application;
@@ -15,8 +16,16 @@ public sealed class TrayIcon : IDisposable
 {
     private readonly NotifyIcon _icon;
     private readonly AppHost _host;
+    private readonly ToolStripMenuItem _menuTitle;
     private readonly ToolStripMenuItem _enabledItem;
     private readonly ToolStripMenuItem _capsStateItem;
+    private readonly ToolStripMenuItem _openItem;
+    private readonly ToolStripMenuItem _qbarItem;
+    private readonly ToolStripMenuItem _mathItem;
+    private readonly ToolStripMenuItem _bindingsItem;
+    private readonly ToolStripMenuItem _helpItem;
+    private readonly ToolStripMenuItem _reloadItem;
+    private readonly ToolStripMenuItem _exitItem;
     private Icon? _customIcon;
 
     /// <summary>
@@ -33,25 +42,24 @@ public sealed class TrayIcon : IDisposable
         _host = host;
         _customIcon = LoadIcon();
 
-        var menu = new ToolStripMenuItem(AppInfo.ProductName) { Enabled = false };
-
-        _enabledItem = new ToolStripMenuItem("暂停 " + AppInfo.ShortName, null, (_, _) => host.ToggleEnabled())
-        {
-            CheckOnClick = false,
-        };
+        /* 菜单项一律先建空壳、文字统一交给 ApplyText() 填。
+         * 之前每一项都在构造时把中文写死，切语言时没法回头改 ——
+         * 现在文本只在一个地方出现，Relocalize() 直接再调一次就行。 */
+        _menuTitle = new ToolStripMenuItem("") { Enabled = false };
+        _enabledItem = new ToolStripMenuItem("", null, (_, _) => host.ToggleEnabled()) { CheckOnClick = false };
         _capsStateItem = new ToolStripMenuItem("", null, (_, _) => ToggleCaps()) { Enabled = false };
 
         /* 菜单项写着"打开设置…"，就必须真的落到设置页。
          * 之前这里调的是无参 ShowMainWindow()，打开的是上次停留的页面 ——
          * 名字和行为对不上，用户会以为程序记错了位置。
          * 双击和菜单现在指向同一个常量，不会各改各的。 */
-        var open = new ToolStripMenuItem("打开设置…", null, (_, _) => host.ShowMainWindow(DoubleClickPage));
-        var qbar = new ToolStripMenuItem("打开 Qbar  (Caps+Q)", null, (_, _) => host.ShowQbar());
-        var math = new ToolStripMenuItem("计算器  (Caps+F2)", null, (_, _) => host.ShowMathBoard());
-        var bindings = new ToolStripMenuItem("窗口绑定（按键映射页）", null, (_, _) => host.ShowMainWindow("keys"));
-        var help = new ToolStripMenuItem("使用帮助", null, (_, _) => host.ShowMainWindow("help"));
-        var reload = new ToolStripMenuItem("重新加载配置  (Caps+F5)", null, (_, _) => host.ReloadAll());
-        var exit = new ToolStripMenuItem("退出", null, (_, _) => ExitApp());
+        _openItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMainWindow(DoubleClickPage));
+        _qbarItem = new ToolStripMenuItem("", null, (_, _) => host.ShowQbar());
+        _mathItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMathBoard());
+        _bindingsItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMainWindow("keys"));
+        _helpItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMainWindow("help"));
+        _reloadItem = new ToolStripMenuItem("", null, (_, _) => host.ReloadAll());
+        _exitItem = new ToolStripMenuItem("", null, (_, _) => ExitApp());
 
         var context = new ContextMenuStrip
         {
@@ -61,19 +69,19 @@ public sealed class TrayIcon : IDisposable
         };
         context.Items.AddRange(new ToolStripItem[]
         {
-            menu,
+            _menuTitle,
             new ToolStripSeparator(),
             _enabledItem,
             _capsStateItem,
             new ToolStripSeparator(),
-            open,
-            qbar,
-            math,
-            bindings,
-            help,
+            _openItem,
+            _qbarItem,
+            _mathItem,
+            _bindingsItem,
+            _helpItem,
             new ToolStripSeparator(),
-            reload,
-            exit,
+            _reloadItem,
+            _exitItem,
         });
         context.Opening += (_, _) => UpdateCapsState();
 
@@ -85,6 +93,8 @@ public sealed class TrayIcon : IDisposable
             ContextMenuStrip = context,
         };
 
+        ApplyText();
+
         /* 双击 = 直接进「设置」页。
          * 单击不做事：托盘图标单击很容易误触，真要点什么走右键菜单。 */
         _icon.DoubleClick += (_, _) => host.ShowMainWindow(DoubleClickPage);
@@ -95,8 +105,48 @@ public sealed class TrayIcon : IDisposable
          * 之前写死"按住 CapsLock 试试 A/S/D/F，或按 Caps+Q 打开搜索面板"——
          * 一是还在用旧名 CapsLock，二是用户可能已经把触发键改成 F13、
          * 把打开面板的键从 Q 换掉了，那这句提示就是错的。 */
-        _icon.ShowBalloonTip(1800, AppInfo.ShortName + " 已启动", StartupTip(host.Settings),
+        _icon.ShowBalloonTip(1800, AppInfo.ShortName + Loc.T(" 已启动"), StartupTip(host.Settings),
             ToolTipIcon.Info);
+    }
+
+    /// <summary>
+    /// 把菜单文字按**当前语言**重填一遍。切换语言后由
+    /// <see cref="AppHost.NotifyLocalizedSurfaces"/> 调用。
+    ///
+    /// 注：菜单上的快捷键提示（"Caps+Q"）是**用户自己的绑定**，不参与翻译 ——
+    /// 只有自然语言部分走 <see cref="Loc.T"/>。
+    /// </summary>
+    public void Relocalize()
+    {
+        try
+        {
+            ApplyText();
+            UpdateCapsState();
+            _icon.Text = EnabledTooltip(_host.Engine.Enabled);
+            _icon.Icon = _customIcon ?? SystemIcons.Application;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("刷新托盘菜单文字失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>菜单文字的**唯一**出处。改文案只改这里，别再散回构造函数。</summary>
+    private void ApplyText()
+    {
+        _menuTitle.Text = AppInfo.ProductName;
+
+        string qKey = Loc.T("Q");
+        _openItem.Text = Loc.T("打开设置…");
+        _qbarItem.Text = Loc.F("打开 Qbar  (Caps+{0})", qKey);
+        _mathItem.Text = Loc.T("计算器  (Caps+F2)");
+        _bindingsItem.Text = Loc.T("窗口绑定（按键映射页）");
+        _helpItem.Text = Loc.T("使用帮助");
+        _reloadItem.Text = Loc.T("重新加载配置  (Caps+F5)");
+        _exitItem.Text = Loc.T("退出");
+
+        // 这两项的文字还取决于引擎/大写状态，交给 UpdateCapsState 统一算
+        UpdateCapsState();
     }
 
     /// <summary>
@@ -118,7 +168,7 @@ public sealed class TrayIcon : IDisposable
                 .OrderBy(t => t.LayerId)
                 .FirstOrDefault();
 
-            string keyName = trigger != null ? KeyName.Display(trigger.Key) : "触发键";
+            string keyName = trigger != null ? KeyName.Display(trigger.Key) : Loc.T("触发键");
 
             var keys = s.Layers.FirstOrDefault(l => l.Id == 1)?.Keys ?? new List<KeyBinding>();
 
@@ -144,17 +194,17 @@ public sealed class TrayIcon : IDisposable
                 && KeyName.ParseCombo(qbarBinding.Combo) is { } qp
                 && qp.Mods == KeyModifiers.None)
             {
-                example = $"，或按 {keyName}+{KeyName.Display(qp.Key)} 打开搜索面板";
+                example = Loc.F("，或按 {0}+{1} 打开搜索面板", keyName, KeyName.Display(qp.Key));
             }
 
             if (samples.Count == 0)
-                return $"按住 {keyName} 即可使用层内绑定{example}。";
+                return Loc.F("按住 {0} 即可使用层内绑定{1}。", keyName, example);
 
-            return $"按住 {keyName} 试试 {string.Join(" / ", samples)}{example}。";
+            return Loc.F("按住 {0} 试试 {1}{2}。", keyName, string.Join(" / ", samples), example);
         }
         catch
         {
-            return "按住触发键即可使用全部功能。";
+            return Loc.T("按住触发键即可使用全部功能。");
         }
     }
 
@@ -165,8 +215,10 @@ public sealed class TrayIcon : IDisposable
 
     private void UpdateCapsState()
     {
-        _enabledItem.Text = _host.Engine.Enabled ? "暂停 " + AppInfo.ShortName : "恢复 " + AppInfo.ShortName;
-        _capsStateItem.Text = Core.Input.HotkeyEngine.CapsLockOn ? "大写锁定：开" : "大写锁定：关";
+        _enabledItem.Text = _host.Engine.Enabled
+            ? Loc.F("暂停 {0}", AppInfo.ShortName)
+            : Loc.F("恢复 {0}", AppInfo.ShortName);
+        _capsStateItem.Text = Core.Input.HotkeyEngine.CapsLockOn ? Loc.T("大写锁定：开") : Loc.T("大写锁定：关");
         _icon.Icon = _customIcon ?? SystemIcons.Application;
     }
 
@@ -174,7 +226,9 @@ public sealed class TrayIcon : IDisposable
     {
         try
         {
-            _enabledItem.Text = enabled ? "暂停 " + AppInfo.ShortName : "恢复 " + AppInfo.ShortName;
+            _enabledItem.Text = enabled
+                ? Loc.F("暂停 {0}", AppInfo.ShortName)
+                : Loc.F("恢复 {0}", AppInfo.ShortName);
             _icon.Text = EnabledTooltip(enabled);
         }
         catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
@@ -186,8 +240,8 @@ public sealed class TrayIcon : IDisposable
     /// </summary>
     internal static string EnabledTooltip(bool enabled)
         => enabled
-            ? AppInfo.ProductName + "（双击打开设置）"
-            : AppInfo.ShortName + " 已暂停（双击打开设置）";
+            ? Loc.F("{0}（双击打开设置）", AppInfo.ProductName)
+            : Loc.F("{0} 已暂停（双击打开设置）", AppInfo.ShortName);
 
     private static Icon? LoadIcon()
     {
