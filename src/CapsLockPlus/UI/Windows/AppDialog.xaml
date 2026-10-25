@@ -1,6 +1,7 @@
-<Window x:Class="CapsLockPlus.UI.Windows.AppDialog"
+﻿<Window x:Class="CapsLockPlus.UI.Windows.AppDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
         Width="452"
         SizeToContent="Height"
         MinHeight="150"
@@ -49,10 +50,10 @@
             <!-- 按钮 -->
             <StackPanel x:Name="ButtonBar" Grid.Row="2" Orientation="Horizontal"
                         HorizontalAlignment="Right" Margin="0,20,0,0">
-                <Button x:Name="CancelButton" Content="取消" Style="{StaticResource Button.Ghost}"
+                <Button x:Name="CancelButton" Content="{loc:T '取消'}" Style="{StaticResource Button.Ghost}"
                         Padding="16,7" MinWidth="76" Margin="0,0,8,0"
                         Click="OnCancel" IsCancel="True" />
-                <Button x:Name="OkButton" Content="确定" Style="{StaticResource Button.Primary}"
+                <Button x:Name="OkButton" Content="{loc:T '确定'}" Style="{StaticResource Button.Primary}"
                         Padding="18,7" MinWidth="88"
                         Click="OnOk" IsDefault="True" />
             </StackPanel>

@@ -1,7 +1,8 @@
-<Window x:Class="CapsLockPlus.UI.Windows.RestoreWindow"
+﻿<Window x:Class="CapsLockPlus.UI.Windows.RestoreWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="从备份恢复"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+        Title="{loc:T '从备份恢复'}"
         Width="820" Height="660" MinWidth="720" MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -55,19 +56,19 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0">
-            <TextBlock Text="从备份恢复" Style="{StaticResource Text.H2}" />
+            <TextBlock Text="{loc:T '从备份恢复'}" Style="{StaticResource Text.H2}" />
             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                       Text="先拉取备份清单，挑一份再决定怎么恢复。备份都是加密的，恢复时会用你设的备份密码解开。" />
+                       Text="{loc:T '先拉取备份清单，挑一份再决定怎么恢复。备份都是加密的，恢复时会用你设的备份密码解开。'}" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,14,0,0">
-            <Button x:Name="CloudTab" Content="云端备份" Style="{StaticResource Button.Primary}"
+            <Button x:Name="CloudTab" Content="{loc:T '云端备份'}" Style="{StaticResource Button.Primary}"
                     Padding="14,6" Click="OnCloudTab" />
-            <Button x:Name="LocalTab" Content="本地备份" Style="{StaticResource Button.Base}"
+            <Button x:Name="LocalTab" Content="{loc:T '本地备份'}" Style="{StaticResource Button.Base}"
                     Padding="14,6" Margin="8,0,0,0" Click="OnLocalTab" />
-            <Button x:Name="RefreshButton" Content="刷新" Style="{StaticResource Button.Ghost}"
+            <Button x:Name="RefreshButton" Content="{loc:T '刷新'}" Style="{StaticResource Button.Ghost}"
                     Padding="12,6" Margin="14,0,0,0" Click="OnRefresh" />
-            <Button x:Name="DeleteButton" Content="删除选中" Style="{StaticResource Button.Ghost}"
+            <Button x:Name="DeleteButton" Content="{loc:T '删除选中'}" Style="{StaticResource Button.Ghost}"
                     Padding="12,6" Margin="8,0,0,0" Click="OnDelete"
                     Visibility="Collapsed" />
         </StackPanel>
@@ -97,13 +98,13 @@
                             <ColumnDefinition Width="80" />
                             <ColumnDefinition Width="70" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="时间" FontSize="11.5"
+                        <TextBlock Grid.Column="0" Text="{loc:T '时间'}" FontSize="11.5"
                                    Foreground="{DynamicResource Brush.TextTertiary}" />
-                        <TextBlock Grid.Column="1" Text="备份文件" FontSize="11.5"
+                        <TextBlock Grid.Column="1" Text="{loc:T '备份文件'}" FontSize="11.5"
                                    Foreground="{DynamicResource Brush.TextTertiary}" />
-                        <TextBlock Grid.Column="2" Text="大小" FontSize="11.5"
+                        <TextBlock Grid.Column="2" Text="{loc:T '大小'}" FontSize="11.5"
                                    Foreground="{DynamicResource Brush.TextTertiary}" />
-                        <TextBlock Grid.Column="3" Text="加密" FontSize="11.5"
+                        <TextBlock Grid.Column="3" Text="{loc:T '加密'}" FontSize="11.5"
                                    Foreground="{DynamicResource Brush.TextTertiary}" />
                     </Grid>
                 </Border>
@@ -142,34 +143,34 @@
                 Background="{DynamicResource Brush.SurfaceAlt}"
                 BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
             <StackPanel>
-                <TextBlock Text="恢复方式" Style="{StaticResource Text.Secondary}" Margin="0,0,0,8" />
+                <TextBlock Text="{loc:T '恢复方式'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,8" />
 
                 <RadioButton x:Name="MergeRadio" GroupName="restoreMode" IsChecked="True"
                              Foreground="{DynamicResource Brush.TextPrimary}" FontSize="12.5">
                     <StackPanel Margin="6,0,0,0">
-                        <TextBlock Text="合并恢复（推荐）" FontWeight="SemiBold"
+                        <TextBlock Text="{loc:T '合并恢复（推荐）'}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Brush.TextPrimary}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
-                                   Text="按主键对齐：同一个按键 / 宏 / 搜索项以备份里的为准，本地独有的内容保留。全局设置、网盘与备份密码不动。" />
+                                   Text="{loc:T '按主键对齐：同一个按键 / 宏 / 搜索项以备份里的为准，本地独有的内容保留。全局设置、网盘与备份密码不动。'}" />
                     </StackPanel>
                 </RadioButton>
 
                 <RadioButton x:Name="OverwriteRadio" GroupName="restoreMode" Margin="0,10,0,0"
                              Foreground="{DynamicResource Brush.TextPrimary}" FontSize="12.5">
                     <StackPanel Margin="6,0,0,0">
-                        <TextBlock Text="覆盖恢复" FontWeight="SemiBold"
+                        <TextBlock Text="{loc:T '覆盖恢复'}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Brush.TextPrimary}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
-                                   Text="整份替换成备份里的内容，本地当前配置会被清掉（恢复前会自动另存一份）。网盘与备份密码始终保留本机。" />
+                                   Text="{loc:T '整份替换成备份里的内容，本地当前配置会被清掉（恢复前会自动另存一份）。网盘与备份密码始终保留本机。'}" />
                     </StackPanel>
                 </RadioButton>
             </StackPanel>
         </Border>
 
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="取消" Style="{StaticResource Button.Base}" Padding="16,7"
+            <Button Content="{loc:T '取消'}" Style="{StaticResource Button.Base}" Padding="16,7"
                     Margin="0,0,8,0" Click="OnCancel" />
-            <Button x:Name="RestoreButton" Content="恢复选中这份" Style="{StaticResource Button.Primary}"
+            <Button x:Name="RestoreButton" Content="{loc:T '恢复选中这份'}" Style="{StaticResource Button.Primary}"
                     Padding="18,7" Click="OnRestore" IsDefault="True" />
         </StackPanel>
 

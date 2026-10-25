@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Input;
 
@@ -30,17 +30,18 @@ public partial class StartupPasswordWindow : Window
     /// <param name="okText">确认按钮文字（"进入" / "关闭保护" / "下一步"）。</param>
     /// <param name="cancelText">取消按钮文字。</param>
     public StartupPasswordWindow(Func<string, bool> verify, string title, string hint,
-        string okText = "进入", string cancelText = "退出")
+        string? okText = null, string? cancelText = null)
     {
         InitializeComponent();
 
         _verify = verify ?? throw new ArgumentNullException(nameof(verify));
 
-        Title = title;
-        HeaderText.Text = title;
-        HintText.Text = hint;
-        OkButton.Content = okText;
-        CancelButton.Content = cancelText;
+        // 显示出口：调用点照旧写中文，这里按当前语言翻一次
+        Title = Loc.T(title);
+        HeaderText.Text = Loc.T(title);
+        HintText.Text = Loc.T(hint);
+        OkButton.Content = okText ?? Loc.T("进入");
+        CancelButton.Content = cancelText ?? Loc.T("退出");
 
         Loaded += (_, _) => PassBox.Focus();
     }
@@ -51,7 +52,7 @@ public partial class StartupPasswordWindow : Window
 
         if (string.IsNullOrEmpty(pass))
         {
-            ShowError("请先输入密码");
+            ShowError(Loc.T("请先输入密码"));
             return;
         }
 
@@ -64,13 +65,13 @@ public partial class StartupPasswordWindow : Window
         {
             // 校验本身出错（文件损坏之类）：不能当成"通过"，也不能泄露细节
             Core.CoreLog.Error("启动密码校验异常", ex);
-            ShowError("校验出错，请重试（若一直失败，可删除数据目录里的 startup.json 解除保护）");
+            ShowError(Loc.T("校验出错，请重试（若一直失败，可删除数据目录里的 startup.json 解除保护）"));
             return;
         }
 
         if (!ok)
         {
-            ShowError("密码不正确 —— 换一个再试。");
+            ShowError(Loc.T("密码不正确 —— 换一个再试。"));
             PassBox.SelectAll();
             PassBox.Focus();
             return;

@@ -122,13 +122,13 @@ public partial class KeysView : UserControl
 
         // ---- 状态文字 ----
         var tap = FindInCurrentLayer("press_caps");
-        string tapTitle = tap != null ? _host.Actions.Get(tap.Action)?.Title ?? tap.Action : "无";
+        string tapTitle = tap != null ? _host.Actions.Get(tap.Action)?.Title ?? tap.Action : Loc.T("无");
         var layerObj = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
         string layerName = layerObj?.Name ?? $"第 {_layerId} 层";
         var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == _layerId);
         string triggerText = trigger != null
             ? $"触发键 {KeyName.Display(trigger.Key)}（键盘上已高亮）"
-            : "（没有触发键指向这一层）";
+            : Loc.T("（没有触发键指向这一层）");
 
         /* 修饰子层的提示必须能显示**组合**修饰键。
          *
@@ -141,7 +141,7 @@ public partial class KeysView : UserControl
             : string.IsNullOrEmpty(_subLayerKey) ? "" : " + " + KeyName.Display(_subLayerKey);
         string backHint = modText.Length == 0
             ? ""
-            : "　·　点上方的「直接按」回到普通键";
+            : Loc.T("　·　点上方的「直接按」回到普通键");
         /* 顶部信息条只放一句短的，触发键和"怎么回到普通键"进 ToolTip。
          *
          * 以前整句（含触发键、回到上层的提示）挤在一行，窗口一窄就被截断，
@@ -213,7 +213,7 @@ public partial class KeysView : UserControl
             // 统一走 DescribeActionOf，键帽与编辑面板里的说明文字保证一致
             actionTitle = DescribeActionOf(binding);
             // 分类标识：用户要求"单看按键就知道绑的功能属于哪个分类"
-            actionCategory = _host?.Actions.Get(binding.Action)?.Category ?? "";
+            actionCategory = _host?.Actions.Get(binding.Action)?.DisplayCategory ?? "";
         }
 
         string keycapTitle = isBound && binding != null
@@ -240,14 +240,14 @@ public partial class KeysView : UserControl
     {
         if (trigger == null)
         {
-            TriggerKeyBadge.Text = "没有触发键";
-            TriggerKeySuffix.Text = "这一层还没分配触发键，去「触发键与层」页设置";
+            TriggerKeyBadge.Text = Loc.T("没有触发键");
+            TriggerKeySuffix.Text = Loc.T("这一层还没分配触发键，去「触发键与层」页设置");
             return;
         }
 
         string display = DescribeTriggerKey(trigger.Key);
-        TriggerKeyBadge.Text = "按住 " + display;
-        TriggerKeySuffix.Text = "+ 下面的键";
+        TriggerKeyBadge.Text = Loc.T("按住 ") + display;
+        TriggerKeySuffix.Text = Loc.T("+ 下面的键");
     }
 
     /// <summary>
@@ -258,7 +258,7 @@ public partial class KeysView : UserControl
     /// </summary>
     private static string DescribeTriggerKey(string key)
     {
-        if (string.IsNullOrWhiteSpace(key)) return "（未设置）";
+        if (string.IsNullOrWhiteSpace(key)) return Loc.T("（未设置）");
 
         // 单键（capslock / f13 / ralt…）直接查键名表
         var parsed = KeyName.ParseCombo(key);

@@ -1,7 +1,8 @@
 ﻿<Window x:Class="CapsLockPlus.UI.Windows.ToastWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="提示" SizeToContent="WidthAndHeight" WindowStyle="None" AllowsTransparency="True"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+        Title="{loc:T '提示'}" SizeToContent="WidthAndHeight" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
         ShowActivated="False" Focusable="False" IsHitTestVisible="False"
         FontFamily="{StaticResource Font.Ui}">

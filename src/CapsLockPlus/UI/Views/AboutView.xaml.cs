@@ -75,19 +75,19 @@ public partial class AboutView : UserControl
         _usageLoading = true;
         try
         {
-            TokenUsageText.Text = "正在读取配额…";
+            TokenUsageText.Text = Loc.T("正在读取配额…");
             var info = await _updates.FetchRateLimitAsync(_host?.Settings.Global.GitHubToken);
 
             if (!info.Ok)
             {
-                TokenUsageText.Text = "配额暂时读不到（" + info.Message + "）";
+                TokenUsageText.Text = Loc.T("配额暂时读不到（") + info.Message + "）";
                 return;
             }
 
             string scope = UpdateService.HasToken(_host?.Settings.Global.GitHubToken)
-                ? "按你的账号"
-                : "匿名（按 IP）";
-            string tail = info.Remaining > 0 ? $"还剩 {info.Remaining} 次" : "已用完，整点恢复";
+                ? Loc.T("按你的账号")
+                : Loc.T("匿名（按 IP）");
+            string tail = info.Remaining > 0 ? $"还剩 {info.Remaining} 次" : Loc.T("已用完，整点恢复");
             TokenUsageText.Text = $"本小时已用 {info.Used} 次 / 共 {info.Limit} 次（{scope} · {tail}）";
         }
         finally
@@ -204,12 +204,12 @@ public partial class AboutView : UserControl
         /* 只回答"有没有"，一个字符都不回显 —— 截图/录屏都不会带走东西。
          * 想看头尾几位？那也算泄露，用户明确要求去掉。 */
         TokenStatusText.Text = has
-            ? "已保存（令牌不回显）　·　更新检查按账号限流，可以自动下载安装。"
-              + "输入新令牌会覆盖它。令牌会跟着备份和导出一起走。"
-            : "未填写　·　匿名访问每小时只有 60 次（同一网络下多台机器共用），容易撞上限。"
-              + "填了才能一键自动下载；不填也行 —— 发现新版本时只提示、并给出 GitHub 下载地址，"
-              + "程序内不提供下载按钮。只读公开仓库不需要勾任何权限。"
-              + "令牌会跟着加密备份和网盘同步一起走，换台机器恢复后不用重新填。";
+            ? Loc.T("已保存（令牌不回显）　·　更新检查按账号限流，可以自动下载安装。")
+              + Loc.T("输入新令牌会覆盖它。令牌会跟着备份和导出一起走。")
+            : Loc.T("未填写　·　匿名访问每小时只有 60 次（同一网络下多台机器共用），容易撞上限。")
+              + Loc.T("填了才能一键自动下载；不填也行 —— 发现新版本时只提示、并给出 GitHub 下载地址，")
+              + Loc.T("程序内不提供下载按钮。只读公开仓库不需要勾任何权限。")
+              + Loc.T("令牌会跟着加密备份和网盘同步一起走，换台机器恢复后不用重新填。");
     }
 
     /// <summary>验证中：两个按钮都锁住，避免连点时把状态文字刷来刷去。</summary>
@@ -236,7 +236,7 @@ public partial class AboutView : UserControl
             string saved = _host.Settings.Global.GitHubToken;
             if (!UpdateService.HasToken(saved))
             {
-                TokenStatusText.Text = "先把令牌粘进左边的输入框，再点「验证」。";
+                TokenStatusText.Text = Loc.T("先把令牌粘进左边的输入框，再点「验证」。");
                 return;
             }
             token = UpdateService.NormalizeToken(saved);
@@ -247,8 +247,8 @@ public partial class AboutView : UserControl
         VerifyTokenButton.IsEnabled = false;
         SaveTokenButton.IsEnabled = false;
         TokenStatusText.Text = usingSaved
-            ? "正在验证已保存的令牌…"
-            : "正在用这个令牌请求 GitHub…";
+            ? Loc.T("正在验证已保存的令牌…")
+            : Loc.T("正在用这个令牌请求 GitHub…");
 
         try
         {
@@ -263,8 +263,8 @@ public partial class AboutView : UserControl
             /* 验证通过后要不要顺手保存：只有"输入框里的新令牌"才提示保存，
              * 验证的是已保存的那个就直接说"还能用"，别再让人点一次。 */
             TokenStatusText.Text = usingSaved
-                ? "✓ " + result.Message + "　（这就是已保存的令牌）"
-                : "✓ " + result.Message + "　—— 点「保存」把它存下来";
+                ? "✓ " + result.Message + Loc.T("　（这就是已保存的令牌）")
+                : "✓ " + result.Message + Loc.T("　—— 点「保存」把它存下来");
         }
         finally
         {
@@ -284,16 +284,16 @@ public partial class AboutView : UserControl
         {
             string cur = _host.Settings.Global.GitHubToken;
             TokenStatusText.Text = UpdateService.HasToken(cur)
-                ? "令牌没有改动，仍是已保存的那个（不回显）。"
-                  + "要换新的，直接在输入框里输入或粘贴即可。"
-                : "输入框里只有占位圆点，先把新令牌粘进来。";
+                ? Loc.T("令牌没有改动，仍是已保存的那个（不回显）。")
+                  + Loc.T("要换新的，直接在输入框里输入或粘贴即可。")
+                : Loc.T("输入框里只有占位圆点，先把新令牌粘进来。");
             return;
         }
 
         string token = UpdateService.NormalizeToken(TokenBox.Text);
         if (token.Length == 0)
         {
-            TokenStatusText.Text = "输入框是空的 —— 要清掉已保存的令牌请点「清除」。";
+            TokenStatusText.Text = Loc.T("输入框是空的 —— 要清掉已保存的令牌请点「清除」。");
             return;
         }
 
@@ -304,12 +304,12 @@ public partial class AboutView : UserControl
         /* 只提示不拦截：GitHub 未来可能启用新前缀，卡死格式等于把用户挡在外面。 */
         if (!UpdateService.LooksLikeGitHubToken(token))
         {
-            TokenStatusText.Text = "这个看起来不像 GitHub 令牌（通常以 ghp_ 或 github_pat_ 开头），"
-                                   + "但已经按你填的保存了 —— 如果检查更新报「令牌无效」，回头核对一下。";
+            TokenStatusText.Text = Loc.T("这个看起来不像 GitHub 令牌（通常以 ghp_ 或 github_pat_ 开头），")
+                                   + Loc.T("但已经按你填的保存了 —— 如果检查更新报「令牌无效」，回头核对一下。");
             return;
         }
 
-        _host.Notify("令牌已保存，更新检查改用你的账号配额（5000 次/小时）");
+        _host.Notify(Loc.T("令牌已保存，更新检查改用你的账号配额（5000 次/小时）"));
     }
 
     private void OnClearToken(object sender, RoutedEventArgs e)
@@ -317,15 +317,15 @@ public partial class AboutView : UserControl
         if (_host == null) return;
         if (UpdateService.HasToken(_host.Settings.Global.GitHubToken) &&
             !AppDialog.ConfirmDanger(Window.GetWindow(this),
-                "清除后更新检查会回到匿名访问（每小时 60 次），发现新版本时也不再自动下载，"
-                + "只提示并给出下载地址。\n\n已保存的令牌会被删掉，需要重新填。",
-                "清除 GitHub 令牌？", "清除"))
+                Loc.T("清除后更新检查会回到匿名访问（每小时 60 次），发现新版本时也不再自动下载，")
+                + Loc.T("只提示并给出下载地址。\n\n已保存的令牌会被删掉，需要重新填。"),
+                Loc.T("清除 GitHub 令牌？"), Loc.T("清除")))
             return;
 
         _host.Settings.Global.GitHubToken = "";
         _host.SaveSettings();
         RefreshTokenStatus();
-        _host.Notify("已清除令牌，更新检查回到匿名访问");
+        _host.Notify(Loc.T("已清除令牌，更新检查回到匿名访问"));
     }
 
     private void OnOpenTokenPage(object sender, RoutedEventArgs e) =>
@@ -356,7 +356,7 @@ public partial class AboutView : UserControl
         }
         catch (Exception ex)
         {
-            _host?.Notify(UiText.Failed("打开链接", ex.Message));
+            _host?.Notify(UiText.Failed(Loc.T("打开链接"), ex.Message));
         }
     }
 
@@ -367,7 +367,7 @@ public partial class AboutView : UserControl
         if (_host == null || _suppress) return;
         _host.Settings.Global.AutoUpdate = AutoUpdateBox.IsChecked == true;
         _host.SaveSettings();
-        _host.Notify(_host.Settings.Global.AutoUpdate ? "已开启自动更新" : "已关闭自动更新");
+        _host.Notify(_host.Settings.Global.AutoUpdate ? Loc.T("已开启自动更新") : Loc.T("已关闭自动更新"));
     }
 
     // ---------------- 手动检查 ----------------
@@ -381,7 +381,7 @@ public partial class AboutView : UserControl
         ManualLinkPanel.Visibility = Visibility.Collapsed;
         UpdateLinkText.Text = "";
         _manualUrl = "";
-        SetStatus("正在检查更新…", "");
+        SetStatus(Loc.T("正在检查更新…"), "");
         try
         {
             var result = await _updates.CheckAsync(_host?.Settings.Global.GitHubToken);
@@ -410,13 +410,13 @@ public partial class AboutView : UserControl
                 ShowManualLink(string.IsNullOrWhiteSpace(result.Update.DownloadUrl)
                     ? result.Update.PageUrl
                     : result.Update.DownloadUrl);
-                SetStatus(head + " —— 没填 GitHub 令牌，不能自动下载，请点下面的地址用浏览器下载",
+                SetStatus(head + Loc.T(" —— 没填 GitHub 令牌，不能自动下载，请点下面的地址用浏览器下载"),
                     Trim(result.Update.ReleaseNotes, 600));
             }
             else
             {
                 ManualLinkPanel.Visibility = Visibility.Collapsed;
-                DownloadButton.Content = "下载并安装";
+                DownloadButton.Content = Loc.T("下载并安装");
                 DownloadButton.Visibility = Visibility.Visible;
                 SetStatus(head, Trim(result.Update.ReleaseNotes, 600));
             }
@@ -482,7 +482,7 @@ public partial class AboutView : UserControl
             }
 
             Progress.Value = 100;
-            SetStatus("下载完成，正在替换并重启…", "");
+            SetStatus(Loc.T("下载完成，正在替换并重启…"), "");
             await Task.Delay(400);
 
             if (UpdateService.ApplyAndRestart(path))
@@ -490,8 +490,8 @@ public partial class AboutView : UserControl
                 _host?.ExitApp();
                 return;
             }
-            SetStatus("替换失败，请手动下载安装包", "", isError: true);
-            DownloadButton.Content = "打开下载页";
+            SetStatus(Loc.T("替换失败，请手动下载安装包"), "", isError: true);
+            DownloadButton.Content = Loc.T("打开下载页");
             DownloadButton.Click -= OnDownloadInstall;
             DownloadButton.Click += (_, _) => OpenUrl(UpdateService.ReleasesUrl);
         }

@@ -45,7 +45,7 @@ public partial class SubLayerEditorWindow : Window
 
         /// <summary>按钮上显示的文字（键名或"点击设置"）。</summary>
         public string KeyLabel =>
-            string.IsNullOrWhiteSpace(Key) ? "点击设置…" : KeyName.Display(Key);
+            string.IsNullOrWhiteSpace(Key) ? Loc.T("点击设置…") : KeyName.Display(Key);
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -62,7 +62,7 @@ public partial class SubLayerEditorWindow : Window
         InitializeComponent();
 
         TitleText.Text = string.IsNullOrWhiteSpace(layerName)
-            ? "层内子层设置"
+            ? Loc.T("层内子层设置")
             : $"「{layerName}」的层内子层";
 
         foreach (var s in current)
@@ -132,7 +132,7 @@ public partial class SubLayerEditorWindow : Window
         var capture = new KeyCaptureWindow
         {
             Owner = this,
-            Title = "按下要作为子层触发键的按键",
+            Title = Loc.T("按下要作为子层触发键的按键"),
         };
         if (capture.ShowDialog() != true) return;
 
@@ -218,7 +218,7 @@ public partial class SubLayerEditorWindow : Window
         var typeface = new System.Windows.Media.Typeface(
             tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
         var ft = new System.Windows.Media.FormattedText(
-            "汉字Agqy", System.Globalization.CultureInfo.CurrentCulture,
+            Loc.T("汉字Agqy"), System.Globalization.CultureInfo.CurrentCulture,
             System.Windows.FlowDirection.LeftToRight, typeface, tb.FontSize,
             System.Windows.Media.Brushes.Black,
             System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerDip);

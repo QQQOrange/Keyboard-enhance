@@ -1,8 +1,9 @@
 ﻿<Window x:Class="CapsLockPlus.UI.Windows.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
         xmlns:views="clr-namespace:CapsLockPlus.UI.Views"
-        Title="按键增强 Keyboard Enhance" Height="800" Width="1240"
+        Title="{loc:T '按键增强 Keyboard Enhance'}" Height="800" Width="1240"
         MinHeight="620" MinWidth="980"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource Brush.WindowGradient}"
@@ -40,7 +41,7 @@
                            RenderOptions.BitmapScalingMode="HighQuality"
                            Source="pack://application:,,,/Assets/app.png" />
                     <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="按键增强" Style="{StaticResource Text.H3}" />
+                        <TextBlock Text="{loc:T '按键增强'}" Style="{StaticResource Text.H3}" />
                         <TextBlock Text="Keyboard Enhance · Win11 x64" Style="{StaticResource Text.Tertiary}" Margin="0,1,0,0" />
                     </StackPanel>
                 </StackPanel>
@@ -55,7 +56,7 @@
                             <TextBlock Text="&#xE80F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="快速上手" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '快速上手'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -64,7 +65,7 @@
                             <TextBlock Text="&#xE765;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="按键映射" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '按键映射'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -73,7 +74,7 @@
                             <TextBlock Text="&#xE773;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="Qbar 面板" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T 'Qbar 面板'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -82,7 +83,7 @@
                             <TextBlock Text="&#xE77F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="剪贴板" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '剪贴板'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -91,7 +92,7 @@
                             <TextBlock Text="&#xE945;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="宏" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '宏'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -100,7 +101,7 @@
                             <TextBlock Text="&#xE9D2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="触发键与层" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '触发键与层'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -109,7 +110,7 @@
                             <TextBlock Text="&#xE753;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="同步与备份" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '同步与备份'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -118,7 +119,7 @@
                             <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="设置" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '设置'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -127,7 +128,7 @@
                             <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="测试" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '测试'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -136,7 +137,7 @@
                             <TextBlock Text="&#xE897;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="快捷键速查" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '快捷键速查'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -145,7 +146,7 @@
                             <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="关于" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '关于'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -159,10 +160,10 @@
                         <StackPanel Orientation="Horizontal">
                             <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{DynamicResource Brush.Success}"
                                      VerticalAlignment="Center" />
-                            <TextBlock x:Name="StatusText" Text="正在运行" Margin="7,0,0,0"
+                            <TextBlock x:Name="StatusText" Text="{loc:T '正在运行'}" Margin="7,0,0,0"
                                        Style="{StaticResource Text.Secondary}" FontSize="12.5" />
                         </StackPanel>
-                        <TextBlock x:Name="HookText" Text="键盘钩子正常" Margin="0,4,0,0"
+                        <TextBlock x:Name="HookText" Text="{loc:T '键盘钩子正常'}" Margin="0,4,0,0"
                                    Style="{StaticResource Text.Tertiary}" />
                     </StackPanel>
                 </Border>
@@ -184,22 +185,22 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="24,0,0,0" VerticalAlignment="Center">
-                    <TextBlock x:Name="PageTitle" Text="快速上手" Style="{StaticResource Text.H2}" />
+                    <TextBlock x:Name="PageTitle" Text="{loc:T '快速上手'}" Style="{StaticResource Text.H2}" />
                     <Border Style="{StaticResource Badge}" Margin="12,0,0,0">
-                        <TextBlock x:Name="PageBadge" Text="CapsLock 增强" Style="{StaticResource Badge.Text}" />
+                        <TextBlock x:Name="PageBadge" Text="{loc:T 'CapsLock 增强'}" Style="{StaticResource Badge.Text}" />
                     </Border>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="PauseButton" Style="{StaticResource Button.Ghost}" Click="OnPauseClick"
-                            Content="暂停" ToolTip="临时暂停所有按键增强热键" />
+                            Content="{loc:T '暂停'}" ToolTip="{loc:T '临时暂停所有按键增强热键'}" />
                     <Button Style="{StaticResource Button.Icon}" Click="OnThemeClick" Content="&#xE793;"
-                            ToolTip="切换深浅色" Margin="2,0,0,0" />
+                            ToolTip="{loc:T '切换深浅色'}" Margin="2,0,0,0" />
                     <Button Style="{StaticResource Button.Icon}" Click="OnMinimizeClick" Content="&#xE921;"
-                            ToolTip="最小化" Margin="2,0,0,0" />
+                            ToolTip="{loc:T '最小化'}" Margin="2,0,0,0" />
                     <Button Style="{StaticResource Button.Icon}" Click="OnCloseClick" Content="&#xE8BB;"
-                            ToolTip="关闭到托盘" Margin="2,0,0,0" />
+                            ToolTip="{loc:T '关闭到托盘'}" Margin="2,0,0,0" />
                 </StackPanel>
             </Grid>
 

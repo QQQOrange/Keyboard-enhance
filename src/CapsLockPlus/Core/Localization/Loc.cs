@@ -104,6 +104,34 @@ public static class Loc
         }
     }
 
+    // ── 日期时间 ──────────────────────────────────────────────────
+    //
+    // 这几个方法存在的意义：格式**本身**是语言的一部分，不是装饰。
+    // 中文习惯"2026-10-25 21:07"，英文习惯"10/25/2026 9:07 PM" ——
+    // 一个写死的 "yyyy-MM-dd HH:mm" 在英文界面下虽然看得懂，但不地道，
+    // 24 小时制尤其明显（老外看到 21:07 会停一下）。
+    //
+    // 中文/日文/韩文语境保持原来的格式**完全不变**（不给老用户改观感），
+    // 其它语言走该区域的通用格式。
+
+    /// <summary>当前语言是否用"年-月-日 + 24 小时制"这套习惯。</summary>
+    private static bool UsesCjkDateOrder => _culture.TwoLetterISOLanguageName is "zh" or "ja" or "ko";
+
+    /// <summary>时:分:秒（按键测试记录、宏默认名）。</summary>
+    public static string FormatTime(DateTime t)
+        => UsesCjkDateOrder ? t.ToString("HH:mm:ss", _culture) : t.ToString("h:mm:ss tt", _culture);
+
+    /// <summary>时:分（剪贴板历史）。</summary>
+    public static string FormatShortTime(DateTime t)
+        => UsesCjkDateOrder ? t.ToString("HH:mm", _culture) : t.ToString("h:mm tt", _culture);
+
+    /// <summary>年-月-日 时:分（备份列表、恢复点）。</summary>
+    public static string FormatDateTime(DateTime t)
+        => UsesCjkDateOrder ? t.ToString("yyyy-MM-dd HH:mm", _culture) : t.ToString("g", _culture);
+
+    /// <summary>同上，给文件时间戳这类 <see cref="DateTimeOffset"/> 用。</summary>
+    public static string FormatDateTime(DateTimeOffset t) => FormatDateTime(t.DateTime);
+
     /// <summary>
     /// 应用某种语言。**不重启**：换字典 → 通知所有 <see cref="LocToken"/> → 触发
     /// <see cref="Changed"/> 让各 View 重建常驻文本。

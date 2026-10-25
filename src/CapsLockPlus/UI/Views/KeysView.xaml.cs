@@ -288,7 +288,7 @@ public partial class KeysView : UserControl
         if (_host == null) return;
         /* 用 EffectivePreset 而不是直接读设置：渲染时 override 可能压过设置，
          * 下拉框必须显示**当前真正生效**的那一档，否则出图时会出现
-         * "键盘是 794 宽、下拉写着 1058" 的自相矛盾。 */
+         * Loc.T("键盘是 794 宽、下拉写着 1058") 的自相矛盾。 */
         var current = EffectivePreset;
 
         _suppressEvents = true;
@@ -510,11 +510,15 @@ public partial class KeysView : UserControl
         CategoryBoxCustom.Items.Clear();
         foreach (var cat in cats)
         {
-            CategoryBox.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
-            CategoryBoxWinBind.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
-            CategoryBoxWeb.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
-            CategoryBoxCustom.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
-            CategoryBoxType.Items.Add(new ComboBoxItem { Content = cat, Tag = cat });
+            /* Content 显示译文、Tag 存原文 —— Tag 是身份（跟 WinBindCategory
+             * 这些常量对得上、跟 info.Category 对得上），Content 才是给人看的。
+             * 这一条区分不清，英文界面下分类下拉就会"选不中"。 */
+            string shown = Loc.T(cat);
+            CategoryBox.Items.Add(new ComboBoxItem { Content = shown, Tag = cat });
+            CategoryBoxWinBind.Items.Add(new ComboBoxItem { Content = shown, Tag = cat });
+            CategoryBoxWeb.Items.Add(new ComboBoxItem { Content = shown, Tag = cat });
+            CategoryBoxCustom.Items.Add(new ComboBoxItem { Content = shown, Tag = cat });
+            CategoryBoxType.Items.Add(new ComboBoxItem { Content = shown, Tag = cat });
         }
 
         Restore(CategoryBox, keep);
@@ -632,7 +636,7 @@ public partial class KeysView : UserControl
             .OrderBy(i => i.Category)
             .ThenBy(i => i.Title)
             .Take(60)
-            .Select(i => new SearchHit(i.Id, i.Category, i.Title))
+            .Select(i => new SearchHit(i.Id, i.DisplayCategory, i.Title))
             .ToList();
 
         SearchResultList.ItemsSource = hits;
@@ -746,20 +750,20 @@ public partial class KeysView : UserControl
         switch (mode)
         {
             case EditorMode.WinBind:
-                ActionDesc.Text = "选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。";
+                ActionDesc.Text = Loc.T("选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。");
                 RefreshWinBindPanel();
                 break;
             case EditorMode.WebPage:
-                ActionDesc.Text = "选「直达网址」就用默认浏览器打开网址；选「直达文件夹」就在资源管理器里打开那个目录；选「直达文件」就用系统默认程序打开它。备注会显示在键帽上。";
+                ActionDesc.Text = Loc.T("选「直达网址」就用默认浏览器打开网址；选「直达文件夹」就在资源管理器里打开那个目录；选「直达文件」就用系统默认程序打开它。备注会显示在键帽上。");
                 RefreshWebPageFields();
                 break;
             case EditorMode.TypeText:
-                ActionDesc.Text = "填一段文字：按这个键就把它直接输入到当前光标处。";
+                ActionDesc.Text = Loc.T("填一段文字：按这个键就把它直接输入到当前光标处。");
                 RefreshTypeTextField();
                 break;
             case EditorMode.CustomKey:
-                ActionDesc.Text = "先把要发送的键和应用绑好。按这个键时会先看应用在不在运行："
-                                + "在运行就直接把键发过去，没运行就先把它拉起来再发。";
+                ActionDesc.Text = Loc.T("先把要发送的键和应用绑好。按这个键时会先看应用在不在运行：")
+                                + Loc.T("在运行就直接把键发过去，没运行就先把它拉起来再发。");
                 RefreshCustomKeyPanel();
                 break;
         }
@@ -887,7 +891,7 @@ public partial class KeysView : UserControl
         // 代价是 Win7 上是经典样式对话框；换来的是两条线同一份代码。
         using var dlg = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "选择要直达的文件夹",
+            Description = Loc.T("选择要直达的文件夹"),
             ShowNewFolderButton = true,
             UseDescriptionForTitle = true,
         };
@@ -917,10 +921,10 @@ public partial class KeysView : UserControl
 
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "选择要直达的文件",
+            Title = Loc.T("选择要直达的文件"),
             Multiselect = false,
             CheckFileExists = true,
-            Filter = "所有文件|*.*",
+            Filter = Loc.T("所有文件|*.*"),
         };
 
         // 已经填过路径时从它所在的目录开始浏览

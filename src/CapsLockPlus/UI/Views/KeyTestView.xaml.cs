@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -61,18 +61,18 @@ public partial class KeyTestView : UserControl
     {
         if (_host == null) return;
 
-        HookText.Text = _host.Engine.IsHookAlive ? "正常" : "未启动";
+        HookText.Text = _host.Engine.IsHookAlive ? Loc.T("正常") : Loc.T("未启动");
         HookText.Foreground = (System.Windows.Media.Brush)FindResource(
             _host.Engine.IsHookAlive ? "Brush.Success" : "Brush.Danger");
 
         TriggerText.Text = _host.Engine.IsTriggerHeld
-            ? (KeyName.Display(_host.Engine.ActiveTriggerKey ?? "") is { Length: > 0 } t ? t : "按住中")
-            : "未按住";
+            ? (KeyName.Display(_host.Engine.ActiveTriggerKey ?? "") is { Length: > 0 } t ? t : Loc.T("按住中"))
+            : Loc.T("未按住");
         TriggerText.Foreground = (System.Windows.Media.Brush)FindResource(
             _host.Engine.IsTriggerHeld ? "Brush.Accent" : "Brush.TextSecondary");
 
         int layer = _host.Engine.ActiveLayer;
-        LayerText.Text = layer > 0 ? $"第 {layer} 层" : "未进层";
+        LayerText.Text = layer > 0 ? $"第 {layer} 层" : Loc.T("未进层");
         LayerText.Foreground = (System.Windows.Media.Brush)FindResource(
             layer > 0 ? "Brush.Accent" : "Brush.TextSecondary");
     }
@@ -86,10 +86,10 @@ public partial class KeyTestView : UserControl
 
             _rows.Insert(0, new EventRow
             {
-                Time = DateTime.Now.ToString("HH:mm:ss"),
-                Key = held ? "▼ 触发键按下" : "▲ 触发键松开",
-                Layer = held ? "进层中" : "回基础层",
-                Action = held ? "等待长按 / 组合键" : "层已退出",
+                Time = Loc.FormatTime(DateTime.Now),
+                Key = held ? Loc.T("▼ 触发键按下") : Loc.T("▲ 触发键松开"),
+                Layer = held ? Loc.T("进层中") : Loc.T("回基础层"),
+                Action = held ? Loc.T("等待长按 / 组合键") : Loc.T("层已退出"),
             });
             TrimRows();
         }));
@@ -109,12 +109,12 @@ public partial class KeyTestView : UserControl
             string? name = KeyName.NameOf(vk);
             string display = name != null ? KeyName.Display(name) : $"VK 0x{vk:X2}";
 
-            string layerText = layer > 0 ? $"第 {layer} 层" : "基础层";
-            string action = name != null ? DescribeBinding(layer, name) : "（未识别的键）";
+            string layerText = layer > 0 ? $"第 {layer} 层" : Loc.T("基础层");
+            string action = name != null ? DescribeBinding(layer, name) : Loc.T("（未识别的键）");
 
             _rows.Insert(0, new EventRow
             {
-                Time = DateTime.Now.ToString("HH:mm:ss"),
+                Time = Loc.FormatTime(DateTime.Now),
                 Key = display,
                 Layer = layerText,
                 Action = action,
@@ -140,7 +140,7 @@ public partial class KeyTestView : UserControl
 
         var keys = _host.Settings.Layers.FirstOrDefault(l => l.Id == layerId)?.Keys
                    ?? (layerId <= 1 ? _host.Settings.Keys : null);
-        if (keys == null) return "这一层没有绑定表";
+        if (keys == null) return Loc.T("这一层没有绑定表");
 
         Core.Settings.KeyBinding? fallback = null;
         foreach (var b in keys)
@@ -154,8 +154,8 @@ public partial class KeyTestView : UserControl
             fallback ??= b;
         }
 
-        if (fallback != null) return TitleOf(fallback) + "（带修饰键）";
-        return "（未绑定）";
+        if (fallback != null) return TitleOf(fallback) + Loc.T("（带修饰键）");
+        return Loc.T("（未绑定）");
     }
 
     private string TitleOf(Core.Settings.KeyBinding binding)
@@ -184,8 +184,8 @@ public partial class KeyTestView : UserControl
     {
         _rows.Clear();
         LastKeyText.Text = "—";
-        LastKeyDetail.Text = "按任意键开始测试";
-        StatusText.Text = "已清空";
+        LastKeyDetail.Text = Loc.T("按任意键开始测试");
+        StatusText.Text = Loc.T("已清空");
     }
 
     private void OnCopyDiag(object sender, RoutedEventArgs e)
@@ -195,29 +195,29 @@ public partial class KeyTestView : UserControl
             var sb = new StringBuilder();
             sb.AppendLine("=== 按键测试诊断 ===");
             sb.AppendLine($"时间        : {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            sb.AppendLine($"键盘钩子    : {(_host?.Engine.IsHookAlive == true ? "正常" : "未启动")}");
-            sb.AppendLine($"引擎启用    : {(_host?.Engine.Enabled == true ? "是" : "否（已暂停）")}");
+            sb.AppendLine($"键盘钩子    : {(_host?.Engine.IsHookAlive == true ? Loc.T("正常") : Loc.T("未启动"))}");
+            sb.AppendLine($"引擎启用    : {(_host?.Engine.Enabled == true ? Loc.T("是") : Loc.T("否（已暂停）"))}");
             sb.AppendLine($"当前层      : {(_host?.Engine.ActiveLayer ?? -1)}");
-            sb.AppendLine($"触发键      : {_host?.Engine.ActiveTriggerKey ?? "(无)"}");
+            sb.AppendLine($"触发键      : {_host?.Engine.ActiveTriggerKey ?? Loc.T("(无)")}");
             sb.AppendLine();
 
             var triggers = _host?.Settings.Triggers ?? new List<Core.Settings.TriggerKey>();
             sb.AppendLine($"已配置触发键（{triggers.Count} 个）：");
             foreach (var t in triggers)
                 sb.AppendLine($"  · {KeyName.Display(t.Key)} → 第 {t.LayerId} 层，长按阈值 {t.HoldMs}ms");
-            if (triggers.Count == 0) sb.AppendLine("  （没有 —— 按住任何键都不会进层）");
+            if (triggers.Count == 0) sb.AppendLine(Loc.T("  （没有 —— 按住任何键都不会进层）"));
             sb.AppendLine();
 
-            sb.AppendLine("最近按键：");
+            sb.AppendLine(Loc.T("最近按键："));
             foreach (var r in _rows.Take(30))
                 sb.AppendLine($"  {r.Time}  {r.Key}\t{r.Layer}\t{r.Action}");
 
             Clipboard.SetText(sb.ToString());
-            StatusText.Text = "诊断信息已复制到剪贴板";
+            StatusText.Text = Loc.T("诊断信息已复制到剪贴板");
         }
         catch (Exception ex)
         {
-            StatusText.Text = "复制失败：" + ex.Message;
+            StatusText.Text = Loc.T("复制失败：") + ex.Message;
         }
     }
 

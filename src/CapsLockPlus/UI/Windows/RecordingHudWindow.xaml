@@ -1,7 +1,8 @@
 ﻿<Window x:Class="CapsLockPlus.UI.Windows.RecordingHudWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="正在录制宏" SizeToContent="WidthAndHeight" WindowStyle="None" AllowsTransparency="True"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+        Title="{loc:T '正在录制宏'}" SizeToContent="WidthAndHeight" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
         ShowActivated="False" Focusable="False" IsHitTestVisible="False"
         FontFamily="{StaticResource Font.Ui}">
@@ -19,13 +20,13 @@
             Padding="15,7" Margin="20">
         <StackPanel Orientation="Horizontal">
             <Ellipse x:Name="Dot" Width="9" Height="9" Fill="{DynamicResource Brush.Danger}" VerticalAlignment="Center" />
-            <TextBlock Text="录制中" Foreground="{DynamicResource Brush.OverlayText}" FontSize="12.5" FontWeight="SemiBold"
+            <TextBlock Text="{loc:T '录制中'}" Foreground="{DynamicResource Brush.OverlayText}" FontSize="12.5" FontWeight="SemiBold"
                        Margin="8,0,0,0" VerticalAlignment="Center" />
             <TextBlock x:Name="Clock" Text="0:00.0" FontFamily="{StaticResource Font.Mono}"
                        Foreground="{DynamicResource Brush.OverlayTextSecondary}" FontSize="12" Margin="10,0,0,0"
                        VerticalAlignment="Center" />
             <TextBlock Text="·" Foreground="{DynamicResource Brush.OverlayTextTertiary}" Margin="8,0" VerticalAlignment="Center" />
-            <TextBlock x:Name="Count" Text="0 个事件" Foreground="{DynamicResource Brush.OverlayTextSecondary}" FontSize="12"
+            <TextBlock x:Name="Count" Text="{loc:T '0 个事件'}" Foreground="{DynamicResource Brush.OverlayTextSecondary}" FontSize="12"
                        VerticalAlignment="Center" />
             <TextBlock x:Name="LastKey" Text="" Foreground="{DynamicResource Brush.OverlayAccentText}" FontSize="12"
                        Margin="10,0,0,0" VerticalAlignment="Center" />

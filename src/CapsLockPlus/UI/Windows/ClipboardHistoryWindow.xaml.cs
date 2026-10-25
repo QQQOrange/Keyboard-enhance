@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -13,7 +13,7 @@ public partial class ClipboardHistoryWindow : Window
     {
         _host = host;
         InitializeComponent();
-        FilterBox.ToolTip = "输入关键字筛选";
+        FilterBox.ToolTip = Loc.T("输入关键字筛选");
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };
     }
 
@@ -59,11 +59,11 @@ public partial class ClipboardHistoryWindow : Window
         try
         {
             System.Windows.Clipboard.SetText(item.Text);
-            StatusText.Text = "已复制到系统剪贴板";
+            StatusText.Text = Loc.T("已复制到系统剪贴板");
         }
         catch (Exception ex)
         {
-            StatusText.Text = "复制失败：" + ex.Message;
+            StatusText.Text = Loc.T("复制失败：") + ex.Message;
         }
     }
 
@@ -80,7 +80,7 @@ public partial class ClipboardHistoryWindow : Window
         public Item(string text)
         {
             Text = text;
-            Time = DateTime.Now.ToString("HH:mm");
+            Time = Loc.FormatShortTime(DateTime.Now);
         }
 
         public string Text { get; }

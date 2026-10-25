@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Input;
 using CapsLockPlus.Core.Settings;
 
@@ -35,21 +35,22 @@ public partial class PasswordPromptWindow : Window
     /// <param name="hint">说明文字。</param>
     /// <param name="okText">确认按钮文字。</param>
     public PasswordPromptWindow(Func<string, bool> verify, string title, string hint,
-        string okText = "继续")
+        string? okText = null)
         : this()
     {
         _verify = verify;
 
-        Title = title;
-        HeaderText.Text = title;
-        HintText.Text = hint;
+        // 显示出口：调用点照旧写中文，这里按当前语言翻一次
+        Title = Loc.T(title);
+        HeaderText.Text = Loc.T(title);
+        HintText.Text = Loc.T(hint);
 
         // 这类用途不存在"先不解锁"，按钮改成取消
-        SkipButton.Content = "取消";
-        FootText.Text = "备份文件是用生成它时的密码加密的，密码丢了就打不开 —— 只能换一份更早的备份。";
+        SkipButton.Content = Loc.T("取消");
+        FootText.Text = Loc.T("备份文件是用生成它时的密码加密的，密码丢了就打不开 —— 只能换一份更早的备份。");
 
         if (FindName("OkButton") is System.Windows.Controls.Button ok)
-            ok.Content = okText;
+            ok.Content = okText ?? Loc.T("继续");
     }
 
     private void OnOk(object sender, RoutedEventArgs e)
@@ -58,7 +59,7 @@ public partial class PasswordPromptWindow : Window
 
         if (string.IsNullOrEmpty(pass))
         {
-            ShowError("请先输入密码");
+            ShowError(Loc.T("请先输入密码"));
             return;
         }
 
@@ -66,8 +67,8 @@ public partial class PasswordPromptWindow : Window
         if (!ok)
         {
             ShowError(_verify != null
-                ? "这个密码解不开这份备份 —— 换一个再试。"
-                : "密码不对 —— 换一个再试，或者关掉窗口后从备份恢复配置。");
+                ? Loc.T("这个密码解不开这份备份 —— 换一个再试。")
+                : Loc.T("密码不对 —— 换一个再试，或者关掉窗口后从备份恢复配置。"));
             PassBox.SelectAll();
             PassBox.Focus();
             return;

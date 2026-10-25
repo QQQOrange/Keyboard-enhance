@@ -100,11 +100,11 @@ public partial class MathBoardWindow : Window
         try
         {
             System.Windows.Clipboard.SetText(_lastResult);
-            ErrorText.Text = "已复制到剪贴板";
+            ErrorText.Text = Loc.T("已复制到剪贴板");
         }
         catch (Exception ex)
         {
-            ErrorText.Text = "复制失败：" + ex.Message;
+            ErrorText.Text = Loc.T("复制失败：") + ex.Message;
         }
     }
 

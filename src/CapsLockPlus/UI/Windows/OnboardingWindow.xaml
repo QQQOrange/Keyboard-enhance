@@ -1,7 +1,8 @@
 ﻿<Window x:Class="CapsLockPlus.UI.Windows.OnboardingWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="欢迎使用按键增强" Width="820" Height="560"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+        Title="{loc:T '欢迎使用按键增强'}" Width="820" Height="560"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize" ShowInTaskbar="False"
         FontFamily="{StaticResource Font.Ui}" UseLayoutRounding="True">
@@ -30,27 +31,27 @@
                                        RenderOptions.BitmapScalingMode="HighQuality"
                                        Source="pack://application:,,,/Assets/app.png" />
                             </Border>
-                            <TextBlock Text="按键增强" FontSize="30" FontWeight="SemiBold" Foreground="White"
+                            <TextBlock Text="{loc:T '按键增强'}" FontSize="30" FontWeight="SemiBold" Foreground="White"
                                        Margin="0,22,0,0" />
-                            <TextBlock Text="让 Caps 键成为你最顺手的修饰键" Foreground="{StaticResource Brush.BrandSubtitle}" FontSize="13.5"
+                            <TextBlock Text="{loc:T '让 Caps 键成为你最顺手的修饰键'}" Foreground="{StaticResource Brush.BrandSubtitle}" FontSize="13.5"
                                        TextWrapping="Wrap" Margin="0,10,0,0" />
                             <StackPanel Margin="0,26,0,0">
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                FontSize="13" Foreground="{StaticResource Brush.BrandAccent}" VerticalAlignment="Center" />
-                                    <TextBlock Text="光标移动不用离开主键区" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
+                                    <TextBlock Text="{loc:T '光标移动不用离开主键区'}" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
                                                Margin="9,0,0,0" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                FontSize="13" Foreground="{StaticResource Brush.BrandAccent}" VerticalAlignment="Center" />
-                                    <TextBlock Text="一个 Qbar 搞定搜索与启动" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
+                                    <TextBlock Text="{loc:T '一个 Qbar 搞定搜索与启动'}" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
                                                Margin="9,0,0,0" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                FontSize="13" Foreground="{StaticResource Brush.BrandAccent}" VerticalAlignment="Center" />
-                                    <TextBlock Text="全部设置都能可视化修改" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
+                                    <TextBlock Text="{loc:T '全部设置都能可视化修改'}" Foreground="{StaticResource Brush.BrandBody}" FontSize="12.5"
                                                Margin="9,0,0,0" />
                                 </StackPanel>
                             </StackPanel>
@@ -67,29 +68,29 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
-                        <TextBlock x:Name="StepTitle" Text="欢迎" Style="{StaticResource Text.H1}" />
-                        <TextBlock x:Name="StepSubtitle" Text="花一分钟做三个选择，之后就能一直用了。"
+                        <TextBlock x:Name="StepTitle" Text="{loc:T '欢迎'}" Style="{StaticResource Text.H1}" />
+                        <TextBlock x:Name="StepSubtitle" Text="{loc:T '花一分钟做三个选择，之后就能一直用了。'}"
                                    Style="{StaticResource Text.Secondary}" Margin="0,8,0,0" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <Grid Grid.Row="1" Margin="0,22,0,0">
                         <!-- 第 1 步 -->
                         <StackPanel x:Name="Step1">
-                            <TextBlock Text="1 · 选一个按键方案" Style="{StaticResource Text.H3}" />
-                            <TextBlock Text="两种方案功能一样，只是字母键的位置不同。不确定就选 Capslox。"
+                            <TextBlock Text="{loc:T '1 · 选一个按键方案'}" Style="{StaticResource Text.H3}" />
+                            <TextBlock Text="{loc:T '两种方案功能一样，只是字母键的位置不同。不确定就选 Capslox。'}"
                                        Style="{StaticResource Text.Tertiary}" Margin="0,6,0,14" TextWrapping="Wrap" />
                             <RadioButton x:Name="SchemeCapslox" GroupName="scheme" IsChecked="True" Margin="0,0,0,10"
                                          Checked="OnSchemeChecked">
                                 <StackPanel>
-                                    <TextBlock Text="Capslox（默认，推荐）" Style="{StaticResource Text.Body}" />
-                                    <TextBlock Text="Caps+S/D/E/F 移动，Caps+J/K/I/L 选择"
+                                    <TextBlock Text="{loc:T 'Capslox（默认，推荐）'}" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Text="{loc:T 'Caps+S/D/E/F 移动，Caps+J/K/I/L 选择'}"
                                                Style="{StaticResource Text.Tertiary}" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton x:Name="SchemeClassic" GroupName="scheme" Checked="OnSchemeChecked">
                                 <StackPanel>
-                                    <TextBlock Text="经典布局（旧版）" Style="{StaticResource Text.Body}" />
-                                    <TextBlock Text="Caps+LAlt+方向 切窗口，Caps+Z 撤销重做"
+                                    <TextBlock Text="{loc:T '经典布局（旧版）'}" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Text="{loc:T 'Caps+LAlt+方向 切窗口，Caps+Z 撤销重做'}"
                                                Style="{StaticResource Text.Tertiary}" />
                                 </StackPanel>
                             </RadioButton>
@@ -97,46 +98,46 @@
 
                         <!-- 第 2 步 -->
                         <StackPanel x:Name="Step2" Visibility="Collapsed">
-                            <TextBlock Text="2 · 是否开机自启" Style="{StaticResource Text.H3}" />
-                            <TextBlock Text="开启后登录 Windows 就会自动在托盘运行，随时可用。"
+                            <TextBlock Text="{loc:T '2 · 是否开机自启'}" Style="{StaticResource Text.H3}" />
+                            <TextBlock Text="{loc:T '开启后登录 Windows 就会自动在托盘运行，随时可用。'}"
                                        Style="{StaticResource Text.Tertiary}" Margin="0,6,0,14" TextWrapping="Wrap" />
                             <RadioButton x:Name="StartupOn" GroupName="startup" IsChecked="True" Margin="0,0,0,10">
                                 <StackPanel>
-                                    <TextBlock Text="开启（推荐）" Style="{StaticResource Text.Body}" />
-                                    <TextBlock Text="开机即可用，不占用桌面" Style="{StaticResource Text.Tertiary}" />
+                                    <TextBlock Text="{loc:T '开启（推荐）'}" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Text="{loc:T '开机即可用，不占用桌面'}" Style="{StaticResource Text.Tertiary}" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton x:Name="StartupOff" GroupName="startup">
                                 <StackPanel>
-                                    <TextBlock Text="先不开" Style="{StaticResource Text.Body}" />
-                                    <TextBlock Text="以后可以在设置里随时打开" Style="{StaticResource Text.Tertiary}" />
+                                    <TextBlock Text="{loc:T '先不开'}" Style="{StaticResource Text.Body}" />
+                                    <TextBlock Text="{loc:T '以后可以在设置里随时打开'}" Style="{StaticResource Text.Tertiary}" />
                                 </StackPanel>
                             </RadioButton>
                         </StackPanel>
 
                         <!-- 第 3 步 -->
                         <StackPanel x:Name="Step3" Visibility="Collapsed">
-                            <TextBlock Text="3 · 试一下" Style="{StaticResource Text.H3}" />
-                            <TextBlock Text="按下面的顺序按一遍，就能体会到它和普通改键的区别。"
+                            <TextBlock Text="{loc:T '3 · 试一下'}" Style="{StaticResource Text.H3}" />
+                            <TextBlock Text="{loc:T '按下面的顺序按一遍，就能体会到它和普通改键的区别。'}"
                                        Style="{StaticResource Text.Tertiary}" Margin="0,6,0,16" TextWrapping="Wrap" />
                             <Border Style="{StaticResource Card.Flat}" Padding="16,14">
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                         <Border Style="{StaticResource Keycap}"><TextBlock Text="Caps" FontSize="11.5" /></Border>
                                         <Border Style="{StaticResource Keycap}"><TextBlock Text="S" FontSize="11.5" /></Border>
-                                        <TextBlock Text="光标左移一个字符" Style="{StaticResource Text.Secondary}"
+                                        <TextBlock Text="{loc:T '光标左移一个字符'}" Style="{StaticResource Text.Secondary}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                         <Border Style="{StaticResource Keycap}"><TextBlock Text="Caps" FontSize="11.5" /></Border>
                                         <Border Style="{StaticResource Keycap}"><TextBlock Text="Q" FontSize="11.5" /></Border>
-                                        <TextBlock Text="打开 Qbar，输入 calc 回车" Style="{StaticResource Text.Secondary}"
+                                        <TextBlock Text="{loc:T '打开 Qbar，输入 calc 回车'}" Style="{StaticResource Text.Secondary}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <Border Style="{StaticResource Keycap}"><TextBlock Text="Caps" FontSize="11.5" /></Border>
                                         <Border Style="{StaticResource Keycap}"><TextBlock Text="F2" FontSize="11.5" /></Border>
-                                        <TextBlock Text="打开计算器" Style="{StaticResource Text.Secondary}"
+                                        <TextBlock Text="{loc:T '打开计算器'}" Style="{StaticResource Text.Secondary}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0" />
                                     </StackPanel>
                                 </StackPanel>
@@ -148,11 +149,11 @@
                         <TextBlock x:Name="StepDots" Text="● ○ ○" Style="{StaticResource Text.Tertiary}"
                                    VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button x:Name="SkipButton" Content="跳过" Style="{StaticResource Button.Ghost}"
+                            <Button x:Name="SkipButton" Content="{loc:T '跳过'}" Style="{StaticResource Button.Ghost}"
                                     Click="OnSkip" />
-                            <Button x:Name="BackButton" Content="上一步" Style="{StaticResource Button.Base}"
+                            <Button x:Name="BackButton" Content="{loc:T '上一步'}" Style="{StaticResource Button.Base}"
                                     Margin="8,0,0,0" Click="OnBack" Visibility="Collapsed" />
-                            <Button x:Name="NextButton" Content="下一步" Style="{StaticResource Button.Primary}"
+                            <Button x:Name="NextButton" Content="{loc:T '下一步'}" Style="{StaticResource Button.Primary}"
                                     Margin="8,0,0,0" Click="OnNext" />
                         </StackPanel>
                     </Grid>

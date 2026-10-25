@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
@@ -148,7 +148,7 @@ public partial class LayersView : UserControl
 
     private IEnumerable<ComboBoxItem> ActionItems(Core.Settings.TriggerKey? current = null)
     {
-        yield return new ComboBoxItem { Content = "（无）", Tag = "none" };
+        yield return new ComboBoxItem { Content = Loc.T("（无）"), Tag = "none" };
         if (_host == null) yield break;
 
         /* 隐藏动作（「打开网址」「运行程序」）不再列出来 —— 它们已经被
@@ -165,7 +165,7 @@ public partial class LayersView : UserControl
         {
             yield return new ComboBoxItem
             {
-                Content = $"[{a.Category}] {a.Title}",
+                Content = $"[{a.DisplayCategory}] {a.Title}",
                 Tag = a.Id,
             };
         }
@@ -214,7 +214,7 @@ public partial class LayersView : UserControl
         // 触发键必须是单键（不带修饰键），否则语义混乱
         if (dlg.CapturedMods != Core.Input.KeyModifiers.None)
         {
-            _host.Notify("触发键不能带修饰键，请直接按一个键");
+            _host.Notify(Loc.T("触发键不能带修饰键，请直接按一个键"));
             return;
         }
 
@@ -222,7 +222,7 @@ public partial class LayersView : UserControl
         if (_host.Settings.Triggers.Any(t =>
                 t.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))
         {
-            _host.Notify("这个键已经是触发键了");
+            _host.Notify(Loc.T("这个键已经是触发键了"));
             return;
         }
 
@@ -251,7 +251,7 @@ public partial class LayersView : UserControl
         if (_host == null || _editing == null) return;
         if (_host.Settings.Triggers.Count <= 1)
         {
-            _host.Notify("至少保留一个触发键");
+            _host.Notify(Loc.T("至少保留一个触发键"));
             return;
         }
         string name = KeyName.Display(_editing.Key);
@@ -270,7 +270,7 @@ public partial class LayersView : UserControl
         if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
         if (dlg.CapturedMods != Core.Input.KeyModifiers.None)
         {
-            _host.Notify("触发键不能带修饰键，请直接按一个键");
+            _host.Notify(Loc.T("触发键不能带修饰键，请直接按一个键"));
             return;
         }
 
@@ -279,7 +279,7 @@ public partial class LayersView : UserControl
                 !ReferenceEquals(t, _editing) &&
                 t.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))
         {
-            _host.Notify("这个键已经是触发键了");
+            _host.Notify(Loc.T("这个键已经是触发键了"));
             return;
         }
 

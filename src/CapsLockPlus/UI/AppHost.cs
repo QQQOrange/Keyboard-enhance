@@ -3,6 +3,7 @@ using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Qbar;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Update;
@@ -270,12 +271,19 @@ public sealed class AppHost : IDisposable
     /// <summary>诊断开关：把钩子收到的每个按键写进日志。</summary>
     public void EnableKeyTrace() => Engine.EnableKeyTrace();
 
+    /// <summary>
+    /// 弹一条 Toast 提示。
+    ///
+    /// 这里是**显示出口**，翻译放在这一层：全仓几十处调用点
+    /// （`Notify("已恢复默认设置")`）都照旧写中文，不必逐处包 Loc.T。
+    /// 查不到译文就原样显示，所以带参数的拼串（"已同步 N 项"）最坏也只是保持中文。
+    /// </summary>
     public void Notify(string message)
     {
         if (string.IsNullOrWhiteSpace(message) || !Settings.Global.ShowToast) return;
         /* 直接交给 ToastWindow：它内部会调度到界面线程，且只显示最新一条。
          * 连按音量键时，前一条还没画出来就被后一条顶掉，不会积压。 */
-        ToastWindow.Show(message);
+        ToastWindow.Show(Loc.T(message));
     }
 
     public void ToggleEnabled() => SetEnabled(!Engine.Enabled);

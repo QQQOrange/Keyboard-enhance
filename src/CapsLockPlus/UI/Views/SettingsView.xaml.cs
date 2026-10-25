@@ -84,7 +84,7 @@ public partial class SettingsView : UserControl
         _host.Settings.Global.StartWithWindows = enabled;
         Save();
         RefreshAdminState();      // 管理员模式下自启会弹 UAC，提示要跟着变
-        _host.Notify(enabled ? "已设置开机自启" : "已取消开机自启");
+        _host.Notify(enabled ? Loc.T("已设置开机自启") : Loc.T("已取消开机自启"));
     }
 
     private void OnTrayChanged(object sender, RoutedEventArgs e)
@@ -120,7 +120,7 @@ public partial class SettingsView : UserControl
     {
         bool admin = Core.ElevationHelper.IsElevated;
         AdminBadge.Visibility = admin ? Visibility.Visible : Visibility.Collapsed;
-        AdminBadgeText.Text = admin ? "管理员" : "普通权限";
+        AdminBadgeText.Text = admin ? Loc.T("管理员") : Loc.T("普通权限");
         if (RunAsAdminBox != null) RunAsAdminBox.IsChecked = _host?.Settings.Global.RunAsAdmin ?? false;
         PermissionText.Text = Core.ElevationHelper.PermissionSummary();
         RefreshAdminState();
@@ -140,18 +140,18 @@ public partial class SettingsView : UserControl
         bool running = Core.ElevationHelper.IsElevated;
         bool wanted = _host?.Settings.Global.RunAsAdmin ?? false;
 
-        AdminStateText.Text = $"当前：{(running ? "管理员权限" : "普通权限")}运行　·　" +
-                              $"设置：下次启动以{(wanted ? "管理员" : "普通")}权限运行";
+        AdminStateText.Text = $"当前：{(running ? Loc.T("管理员权限") : Loc.T("普通权限"))}运行　·　" +
+                              $"设置：下次启动以{(wanted ? Loc.T("管理员") : Loc.T("普通"))}权限运行";
 
         /* 开机自启 + 管理员 = 每次登录都要点一次 UAC。
          * 这是 Windows 的规矩（注册表 Run 项没法声明"要高权限"），
          * 与其让用户莫名其妙，不如直说。 */
         if (wanted && _host?.Settings.Global.StartWithWindows == true)
-            AdminStateText.Text += "\n开机自启时会弹一次 UAC 确认 —— 关掉「开机自动启动」就不会弹。";
+            AdminStateText.Text += Loc.T("\n开机自启时会弹一次 UAC 确认 —— 关掉「开机自动启动」就不会弹。");
 
         RestartElevatedButton.Visibility = running == wanted ? Visibility.Collapsed : Visibility.Visible;
         // 已经是管理员时不能再"提权重启"，按钮只用于"降回普通权限"
-        RestartElevatedButton.Content = wanted ? "立即重启以生效" : "立即重启（回到普通权限）";
+        RestartElevatedButton.Content = wanted ? Loc.T("立即重启以生效") : Loc.T("立即重启（回到普通权限）");
     }
 
     /// <summary>
@@ -172,14 +172,14 @@ public partial class SettingsView : UserControl
         if (enable)
         {
             bool ok = AppDialog.Confirm(Window.GetWindow(this),
-                "以管理员身份启动后，「选中文字 → 直接搜索」会失效。\n\n" +
-                "原因：Windows 禁止管理员进程向普通权限的浏览器 / 编辑器\n" +
-                "注入输入（UIPI 安全限制），取词通道会全部被拦掉。\n\n" +
-                "好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n" +
-                "（锁屏状态下任何用户态程序都无法使用快捷键，\n" +
-                " 这与是否管理员无关。）\n\n" +
-                "确定要开启吗？",
-                "开启管理员模式", DialogKind.Warn, okText: "开启");
+                Loc.T("以管理员身份启动后，「选中文字 → 直接搜索」会失效。\n\n") +
+                Loc.T("原因：Windows 禁止管理员进程向普通权限的浏览器 / 编辑器\n") +
+                Loc.T("注入输入（UIPI 安全限制），取词通道会全部被拦掉。\n\n") +
+                Loc.T("好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n") +
+                Loc.T("（锁屏状态下任何用户态程序都无法使用快捷键，\n") +
+                Loc.T(" 这与是否管理员无关。）\n\n") +
+                Loc.T("确定要开启吗？"),
+                Loc.T("开启管理员模式"), DialogKind.Warn, okText: Loc.T("开启"));
             if (!ok)
             {
                 _suppress = true;
@@ -195,9 +195,9 @@ public partial class SettingsView : UserControl
 
         bool ask = AppDialog.Confirm(Window.GetWindow(this),
             enable
-                ? "已保存。下次启动会以管理员身份运行（会弹一次 UAC 确认）。\n\n现在就重启吗？"
-                : "已保存。下次启动会以普通权限运行。\n\n现在就重启吗？",
-            "需要重启才生效", DialogKind.Question, okText: "现在重启", cancelText: "稍后");
+                ? Loc.T("已保存。下次启动会以管理员身份运行（会弹一次 UAC 确认）。\n\n现在就重启吗？")
+                : Loc.T("已保存。下次启动会以普通权限运行。\n\n现在就重启吗？"),
+            Loc.T("需要重启才生效"), DialogKind.Question, okText: Loc.T("现在重启"), cancelText: Loc.T("稍后"));
         if (ask) RestartApp();
     }
 
@@ -222,8 +222,8 @@ public partial class SettingsView : UserControl
                 return;
             }
             AppDialog.Warn(Window.GetWindow(this),
-                "提权失败：" + (err ?? "未知原因") + "\n\n（多半是在 UAC 对话框里点了「否」）",
-                "没能以管理员身份重启");
+                Loc.T("提权失败：") + (err ?? Loc.T("未知原因")) + Loc.T("\n\n（多半是在 UAC 对话框里点了「否」）"),
+                Loc.T("没能以管理员身份重启"));
             return;
         }
         _host.ExitApp(restart: true);
@@ -252,8 +252,8 @@ public partial class SettingsView : UserControl
         _suppress = false;
 
         StartupPwStateText.Text = on
-            ? "已开启：下次启动软件时先要输入密码。忘记密码可删除数据目录里的 startup.json 解除保护（其他设置不受影响）。"
-            : "未开启：启动软件不需要密码。";
+            ? Loc.T("已开启：下次启动软件时先要输入密码。忘记密码可删除数据目录里的 startup.json 解除保护（其他设置不受影响）。")
+            : Loc.T("未开启：启动软件不需要密码。");
 
         ChangeStartupPwButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -268,8 +268,8 @@ public partial class SettingsView : UserControl
         if (enable)
         {
             var dlg = new NewPasswordWindow(
-                "设置启动密码",
-                "设好后，每次启动本软件都要先输入这个密码才能进入主界面。");
+                Loc.T("设置启动密码"),
+                Loc.T("设好后，每次启动本软件都要先输入这个密码才能进入主界面。"));
             dlg.ShowDialog();
             if (dlg.Password == null)
             {
@@ -279,7 +279,7 @@ public partial class SettingsView : UserControl
 
             if (!StartupPassword.TrySet(dlg.Password, out string err))
             {
-                AppDialog.Error(Window.GetWindow(this), err, "设置启动密码");
+                AppDialog.Error(Window.GetWindow(this), err, Loc.T("设置启动密码"));
                 RevertStartupPwBox(false);
                 return;
             }
@@ -287,16 +287,16 @@ public partial class SettingsView : UserControl
             StartupPassword.MirrorTo(sec);
             Save();
             RefreshStartupPwState();
-            _host.Notify("已设置启动密码，下次启动软件时生效");
+            _host.Notify(Loc.T("已设置启动密码，下次启动软件时生效"));
         }
         else
         {
             // 关保护要先证明是机主：路过的人不能顺手一拨就解开
             var verify = new StartupPasswordWindow(
                 p => StartupPassword.Verify(p),
-                "关闭启动密码",
-                "请输入当前的启动密码。验证通过后才能关闭保护。",
-                "关闭保护", "取消");
+                Loc.T("关闭启动密码"),
+                Loc.T("请输入当前的启动密码。验证通过后才能关闭保护。"),
+                Loc.T("关闭保护"), Loc.T("取消"));
             verify.ShowDialog();
             if (!verify.Passed)
             {
@@ -308,7 +308,7 @@ public partial class SettingsView : UserControl
             StartupPassword.MirrorTo(sec);
             Save();
             RefreshStartupPwState();
-            _host.Notify("已关闭启动密码");
+            _host.Notify(Loc.T("已关闭启动密码"));
         }
     }
 
@@ -319,28 +319,28 @@ public partial class SettingsView : UserControl
 
         var verify = new StartupPasswordWindow(
             p => StartupPassword.Verify(p),
-            "修改启动密码",
-            "请输入当前的启动密码。",
-            "下一步", "取消");
+            Loc.T("修改启动密码"),
+            Loc.T("请输入当前的启动密码。"),
+            Loc.T("下一步"), Loc.T("取消"));
         verify.ShowDialog();
         if (!verify.Passed) return;
 
         var dlg = new NewPasswordWindow(
-            "修改启动密码",
-            "设个好记的新密码。下次启动就要用它了。");
+            Loc.T("修改启动密码"),
+            Loc.T("设个好记的新密码。下次启动就要用它了。"));
         dlg.ShowDialog();
         if (dlg.Password == null) return;
 
         if (!StartupPassword.TrySet(dlg.Password, out string err))
         {
-            AppDialog.Error(Window.GetWindow(this), err, "修改启动密码");
+            AppDialog.Error(Window.GetWindow(this), err, Loc.T("修改启动密码"));
             return;
         }
 
         StartupPassword.MirrorTo(_host.Settings.Security);
         Save();
         RefreshStartupPwState();
-        _host.Notify("已修改启动密码");
+        _host.Notify(Loc.T("已修改启动密码"));
     }
 
     /// <summary>把开关拨回真实状态（用户取消流程时用，避免界面撒谎）。</summary>
@@ -357,7 +357,7 @@ public partial class SettingsView : UserControl
         _host.Settings.Global.ShowActionFeedback = FeedbackBox.IsChecked == true;
         Save();
         if (FeedbackBox.IsChecked == true)
-            _host.Notify("已开启按键反馈：按 Caps+S 试试，角落会显示「左移」");
+            _host.Notify(Loc.T("已开启按键反馈：按 Caps+S 试试，角落会显示「左移」"));
     }
 
     private void OnDoubleTapChanged(object sender, RoutedEventArgs e)
@@ -425,14 +425,14 @@ public partial class SettingsView : UserControl
         VolumeStepText.Text = (v % sys == 0
             ? $"{v}%（按住时按系统 {sys}% 细调）"
             : $"{v}%（系统步进 {sys}%，按整数倍补偿，长期平均正好 {v}%）")
-            + " · 单个键可在「按键映射 → 编辑绑定」里单独设步进";
+            + Loc.T(" · 单个键可在「按键映射 → 编辑绑定」里单独设步进");
     }
 
     private void UpdateBrightnessStepText(int v)
     {
         if (BrightnessStepText == null) return;
         BrightnessStepText.Text = $"{v}%（按住时按 1% 细调）"
-            + " · 单个键可在「按键映射 → 编辑绑定」里单独设步进";
+            + Loc.T(" · 单个键可在「按键映射 → 编辑绑定」里单独设步进");
     }
 
     private void OnMouseSpeedChanged(object sender, RoutedEventArgs e)
@@ -525,7 +525,7 @@ public partial class SettingsView : UserControl
 
         /* 顺序有讲究：
          * 1) 先 Loc.Apply —— 换字典并把所有 {loc:T} 令牌作废，XAML 上的文字**自己**重画；
-         * 2) 再 Refresh —— 代码里拼出来的文本（"设置文件：…"这类）刷新时才会重算；
+         * 2) 再 Refresh —— 代码里拼出来的文本（Loc.T("设置文件：…")这类）刷新时才会重算；
          * 3) 最后重建常驻界面 —— 托盘菜单、动作目录、提示气泡是长生命周期对象，
          *    它们的文本在构造时就定死了，只能靠事件重建。
          * Refresh() 内部自己管 _suppress，这里不要在外层再动它。 */
@@ -539,8 +539,8 @@ public partial class SettingsView : UserControl
         if (_host == null) return;
         var dlg = new OpenFileDialog
         {
-            Title = "选择旧版 CapsLock+settings.ini",
-            Filter = "CapsLock+ 设置文件|*.ini|所有文件|*.*",
+            Title = Loc.T("选择旧版 CapsLock+settings.ini"),
+            Filter = Loc.T("CapsLock+ 设置文件|*.ini|所有文件|*.*"),
         };
         if (dlg.ShowDialog() != true) return;
         try
@@ -553,12 +553,12 @@ public partial class SettingsView : UserControl
             string msg = $"导入完成：\n· 按键 {result.Keys} 项\n· 搜索指令 {result.Search} 条\n· 程序 {result.Run} 个\n" +
                          $"· 网址 {result.Web} 个\n· 文字替换 {result.HotStrings} 条";
             if (result.Warnings.Count > 0)
-                msg += "\n\n以下项目需要手动确认：\n" + string.Join("\n", result.Warnings.Take(8));
-            AppDialog.Info(Window.GetWindow(this), msg, "导入旧版设置", DialogKind.Success);
+                msg += Loc.T("\n\n以下项目需要手动确认：\n") + string.Join("\n", result.Warnings.Take(8));
+            AppDialog.Info(Window.GetWindow(this), msg, Loc.T("导入旧版设置"), DialogKind.Success);
         }
         catch (Exception ex)
         {
-            AppDialog.Error(Window.GetWindow(this), "导入失败：" + ex.Message, "导入旧版设置");
+            AppDialog.Error(Window.GetWindow(this), Loc.T("导入失败：") + ex.Message, Loc.T("导入旧版设置"));
         }
     }
 
@@ -571,7 +571,7 @@ public partial class SettingsView : UserControl
         }
         catch (Exception ex)
         {
-            _host?.Notify("打开失败：" + ex.Message);
+            _host?.Notify(Loc.T("打开失败：") + ex.Message);
         }
     }
 
@@ -585,7 +585,7 @@ public partial class SettingsView : UserControl
         }
         catch (Exception ex)
         {
-            _host?.Notify("打开日志失败：" + ex.Message);
+            _host?.Notify(Loc.T("打开日志失败：") + ex.Message);
         }
     }
 
@@ -595,13 +595,13 @@ public partial class SettingsView : UserControl
     {
         if (_host == null) return;
         if (!AppDialog.ConfirmDanger(Window.GetWindow(this),
-                "把全部设置恢复成默认值？\n（按键映射、Qbar 条目、窗口绑定、外观都会被重置）\n\n" +
-                "启动密码不受影响 —— 要关掉它请用上面的开关（需要验证当前密码）。",
-                "重置全部设置", okText: "恢复默认")) return;
+                Loc.T("把全部设置恢复成默认值？\n（按键映射、Qbar 条目、窗口绑定、外观都会被重置）\n\n") +
+                Loc.T("启动密码不受影响 —— 要关掉它请用上面的开关（需要验证当前密码）。"),
+                Loc.T("重置全部设置"), okText: Loc.T("恢复默认"))) return;
         _host.Settings = DefaultSettings.Create();
         _host.SaveSettings();
         _host.ReloadAll();
         Refresh();
-        _host.Notify("已恢复默认设置");
+        _host.Notify(Loc.T("已恢复默认设置"));
     }
 }

@@ -1,6 +1,7 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.LayersView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.LayersView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
              FontFamily="{StaticResource Font.Ui}">
     <Grid Margin="24,4,20,20">
         <Grid.RowDefinitions>
@@ -10,9 +11,9 @@
 
         <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16,13" Margin="0,0,0,14">
             <StackPanel>
-                <TextBlock Text="触发键与键盘层" Style="{StaticResource Text.H2}" />
+                <TextBlock Text="{loc:T '触发键与键盘层'}" Style="{StaticResource Text.H2}" />
                 <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                           Text="按住触发键超过阈值即进入它绑定的层；短按则保留原键盘功能。&#x0a;每个触发键可绑定不同层，层与层之间按键互不干扰。" />
+                           Text="{loc:T '按住触发键超过阈值即进入它绑定的层；短按则保留原键盘功能。&#x0a;每个触发键可绑定不同层，层与层之间按键互不干扰。'}" />
             </StackPanel>
         </Border>
 
@@ -31,10 +32,10 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="触发键" Style="{StaticResource Text.H3}" />
+                    <TextBlock Grid.Row="0" Text="{loc:T '触发键'}" Style="{StaticResource Text.H3}" />
                     <TextBlock Grid.Row="0" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
                                Margin="0,26,0,0"
-                               Text="每一项直接显示：按哪个键、进第几层、怎么进层。" />
+                               Text="{loc:T '每一项直接显示：按哪个键、进第几层、怎么进层。'}" />
 
                     <ListBox Grid.Row="1" x:Name="TriggerList" Background="Transparent" BorderThickness="0"
                              Margin="0,10,0,0" ItemContainerStyle="{StaticResource RowItem}"
@@ -66,8 +67,8 @@
                     </ListBox>
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Content="＋ 添加触发键" Style="{StaticResource Button.Primary}" Click="OnAddTrigger" />
-                        <Button Content="删除" Style="{StaticResource Button.Danger}" Margin="8,0,0,0"
+                        <Button Content="{loc:T '＋ 添加触发键'}" Style="{StaticResource Button.Primary}" Click="OnAddTrigger" />
+                        <Button Content="{loc:T '删除'}" Style="{StaticResource Button.Danger}" Margin="8,0,0,0"
                                 Click="OnDeleteTrigger" />
                     </StackPanel>
                 </Grid>
@@ -79,33 +80,33 @@
                     <!-- 触发键编辑 -->
                     <Border Style="{StaticResource Card}" Padding="18,16" Margin="7,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="触发键设置" Style="{StaticResource Text.H3}" />
-                            <TextBlock x:Name="NoTriggerHint" Text="先在左边选一个触发键" Style="{StaticResource Text.Tertiary}"
+                            <TextBlock Text="{loc:T '触发键设置'}" Style="{StaticResource Text.H3}" />
+                            <TextBlock x:Name="NoTriggerHint" Text="{loc:T '先在左边选一个触发键'}" Style="{StaticResource Text.Tertiary}"
                                        Margin="0,8,0,0" />
 
                             <StackPanel x:Name="TriggerEditor" Visibility="Collapsed">
-                                <TextBlock Text="物理键" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
+                                <TextBlock Text="{loc:T '物理键'}" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
                                 <StackPanel Orientation="Horizontal">
                                     <Border Style="{StaticResource Keycap}" Padding="12,7" MinWidth="80">
                                         <TextBlock x:Name="TriggerKeyLabel" Text="CapsLock" FontSize="13"
                                                    FontWeight="SemiBold" Foreground="{DynamicResource Brush.Accent}"
                                                    HorizontalAlignment="Center" />
                                     </Border>
-                                    <Button Content="改键…" Style="{StaticResource Button.Base}" Padding="12,6"
+                                    <Button Content="{loc:T '改键…'}" Style="{StaticResource Button.Base}" Padding="12,6"
                                             Margin="10,0,0,0" Click="OnChangeTriggerKey"
-                                            ToolTip="按一下目标键即可更换触发键" />
+                                            ToolTip="{loc:T '按一下目标键即可更换触发键'}" />
                                 </StackPanel>
 
-                                <TextBlock Text="绑定到哪一层" Style="{StaticResource Text.Secondary}"
+                                <TextBlock Text="{loc:T '绑定到哪一层'}" Style="{StaticResource Text.Secondary}"
                                            Margin="0,14,0,6" />
                                 <ComboBox x:Name="LayerBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnTriggerLayerChanged" />
 
-                                <TextBlock Text="长按阈值（毫秒）" Style="{StaticResource Text.Secondary}"
+                                <TextBlock Text="{loc:T '长按阈值（毫秒）'}" Style="{StaticResource Text.Secondary}"
                                            Margin="0,14,0,6" />
                                 <TextBox x:Name="HoldMsBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
                                          VerticalContentAlignment="Center" TextChanged="OnHoldMsChanged" />
-                                <TextBlock Text="按住超过这个时间才进入层；在此之前松开 = 短按，走下面的短按动作。"
+                                <TextBlock Text="{loc:T '按住超过这个时间才进入层；在此之前松开 = 短按，走下面的短按动作。'}"
                                            Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0" />
 
                                 <Border Style="{StaticResource Divider}" Margin="0,14,0,12" />
@@ -116,9 +117,9 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Text="按住触发键时按别的键，立即进层"
+                                        <TextBlock Text="{loc:T '按住触发键时按别的键，立即进层'}"
                                                    Style="{StaticResource Text.Body}" TextWrapping="Wrap" />
-                                        <TextBlock Text="推荐开启。否则每次按组合键都要先等满上面的阈值，手感会明显发涩。"
+                                        <TextBlock Text="{loc:T '推荐开启。否则每次按组合键都要先等满上面的阈值，手感会明显发涩。'}"
                                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
                                                    Margin="0,3,0,0" />
                                     </StackPanel>
@@ -129,11 +130,11 @@
 
                                 <Border Style="{StaticResource Divider}" Margin="0,12,0,12" />
 
-                                <TextBlock Text="短按动作" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
+                                <TextBlock Text="{loc:T '短按动作'}" Style="{StaticResource Text.Secondary}" Margin="0,14,0,6" />
                                 <ComboBox x:Name="TapActionBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnTapActionChanged" MaxDropDownHeight="320" />
 
-                                <TextBlock Text="双击动作（留空 = 关闭双击）" Style="{StaticResource Text.Secondary}"
+                                <TextBlock Text="{loc:T '双击动作（留空 = 关闭双击）'}" Style="{StaticResource Text.Secondary}"
                                            Margin="0,14,0,6" />
                                 <ComboBox x:Name="DoubleTapBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnDoubleTapActionChanged" MaxDropDownHeight="320" />
@@ -144,9 +145,9 @@
                     <!-- 层列表 -->
                     <Border Style="{StaticResource Card}" Padding="18,16" Margin="7,0,0,0">
                         <StackPanel>
-                            <TextBlock Text="层（共 10 个）" Style="{StaticResource Text.H3}" />
+                            <TextBlock Text="{loc:T '层（共 10 个）'}" Style="{StaticResource Text.H3}" />
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       Text="每层的按键绑定在「按键映射」页编辑；从这里跳过去会自动切到对应层。" />
+                                       Text="{loc:T '每层的按键绑定在「按键映射」页编辑；从这里跳过去会自动切到对应层。'}" />
                             <ItemsControl x:Name="LayerList" Margin="0,12,0,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -168,7 +169,7 @@
                                                     <TextBlock Text="{Binding Detail}"
                                                                Style="{StaticResource Text.Tertiary}" Margin="0,2,0,0" />
                                                 </StackPanel>
-                                                <Button Grid.Column="2" Content="编辑按键" Style="{StaticResource Button.Ghost}"
+                                                <Button Grid.Column="2" Content="{loc:T '编辑按键'}" Style="{StaticResource Button.Ghost}"
                                                         Padding="12,5" Tag="{Binding Id}"
                                                         Click="OnEditLayerKeys" />
                                             </Grid>

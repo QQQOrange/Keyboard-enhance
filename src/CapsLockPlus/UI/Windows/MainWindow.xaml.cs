@@ -149,17 +149,17 @@ public partial class MainWindow : Window
 
         (PageTitle.Text, PageBadge.Text) = page switch
         {
-            "guide" => ("快速上手", "3 分钟学会"),
-            "keys" => ("按键映射", "可视化编辑"),
-            "qbar" => ("Qbar 面板", "搜索 · 启动 · 计算"),
-            "clipboard" => ("剪贴板", "独立剪贴板"),
-            "macros" => ("宏", "录制并绑定"),
-            "layers" => ("触发键与层", "多触发键 · 10 层"),
-            "backup" => ("同步与备份", "WebDAV · 导入导出"),
-            "settings" => ("设置", "全局选项"),
-            "test" => ("测试", "按键 · 切层 · 诊断"),
-            "help" => ("快捷键速查", "随时查看"),
-            "about" => ("关于", "版本与更新"),
+            "guide" => (Loc.T("快速上手"), Loc.T("3 分钟学会")),
+            "keys" => (Loc.T("按键映射"), Loc.T("可视化编辑")),
+            "qbar" => (Loc.T("Qbar 面板"), Loc.T("搜索 · 启动 · 计算")),
+            "clipboard" => (Loc.T("剪贴板"), Loc.T("独立剪贴板")),
+            "macros" => (Loc.T("宏"), Loc.T("录制并绑定")),
+            "layers" => (Loc.T("触发键与层"), Loc.T("多触发键 · 10 层")),
+            "backup" => (Loc.T("同步与备份"), Loc.T("WebDAV · 导入导出")),
+            "settings" => (Loc.T("设置"), Loc.T("全局选项")),
+            "test" => (Loc.T("测试"), Loc.T("按键 · 切层 · 诊断")),
+            "help" => (Loc.T("快捷键速查"), Loc.T("随时查看")),
+            "about" => (Loc.T("关于"), Loc.T("版本与更新")),
             _ => ("CapsLock+", ""),
         };
 
@@ -235,10 +235,10 @@ public partial class MainWindow : Window
     private void UpdateStatus()
     {
         bool enabled = _host.Engine.Enabled;
-        StatusText.Text = enabled ? "正在运行" : "已暂停";
+        StatusText.Text = enabled ? Loc.T("正在运行") : Loc.T("已暂停");
         StatusDot.Fill = (System.Windows.Media.Brush)FindResource(enabled ? "Brush.Success" : "Brush.Warning");
-        HookText.Text = _host.HookAlive ? "键盘钩子正常" : "键盘钩子未生效";
-        PauseButton.Content = enabled ? "暂停" : "恢复";
+        HookText.Text = _host.HookAlive ? Loc.T("键盘钩子正常") : Loc.T("键盘钩子未生效");
+        PauseButton.Content = enabled ? Loc.T("暂停") : Loc.T("恢复");
         PauseButton.Foreground = (System.Windows.Media.Brush)FindResource(enabled ? "Brush.TextSecondary" : "Brush.Accent");
     }
 
@@ -262,9 +262,9 @@ public partial class MainWindow : Window
         WindowChrome.Apply(this, dark);
         _host.Notify(next switch
         {
-            ThemeManager.Mode.Light => "已切换到浅色主题",
-            ThemeManager.Mode.Dark => "已切换到深色主题",
-            _ => "已跟随系统主题",
+            ThemeManager.Mode.Light => Loc.T("已切换到浅色主题"),
+            ThemeManager.Mode.Dark => Loc.T("已切换到深色主题"),
+            _ => Loc.T("已跟随系统主题"),
         });
     }
 

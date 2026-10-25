@@ -28,18 +28,18 @@ public static class UiText
     public const string FailMark = "✗ ";
 
     /// <summary>成功：`已 …`。</summary>
-    public static string Done(string what) => "已" + what;
+    public static string Done(string what) => Localization.Loc.F("已{0}", what);
 
     /// <summary>
     /// 失败：`没能<做什么>：<原因>`。原因为空时只保留前半句。
     /// </summary>
     public static string Failed(string what, string? reason = null)
     {
-        if (string.IsNullOrWhiteSpace(reason)) return "没能" + what;
+        if (string.IsNullOrWhiteSpace(reason)) return Localization.Loc.F("没能{0}", what);
 
         // 原因里可能已经带句号或冒号（来自系统异常），去掉重复标点
         string r = reason.Trim().TrimEnd('。', '.', '；', ';');
-        return $"没能{what}：{r}";
+        return Localization.Loc.F("没能{0}：{1}", what, r);
     }
 
     /// <summary>状态行：成功（带 ✓）。</summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Input;
 using CapsLockPlus.Core.Settings;
@@ -23,9 +23,9 @@ public partial class NewPasswordWindow : Window
     {
         InitializeComponent();
 
-        Title = title;
-        HeaderText.Text = title;
-        if (!string.IsNullOrEmpty(hint)) HintText.Text = hint;
+        Title = Loc.T(title);
+        HeaderText.Text = Loc.T(title);
+        if (!string.IsNullOrEmpty(hint)) HintText.Text = Loc.T(hint);
 
         Loaded += (_, _) => PassBox.Focus();
     }
@@ -44,7 +44,7 @@ public partial class NewPasswordWindow : Window
 
         if (!string.Equals(a, b, StringComparison.Ordinal))
         {
-            ShowError("两次输入的密码不一致");
+            ShowError(Loc.T("两次输入的密码不一致"));
             ConfirmBox.SelectAll();
             ConfirmBox.Focus();
             return;

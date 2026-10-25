@@ -159,7 +159,7 @@ public partial class WindowPickerWindow : Window
         _kbdHook = SetWindowsHookEx(WH_KEYBOARD_LL, _kbdProc, GetModuleHandle(null), 0);
         if (_kbdHook == IntPtr.Zero)
             CoreLog.Warn($"点选器键盘钩子安装失败（错误码 {Marshal.GetLastWin32Error()}），" +
-                         "Esc 仍可用（轮询兜底），但会同时传到底下的程序");
+                         Loc.T("Esc 仍可用（轮询兜底），但会同时传到底下的程序"));
 
         _poll.Start();
     }
@@ -212,8 +212,8 @@ public partial class WindowPickerWindow : Window
         var target = ResolveTargetUnder(pt.X, pt.Y);
         if (target == IntPtr.Zero)
         {
-            HoverTitle.Text = "这里没认出窗口，换个位置再点一次";
-            HoverProcess.Text = "（任务栏、桌面这类系统窗口不能绑）　·　Esc / 右键取消";
+            HoverTitle.Text = Loc.T("这里没认出窗口，换个位置再点一次");
+            HoverProcess.Text = Loc.T("（任务栏、桌面这类系统窗口不能绑）　·　Esc / 右键取消");
             HoverInfo.Visibility = Visibility.Visible;
             HoverInfo.Margin = new Thickness(
                 Math.Max(0, ActualWidth / 2 - 200), 60, 0, 0);
@@ -335,7 +335,7 @@ public partial class WindowPickerWindow : Window
         Highlight.Visibility = Visibility.Visible;
 
         var info = WindowService.Describe(target);
-        HoverTitle.Text = string.IsNullOrWhiteSpace(info?.Title) ? "(无标题)" : info!.Title;
+        HoverTitle.Text = string.IsNullOrWhiteSpace(info?.Title) ? Loc.T("(无标题)") : info!.Title;
         HoverProcess.Text = $"{info?.ExeName}　·　{rect.Width}×{rect.Height}　·　左键选中 / 右键取消";
         HoverInfo.Visibility = Visibility.Visible;
 

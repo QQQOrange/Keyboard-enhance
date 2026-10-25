@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -29,7 +29,7 @@ public partial class ClipboardView : UserControl
 
     private static string Preview(string? text)
     {
-        if (string.IsNullOrEmpty(text)) return "（空）";
+        if (string.IsNullOrEmpty(text)) return Loc.T("（空）");
         string flat = text.Replace("\r", "").Replace("\n", " ⏎ ");
         return flat.Length > 400 ? flat[..400] + "…" : flat;
     }
@@ -40,20 +40,20 @@ public partial class ClipboardView : UserControl
         _host.Clipboard.ClipboardFeatureOn = EnableBox.IsChecked == true;
         _host.Settings.Global.AllowClipboard = _host.Clipboard.ClipboardFeatureOn;
         _host.SaveSettings();
-        _host.Notify(_host.Clipboard.ClipboardFeatureOn ? "独立剪贴板已开启" : "独立剪贴板已关闭");
+        _host.Notify(_host.Clipboard.ClipboardFeatureOn ? Loc.T("独立剪贴板已开启") : Loc.T("独立剪贴板已关闭"));
     }
 
     private void OnPaste1(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        if (string.IsNullOrEmpty(_host.Clipboard.SlotText(1))) { _host.Notify("剪贴板 1 是空的"); return; }
+        if (string.IsNullOrEmpty(_host.Clipboard.SlotText(1))) { _host.Notify(Loc.T("剪贴板 1 是空的")); return; }
         _host.Clipboard.Paste(1);
     }
 
     private void OnPaste2(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        if (string.IsNullOrEmpty(_host.Clipboard.SlotText(2))) { _host.Notify("剪贴板 2 是空的"); return; }
+        if (string.IsNullOrEmpty(_host.Clipboard.SlotText(2))) { _host.Notify(Loc.T("剪贴板 2 是空的")); return; }
         _host.Clipboard.Paste(2);
     }
 
@@ -79,7 +79,7 @@ public partial class ClipboardView : UserControl
     {
         if (_host == null || HistoryList.SelectedItem is not HistoryVm vm) return;
         _host.Clipboard.PasteText(vm.Text);
-        _host.Notify("已粘贴");
+        _host.Notify(Loc.T("已粘贴"));
     }
 
     private sealed class HistoryVm

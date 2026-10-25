@@ -1,6 +1,7 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.HelpView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.HelpView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
              FontFamily="{StaticResource Font.Ui}">
     <Grid Margin="24,4,20,20">
         <Grid.RowDefinitions>
@@ -19,7 +20,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="按住" Style="{StaticResource Text.Secondary}"
+                    <TextBlock Text="{loc:T '按住'}" Style="{StaticResource Text.Secondary}"
                                VerticalAlignment="Center" Margin="0,0,8,0" />
                     <Border Style="{StaticResource Keycap}" Padding="10,4">
                         <TextBlock x:Name="TriggerKeyText" Text="CapsLock" FontWeight="SemiBold"
@@ -28,13 +29,13 @@
                 </StackPanel>
 
                 <TextBlock Grid.Column="1" x:Name="HintText"
-                           Text="再看下面的按键 —— 未绑定的键可以到「按键映射」里自己加。"
+                           Text="{loc:T '再看下面的按键 —— 未绑定的键可以到「按键映射」里自己加。'}"
                            Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
                            TextWrapping="Wrap" Margin="14,0,14,0" />
 
                 <TextBox Grid.Column="2" x:Name="FilterBox" Style="{StaticResource TextBox.Base}" Width="220"
                          MinHeight="36" VerticalContentAlignment="Center" TextChanged="OnFilterChanged"
-                         ToolTip="筛选按键或功能" />
+                         ToolTip="{loc:T '筛选按键或功能'}" />
             </Grid>
         </Border>
 
@@ -43,9 +44,9 @@
                   Foreground="{DynamicResource Brush.TextPrimary}">
             <Expander.Header>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="使用指南" FontSize="14" FontWeight="SemiBold"
+                    <TextBlock Text="{loc:T '使用指南'}" FontSize="14" FontWeight="SemiBold"
                                Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" />
-                    <TextBlock Text="图层、触发键、子层、宏、窗口绑定…（点开查看）"
+                    <TextBlock Text="{loc:T '图层、触发键、子层、宏、窗口绑定…（点开查看）'}"
                                Style="{StaticResource Text.Tertiary}" Margin="10,0,0,0"
                                VerticalAlignment="Center" />
                 </StackPanel>

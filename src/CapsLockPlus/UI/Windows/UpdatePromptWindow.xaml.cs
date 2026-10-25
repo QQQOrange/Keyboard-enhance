@@ -24,7 +24,7 @@ public partial class UpdatePromptWindow : Window
         SubText.Text = $"当前 {UpdateService.CurrentVersion}" +
                        (info.SizeText.Length > 0 ? $"　·　{info.SizeText}" : "");
         NotesText.Text = string.IsNullOrWhiteSpace(info.ReleaseNotes)
-            ? "（该版本没有填写更新说明）"
+            ? Loc.T("（该版本没有填写更新说明）")
             : info.ReleaseNotes;
         StatusText.Text = "";
 
@@ -74,8 +74,8 @@ public partial class UpdatePromptWindow : Window
             // 浏览器没起来（默认浏览器未关联 / 被策略拦）：把地址告诉用户，别只是关窗
             Core.CoreLog.Swallow(ex, "打开更新下载页");
             AppDialog.Warn(Application.Current?.MainWindow,
-                "没能自动打开浏览器。\n\n请手动访问：\n" + url,
-                "打开下载页失败");
+                Loc.T("没能自动打开浏览器。\n\n请手动访问：\n") + url,
+                Loc.T("打开下载页失败"));
         }
     }
 
@@ -97,7 +97,7 @@ public partial class UpdatePromptWindow : Window
         SkipButton.IsEnabled = false;
         LaterButton.IsEnabled = false;
         Progress.Visibility = Visibility.Visible;
-        StatusText.Text = "正在下载…";
+        StatusText.Text = Loc.T("正在下载…");
 
         try
         {
@@ -115,7 +115,7 @@ public partial class UpdatePromptWindow : Window
             }
 
             Progress.Value = 100;
-            StatusText.Text = "正在替换并重启…";
+            StatusText.Text = Loc.T("正在替换并重启…");
             await Task.Delay(400);
 
             if (UpdateService.ApplyAndRestart(path))
@@ -124,9 +124,9 @@ public partial class UpdatePromptWindow : Window
                 return;
             }
 
-            StatusText.Text = "替换失败，请到 Releases 手动下载";
+            StatusText.Text = Loc.T("替换失败，请到 Releases 手动下载");
             LaterButton.IsEnabled = true;
-            DownloadButton.Content = "打开下载页";
+            DownloadButton.Content = Loc.T("打开下载页");
             DownloadButton.IsEnabled = true;
             DownloadButton.Click -= OnDownload;
             DownloadButton.Click += (_, _) =>
@@ -140,8 +140,8 @@ public partial class UpdatePromptWindow : Window
                     // 浏览器没起来（默认浏览器未关联 / 被策略拦）：告诉用户，别只是关窗
                     Core.CoreLog.Swallow(ex, "打开更新下载页");
                     AppDialog.Warn(Application.Current?.MainWindow,
-                        "没能自动打开浏览器。\n\n请手动访问：\n" + _info.PageUrl,
-                        "打开下载页失败");
+                        Loc.T("没能自动打开浏览器。\n\n请手动访问：\n") + _info.PageUrl,
+                        Loc.T("打开下载页失败"));
                 }
                 Close();
             };

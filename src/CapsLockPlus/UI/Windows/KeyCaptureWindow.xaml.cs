@@ -114,8 +114,8 @@ public partial class KeyCaptureWindow : Window
             _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
             if (_hook == IntPtr.Zero)
             {
-                PromptText.Text = "无法安装键盘钩子";
-                DetailText.Text = "请检查是否有安全软件拦截全局钩子。";
+                PromptText.Text = Loc.T("无法安装键盘钩子");
+                DetailText.Text = Loc.T("请检查是否有安全软件拦截全局钩子。");
                 CoreLog.Warn($"自定义按键捕获：钩子安装失败（错误码 {Marshal.GetLastWin32Error()}）");
             }
             Activate();
@@ -208,7 +208,7 @@ public partial class KeyCaptureWindow : Window
                             CapturedMods = KeyModifiers.None;
                             CapturedCombo = modName;
                             PromptText.Text = KeyName.Display(modName);
-                            DetailText.Text = "单独绑定这个修饰键　·　按「确定绑定」生效";
+                            DetailText.Text = Loc.T("单独绑定这个修饰键　·　按「确定绑定」生效");
                             ConfirmButton.IsEnabled = true;
                         }
                     }
@@ -223,7 +223,7 @@ public partial class KeyCaptureWindow : Window
          * 流程会直接落到下面"非修饰键按下 = 定格组合"，把用户按下的
          * 前缀键录成目标键本身。于是「Caps + J」永远录成 capslock，
          * 用户想改的那个已有按键（J）怎么都选不中 —— 这就是
-         * "自定义按键绑不了已有按键"的真正原因。
+         * Loc.T("自定义按键绑不了已有按键")的真正原因。
          *
          * 只对**非修饰键**做前缀处理：右 Alt 这类既可能被设成触发键、
          * 本身又是修饰键的键，仍走原来的修饰键语义，
@@ -239,7 +239,7 @@ public partial class KeyCaptureWindow : Window
                 Dispatcher.BeginInvoke(() =>
                 {
                     PromptText.Text = $"{KeyName.Display(pName ?? "")} + ?";
-                    DetailText.Text = "触发键只作组合前缀，不会占用它　·　再按一个键";
+                    DetailText.Text = Loc.T("触发键只作组合前缀，不会占用它　·　再按一个键");
                 });
             }
             else
@@ -255,7 +255,7 @@ public partial class KeyCaptureWindow : Window
                             CapturedMods = KeyModifiers.None;
                             CapturedCombo = modName;
                             PromptText.Text = KeyName.Display(modName);
-                            DetailText.Text = "单独绑定这个触发键　·　按「确定绑定」生效";
+                            DetailText.Text = Loc.T("单独绑定这个触发键　·　按「确定绑定」生效");
                             ConfirmButton.IsEnabled = true;
                         });
                     }
@@ -343,7 +343,7 @@ public partial class KeyCaptureWindow : Window
     {
         if (string.IsNullOrEmpty(CapturedCombo))
         {
-            PromptText.Text = "先按一个组合键";
+            PromptText.Text = Loc.T("先按一个组合键");
             return;
         }
         DialogResult = true;

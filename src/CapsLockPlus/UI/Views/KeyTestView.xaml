@@ -1,6 +1,7 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.KeyTestView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.KeyTestView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
              FontFamily="{StaticResource Font.Ui}">
     <UserControl.Resources>
         <!-- 表格默认是系统白底，暗色主题下很突兀，这里跟着主题走 -->
@@ -31,18 +32,18 @@
             <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,7,0" Padding="18,16"
                     VerticalAlignment="Top">
                 <StackPanel>
-                    <TextBlock Text="实时状态" Style="{StaticResource Text.H2}" />
+                    <TextBlock Text="{loc:T '实时状态'}" Style="{StaticResource Text.H2}" />
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="在这个页面里直接按键即可。按住触发键再按别的键，下面会立刻显示切到了第几层。" />
+                               Text="{loc:T '在这个页面里直接按键即可。按住触发键再按别的键，下面会立刻显示切到了第几层。'}" />
 
                     <Border Margin="0,16,0,0" Padding="18,16" CornerRadius="10"
                             Background="{DynamicResource Brush.SurfaceAlt}"
                             BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1">
                         <StackPanel>
-                            <TextBlock Text="最近按下的键" Style="{StaticResource Text.Tertiary}" />
+                            <TextBlock Text="{loc:T '最近按下的键'}" Style="{StaticResource Text.Tertiary}" />
                             <TextBlock x:Name="LastKeyText" Text="—" FontSize="30" FontWeight="SemiBold"
                                        Margin="0,6,0,0" Foreground="{DynamicResource Brush.TextPrimary}" />
-                            <TextBlock x:Name="LastKeyDetail" Text="按任意键开始测试"
+                            <TextBlock x:Name="LastKeyDetail" Text="{loc:T '按任意键开始测试'}"
                                        Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,4,0,0" />
                         </StackPanel>
@@ -58,8 +59,8 @@
                         <Border Grid.Column="0" Margin="0,0,5,0" Padding="12,10" CornerRadius="9"
                                 Background="{DynamicResource Brush.SurfaceAlt}">
                             <StackPanel>
-                                <TextBlock Text="键盘钩子" Style="{StaticResource Text.Tertiary}" FontSize="11" />
-                                <TextBlock x:Name="HookText" Text="检查中" FontWeight="SemiBold"
+                                <TextBlock Text="{loc:T '键盘钩子'}" Style="{StaticResource Text.Tertiary}" FontSize="11" />
+                                <TextBlock x:Name="HookText" Text="{loc:T '检查中'}" FontWeight="SemiBold"
                                            Margin="0,4,0,0" />
                             </StackPanel>
                         </Border>
@@ -67,8 +68,8 @@
                         <Border Grid.Column="1" Margin="5,0,5,0" Padding="12,10" CornerRadius="9"
                                 Background="{DynamicResource Brush.SurfaceAlt}">
                             <StackPanel>
-                                <TextBlock Text="触发键" Style="{StaticResource Text.Tertiary}" FontSize="11" />
-                                <TextBlock x:Name="TriggerText" Text="未按住" FontWeight="SemiBold"
+                                <TextBlock Text="{loc:T '触发键'}" Style="{StaticResource Text.Tertiary}" FontSize="11" />
+                                <TextBlock x:Name="TriggerText" Text="{loc:T '未按住'}" FontWeight="SemiBold"
                                            Margin="0,4,0,0" />
                             </StackPanel>
                         </Border>
@@ -76,8 +77,8 @@
                         <Border Grid.Column="2" Margin="5,0,0,0" Padding="12,10" CornerRadius="9"
                                 Background="{DynamicResource Brush.SurfaceAlt}">
                             <StackPanel>
-                                <TextBlock Text="当前层" Style="{StaticResource Text.Tertiary}" FontSize="11" />
-                                <TextBlock x:Name="LayerText" Text="未进层" FontWeight="SemiBold"
+                                <TextBlock Text="{loc:T '当前层'}" Style="{StaticResource Text.Tertiary}" FontSize="11" />
+                                <TextBlock x:Name="LayerText" Text="{loc:T '未进层'}" FontWeight="SemiBold"
                                            Margin="0,4,0,0" />
                             </StackPanel>
                         </Border>
@@ -85,7 +86,7 @@
 
                     <TextBlock x:Name="HintText" Style="{StaticResource Text.Tertiary}"
                                TextWrapping="Wrap" Margin="0,14,0,0"
-                               Text="提示：按住触发键不放，界面会在 200ms 后进入层模式；按住期间按其他键会立刻进层。" />
+                               Text="{loc:T '提示：按住触发键不放，界面会在 200ms 后进入层模式；按住期间按其他键会立刻进层。'}" />
                 </StackPanel>
             </Border>
 
@@ -93,26 +94,26 @@
             <Border Grid.Column="1" Style="{StaticResource Card}" Margin="7,0,0,0" Padding="18,16"
                     VerticalAlignment="Top">
                 <StackPanel>
-                    <TextBlock Text="按键流水" Style="{StaticResource Text.H2}" />
+                    <TextBlock Text="{loc:T '按键流水'}" Style="{StaticResource Text.H2}" />
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="每一行 = 一次真实按键，附带它所在层会执行的动作。只记录真实按键，软件自己注入的不算。" />
+                               Text="{loc:T '每一行 = 一次真实按键，附带它所在层会执行的动作。只记录真实按键，软件自己注入的不算。'}" />
 
                     <ListView x:Name="EventList" Height="392" Margin="0,12,0,0"
                               Background="Transparent" BorderThickness="0"
                               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="时间" Width="70" DisplayMemberBinding="{Binding Time}" />
-                                <GridViewColumn Header="按键" Width="110" DisplayMemberBinding="{Binding Key}" />
-                                <GridViewColumn Header="层" Width="90" DisplayMemberBinding="{Binding Layer}" />
-                                <GridViewColumn Header="动作" Width="180" DisplayMemberBinding="{Binding Action}" />
+                                <GridViewColumn Header="{loc:T '时间'}" Width="70" DisplayMemberBinding="{Binding Time}" />
+                                <GridViewColumn Header="{loc:T '按键'}" Width="110" DisplayMemberBinding="{Binding Key}" />
+                                <GridViewColumn Header="{loc:T '层'}" Width="90" DisplayMemberBinding="{Binding Layer}" />
+                                <GridViewColumn Header="{loc:T '动作'}" Width="180" DisplayMemberBinding="{Binding Action}" />
                             </GridView>
                         </ListView.View>
                     </ListView>
 
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="清空" Click="OnClear" Padding="14,6" Margin="0,0,8,0" />
-                        <Button Content="复制诊断信息" Click="OnCopyDiag" Padding="14,6" />
+                        <Button Content="{loc:T '清空'}" Click="OnClear" Padding="14,6" Margin="0,0,8,0" />
+                        <Button Content="{loc:T '复制诊断信息'}" Click="OnCopyDiag" Padding="14,6" />
                         <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}"
                                    VerticalAlignment="Center" Margin="12,0,0,0" />
                     </StackPanel>

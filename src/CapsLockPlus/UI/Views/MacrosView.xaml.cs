@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -71,7 +71,7 @@ public partial class MacrosView : UserControl
     private Macro? Selected => MacroList.SelectedItem as Macro;
 
     /// <summary>录制器（由 AppHost 持有，页面重建也不会丢）。</summary>
-    private MacroRecorder Recorder => _host?.MacroRecorder ?? throw new InvalidOperationException("未初始化");
+    private MacroRecorder Recorder => _host?.MacroRecorder ?? throw new InvalidOperationException(Loc.T("未初始化"));
 
     // ---------------- 列表 ----------------
 
@@ -109,7 +109,7 @@ public partial class MacrosView : UserControl
             NameBox.Text = "";
             RepeatBox.Text = "1";
             RefreshSteps();
-            StatusText.Text = "选一个宏，或新建一个";
+            StatusText.Text = Loc.T("选一个宏，或新建一个");
         }
     }
 
@@ -124,7 +124,7 @@ public partial class MacrosView : UserControl
         RepeatBox.Text = (m?.Repeat ?? 1).ToString();
         _selectedStep = -1;
         RefreshSteps();
-        StatusText.Text = m == null ? "选一个宏，或新建一个" : $"{m.Steps.Count} 步 · 时长约 {m.DurationText}";
+        StatusText.Text = m == null ? Loc.T("选一个宏，或新建一个") : $"{m.Steps.Count} 步 · 时长约 {m.DurationText}";
     }
 
     private void RefreshSteps(bool keepSelection = false)
@@ -151,7 +151,7 @@ public partial class MacrosView : UserControl
         StepList.ItemsSource = rows;
         StepCount.Text = m.Steps.Count == 0 ? "" : $"共 {m.Steps.Count} 步 · 约 {m.DurationText}";
         StepEmpty.Visibility = m.Steps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        StatusText.Text = m.Steps.Count == 0 ? "还没有步骤，先录制或插入" : $"共 {m.Steps.Count} 步";
+        StatusText.Text = m.Steps.Count == 0 ? Loc.T("还没有步骤，先录制或插入") : $"共 {m.Steps.Count} 步";
 
         if (keepSelection && want >= 0 && want < rows.Count)
         {
@@ -206,13 +206,13 @@ public partial class MacrosView : UserControl
                 StopTick();
                 RecordingHudWindow.HideHud();
                 ApplyIdleUi();
-                RecordStatus.Text = "这次没有录到按键，没有生成宏";
+                RecordStatus.Text = Loc.T("这次没有录到按键，没有生成宏");
                 Focus();
                 return;
             }
 
             // 停止录制 -> 生成宏
-            var macro = rec.Stop("新宏 " + DateTime.Now.ToString("HH:mm:ss"));
+            var macro = rec.Stop(Loc.T("新宏 ") + Loc.FormatTime(DateTime.Now));
             _host.Engine.MacroRecorder = null;          // 告诉引擎：录制结束
             _host.Settings.Macros.Add(macro);
             _editing = macro;
@@ -247,8 +247,8 @@ public partial class MacrosView : UserControl
         StopTick();
         RecordingHudWindow.HideHud();
         ApplyIdleUi();
-        RecordStatus.Text = "已取消这次录制";
-        _host.Notify("已取消录制");
+        RecordStatus.Text = Loc.T("已取消这次录制");
+        _host.Notify(Loc.T("已取消录制"));
     }
 
     /// <summary>
@@ -322,7 +322,7 @@ public partial class MacrosView : UserControl
 
         RecordStatus.Text = $"录制中… {clock} · {count} 个事件";
         LiveStats.Text = count == 0
-            ? "等待第一个按键…"
+            ? Loc.T("等待第一个按键…")
             : $"{count} 个事件 · {clock} · 停止后约 {_live.Count} 步";
 
         RecordingHudWindow.UpdateHud(ms, count, _lastKeyLabel);
@@ -334,15 +334,15 @@ public partial class MacrosView : UserControl
 
     private void ApplyRecordingUi()
     {
-        RecordButton.Content = "■ 停止并保存";
+        RecordButton.Content = Loc.T("■ 停止并保存");
         if (TryFindResource("Button.Danger") is Style danger) RecordButton.Style = danger;
         CancelRecordButton.Visibility = Visibility.Visible;
         RecDotIdle.Visibility = Visibility.Collapsed;
         RecDotRec.Visibility = Visibility.Visible;
         RecBadgeIdle.Visibility = Visibility.Collapsed;
         RecBadgeRec.Visibility = Visibility.Visible;
-        RecTitle.Text = "正在录制";
-        RecHint.Text = "照常操作键盘即可，每按一个键会立刻出现在下面；停止后自动生成可编辑的步骤。";
+        RecTitle.Text = Loc.T("正在录制");
+        RecHint.Text = Loc.T("照常操作键盘即可，每按一个键会立刻出现在下面；停止后自动生成可编辑的步骤。");
         StartPulse();
 
         // 整块右侧换成"录制监视器"：录制时看步骤列表没有意义，
@@ -361,15 +361,15 @@ public partial class MacrosView : UserControl
 
     private void ApplyIdleUi()
     {
-        RecordButton.Content = "● 开始录制";
+        RecordButton.Content = Loc.T("● 开始录制");
         if (TryFindResource("Button.Primary") is Style primary) RecordButton.Style = primary;
         CancelRecordButton.Visibility = Visibility.Collapsed;
         RecDotIdle.Visibility = Visibility.Visible;
         RecDotRec.Visibility = Visibility.Collapsed;
         RecBadgeIdle.Visibility = Visibility.Visible;
         RecBadgeRec.Visibility = Visibility.Collapsed;
-        RecTitle.Text = "录制宏";
-        RecHint.Text = "点「开始录制」后照常操作键盘，按键会立刻出现在下面。录制期间不影响正常输入。";
+        RecTitle.Text = Loc.T("录制宏");
+        RecHint.Text = Loc.T("点「开始录制」后照常操作键盘，按键会立刻出现在下面。录制期间不影响正常输入。");
         StopPulse();
         LivePanel.Visibility = Visibility.Collapsed;
         StepsCard.Visibility = Visibility.Visible;
@@ -413,7 +413,7 @@ public partial class MacrosView : UserControl
     private void OnNewClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        var m = new Macro { Name = "新宏", Repeat = 1 };
+        var m = new Macro { Name = Loc.T("新宏"), Repeat = 1 };
         _host.Settings.Macros.Add(m);
         _editing = m;
         SaveAndRebuild();
@@ -437,17 +437,17 @@ public partial class MacrosView : UserControl
     {
         if (_host == null || _editing == null)
         {
-            StatusText.Text = "先选一个宏";
+            StatusText.Text = Loc.T("先选一个宏");
             return;
         }
         if (_editing.Steps.Count == 0)
         {
-            StatusText.Text = "这个宏还没有步骤";
+            StatusText.Text = Loc.T("这个宏还没有步骤");
             return;
         }
         _host.Context.MacroPlayer.Play(_editing, onCompleted: () =>
             Dispatcher.BeginInvoke(OnPlayFinished));
-        StatusText.Text = "播放中…按 Esc 或点「停止」可中断";
+        StatusText.Text = Loc.T("播放中…按 Esc 或点「停止」可中断");
         StopPlayButton.Visibility = Visibility.Visible;
         ClearCurrentMarker();
         StartPlayTick();
@@ -549,7 +549,7 @@ public partial class MacrosView : UserControl
         _selectedStep = StepList.SelectedItem is StepVm vm ? vm.Index : -1;
         InsertHint.Text = _selectedStep >= 0
             ? $"插入（插到第 {_selectedStep + 1} 步之后）"
-            : "插入（追加到末尾）";
+            : Loc.T("插入（追加到末尾）");
         BindStepEditor();
     }
 
@@ -707,7 +707,7 @@ public partial class MacrosView : UserControl
     private void OnInsertText(object sender, RoutedEventArgs e)
     {
         if (_editing == null) return;
-        var text = PromptText("要输入什么文本？", "插入文本步骤");
+        var text = PromptText(Loc.T("要输入什么文本？"), Loc.T("插入文本步骤"));
         if (string.IsNullOrEmpty(text)) return;
         AddStep(new MacroStep { Kind = "text", Text = text });
     }
@@ -744,7 +744,7 @@ public partial class MacrosView : UserControl
         panel.Children.Add(new TextBlock { Text = message, Margin = new Thickness(0, 0, 0, 8) });
         var box = new TextBox { MinHeight = 28 };
         panel.Children.Add(box);
-        var ok = new Button { Content = "确定", IsDefault = true, Margin = new Thickness(0, 10, 0, 0),
+        var ok = new Button { Content = Loc.T("确定"), IsDefault = true, Margin = new Thickness(0, 10, 0, 0),
                               HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(16, 5, 16, 5) };
         ok.Click += (_, _) => win.DialogResult = true;
         panel.Children.Add(ok);
@@ -776,8 +776,8 @@ public partial class MacrosView : UserControl
         foreach (var (vk, down, ms) in seq) AddLiveRow(vk, down, ms);
 
         ApplyRecordingUi();
-        LiveStats.Text = "12 个事件 · 0:01.4 · 停止后约 22 步";
-        RecordStatus.Text = "录制中… 0:01.4 · 12 个事件";
+        LiveStats.Text = Loc.T("12 个事件 · 0:01.4 · 停止后约 22 步");
+        RecordStatus.Text = Loc.T("录制中… 0:01.4 · 12 个事件");
         return true;
     }
 
@@ -852,7 +852,7 @@ public partial class MacrosView : UserControl
         {
             Time = $"{ms / 1000.0:0.00}s",
             Text = name,
-            Tag = down ? "按下" : "抬起",
+            Tag = down ? Loc.T("按下") : Loc.T("抬起"),
             IsUp = !down,
         };
 

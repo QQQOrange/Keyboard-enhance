@@ -1,6 +1,7 @@
 ﻿<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
              FontFamily="{StaticResource Font.Ui}">
     <Grid Margin="24,4,20,20">
         <Grid.RowDefinitions>
@@ -22,9 +23,9 @@
                      但实际使用中几乎没人用，反而占掉一行空间。 -->
                 <TextBlock Grid.Column="0" VerticalAlignment="Center"
                            Style="{StaticResource Text.Secondary}" TextTrimming="CharacterEllipsis"
-                           Text="点击键盘上任意键即可编辑它的功能，修改立即生效" />
+                           Text="{loc:T '点击键盘上任意键即可编辑它的功能，修改立即生效'}" />
 
-                <Button Grid.Column="1" Content="恢复默认" Style="{StaticResource Button.Base}"
+                <Button Grid.Column="1" Content="{loc:T '恢复默认'}" Style="{StaticResource Button.Base}"
                         Margin="16,0,0,0" Click="OnResetClick" />
             </Grid>
         </Border>
@@ -87,14 +88,14 @@
                             -->
                             <Border Style="{StaticResource Badge}" Background="{DynamicResource Brush.SurfaceAlt}"
                                     BorderBrush="{DynamicResource Brush.Border}">
-                                <TextBlock x:Name="TriggerKeyBadge" Text="按住 CapsLock"
+                                <TextBlock x:Name="TriggerKeyBadge" Text="{loc:T '按住 CapsLock'}"
                                            Style="{StaticResource Badge.Text}"
                                            Foreground="{DynamicResource Brush.TextSecondary}" />
                             </Border>
-                            <TextBlock x:Name="TriggerKeySuffix" Text="+ 下面的键"
+                            <TextBlock x:Name="TriggerKeySuffix" Text="{loc:T '+ 下面的键'}"
                                        Style="{StaticResource Text.Secondary}"
                                        VerticalAlignment="Center" Margin="7,0,0,0" />
-                            <TextBlock x:Name="LayerHint" Text="当前：基础层" Style="{StaticResource Text.Tertiary}"
+                            <TextBlock x:Name="LayerHint" Text="{loc:T '当前：基础层'}" Style="{StaticResource Text.Tertiary}"
                                        VerticalAlignment="Center" Margin="16,0,0,0"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
@@ -106,11 +107,11 @@
                         -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                     Margin="14,0,0,0">
-                            <TextBlock Text="键盘大小" Style="{StaticResource Text.Tertiary}"
+                            <TextBlock Text="{loc:T '键盘大小'}" Style="{StaticResource Text.Tertiary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
                             <ComboBox x:Name="SizeBox" Style="{StaticResource ComboBox.Base}" Width="146"
                                       SelectionChanged="OnKeyboardSizeChanged"
-                                      ToolTip="选一个当作默认大小；这就是这个页面能缩到的最小尺寸" />
+                                      ToolTip="{loc:T '选一个当作默认大小；这就是这个页面能缩到的最小尺寸'}" />
                             <TextBlock x:Name="SizeText" Text="" Style="{StaticResource Text.Tertiary}"
                                        VerticalAlignment="Center" Margin="8,0,0,0" />
                         </StackPanel>
@@ -149,7 +150,7 @@
                     <!-- ③ 控制条 -->
                     <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="0,8,0,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="层" Style="{StaticResource Text.Secondary}"
+                            <TextBlock Text="{loc:T '层'}" Style="{StaticResource Text.Secondary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
                             <ComboBox x:Name="LayerBox" Style="{StaticResource ComboBox.Base}" Width="240"
                                       SelectionChanged="OnLayerChanged" />
@@ -158,14 +159,14 @@
                                 这里**动态生成** —— 每层可以配 0~10 个修饰键组合，
                                 所以不能再写死 5 个固定按钮。
                             -->
-                            <TextBlock Text="层内修饰键" Style="{StaticResource Text.Tertiary}"
+                            <TextBlock Text="{loc:T '层内修饰键'}" Style="{StaticResource Text.Tertiary}"
                                        VerticalAlignment="Center" Margin="18,0,0,0" />
                             <StackPanel x:Name="SubLayerPanel" Orientation="Horizontal"
                                         VerticalAlignment="Center" Margin="8,0,0,0" />
-                            <Button Content="设置子层…" x:Name="EditSubLayersButton"
+                            <Button Content="{loc:T '设置子层…'}" x:Name="EditSubLayersButton"
                                     Style="{StaticResource Button.Ghost}" Padding="10,5" Margin="6,0,0,0"
                                     Click="OnEditSubLayers"
-                                    ToolTip="配置这一层要用哪些修饰键作为子层（最多 10 个）" />
+                                    ToolTip="{loc:T '配置这一层要用哪些修饰键作为子层（最多 10 个）'}" />
                         </StackPanel>
 
                         <Grid Margin="0,8,0,0">
@@ -184,13 +185,13 @@
                                         Background="{DynamicResource Brush.Accent}"
                                         BorderBrush="{DynamicResource Brush.AccentHover}" BorderThickness="1"
                                         VerticalAlignment="Center" />
-                                <TextBlock Text="已绑定" Style="{StaticResource Text.Tertiary}"
+                                <TextBlock Text="{loc:T '已绑定'}" Style="{StaticResource Text.Tertiary}"
                                            Margin="5,0,12,0" VerticalAlignment="Center" />
                                 <Border Width="12" Height="12" CornerRadius="3"
                                         Background="{DynamicResource Brush.AccentSoft}"
                                         BorderBrush="{DynamicResource Brush.AccentSoftBorder}" BorderThickness="1"
                                         VerticalAlignment="Center" />
-                                <TextBlock Text="未绑定" Style="{StaticResource Text.Tertiary}"
+                                <TextBlock Text="{loc:T '未绑定'}" Style="{StaticResource Text.Tertiary}"
                                            Margin="5,0,0,0" VerticalAlignment="Center" />
                             </StackPanel>
                         </Grid>
@@ -230,7 +231,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock Grid.Column="0" Text="编辑绑定" Style="{StaticResource Text.H2}"
+                            <TextBlock Grid.Column="0" Text="{loc:T '编辑绑定'}" Style="{StaticResource Text.H2}"
                                        VerticalAlignment="Center" />
 
                             <!--
@@ -246,11 +247,11 @@
                             </Border>
 
                             <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button HorizontalAlignment="Left" x:Name="TestBindButton" Content="测试一下"
+                                <Button HorizontalAlignment="Left" x:Name="TestBindButton" Content="{loc:T '测试一下'}"
                                         Style="{StaticResource Button.Ghost}" Padding="11,5"
                                         Click="OnTestClick"
-                                        ToolTip="执行一次这个功能（可能影响当前窗口）" />
-                                <Button HorizontalAlignment="Left" x:Name="ClearBindButton" Content="清除绑定"
+                                        ToolTip="{loc:T '执行一次这个功能（可能影响当前窗口）'}" />
+                                <Button HorizontalAlignment="Left" x:Name="ClearBindButton" Content="{loc:T '清除绑定'}"
                                         Style="{StaticResource Button.Danger}" Padding="11,5" Margin="6,0,0,0"
                                         Click="OnClearClick" />
                             </StackPanel>
@@ -288,12 +289,12 @@
                                 不是把结果塞进功能下拉 —— 那样看不出分类，也没法直接跳。
                             -->
                             <StackPanel x:Name="SearchGroup" Grid.Column="0" Margin="0,0,12,0">
-                                <TextBlock Text="搜索" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                <TextBlock Text="{loc:T '搜索'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                 <Grid>
                                     <TextBox x:Name="ActionSearchBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="34" VerticalContentAlignment="Center"
                                              TextChanged="OnActionSearchChanged"
-                                             ToolTip="搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github" />
+                                             ToolTip="{loc:T '搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github'}" />
 
                                     <!-- 搜索结果浮层：贴在搜索框下方 -->
                                     <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=ActionSearchBox}"
@@ -332,13 +333,13 @@
                             </StackPanel>
 
                             <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                <TextBlock Text="{loc:T '分类'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                 <ComboBox x:Name="CategoryBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
                             </StackPanel>
 
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="功能" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                <TextBlock Text="{loc:T '功能'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                 <!--
                                     普通下拉（不设 IsEditable）。
                                     可编辑模式下 WPF 不会自动把选中项填进显示区，
@@ -368,35 +369,35 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                    <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                    <TextBlock Text="{loc:T '分类'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                     <ComboBox x:Name="CategoryBoxWinBind" Style="{StaticResource ComboBox.Base}"
                                               SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock Text="绑定方式" Style="{StaticResource Text.Secondary}"
+                                    <TextBlock Text="{loc:T '绑定方式'}" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <StackPanel Orientation="Horizontal">
                                         <Button HorizontalAlignment="Left" x:Name="PickWindowButton" Style="{StaticResource Button.Primary}"
                                                 Padding="14,6" MinHeight="34" Click="OnPickWindowClick"
-                                                ToolTip="鼠标变成准星，点哪个窗口就绑哪个程序">
+                                                ToolTip="{loc:T '鼠标变成准星，点哪个窗口就绑哪个程序'}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE7B3;"
                                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                            FontSize="14" VerticalAlignment="Center" />
-                                                <TextBlock Text="点选窗口" Margin="8,0,0,0"
+                                                <TextBlock Text="{loc:T '点选窗口'}" Margin="8,0,0,0"
                                                            VerticalAlignment="Center" FontWeight="SemiBold" />
                                             </StackPanel>
                                         </Button>
                                         <Button HorizontalAlignment="Left" x:Name="PickExeButton" Style="{StaticResource Button.Base}"
                                                 Padding="14,6" MinHeight="34" Margin="10,0,0,0"
                                                 Click="OnPickExeClick"
-                                                ToolTip="从资源管理器挑一个 exe（程序没在运行也能绑）">
+                                                ToolTip="{loc:T '从资源管理器挑一个 exe（程序没在运行也能绑）'}">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE8B7;"
                                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                                            FontSize="14" VerticalAlignment="Center" />
-                                                <TextBlock Text="选择程序文件" Margin="8,0,0,0"
+                                                <TextBlock Text="{loc:T '选择程序文件'}" Margin="8,0,0,0"
                                                            VerticalAlignment="Center" FontWeight="SemiBold" />
                                             </StackPanel>
                                         </Button>
@@ -406,7 +407,7 @@
 
                             <!-- 一句话说清两者区别；详细提示在各自按钮的 ToolTip 里 -->
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,9,0,0"
-                                       Text="点选窗口：鼠标变准星，点哪个窗口就绑哪个；选择程序文件：从资源管理器挑 exe（程序没在运行也能绑）。" />
+                                       Text="{loc:T '点选窗口：鼠标变准星，点哪个窗口就绑哪个；选择程序文件：从资源管理器挑 exe（程序没在运行也能绑）。'}" />
                         </StackPanel>
 
                         <!-- ================= 直达链接：填目标 → 自动识别类型 =================
@@ -434,42 +435,42 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                    <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                    <TextBlock Text="{loc:T '分类'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                     <ComboBox x:Name="CategoryBoxWeb" Style="{StaticResource ComboBox.Base}"
                                               SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
                                 </StackPanel>
 
                                 <StackPanel x:Name="NoteGroupWeb" Grid.Column="1" Margin="0,0,12,0">
-                                    <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
+                                    <TextBlock Text="{loc:T '备注（可选）'}" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <TextBox x:Name="WebNoteBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="36" VerticalContentAlignment="Center"
                                              TextChanged="OnWebNoteChanged"
-                                             ToolTip="给这个链接起个好记的名字，会显示在键帽上" />
+                                             ToolTip="{loc:T '给这个链接起个好记的名字，会显示在键帽上'}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="2" Margin="0,0,8,0">
-                                    <TextBlock x:Name="LinkTargetLabel" Text="目标（网址 / 文件夹 / 文件，自动识别）"
+                                    <TextBlock x:Name="LinkTargetLabel" Text="{loc:T '目标（网址 / 文件夹 / 文件，自动识别）'}"
                                                Style="{StaticResource Text.Secondary}" Margin="0,0,0,7"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBox x:Name="WebUrlBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="36" VerticalContentAlignment="Center"
                                              TextChanged="OnWebUrlChanged"
-                                             ToolTip="网址（https://github.com 或不带 http 的 github.com）、文件夹、文件都能填，类型自动识别" />
+                                             ToolTip="{loc:T '网址（https://github.com 或不带 http 的 github.com）、文件夹、文件都能填，类型自动识别'}" />
                                 </StackPanel>
 
                                 <!-- 两个浏览按钮没有标签，因此**底对齐**到输入框底边 ——
                                      与「标签在上」的组不同，它们只占控件那一行。 -->
                                 <StackPanel Grid.Column="3" Orientation="Horizontal"
                                             VerticalAlignment="Bottom">
-                                    <Button HorizontalAlignment="Left" x:Name="BrowseFolderButton" Content="浏览…"
+                                    <Button HorizontalAlignment="Left" x:Name="BrowseFolderButton" Content="{loc:T '浏览…'}"
                                             Style="{StaticResource Button.Base}" Padding="12,6" MinHeight="36"
                                             Visibility="Collapsed" Click="OnBrowseFolder"
-                                            ToolTip="从资源管理器里挑一个文件夹" />
-                                    <Button HorizontalAlignment="Left" x:Name="BrowseFileButton" Content="浏览…"
+                                            ToolTip="{loc:T '从资源管理器里挑一个文件夹'}" />
+                                    <Button HorizontalAlignment="Left" x:Name="BrowseFileButton" Content="{loc:T '浏览…'}"
                                             Style="{StaticResource Button.Base}" Padding="12,6" MinHeight="36"
                                             Margin="8,0,0,0" Visibility="Collapsed" Click="OnBrowseFile"
-                                            ToolTip="从资源管理器里挑一个文件" />
+                                            ToolTip="{loc:T '从资源管理器里挑一个文件'}" />
                                 </StackPanel>
                             </Grid>
 
@@ -487,24 +488,24 @@
                                         Background="{DynamicResource Brush.AccentSoft}"
                                         BorderBrush="{DynamicResource Brush.AccentSoftBorder}">
                                     <TextBlock x:Name="LinkKindText" Style="{StaticResource Badge.Text}"
-                                               Text="自动识别" />
+                                               Text="{loc:T '自动识别'}" />
                                 </Border>
                                 <TextBlock Grid.Column="1" x:Name="LinkKindHint"
                                            Style="{StaticResource Text.Tertiary}"
                                            VerticalAlignment="Center" Margin="9,0,0,0"
                                            TextWrapping="Wrap" />
-                                <Button HorizontalAlignment="Left" Grid.Column="2" x:Name="FetchTitleButton" Content="重新取标题"
+                                <Button HorizontalAlignment="Left" Grid.Column="2" x:Name="FetchTitleButton" Content="{loc:T '重新取标题'}"
                                         Style="{StaticResource Button.Ghost}" Padding="10,4"
                                         Margin="10,0,0,0" VerticalAlignment="Center"
                                         Click="OnFetchTitleClick"
-                                        ToolTip="再抓一次那个网页的标题" />
+                                        ToolTip="{loc:T '再抓一次那个网页的标题'}" />
                             </Grid>
 
                             <TextBlock x:Name="WebFetchStatus" Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,5,0,0" />
                             <TextBlock x:Name="LinkHint" Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,3,0,0"
-                                       Text="网址、文件夹、文件都填在这里，类型自动识别，不用自己选。填网址会自动抓网页标题当备注；路径不填备注时用文件夹名或文件名。备注会显示在键帽上。" />
+                                       Text="{loc:T '网址、文件夹、文件都填在这里，类型自动识别，不用自己选。填网址会自动抓网页标题当备注；路径不填备注时用文件夹名或文件名。备注会显示在键帽上。'}" />
                         </StackPanel>
 
                         <!-- ================= 输入文本 =================
@@ -526,24 +527,24 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                    <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                    <TextBlock Text="{loc:T '分类'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                     <ComboBox x:Name="CategoryBoxType" Style="{StaticResource ComboBox.Base}"
                                               SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
                                 </StackPanel>
 
                                 <StackPanel x:Name="NoteGroupType" Grid.Column="1" Margin="0,0,12,0">
-                                    <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
+                                    <TextBlock Text="{loc:T '备注（可选）'}" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <TextBox x:Name="TypeNoteBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="36" VerticalContentAlignment="Center"
                                              TextChanged="OnTypeNoteChanged"
-                                             ToolTip="给这段文字起个好记的名字，会显示在键帽上" />
+                                             ToolTip="{loc:T '给这段文字起个好记的名字，会显示在键帽上'}" />
                                 </StackPanel>
 
                                 <TextBlock Grid.Column="2" Style="{StaticResource Text.Tertiary}"
                                            TextWrapping="Wrap" VerticalAlignment="Center"
                                            Margin="0,16,0,0"
-                                           Text="备注会显示在键帽上；不填就显示文字开头几个字。" />
+                                           Text="{loc:T '备注会显示在键帽上；不填就显示文字开头几个字。'}" />
                             </Grid>
 
                             <!-- 正文：标签左置（不再单独占一行），文本框吃满剩余宽度 -->
@@ -552,18 +553,18 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" x:Name="TypeTextBoxLabel" Text="要输入的文字"
+                                <TextBlock Grid.Column="0" x:Name="TypeTextBoxLabel" Text="{loc:T '要输入的文字'}"
                                            Style="{StaticResource Text.Secondary}"
                                            VerticalAlignment="Top" Margin="0,10,10,0" />
                                 <TextBox Grid.Column="1" x:Name="TypeTextBox" Style="{StaticResource TextBox.Base}"
                                          MinHeight="84" MaxHeight="180" AcceptsReturn="True"
                                          TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                          TextChanged="OnTypeTextChanged"
-                                         ToolTip="触发这个键时，会把这里的内容直接输入到当前光标处" />
+                                         ToolTip="{loc:T '触发这个键时，会把这里的内容直接输入到当前光标处'}" />
                             </Grid>
 
                             <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       Text="支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。" />
+                                       Text="{loc:T '支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。'}" />
                         </StackPanel>
 
                         <!-- ================= 自定义按键 =================
@@ -597,19 +598,19 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                    <TextBlock Text="分类" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
+                                    <TextBlock Text="{loc:T '分类'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                     <ComboBox x:Name="CategoryBoxCustom" Style="{StaticResource ComboBox.Base}"
                                               SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                    <TextBlock Text="要发送的键" Style="{StaticResource Text.Secondary}"
+                                    <TextBlock Text="{loc:T '要发送的键'}" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button HorizontalAlignment="Left" x:Name="CustomKeyCaptureButton" Content="按下要发送的键…"
+                                        <Button HorizontalAlignment="Left" x:Name="CustomKeyCaptureButton" Content="{loc:T '按下要发送的键…'}"
                                                 Style="{StaticResource Button.Base}" Padding="14,6" MinHeight="36"
                                                 Click="OnCustomKeyCapture"
-                                                ToolTip="点一下，然后在键盘上按你想发给应用的键（支持 Ctrl / Shift / Alt 组合）" />
+                                                ToolTip="{loc:T '点一下，然后在键盘上按你想发给应用的键（支持 Ctrl / Shift / Alt 组合）'}" />
                                         <Border x:Name="CustomKeyBadge" Style="{StaticResource Keycap}"
                                                 Padding="12,5" Margin="10,0,0,0" VerticalAlignment="Center"
                                                 Visibility="Collapsed">
@@ -621,12 +622,12 @@
                                 </StackPanel>
 
                                 <StackPanel x:Name="NoteGroupCustom" Grid.Column="2">
-                                    <TextBlock Text="备注（可选）" Style="{StaticResource Text.Secondary}"
+                                    <TextBlock Text="{loc:T '备注（可选）'}" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <TextBox x:Name="CustomNoteBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="36" VerticalContentAlignment="Center"
                                              TextChanged="OnCustomNoteChanged"
-                                             ToolTip="给这个键起个好记的名字，会显示在键帽上" />
+                                             ToolTip="{loc:T '给这个键起个好记的名字，会显示在键帽上'}" />
                                 </StackPanel>
                             </Grid>
 
@@ -636,17 +637,17 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                    <TextBlock Text="绑定应用" Style="{StaticResource Text.Secondary}"
+                                    <TextBlock Text="{loc:T '绑定应用'}" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
                                     <TextBox x:Name="CustomAppBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="36" VerticalContentAlignment="Center"
                                              TextChanged="OnCustomAppChanged"
-                                             ToolTip="要接收这个键的程序，例如 C://Program Files\Tencent\Weixin\Weixin.exe" />
+                                             ToolTip="{loc:T '要接收这个键的程序，例如 C://Program Files\Tencent\Weixin\Weixin.exe'}" />
                                 </StackPanel>
-                                <Button HorizontalAlignment="Left" Grid.Column="1" Content="浏览…" Style="{StaticResource Button.Base}"
+                                <Button HorizontalAlignment="Left" Grid.Column="1" Content="{loc:T '浏览…'}" Style="{StaticResource Button.Base}"
                                         Padding="12,6" MinHeight="36" VerticalAlignment="Bottom"
                                         Click="OnBrowseCustomApp"
-                                        ToolTip="从资源管理器里挑一个 exe" />
+                                        ToolTip="{loc:T '从资源管理器里挑一个 exe'}" />
                             </Grid>
                             <TextBlock x:Name="CustomAppStatus" Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,6,0,0" />
@@ -661,44 +662,44 @@
 
                                 <StackPanel Grid.Column="0" Margin="0,0,16,0">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="以管理员身份启动" Style="{StaticResource Text.Body}"
+                                        <TextBlock Text="{loc:T '以管理员身份启动'}" Style="{StaticResource Text.Body}"
                                                    VerticalAlignment="Center" />
                                         <CheckBox x:Name="CustomAdminBox" Style="{StaticResource ToggleSwitch}"
                                                   Margin="10,0,0,0" VerticalAlignment="Center"
                                                   Click="OnCustomAdminChanged"
-                                                  ToolTip="仅在需要拉起这个程序时生效，会弹一次 UAC 确认。程序本来就在跑时不受影响。" />
+                                                  ToolTip="{loc:T '仅在需要拉起这个程序时生效，会弹一次 UAC 确认。程序本来就在跑时不受影响。'}" />
                                     </StackPanel>
                                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
-                                               Margin="0,4,0,0" Text="仅拉起程序时生效，会弹一次 UAC。" />
+                                               Margin="0,4,0,0" Text="{loc:T '仅拉起程序时生效，会弹一次 UAC。'}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Margin="0,0,16,0">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="把主窗口切到前台" Style="{StaticResource Text.Body}"
+                                        <TextBlock Text="{loc:T '把主窗口切到前台'}" Style="{StaticResource Text.Body}"
                                                    VerticalAlignment="Center" />
                                         <CheckBox x:Name="CustomMainWindowBox" Style="{StaticResource ToggleSwitch}"
                                                   Margin="10,0,0,0" VerticalAlignment="Center"
                                                   Click="OnCustomMainWindowChanged"
-                                                  ToolTip="关（默认）：不动它的窗口，按键直接交给系统 —— 应用把这个键注册成全局热键时，在后台也能收到。&#x0a;开：先把它的主窗口切到前台再发键，适合「这个键只在它被激活时才有意义」。会抢走你当前的焦点。" />
+                                                  ToolTip="{loc:T '关（默认）：不动它的窗口，按键直接交给系统 —— 应用把这个键注册成全局热键时，在后台也能收到。&#x0a;开：先把它的主窗口切到前台再发键，适合「这个键只在它被激活时才有意义」。会抢走你当前的焦点。'}" />
                                     </StackPanel>
                                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
-                                               Margin="0,4,0,0" Text="开会抢焦点；关着时后台也能收到热键。" />
+                                               Margin="0,4,0,0" Text="{loc:T '开会抢焦点；关着时后台也能收到热键。'}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="2">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="发键前等待" Style="{StaticResource Text.Body}"
+                                        <TextBlock Text="{loc:T '发键前等待'}" Style="{StaticResource Text.Body}"
                                                    VerticalAlignment="Center" />
                                         <TextBox x:Name="CustomWaitBox" Style="{StaticResource TextBox.Base}"
                                                  Width="76" MinHeight="34" Margin="10,0,0,0"
                                                  VerticalContentAlignment="Center" TextAlignment="Center"
                                                  TextChanged="OnCustomWaitChanged"
-                                                 ToolTip="窗口出现不代表能收键盘（程序还在加载界面）。大型软件常常 900 毫秒不够，可以调大；小工具可以调小甚至填 0。" />
-                                        <TextBlock Text="毫秒" Style="{StaticResource Text.Tertiary}"
+                                                 ToolTip="{loc:T '窗口出现不代表能收键盘（程序还在加载界面）。大型软件常常 900 毫秒不够，可以调大；小工具可以调小甚至填 0。'}" />
+                                        <TextBlock Text="{loc:T '毫秒'}" Style="{StaticResource Text.Tertiary}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0" />
                                     </StackPanel>
                                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
-                                               Margin="0,4,0,0" Text="窗口出现 ≠ 能收键盘，大软件可调大。" />
+                                               Margin="0,4,0,0" Text="{loc:T '窗口出现 ≠ 能收键盘，大软件可调大。'}" />
                                 </StackPanel>
                             </Grid>
 
@@ -738,7 +739,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Grid.Column="0" x:Name="ArgLabel" Text="参数"
+                                    <TextBlock Grid.Column="0" x:Name="ArgLabel" Text="{loc:T '参数'}"
                                                Style="{StaticResource Text.Secondary}"
                                                VerticalAlignment="Center" Margin="0,0,10,0" />
 
@@ -748,11 +749,11 @@
 
                                     <!-- 音量 / 亮度这类"步进"参数：一键回到设置里的幅度。
                                          留空 = 跟随设置页的滑杆，用户不必记自己填过什么。 -->
-                                    <Button HorizontalAlignment="Left" x:Name="ArgDefaultButton" Grid.Column="2" Content="用默认"
+                                    <Button HorizontalAlignment="Left" x:Name="ArgDefaultButton" Grid.Column="2" Content="{loc:T '用默认'}"
                                             Style="{StaticResource Button.Ghost}" Padding="10,5"
                                             Margin="8,0,0,0" VerticalAlignment="Center"
                                             Visibility="Collapsed" Click="OnArgUseDefault"
-                                            ToolTip="清空这里，改用设置页里的调节幅度" />
+                                            ToolTip="{loc:T '清空这里，改用设置页里的调节幅度'}" />
                                 </Grid>
                                 <TextBlock x:Name="ArgHint" Style="{StaticResource Text.Tertiary}" Margin="0,5,0,0"
                                            TextWrapping="Wrap" />
@@ -778,7 +779,7 @@
                                 BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
                                 Visibility="Collapsed">
                             <StackPanel>
-                                <TextBlock Text="当前绑定" Style="{StaticResource Text.Secondary}"
+                                <TextBlock Text="{loc:T '当前绑定'}" Style="{StaticResource Text.Secondary}"
                                            Margin="0,0,0,8" />
 
                                 <!-- 已选中的程序：图标 + 名字 + 路径 -->
@@ -798,26 +799,26 @@
                                     </Border>
 
                                     <StackPanel Grid.Column="1" Margin="10,0,10,0" VerticalAlignment="Center">
-                                        <TextBlock x:Name="WinBindName" Text="还没选择" FontWeight="SemiBold"
+                                        <TextBlock x:Name="WinBindName" Text="{loc:T '还没选择'}" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Brush.TextPrimary}"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock x:Name="WinBindPath" Style="{StaticResource Text.Tertiary}"
                                                    Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
 
-                                    <Button HorizontalAlignment="Left" Grid.Column="2" x:Name="WinBindClearButton" Content="清除"
+                                    <Button HorizontalAlignment="Left" Grid.Column="2" x:Name="WinBindClearButton" Content="{loc:T '清除'}"
                                             Style="{StaticResource Button.Ghost}" Padding="10,5"
                                             VerticalAlignment="Center" Visibility="Collapsed"
                                             Click="OnWinBindClear" />
                                 </Grid>
 
                                 <!-- 自定义显示名：exe 名不一定是软件名（如 idea64.exe 其实是 IDEA） -->
-                                <TextBlock Text="显示名称（可选）" Style="{StaticResource Text.Secondary}"
+                                <TextBlock Text="{loc:T '显示名称（可选）'}" Style="{StaticResource Text.Secondary}"
                                            Margin="0,12,0,7" />
                                 <TextBox x:Name="WinBindNoteBox" Style="{StaticResource TextBox.Base}"
                                          MinHeight="34" VerticalContentAlignment="Center"
                                          TextChanged="OnWinBindNoteChanged"
-                                         ToolTip="留空则用程序文件名。可以改成你认得的名字，会显示在键帽上" />
+                                         ToolTip="{loc:T '留空则用程序文件名。可以改成你认得的名字，会显示在键帽上'}" />
 
                                 <TextBlock x:Name="WinBindHint" Style="{StaticResource Text.Tertiary}"
                                            TextWrapping="Wrap" Margin="0,8,0,0" />

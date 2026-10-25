@@ -72,14 +72,14 @@ public partial class HelpView : UserControl
 
         if (primary == null)
         {
-            TriggerKeyText.Text = "（未设置）";
-            HintText.Text = "还没有触发键 —— 到「触发键与层」页给某一层分配一个。";
+            TriggerKeyText.Text = Loc.T("（未设置）");
+            HintText.Text = Loc.T("还没有触发键 —— 到「触发键与层」页给某一层分配一个。");
             return;
         }
 
         TriggerKeyText.Text = DescribeKey(primary.Key);
-        HintText.Text = "再看下面的按键 —— 未绑定的键可以到「按键映射」里自己加。"
-                      + "每一层可以用不同的触发键，速查表按层分列。";
+        HintText.Text = Loc.T("再看下面的按键 —— 未绑定的键可以到「按键映射」里自己加。")
+                      + Loc.T("每一层可以用不同的触发键，速查表按层分列。");
     }
 
     private static string DescribeKey(string key)
@@ -113,86 +113,86 @@ public partial class HelpView : UserControl
 
         var s = _host.Settings;
 
-        AddSection("① 触发键与图层", new[]
+        AddSection(Loc.T("① 触发键与图层"), new[]
         {
-            "按住触发键（默认 CapsLock）就是「功能键」，此时再按其他键会执行你在「按键映射」里配的功能。",
-            "一共 10 个图层，每层可以有**自己的触发键**（CapsLock、F13、右 Alt…），互不干扰。",
-            "触发键只能是单个按键 —— 组合键留给层内绑定用，避免「同样按 Ctrl+K，到底算触发还是算绑定」的歧义。",
+            Loc.T("按住触发键（默认 CapsLock）就是「功能键」，此时再按其他键会执行你在「按键映射」里配的功能。"),
+            Loc.T("一共 10 个图层，每层可以有**自己的触发键**（CapsLock、F13、右 Alt…），互不干扰。"),
+            Loc.T("触发键只能是单个按键 —— 组合键留给层内绑定用，避免「同样按 Ctrl+K，到底算触发还是算绑定」的歧义。"),
             $"当前配置：{s.Triggers.Count(t => t.Enabled)} 个启用的触发键。",
         });
 
-        AddSection("② 子层（层内修饰键）", new[]
+        AddSection(Loc.T("② 子层（层内修饰键）"), new[]
         {
-            "进入某一层后，再按住修饰键（Ctrl / Shift / Alt / Win 及其组合），可以用到**另一套独立绑定**。",
-            "每层最多 10 个子层，在「按键映射」页点「设置子层…」自由勾选。",
-            "例：基础层按 Q 打开面板，按住 Ctrl 再按 Q 则可以是「删除前一个单词」。",
-            "每个子层都有独立的按键绑定，互不覆盖。",
+            Loc.T("进入某一层后，再按住修饰键（Ctrl / Shift / Alt / Win 及其组合），可以用到**另一套独立绑定**。"),
+            Loc.T("每层最多 10 个子层，在「按键映射」页点「设置子层…」自由勾选。"),
+            Loc.T("例：基础层按 Q 打开面板，按住 Ctrl 再按 Q 则可以是「删除前一个单词」。"),
+            Loc.T("每个子层都有独立的按键绑定，互不覆盖。"),
         });
 
-        AddSection("③ 按键映射", new[]
+        AddSection(Loc.T("③ 按键映射"), new[]
         {
-            "左半是完整 108 键键盘：点任意键即可编辑它的功能，修改立刻生效。",
-            "深蓝色键帽 = 已绑定功能；浅蓝色 = 未绑定。键帽上方的小字是**功能分类**，中间是功能名，下方是键名。",
-            "右侧「编辑绑定」顶部的搜索框可以按功能名、分类、宏名、网址快速找到要绑的功能。",
-            "「分类」决定功能下拉里显示哪一类；「窗口绑定」「直达链接」「输入文本」这三类会换成专用的编辑界面。",
+            Loc.T("左半是完整 108 键键盘：点任意键即可编辑它的功能，修改立刻生效。"),
+            Loc.T("深蓝色键帽 = 已绑定功能；浅蓝色 = 未绑定。键帽上方的小字是**功能分类**，中间是功能名，下方是键名。"),
+            Loc.T("右侧「编辑绑定」顶部的搜索框可以按功能名、分类、宏名、网址快速找到要绑的功能。"),
+            Loc.T("「分类」决定功能下拉里显示哪一类；「窗口绑定」「直达链接」「输入文本」这三类会换成专用的编辑界面。"),
         });
 
-        AddSection("④ 窗口绑定", new[]
+        AddSection(Loc.T("④ 窗口绑定"), new[]
         {
-            "分类选「窗口绑定」后，有两个按钮：点选窗口（准星点一下已开的窗口）或选择程序文件。",
-            "绑定后按该键：程序没开就自动启动，已开着就切过去，已经在前台再按一次会最小化。",
-            "exe 名不一定是软件名（idea64.exe 是 IDEA），可以在「显示名称」里改成你认得的名字。",
+            Loc.T("分类选「窗口绑定」后，有两个按钮：点选窗口（准星点一下已开的窗口）或选择程序文件。"),
+            Loc.T("绑定后按该键：程序没开就自动启动，已开着就切过去，已经在前台再按一次会最小化。"),
+            Loc.T("exe 名不一定是软件名（idea64.exe 是 IDEA），可以在「显示名称」里改成你认得的名字。"),
         });
 
-        AddSection("⑤ 直达链接", new[]
+        AddSection(Loc.T("⑤ 直达链接"), new[]
         {
-            "这里有两种用法，别混：一种是「先填好、按键就开」，一种是「选中什么就开什么」。",
-            "【先填好】分类选「直达链接」，再选类型：直达网址用默认浏览器打开，直达文件夹在资源管理器里打开，直达文件用系统默认程序打开（和双击一样）。",
-            "网址写成 github.com 也行，会自动补 https://；填完会自动抓网页标题当备注。文件夹和文件都能点「浏览…」直接挑。",
-            "路径支持 %USERPROFILE%\\Desktop、~\\Downloads、shell:Downloads 这些写法；备注会显示在键帽上，不写备注时显示域名 / 文件夹名 / 文件名。",
-            "【选中什么就开什么】分类选「智能直达」（这一类里只有它一个动作）：在任意程序里选中一段文字，按这个键 —— 是网址就开浏览器、是文件夹就开资源管理器、是文件就用默认程序打开。不用预先配置。",
-            "智能识别支持带协议的网址、裸域名、盘符路径、UNC 网络路径、环境变量路径，以及 file:/// 开头的地址；选中普通句子时会明确告诉你「这不是链接」，不会乱开浏览器。",
+            Loc.T("这里有两种用法，别混：一种是「先填好、按键就开」，一种是「选中什么就开什么」。"),
+            Loc.T("【先填好】分类选「直达链接」，再选类型：直达网址用默认浏览器打开，直达文件夹在资源管理器里打开，直达文件用系统默认程序打开（和双击一样）。"),
+            Loc.T("网址写成 github.com 也行，会自动补 https://；填完会自动抓网页标题当备注。文件夹和文件都能点「浏览…」直接挑。"),
+            Loc.T("路径支持 %USERPROFILE%\\Desktop、~\\Downloads、shell:Downloads 这些写法；备注会显示在键帽上，不写备注时显示域名 / 文件夹名 / 文件名。"),
+            Loc.T("【选中什么就开什么】分类选「智能直达」（这一类里只有它一个动作）：在任意程序里选中一段文字，按这个键 —— 是网址就开浏览器、是文件夹就开资源管理器、是文件就用默认程序打开。不用预先配置。"),
+            Loc.T("智能识别支持带协议的网址、裸域名、盘符路径、UNC 网络路径、环境变量路径，以及 file:/// 开头的地址；选中普通句子时会明确告诉你「这不是链接」，不会乱开浏览器。"),
         });
 
-        AddSection("⑤b 自定义按键", new[]
+        AddSection(Loc.T("⑤b 自定义按键"), new[]
         {
-            "分类选「自定义按键」：设一个要发送的键 + 一个应用。按这个键时先看应用在不在运行 —— 在运行就直接把键发过去，没运行就先启动它、等窗口出来再发。",
-            "典型用法：把 F13 绑给微信，按一下就切到微信并按 F13；或者把某个键绑给常驻的笔记软件，按下去直接在里面触发它的快捷键。",
-            "「以管理员身份启动」只在需要拉起这个程序时生效，会弹一次 UAC；程序本来就在跑时不受影响。",
-            "「把应用主窗口切到前台」默认关：不动它的窗口，按键直接交给系统（应用把它注册成全局热键时后台也能收到）；开了会先切前台再发键，但会抢走焦点。",
-            "「启动后等多久再发键」默认 900 毫秒 —— 窗口出现不代表能收键盘，大型软件要调大。",
-            "备注会显示在键帽上；不填时显示绑定的应用名。",
+            Loc.T("分类选「自定义按键」：设一个要发送的键 + 一个应用。按这个键时先看应用在不在运行 —— 在运行就直接把键发过去，没运行就先启动它、等窗口出来再发。"),
+            Loc.T("典型用法：把 F13 绑给微信，按一下就切到微信并按 F13；或者把某个键绑给常驻的笔记软件，按下去直接在里面触发它的快捷键。"),
+            Loc.T("「以管理员身份启动」只在需要拉起这个程序时生效，会弹一次 UAC；程序本来就在跑时不受影响。"),
+            Loc.T("「把应用主窗口切到前台」默认关：不动它的窗口，按键直接交给系统（应用把它注册成全局热键时后台也能收到）；开了会先切前台再发键，但会抢走焦点。"),
+            Loc.T("「启动后等多久再发键」默认 900 毫秒 —— 窗口出现不代表能收键盘，大型软件要调大。"),
+            Loc.T("备注会显示在键帽上；不填时显示绑定的应用名。"),
         });
 
-        AddSection("⑥ 直接搜索", new[]
+        AddSection(Loc.T("⑥ 直接搜索"), new[]
         {
-            "分类选「直接搜索」，再挑一个搜索引擎（百度、知乎、B站、Google…）。",
-            "用法：在任意程序里选中一段文字，按这个键 —— 直接用该引擎在默认浏览器里搜索。",
-            "不经过 Qbar 面板，是「看到就查」的最快路径。没选中文字时会提示先选中。",
-            "它和「Qbar 搜索」的区别：Qbar 搜索是打开面板再输入；直接搜索是拿选区直接搜。",
+            Loc.T("分类选「直接搜索」，再挑一个搜索引擎（百度、知乎、B站、Google…）。"),
+            Loc.T("用法：在任意程序里选中一段文字，按这个键 —— 直接用该引擎在默认浏览器里搜索。"),
+            Loc.T("不经过 Qbar 面板，是「看到就查」的最快路径。没选中文字时会提示先选中。"),
+            Loc.T("它和「Qbar 搜索」的区别：Qbar 搜索是打开面板再输入；直接搜索是拿选区直接搜。"),
         });
 
-        AddSection("⑦ 宏", new[]
+        AddSection(Loc.T("⑦ 宏"), new[]
         {
-            "「宏」页可以录制一串按键操作，然后把整个宏绑到一个键上。",
-            "录制中的按键不会被拦截，录完在列表里可以调整每一步的延迟。",
-            "绑定时分类选「宏」，再从功能下拉里选具体那个宏。",
+            Loc.T("「宏」页可以录制一串按键操作，然后把整个宏绑到一个键上。"),
+            Loc.T("录制中的按键不会被拦截，录完在列表里可以调整每一步的延迟。"),
+            Loc.T("绑定时分类选「宏」，再从功能下拉里选具体那个宏。"),
             $"当前配置：{s.Macros.Count} 个宏。",
         });
 
-        AddSection("⑧ 剪贴板与同步", new[]
+        AddSection(Loc.T("⑧ 剪贴板与同步"), new[]
         {
-            "内置 10 组独立剪贴板（Caps+C / Caps+V 那一套），与系统剪贴板分开。",
-            "所有用户数据都在软件旁边的「KeyboardEnhance Data」文件夹里，备份在「KeyboardEnhance Back」里 —— 拷走整个文件夹就带走了软件和全部数据。",
-            "本地数据一律加密（AES-256-GCM），密钥由「备份密码」派生；没设密码时是明文，设了会立刻转成密文。",
-            "「同步与备份」支持 WebDAV：可以把整套配置同步到网盘，也能导入导出。导出默认加密、含全部字段；关掉加密则是明文，会剔除密码类字段。",
+            Loc.T("内置 10 组独立剪贴板（Caps+C / Caps+V 那一套），与系统剪贴板分开。"),
+            Loc.T("所有用户数据都在软件旁边的「KeyboardEnhance Data」文件夹里，备份在「KeyboardEnhance Back」里 —— 拷走整个文件夹就带走了软件和全部数据。"),
+            Loc.T("本地数据一律加密（AES-256-GCM），密钥由「备份密码」派生；没设密码时是明文，设了会立刻转成密文。"),
+            Loc.T("「同步与备份」支持 WebDAV：可以把整套配置同步到网盘，也能导入导出。导出默认加密、含全部字段；关掉加密则是明文，会剔除密码类字段。"),
         });
 
-        AddSection("⑨ 常见问题", new[]
+        AddSection(Loc.T("⑨ 常见问题"), new[]
         {
-            "改了按键没生效？确认当前在正确的层（看键盘上方的层下拉），以及引擎没有处于「暂停」状态。",
-            "锁屏（Win+L）后热键失效是系统限制 —— 锁屏界面在独立的安全桌面上，任何程序都无法在上面拦截键盘。",
-            "开机自启在「设置」里开关；它写入的是当前用户的注册表，不需要管理员权限。",
+            Loc.T("改了按键没生效？确认当前在正确的层（看键盘上方的层下拉），以及引擎没有处于「暂停」状态。"),
+            Loc.T("锁屏（Win+L）后热键失效是系统限制 —— 锁屏界面在独立的安全桌面上，任何程序都无法在上面拦截键盘。"),
+            Loc.T("开机自启在「设置」里开关；它写入的是当前用户的注册表，不需要管理员权限。"),
         });
     }
 
@@ -272,32 +272,32 @@ public partial class HelpView : UserControl
                     !desc.Contains(filter, StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (!byCategory.TryGetValue(info.Category, out var list))
+                if (!byCategory.TryGetValue(info.DisplayCategory, out var list))
                 {
                     list = new List<HelpItem>();
-                    byCategory[info.Category] = list;
+                    byCategory[info.DisplayCategory] = list;
                 }
                 list.Add(new HelpItem(combo, info.Title, desc));
             }
         }
 
         // 内置的固定说明
-        byCategory.TryAdd("面板", new List<HelpItem>());
-        var panel = byCategory["面板"];
+        byCategory.TryAdd(Loc.T("面板"), new List<HelpItem>());
+        var panel = byCategory[Loc.T("面板")];
         if (filter.Length == 0)
         {
-            panel.Add(new HelpItem("短按触发键", "切换大小写",
-                "不按其他键时松开的默认行为，可在「触发键与层」里改"));
-            panel.Add(new HelpItem("双击触发键", "打开 Qbar",
+            panel.Add(new HelpItem(Loc.T("短按触发键"), Loc.T("切换大小写"),
+                Loc.T("不按其他键时松开的默认行为，可在「触发键与层」里改")));
+            panel.Add(new HelpItem(Loc.T("双击触发键"), Loc.T("打开 Qbar"),
                 $"{Core.Input.HotkeyEngine.DoubleTapWindowMs} 毫秒内连按两下"));
-            panel.Add(new HelpItem("Qbar 内", "↑ ↓ 选择", "Enter 执行，Esc 关闭，Tab 补全"));
-            panel.Add(new HelpItem("Qbar 内", "=1+2*3", "直接计算并把结果复制到剪贴板"));
+            panel.Add(new HelpItem(Loc.T("Qbar 内"), Loc.T("↑ ↓ 选择"), Loc.T("Enter 执行，Esc 关闭，Tab 补全")));
+            panel.Add(new HelpItem(Loc.T("Qbar 内"), "=1+2*3", Loc.T("直接计算并把结果复制到剪贴板")));
         }
 
         string[] order =
         {
-            "光标移动", "选择", "编辑", "剪贴板", "面板", "窗口", "窗口绑定",
-            "智能直达", "直达链接", "自定义按键", "宏", "鼠标", "系统功能", "基础",
+            Loc.T("光标移动"), Loc.T("选择"), Loc.T("编辑"), Loc.T("剪贴板"), Loc.T("面板"), Loc.T("窗口"), Loc.T("窗口绑定"),
+            Loc.T("智能直达"), Loc.T("直达链接"), Loc.T("自定义按键"), Loc.T("宏"), Loc.T("鼠标"), Loc.T("系统功能"), Loc.T("基础"),
         };
         foreach (var cat in order)
         {
@@ -340,10 +340,10 @@ public partial class HelpView : UserControl
             // 备注优先：键帽上显示的就是备注，速查表跟着一致，免得两处叫法不同
             if (note != null) return note;
             var spec = Core.Actions.CustomKeySpec.FromArg(binding.Arg);
-            if (!spec.IsReady) return "自定义按键（还没配好）";
+            if (!spec.IsReady) return Loc.T("自定义按键（还没配好）");
             return $"把 {Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key)} 发给 {spec.ProcessName}"
-                 + (spec.RunAsAdmin ? "（需要时以管理员身份启动）" : "")
-                 + (spec.BringFront ? "，会先切到前台" : "");
+                 + (spec.RunAsAdmin ? Loc.T("（需要时以管理员身份启动）") : "")
+                 + (spec.BringFront ? Loc.T("，会先切到前台") : "");
         }
 
         if (id == "winBind" && !string.IsNullOrWhiteSpace(binding.Arg))
@@ -353,24 +353,24 @@ public partial class HelpView : UserControl
         }
 
         if (id == "webPage")
-            return "打开 " + Core.Actions.UrlUtil.LabelOf(note, binding.Arg);
+            return Loc.T("打开 ") + Core.Actions.UrlUtil.LabelOf(note, binding.Arg);
 
         // 直达文件夹：说清"打开的是哪个目录"，目录名比整条路径好认
         if (id == "openFolder")
-            return "打开文件夹 " + UI.Views.KeysView.FolderLabelOf(note, binding.Arg);
+            return Loc.T("打开文件夹 ") + UI.Views.KeysView.FolderLabelOf(note, binding.Arg);
 
         // 直达文件：同理，用文件名代替整条路径
         if (id == "openFile")
-            return "打开文件 " + UI.Views.KeysView.FileLabelOf(note, binding.Arg);
+            return Loc.T("打开文件 ") + UI.Views.KeysView.FileLabelOf(note, binding.Arg);
 
         /* 输入文本：**只显示备注，内容一律隐藏**（用户明确要求）。
          *
          * 这个动作的参数就是文字本身 —— 邮箱、地址、常用回复，
          * 而速查表是最容易被截图分享的一页。以前走到下面的
-         * "（参数 xxx）"分支，整段文字直接摊在屏幕上。
+         * Loc.T("（参数 xxx）")分支，整段文字直接摊在屏幕上。
          * 需要认出是哪一条就靠备注；没填备注时也不回退显示正文。 */
         if (id == "typeText")
-            return note == null ? "输入文本（内容已隐藏）" : "输入文本 · " + note;
+            return note == null ? Loc.T("输入文本（内容已隐藏）") : Loc.T("输入文本 · ") + note;
 
         /* 其余动作统一走"备注优先"（用户明确要求）。
          *

@@ -119,7 +119,7 @@ public partial class KeysView : UserControl
         BuildKeyboard();
 
         ShowBindStatus(string.IsNullOrEmpty(note)
-            ? "备注已清空，键帽改显示文字开头"
+            ? Loc.T("备注已清空，键帽改显示文字开头")
             : $"备注已保存：「{note}」—— 键帽上会显示这个名字");
     }
 
@@ -197,10 +197,10 @@ public partial class KeysView : UserControl
         // ② 徽标：网址蓝 / 文件夹绿 / 文件橙 / 认不出灰
         (string name, string brushKey) = hit.Kind switch
         {
-            SmartKind.Url => ("网址", "Brush.Accent"),
-            SmartKind.Folder or SmartKind.MissingFolder => ("文件夹", "Brush.Success"),
-            SmartKind.File or SmartKind.MissingFile => ("文件", "Brush.Warning"),
-            _ => ("未识别", "Brush.TextTertiary"),
+            SmartKind.Url => (Loc.T("网址"), "Brush.Accent"),
+            SmartKind.Folder or SmartKind.MissingFolder => (Loc.T("文件夹"), "Brush.Success"),
+            SmartKind.File or SmartKind.MissingFile => (Loc.T("文件"), "Brush.Warning"),
+            _ => (Loc.T("未识别"), "Brush.TextTertiary"),
         };
         LinkKindText.Text = name;
 
@@ -242,21 +242,21 @@ public partial class KeysView : UserControl
     internal static string LinkHintFor(SmartTarget hit, string input)
     {
         if (string.IsNullOrWhiteSpace(input))
-            return "网址、文件夹、文件都能填在这里，类型会自动识别，不用自己选。";
+            return Loc.T("网址、文件夹、文件都能填在这里，类型会自动识别，不用自己选。");
 
         return hit.Kind switch
         {
             SmartKind.Url => hit.Target.Length > 0 && hit.Target != input.Trim()
                 ? $"识别为网址 —— 按这个键用默认浏览器打开（会打开 {hit.Target}）"
-                : "识别为网址 —— 按这个键用默认浏览器打开",
+                : Loc.T("识别为网址 —— 按这个键用默认浏览器打开"),
 
-            SmartKind.Folder => "识别为文件夹，路径存在 —— 按这个键在资源管理器里打开它",
-            SmartKind.File => "识别为文件，文件存在 —— 按这个键用系统默认程序打开（和双击一样）",
-            SmartKind.MissingFolder => "识别为文件夹，但路径现在不存在 —— 按下去会提示「文件夹不存在」",
-            SmartKind.MissingFile => "识别为文件，但文件现在不存在 —— 按下去会提示「文件不存在」",
+            SmartKind.Folder => Loc.T("识别为文件夹，路径存在 —— 按这个键在资源管理器里打开它"),
+            SmartKind.File => Loc.T("识别为文件，文件存在 —— 按这个键用系统默认程序打开（和双击一样）"),
+            SmartKind.MissingFolder => Loc.T("识别为文件夹，但路径现在不存在 —— 按下去会提示「文件夹不存在」"),
+            SmartKind.MissingFile => Loc.T("识别为文件，但文件现在不存在 —— 按下去会提示「文件不存在」"),
 
-            _ => @"看不出这是网址还是路径 —— 网址可以直接粘（github.com 也行）；" +
-                 @"本地路径用 D:\ 开头，或点「浏览…」挑一个",
+            _ => Loc.T(@"看不出这是网址还是路径 —— 网址可以直接粘（github.com 也行）；") +
+                 Loc.T(@"本地路径用 D:\ 开头，或点「浏览…」挑一个"),
         };
     }
 
@@ -296,7 +296,7 @@ public partial class KeysView : UserControl
         string url = b.Arg ?? "";
         if (string.IsNullOrWhiteSpace(url)) return;
 
-        WebFetchStatus.Text = "正在获取网页标题…";
+        WebFetchStatus.Text = Loc.T("正在获取网页标题…");
         FetchTitleButton.IsEnabled = false;
 
         // 用 Task.Run 而不是同步调用：HttpClient 最长等 3 秒，同步会冻结界面
@@ -315,7 +315,7 @@ public partial class KeysView : UserControl
 
                     if (string.IsNullOrWhiteSpace(title))
                     {
-                        WebFetchStatus.Text = "没能取到标题（网站在线吗？），可以直接手写备注。";
+                        WebFetchStatus.Text = Loc.T("没能取到标题（网站在线吗？），可以直接手写备注。");
                         return;
                     }
 
@@ -342,7 +342,7 @@ public partial class KeysView : UserControl
         var b = FindInCurrentLayer(CurrentCombo());
         if (b == null || b.Action != "webPage" || string.IsNullOrWhiteSpace(b.Arg))
         {
-            ShowBindStatus("先填一个网址，再取标题。", ok: false);
+            ShowBindStatus(Loc.T("先填一个网址，再取标题。"), ok: false);
             return;
         }
         StartTitleFetch(overwrite: true);
@@ -390,19 +390,19 @@ public partial class KeysView : UserControl
                 : cur!.Note!.Trim();
             WinBindPath.Text = exe;
             WinBindClearButton.Visibility = Visibility.Visible;
-            WinBindHint.Text = "按这个键：程序没开就自动启动；已开着就切过去；"
-                             + "已经在前台时再按一次会最小化。";
+            WinBindHint.Text = Loc.T("按这个键：程序没开就自动启动；已开着就切过去；")
+                             + Loc.T("已经在前台时再按一次会最小化。");
         }
         else if (!string.IsNullOrWhiteSpace(exe))
         {
             WinBindName.Text = Path.GetFileNameWithoutExtension(exe);
             WinBindPath.Text = exe + "（文件不存在）";
             WinBindClearButton.Visibility = Visibility.Visible;
-            WinBindHint.Text = "这个程序已经不在了，重新选一个吧。";
+            WinBindHint.Text = Loc.T("这个程序已经不在了，重新选一个吧。");
         }
         else
         {
-            WinBindName.Text = "还没选择";
+            WinBindName.Text = Loc.T("还没选择");
             WinBindPath.Text = "点下面任一按钮选择要绑定的程序";
             WinBindClearButton.Visibility = Visibility.Collapsed;
             WinBindHint.Text = "";
@@ -465,8 +465,8 @@ public partial class KeysView : UserControl
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "选择要绑定的程序",
-            Filter = "程序 (*.exe)|*.exe|所有文件|*.*",
+            Title = Loc.T("选择要绑定的程序"),
+            Filter = Loc.T("程序 (*.exe)|*.exe|所有文件|*.*"),
             CheckFileExists = true,
         };
         // 从已选程序所在目录打开，连着改几个程序时更省事
@@ -492,7 +492,7 @@ public partial class KeysView : UserControl
         var info = Core.Windows.WindowService.Describe(h);
         if (info == null || string.IsNullOrEmpty(info.ExePath))
         {
-            _host?.Notify("取不到这个窗口的程序路径，改用「选择程序文件」试试");
+            _host?.Notify(Loc.T("取不到这个窗口的程序路径，改用「选择程序文件」试试"));
             return;
         }
         ApplyWinBindExe(info.ExePath);
@@ -640,7 +640,7 @@ public partial class KeysView : UserControl
     private void UpdateStepHint(string actionId, string text)
     {
         int def = DefaultStepFor(actionId);
-        string unit = IsVolumeStepAction(actionId) ? "音量" : "亮度";
+        string unit = IsVolumeStepAction(actionId) ? Loc.T("音量") : Loc.T("亮度");
 
         if (string.IsNullOrEmpty(text))
         {
@@ -684,7 +684,7 @@ public partial class KeysView : UserControl
         if (_host == null) return;
         string combo = CurrentCombo();
         var binding = FindInCurrentLayer(combo);
-        if (binding == null || !binding.IsBound) { _host.Notify("这个按键还没有绑定功能"); return; }
+        if (binding == null || !binding.IsBound) { _host.Notify(Loc.T("这个按键还没有绑定功能")); return; }
         _host.InvokeAction(binding.Action, binding.Arg);
     }
 
@@ -752,7 +752,7 @@ public partial class KeysView : UserControl
     /// <summary>层内修饰键的中文说明（界面提示用）。</summary>
     private static string ModifierText(KeyModifiers m)
     {
-        if (m == KeyModifiers.None) return "直接按";
+        if (m == KeyModifiers.None) return Loc.T("直接按");
         var parts = new List<string>();
         if (m.HasFlag(KeyModifiers.Ctrl)) parts.Add("Ctrl");
         if (m.HasFlag(KeyModifiers.Shift)) parts.Add("Shift");

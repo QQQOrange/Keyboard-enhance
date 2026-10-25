@@ -27,7 +27,7 @@ public partial class KeysView : UserControl
             var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == layer.Id);
             string suffix = trigger != null
                 ? $"　← 长按 {KeyName.Display(trigger.Key)}"
-                : "　（未分配触发键）";
+                : Loc.T("　（未分配触发键）");
             LayerBox.Items.Add(new ComboBoxItem
             {
                 Content = $"{layer.Id}. {layer.Name}{suffix}",
@@ -281,7 +281,7 @@ public partial class KeysView : UserControl
         }
 
         // 第一项：直接按（无子层），始终存在
-        AddButton("直接按", "", "进入层后直接按的键");
+        AddButton(Loc.T("直接按"), "", Loc.T("进入层后直接按的键"));
 
         /* 后面按该层配置的子层逐个生成。
          *
@@ -552,28 +552,28 @@ public partial class KeysView : UserControl
 
         ArgLabel.Text = actionId switch
         {
-            "openUrl" => "网址",
-            "runProgram" => "程序路径或命令",
-            "wrapSelection" => "起始符号",
-            "volumeUp" or "volumeDown" => "音量步进（%）",
-            "brightnessUp" or "brightnessDown" => "亮度步进（%）",
-            _ => "次数 / 参数",
+            "openUrl" => Loc.T("网址"),
+            "runProgram" => Loc.T("程序路径或命令"),
+            "wrapSelection" => Loc.T("起始符号"),
+            "volumeUp" or "volumeDown" => Loc.T("音量步进（%）"),
+            "brightnessUp" or "brightnessDown" => Loc.T("亮度步进（%）"),
+            _ => Loc.T("次数 / 参数"),
         };
 
         int def = DefaultStepFor(actionId);
 
         ArgHint.Text = actionId switch
         {
-            "openUrl" => "例如 https://github.com",
-            "runProgram" => "例如 notepad.exe",
-            "wrapSelection" => "例如 ( 会把选中文字变成 (文字)",
+            "openUrl" => Loc.T("例如 https://github.com"),
+            "runProgram" => Loc.T("例如 notepad.exe"),
+            "wrapSelection" => Loc.T("例如 ( 会把选中文字变成 (文字)"),
             "volumeUp" or "volumeDown" =>
                 $"按一次调多少音量：留空 = 用设置里的 {def}%。"
-                + "按住不放时会自动切成 1% 细调，一路平滑地加上去",
+                + Loc.T("按住不放时会自动切成 1% 细调，一路平滑地加上去"),
             "brightnessUp" or "brightnessDown" =>
                 $"按一次调多少亮度：留空 = 用设置里的 {def}%。"
-                + "按住不放时会自动切成 1% 细调，一路平滑地加上去",
-            _ => "不填默认 1，填 5 表示一次移动 5 个字符",
+                + Loc.T("按住不放时会自动切成 1% 细调，一路平滑地加上去"),
+            _ => Loc.T("不填默认 1，填 5 表示一次移动 5 个字符"),
         };
 
         // 步进最多三位（1~100），次数最多三位（1~200）

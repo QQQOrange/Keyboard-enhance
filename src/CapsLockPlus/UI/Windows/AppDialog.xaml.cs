@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using CapsLockPlus.Core.Localization;
 using CapsLockPlus.UI.Theme;
 
 namespace CapsLockPlus.UI.Windows;
@@ -144,8 +145,11 @@ public partial class AppDialog : Window
     private void ApplyKind(DialogKind kind, string text, string title,
         bool showCancel, string? okText, string? cancelText)
     {
-        TitleText.Text = title;
-        BodyText.Text = text;
+        /* 对话框是**显示出口**，翻译就放在这里 —— 全仓 60 多处调用点照旧写中文，
+         * 不用每处再包一层 Loc.T。查不到译文时原样返回，所以拼出来的句子
+         * （"没能打开网址：xxx"）最坏情况也就是保持中文，不会露出 key。 */
+        TitleText.Text = Loc.T(title);
+        BodyText.Text = Loc.T(text);
 
         (string glyph, string brushKey, string ok) = kind switch
         {
@@ -159,8 +163,8 @@ public partial class AppDialog : Window
         IconText.Text = glyph;
         if (TryBrush(brushKey) is { } brush) IconText.Foreground = brush;
 
-        OkButton.Content = okText ?? ok;
-        CancelButton.Content = cancelText ?? "取消";
+        OkButton.Content = okText ?? Loc.T(ok);
+        CancelButton.Content = cancelText ?? Loc.T("取消");
         CancelButton.Visibility = showCancel ? Visibility.Visible : Visibility.Collapsed;
 
         // 危险类操作把确定按钮改成红色，和界面里的删除按钮一致

@@ -57,7 +57,7 @@ public partial class BackupView : UserControl
         RefreshDataLocation();
 
         SyncStatus.Text = s.LastSyncAt == DateTime.MinValue
-            ? "还没同步过"
+            ? Loc.T("还没同步过")
             : $"上次同步：{s.LastSyncAt:yyyy-MM-dd HH:mm}　{s.LastSyncInfo}";
     }
 
@@ -73,14 +73,14 @@ public partial class BackupView : UserControl
 
         if (!DataVault.IsEnabled)
         {
-            DataEncText.Text = "⚠ 本地数据还是明文 —— 设一个「备份密码」就会立刻转成密文（AES-256-GCM）。";
+            DataEncText.Text = Loc.T("⚠ 本地数据还是明文 —— 设一个「备份密码」就会立刻转成密文（AES-256-GCM）。");
             DataEncText.Foreground = PrivateFg;
             return;
         }
 
         DataEncText.Text = DataVault.IsUnlocked
-            ? "✓ 本地数据已加密（AES-256-GCM，密钥由备份密码派生）"
-            : "✓ 本地数据已加密，但本次会话还没解锁 —— 修改不会被保存，解锁后恢复正常。";
+            ? Loc.T("✓ 本地数据已加密（AES-256-GCM，密钥由备份密码派生）")
+            : Loc.T("✓ 本地数据已加密，但本次会话还没解锁 —— 修改不会被保存，解锁后恢复正常。");
         DataEncText.Foreground = (Brush)FindResource("Brush.TextTertiary");
     }
 
@@ -194,7 +194,7 @@ public partial class BackupView : UserControl
                 DataVault.Disable();
                 SettingsStore.Save(_host.Settings);       // 写回明文
                 RemovePlaintextBackups();
-                ShowVaultStatus("已关闭本地加密：数据恢复为明文存储。", ok: false);
+                ShowVaultStatus(Loc.T("已关闭本地加密：数据恢复为明文存储。"), ok: false);
                 return;
             }
 
@@ -207,13 +207,13 @@ public partial class BackupView : UserControl
             RemovePlaintextBackups();
 
             ShowVaultStatus(firstTime
-                ? "已启用本地加密：设置、宏、按键绑定、窗口绑定全部改为 AES-256-GCM 密文存储，"
-                  + "文件拷到别的电脑也打不开。日常启动不需要输密码（密钥用 Windows DPAPI 缓存）。"
-                : "密码已更新，本地数据已用新密钥重新加密。", ok: true);
+                ? Loc.T("已启用本地加密：设置、宏、按键绑定、窗口绑定全部改为 AES-256-GCM 密文存储，")
+                  + Loc.T("文件拷到别的电脑也打不开。日常启动不需要输密码（密钥用 Windows DPAPI 缓存）。")
+                : Loc.T("密码已更新，本地数据已用新密钥重新加密。"), ok: true);
         }
         catch (Exception ex)
         {
-            ShowVaultStatus("加密失败：" + ex.Message, ok: false);
+            ShowVaultStatus(Loc.T("加密失败：") + ex.Message, ok: false);
             CoreLog.Warn("[加密] 应用密码失败：" + ex.Message);
         }
     }
@@ -244,7 +244,7 @@ public partial class BackupView : UserControl
     private void UpdateVaultStatus()
     {
         if (DataVault.IsEnabled)
-            ShowVaultStatus("本地数据已加密（AES-256-GCM）：设置、宏、按键绑定、窗口绑定都以密文存储。", ok: true);
+            ShowVaultStatus(Loc.T("本地数据已加密（AES-256-GCM）：设置、宏、按键绑定、窗口绑定都以密文存储。"), ok: true);
         else
             VaultStatusBar.Visibility = Visibility.Collapsed;
     }
@@ -280,7 +280,7 @@ public partial class BackupView : UserControl
             AutoBackupBox.IsChecked = false;
             _suppress = false;
             _host.Settings.Sync.AutoBackup = false;
-            SyncStatus.Text = "✗ 自动备份需要先设「备份密码」—— 备份必须是密文。";
+            SyncStatus.Text = Loc.T("✗ 自动备份需要先设「备份密码」—— 备份必须是密文。");
             return;
         }
 
@@ -288,7 +288,7 @@ public partial class BackupView : UserControl
         _host.RestartAutoBackupTimer();
         SyncStatus.Text = on
             ? $"✓ 已开启自动备份：每 {_host.Settings.Sync.AutoBackupMinutes} 分钟一次（配置没变化会跳过）"
-            : "已关闭自动备份。";
+            : Loc.T("已关闭自动备份。");
     }
 
     private void OnAutoMinutesChanged(object sender, RoutedEventArgs e)
@@ -336,7 +336,7 @@ public partial class BackupView : UserControl
         int removed = SyncService.PruneLocal(_host.Settings.Sync.KeepLocalBackups, days);
         RefreshLocalSummary();
         SyncStatus.Text = days == 0
-            ? "✓ 已关闭按天数清理，只按份数保留"
+            ? Loc.T("✓ 已关闭按天数清理，只按份数保留")
             : removed > 0
                 ? $"✓ 已清掉 {removed} 份 {days} 天前的备份（最新一份永远保留）"
                 : $"✓ 清理天数改为 {days} 天，暂时没有超期的备份";
@@ -371,7 +371,7 @@ public partial class BackupView : UserControl
     private async void OnTestClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        SyncStatus.Text = "正在连接…";
+        SyncStatus.Text = Loc.T("正在连接…");
         var r = await _host.Sync.TestAsync();
         SyncStatus.Text = (r.Ok ? UiText.OkMark : UiText.FailMark) + r.Message;
     }
@@ -381,10 +381,10 @@ public partial class BackupView : UserControl
         if (_host == null) return;
         if (string.IsNullOrWhiteSpace(_host.Settings.Sync.WebDavUrl))
         {
-            SyncStatus.Text = "✗ 请先填 WebDAV 地址";
+            SyncStatus.Text = Loc.T("✗ 请先填 WebDAV 地址");
             return;
         }
-        SyncStatus.Text = "正在上传…";
+        SyncStatus.Text = Loc.T("正在上传…");
         var r = await _host.RunSyncNowAsync(upload: true);
         SyncStatus.Text = (r.Ok ? UiText.OkMark : UiText.FailMark) + r.Message;
         Refresh();
@@ -401,8 +401,8 @@ public partial class BackupView : UserControl
         Refresh();
         if (ok == true)
         {
-            SyncStatus.Text = "✓ " + (dlg.Result?.Summary ?? "已恢复");
-            _host.Notify("已从备份恢复配置");
+            SyncStatus.Text = "✓ " + (dlg.Result?.Summary ?? Loc.T("已恢复"));
+            _host.Notify(Loc.T("已从备份恢复配置"));
         }
     }
 
@@ -438,13 +438,13 @@ public partial class BackupView : UserControl
         if (!_host.Sync.Configured)
         {
             AppDialog.Warn(Window.GetWindow(this),
-                "还没填 WebDAV 地址，云端没有可恢复的备份。\n\n"
-                + "先在上面填好地址与账号，点「测连接」确认能用。",
-                "云端未配置");
+                Loc.T("还没填 WebDAV 地址，云端没有可恢复的备份。\n\n")
+                + Loc.T("先在上面填好地址与账号，点「测连接」确认能用。"),
+                Loc.T("云端未配置"));
             return;
         }
 
-        MaintStatus.Text = "正在读取云端备份清单…";
+        MaintStatus.Text = Loc.T("正在读取云端备份清单…");
         var win = new CapsLockPlus.UI.Windows.RestoreWindow(_host)
         {
             Owner = Window.GetWindow(this),
@@ -452,41 +452,41 @@ public partial class BackupView : UserControl
 
         bool restored = win.ShowDialog() == true;
         MaintStatus.Text = restored
-            ? "✓ " + (win.Result?.Summary ?? "已从云端恢复")
+            ? "✓ " + (win.Result?.Summary ?? Loc.T("已从云端恢复"))
             : "";
         if (restored) RefreshLocalSummary();
     }
 
     private async void OnCleanupOld(object sender, RoutedEventArgs e) =>
         await CleanupAsync(
-            "清理 7 天前的备份",
-            "删除本地和云端**早于 7 天**的备份。\n\n"
+            Loc.T("清理 7 天前的备份"),
+            Loc.T("删除本地和云端**早于 7 天**的备份。\n\n")
             + $"· 本地目录：{SyncService.BackupDir}\n"
             + (_host?.Sync.Configured == true
-                ? "· 云端：同样按时间清理\n"
-                : "· 云端：未配置，这次只清本地\n")
-            + "\n最新一份始终保留；当前正在用的配置不受影响。",
+                ? Loc.T("· 云端：同样按时间清理\n")
+                : Loc.T("· 云端：未配置，这次只清本地\n"))
+            + Loc.T("\n最新一份始终保留；当前正在用的配置不受影响。"),
             () => _host!.Sync.CleanupOlderThanAsync(7));
 
     private async void OnCleanupKeep(object sender, RoutedEventArgs e) =>
         await CleanupAsync(
-            "只保留最近 10 份备份",
-            "本地和云端都只保留**最新 10 份**，更旧的删掉。\n\n"
+            Loc.T("只保留最近 10 份备份"),
+            Loc.T("本地和云端都只保留**最新 10 份**，更旧的删掉。\n\n")
             + (_host?.Sync.Configured == true
-                ? "· 本地与云端一起处理\n"
-                : "· 云端未配置，这次只清本地\n")
-            + "\n最新一份始终保留；当前正在用的配置不受影响。",
+                ? Loc.T("· 本地与云端一起处理\n")
+                : Loc.T("· 云端未配置，这次只清本地\n"))
+            + Loc.T("\n最新一份始终保留；当前正在用的配置不受影响。"),
             () => _host!.Sync.KeepNewestAsync(10));
 
     private async void OnCleanupRedundant(object sender, RoutedEventArgs e) =>
         await CleanupAsync(
-            "清除云端冗余数据",
-            "只清理**云端**目录里这些东西：\n\n"
-            + "· 上传中断的残留（.tmp / .part / .crdownload / ~$ 开头）\n"
-            + "· 0 字节或小于 64 字节的文件\n"
-            + "· 内容完全重复的备份（只留最新那份）\n"
-            + "· 打不开的：既不是加密备份，也不是明文导出\n\n"
-            + "本地备份目录不会被动 —— 那里可能有你自己的文件。",
+            Loc.T("清除云端冗余数据"),
+            Loc.T("只清理**云端**目录里这些东西：\n\n")
+            + Loc.T("· 上传中断的残留（.tmp / .part / .crdownload / ~$ 开头）\n")
+            + Loc.T("· 0 字节或小于 64 字节的文件\n")
+            + Loc.T("· 内容完全重复的备份（只留最新那份）\n")
+            + Loc.T("· 打不开的：既不是加密备份，也不是明文导出\n\n")
+            + Loc.T("本地备份目录不会被动 —— 那里可能有你自己的文件。"),
             () => _host!.Sync.CleanupRedundantAsync());
 
     /// <summary>三个清理按钮共用：确认 → 执行 → 结果弹窗 + 页面内状态。</summary>
@@ -495,22 +495,22 @@ public partial class BackupView : UserControl
     {
         if (_host == null || _maintaining) return;
 
-        if (!AppDialog.ConfirmDanger(Window.GetWindow(this), confirmText, title, "开始清理")) return;
+        if (!AppDialog.ConfirmDanger(Window.GetWindow(this), confirmText, title, Loc.T("开始清理"))) return;
 
         _maintaining = true;
-        MaintStatus.Text = "正在清理…";
+        MaintStatus.Text = Loc.T("正在清理…");
         try
         {
             var result = await action();
             MaintStatus.Text = "✓ " + result.Summary;
             RefreshLocalSummary();
-            AppDialog.Info(Window.GetWindow(this), result.Summary, title + " · 完成", DialogKind.Success);
+            AppDialog.Info(Window.GetWindow(this), result.Summary, title + Loc.T(" · 完成"), DialogKind.Success);
         }
         catch (Exception ex)
         {
             CoreLog.Warn($"{title}失败：{ex.Message}");
             MaintStatus.Text = "✗ " + ex.Message;
-            AppDialog.Error(Window.GetWindow(this), ex.Message, title + " · 失败");
+            AppDialog.Error(Window.GetWindow(this), ex.Message, title + Loc.T(" · 失败"));
         }
         finally
         {
@@ -550,12 +550,12 @@ public partial class BackupView : UserControl
             ExportEncryptedBox.IsEnabled = false;
             ExportEncryptedBox.ToolTip =
                 $"勾选了隐私内容（{string.Join("、", priv)}），导出必须加密 —— "
-                + "这些组里有网盘密码、备份密码这类凭据，明文文件被转发就等于把凭据送出去。";
+                + Loc.T("这些组里有网盘密码、备份密码这类凭据，明文文件被转发就等于把凭据送出去。");
         }
         else
         {
             ExportEncryptedBox.IsEnabled = true;
-            ExportEncryptedBox.ToolTip = "加密导出：用备份密码把文件变成密文";
+            ExportEncryptedBox.ToolTip = Loc.T("加密导出：用备份密码把文件变成密文");
         }
     }
 
@@ -593,16 +593,16 @@ public partial class BackupView : UserControl
         /* 徽标 + 文案一起改：用户要求"明确展示当前的加密状态"，
          * 只靠一个开关的位置不够直观 —— 开关在右边、说明在左边，
          * 扫一眼分不清现在是哪种。 */
-        ExportStateText.Text = enc ? "已加密" : "明文";
+        ExportStateText.Text = enc ? Loc.T("已加密") : Loc.T("明文");
         ExportStateText.Foreground = (System.Windows.Media.Brush)FindResource(
             enc ? "Brush.Success" : "Brush.Warning");
         ExportStateBadge.Background = (System.Windows.Media.Brush)FindResource(
             enc ? "Brush.SuccessSoft" : "Brush.WarningSoft");
 
         ExportModeHint.Text = enc
-            ? "用备份密码加密，含 GitHub 令牌 / 全部配置。换台机器导入时输入同一个密码即可。"
-            : "不加密，任何人拿到都能读 —— 里面的 GitHub 令牌也看得见，别公开分享。"
-              + "为免更严重的泄露，仍会剔除网盘密码与备份密码。";
+            ? Loc.T("用备份密码加密，含 GitHub 令牌 / 全部配置。换台机器导入时输入同一个密码即可。")
+            : Loc.T("不加密，任何人拿到都能读 —— 里面的 GitHub 令牌也看得见，别公开分享。")
+              + Loc.T("为免更严重的泄露，仍会剔除网盘密码与备份密码。");
     }
 
     private void OnExportClick(object sender, RoutedEventArgs e)
@@ -612,7 +612,7 @@ public partial class BackupView : UserControl
         var selected = _groups.Where(g => g.Checked).Select(g => g.Id).ToList();
         if (selected.Count == 0)
         {
-            AppDialog.Info(Window.GetWindow(this), "一项都没勾，没什么可导出的。", "导出配置");
+            AppDialog.Info(Window.GetWindow(this), Loc.T("一项都没勾，没什么可导出的。"), Loc.T("导出配置"));
             return;
         }
 
@@ -622,10 +622,10 @@ public partial class BackupView : UserControl
         if (encrypted && string.IsNullOrWhiteSpace(password))
         {
             AppDialog.Info(Window.GetWindow(this),
-                "还没有「备份密码」，没法加密导出。\n\n" +
-                "可以先去上面的「备份密码」里设一个（本地数据也会一起变成密文），\n" +
-                "或者关掉「加密导出」改用明文导出。",
-                "需要先设密码");
+                Loc.T("还没有「备份密码」，没法加密导出。\n\n") +
+                Loc.T("可以先去上面的「备份密码」里设一个（本地数据也会一起变成密文），\n") +
+                Loc.T("或者关掉「加密导出」改用明文导出。"),
+                Loc.T("需要先设密码"));
             BackupPassBox.Focus();
             return;
         }
@@ -636,8 +636,8 @@ public partial class BackupView : UserControl
         {
             AppDialog.Warn(Window.GetWindow(this),
                 $"勾选了隐私内容（{string.Join("、", privNow)}），只能用加密导出。\n\n"
-                + "这些组里有网盘密码、备份密码这类凭据，明文文件被转发就等于把凭据送出去。",
-                "必须加密导出");
+                + Loc.T("这些组里有网盘密码、备份密码这类凭据，明文文件被转发就等于把凭据送出去。"),
+                Loc.T("必须加密导出"));
             return;
         }
 
@@ -646,17 +646,17 @@ public partial class BackupView : UserControl
         {
             bool hasToken = Core.Update.UpdateService.HasToken(_host.Settings.Global.GitHubToken);
             string extra = hasToken
-                ? "\n\n注意：这份文件里包含你的 GitHub 个人访问令牌，以及全部已勾选的配置。"
+                ? Loc.T("\n\n注意：这份文件里包含你的 GitHub 个人访问令牌，以及全部已勾选的配置。")
                 : "";
             if (!AppDialog.Confirm(Window.GetWindow(this),
-                    "这次是明文导出，谁拿到文件都能读到内容。" + extra
-                    + "\n\n（网盘密码与备份密码仍会剔除）确定要继续吗？",
-                    "明文导出", DialogKind.Warn, okText: "继续导出")) return;
+                    Loc.T("这次是明文导出，谁拿到文件都能读到内容。") + extra
+                    + Loc.T("\n\n（网盘密码与备份密码仍会剔除）确定要继续吗？"),
+                    Loc.T("明文导出"), DialogKind.Warn, okText: Loc.T("继续导出"))) return;
         }
 
         var dlg = new SaveFileDialog
         {
-            Title = encrypted ? "导出配置（加密）" : "导出配置（明文）",
+            Title = encrypted ? Loc.T("导出配置（加密）") : Loc.T("导出配置（明文）"),
             FileName = $"KeyboardEnhance配置({DateTime.Now:yyyy-MM-dd HH-mm-ss}){ExportImport.Extension}",
             Filter = $"KeyboardEnhance 配置|*{ExportImport.Extension}|所有文件|*.*",
             InitialDirectory = SyncService.BackupDir,
@@ -675,13 +675,13 @@ public partial class BackupView : UserControl
             _host.Notify(what);
             ShowImportResult($"已导出到：{dlg.FileName}\n共 {n} 个设置项，包含 {selected.Count} 个分组。\n"
                              + (encrypted
-                                 ? "文件是密文，导入时需要同一个备份密码。"
-                                 : "这是明文文件：里面的 GitHub 令牌与配置都能被直接读到，别公开分享。"), true);
+                                 ? Loc.T("文件是密文，导入时需要同一个备份密码。")
+                                 : Loc.T("这是明文文件：里面的 GitHub 令牌与配置都能被直接读到，别公开分享。")), true);
         }
         catch (Exception ex)
         {
-            _host.Notify(UiText.Failed("导出配置", ex.Message));
-            ShowImportResult("导出失败：" + ex.Message, false);
+            _host.Notify(UiText.Failed(Loc.T("导出配置"), ex.Message));
+            ShowImportResult(Loc.T("导出失败：") + ex.Message, false);
         }
     }
 
@@ -693,13 +693,13 @@ public partial class BackupView : UserControl
 
         var dlg = new OpenFileDialog
         {
-            Title = "导入配置（导出文件或备份文件都行）",
+            Title = Loc.T("导入配置（导出文件或备份文件都行）"),
             /* 两种文件都能导入：.clpconf 是导出、.keyboardenhance 是备份。
              * 用户经常分不清，以前只列 .clpconf，拿去导入备份就"看不到文件"。 */
             Filter = $"KeyboardEnhance 配置|*{ExportImport.Extension};*{SyncService.Extension}"
                      + $"|导出的配置 (*{ExportImport.Extension})|*{ExportImport.Extension}"
                      + $"|备份文件 (*{SyncService.Extension})|*{SyncService.Extension}"
-                     + "|所有文件|*.*",
+                     + Loc.T("|所有文件|*.*"),
             InitialDirectory = SyncService.BackupDir,
         };
         if (dlg.ShowDialog() != true) return;
@@ -726,16 +726,16 @@ public partial class BackupView : UserControl
                         try { ExportImport.Parse(text, pass); return true; }
                         catch { return false; }
                     },
-                    "这份导出是加密的",
-                    "请输入导出它时用的备份密码。",
-                    "用这个密码导入")
+                    Loc.T("这份导出是加密的"),
+                    Loc.T("请输入导出它时用的备份密码。"),
+                    Loc.T("用这个密码导入"))
                 {
                     Owner = Window.GetWindow(this),
                 };
                 if (prompt.ShowDialog() != true)
                 {
                     // 以前这里静默返回，用户以为"点了导入没反应"
-                    ShowImportResult("已取消导入：没有输入这份文件当时的密码。", false);
+                    ShowImportResult(Loc.T("已取消导入：没有输入这份文件当时的密码。"), false);
                     return;
                 }
                 (groups, data, wasBackup) = ExportImport.Parse(text, prompt.Password ?? "");
@@ -743,18 +743,18 @@ public partial class BackupView : UserControl
 
             if (groups.Count == 0)
             {
-                ShowImportResult("这份导出里没有认得的分组，可能来自别的版本。", false);
+                ShowImportResult(Loc.T("这份导出里没有认得的分组，可能来自别的版本。"), false);
                 return;
             }
 
             var names = groups.Select(g => ExportImport.FindGroup(g)?.Name ?? g).ToList();
             string question = wasBackup
-                ? "这是一份**备份文件**（整份配置，不是按项导出）。\n\n"
-                  + "导入会按整份配置覆盖对应的项；导入前建议先点「现在就备份一次」。\n\n继续吗？"
+                ? Loc.T("这是一份**备份文件**（整份配置，不是按项导出）。\n\n")
+                  + Loc.T("导入会按整份配置覆盖对应的项；导入前建议先点「现在就备份一次」。\n\n继续吗？")
                 : $"将导入以下内容（会覆盖当前对应的项）：\n\n　{string.Join("\n　", names)}\n\n继续吗？";
 
             if (!AppDialog.Confirm(Window.GetWindow(this), question,
-                    wasBackup ? "导入备份文件" : "导入配置", DialogKind.Question, okText: "导入")) return;
+                    wasBackup ? Loc.T("导入备份文件") : Loc.T("导入配置"), DialogKind.Question, okText: Loc.T("导入"))) return;
 
             ExportImport.Apply(_host.Settings, groups, data);
             _host.SaveSettings();
@@ -766,9 +766,9 @@ public partial class BackupView : UserControl
         catch (Exception ex)
         {
             // 页面里那行小字容易被忽略，失败时再弹一次，把原文给出来
-            ShowImportResult("导入失败：" + ex.Message, false);
-            _host.Notify("导入失败：" + ex.Message);
-            AppDialog.Error(Window.GetWindow(this), ex.Message, "导入失败");
+            ShowImportResult(Loc.T("导入失败：") + ex.Message, false);
+            _host.Notify(Loc.T("导入失败：") + ex.Message);
+            AppDialog.Error(Window.GetWindow(this), ex.Message, Loc.T("导入失败"));
         }
     }
 

@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CapsLockPlus.Core.Icons;
@@ -119,26 +119,26 @@ public partial class QbarSettingsView : UserControl
 
         ValueHelp.Text = _tab switch
         {
-            "search" => "用 {q} 代表关键词。例如 https://www.bing.com/search?q={q}。关键字填 default 表示默认搜索。",
-            "run" => "填程序路径或命令，例如 C:\\Windows\\notepad.exe 或 notepad.exe。",
-            "web" => "填完整网址，例如 https://github.com。",
-            "hotstring" => "在任意地方输入关键字后按 Caps+Tab，会被替换成这里的内容。",
+            "search" => Loc.T("用 {q} 代表关键词。例如 https://www.bing.com/search?q={q}。关键字填 default 表示默认搜索。"),
+            "run" => Loc.T("填程序路径或命令，例如 C:\\Windows\\notepad.exe 或 notepad.exe。"),
+            "web" => Loc.T("填完整网址，例如 https://github.com。"),
+            "hotstring" => Loc.T("在任意地方输入关键字后按 Caps+Tab，会被替换成这里的内容。"),
             _ => "",
         };
         ValueLabel.Text = _tab switch
         {
-            "search" => "搜索链接",
-            "run" => "程序路径",
-            "web" => "网址",
-            "hotstring" => "替换成",
-            _ => "内容",
+            "search" => Loc.T("搜索链接"),
+            "run" => Loc.T("程序路径"),
+            "web" => Loc.T("网址"),
+            "hotstring" => Loc.T("替换成"),
+            _ => Loc.T("内容"),
         };
         EntryHint.Text = _tab switch
         {
-            "search" => "Qbar 里输入「关键字 内容」即可用对应引擎搜索",
-            "run" => "Qbar 里输入关键字回车即可启动",
-            "web" => "Qbar 里输入关键字回车即可打开",
-            "hotstring" => "输入关键字后按 Caps+Tab 展开",
+            "search" => Loc.T("Qbar 里输入「关键字 内容」即可用对应引擎搜索"),
+            "run" => Loc.T("Qbar 里输入关键字回车即可启动"),
+            "web" => Loc.T("Qbar 里输入关键字回车即可打开"),
+            "hotstring" => Loc.T("输入关键字后按 Caps+Tab 展开"),
             _ => "",
         };
     }
@@ -152,7 +152,7 @@ public partial class QbarSettingsView : UserControl
         ValueBox.Text = entry.Value;
         CommentBox.Text = entry.Comment;
         IconBox.Text = entry.IconPath;
-        EditTitle.Text = string.IsNullOrEmpty(entry.Key) ? "新条目" : $"正在编辑：{entry.Key}";
+        EditTitle.Text = string.IsNullOrEmpty(entry.Key) ? Loc.T("新条目") : $"正在编辑：{entry.Key}";
         _suppress = false;
         UpdateIconPreview(entry);
     }
@@ -182,8 +182,8 @@ public partial class QbarSettingsView : UserControl
         if (_host == null || _editing == null) return;
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "选择图标（图片或程序）",
-            Filter = "图标或程序|*.png;*.ico;*.jpg;*.jpeg;*.exe;*.dll|所有文件|*.*",
+            Title = Loc.T("选择图标（图片或程序）"),
+            Filter = Loc.T("图标或程序|*.png;*.ico;*.jpg;*.jpeg;*.exe;*.dll|所有文件|*.*"),
         };
         if (dlg.ShowDialog() != true) return;
         IconBox.Text = dlg.FileName;
@@ -201,7 +201,7 @@ public partial class QbarSettingsView : UserControl
         ValueBox.Text = "";
         CommentBox.Text = "";
         IconBox.Text = "";
-        EditTitle.Text = "（选择左边的条目，或点新增）";
+        EditTitle.Text = Loc.T("（选择左边的条目，或点新增）");
         _suppress = false;
         IconPreview.Source = null;
         IconPreview.Visibility = Visibility.Collapsed;
@@ -251,13 +251,13 @@ public partial class QbarSettingsView : UserControl
         if (_host == null || EntryList.SelectedItem is not EntryVm vm) return;
         if (vm.Entry.Key == "default")
         {
-            _host.Notify("默认搜索不能删除，只能修改");
+            _host.Notify(Loc.T("默认搜索不能删除，只能修改"));
             return;
         }
         CurrentList().Remove(vm.Entry);
         _host.SaveSettings();
         LoadEntries();
-        _host.Notify("已删除");
+        _host.Notify(Loc.T("已删除"));
     }
 
     private void OnFieldChanged(object sender, TextChangedEventArgs e)
@@ -290,7 +290,7 @@ public partial class QbarSettingsView : UserControl
         double size = FontSizeSlider.Value;
         FontPreview.FontSize = size;
         // 高度按真实字形高度算，和 Qbar 输入框保持一致的行为
-        FontPreview.MinHeight = Core.Text.TextMetrics.MeasureHeight(size, "预览 Preview 文字测试 qgp");
+        FontPreview.MinHeight = Core.Text.TextMetrics.MeasureHeight(size, Loc.T("预览 Preview 文字测试 qgp"));
     }
 
     private void OnResetAppearance(object sender, RoutedEventArgs e)
@@ -299,7 +299,7 @@ public partial class QbarSettingsView : UserControl
         _host.Settings.Qbar = new QbarOptions();
         _host.SaveSettings();
         Refresh();
-        _host.Notify("Qbar 外观已恢复默认");
+        _host.Notify(Loc.T("Qbar 外观已恢复默认"));
     }
 
     private void OnTryClick(object sender, RoutedEventArgs e) => _host?.ShowQbar();

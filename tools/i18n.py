@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -38,24 +39,57 @@ ZH_PACK = LANG_DIR / "zh-CN.json"
 
 CJK = re.compile(r"[\u4e00-\u9fff]")
 
-# 需要本地化的 XAML 属性
+# 需要本地化的 XAML 属性（含无障碍读屏文案 —— 它们同样会被人"看到/听到"）
 XAML_ATTRS = (
     "Text", "Content", "Header", "ToolTip", "Title",
     "Watermark", "PlaceholderText", "Description", "Tag",
+    "AutomationProperties.Name", "AutomationProperties.HelpText",
 )
 
 # 参与 C# 自动替换的文件（相对 src/CapsLockPlus）。
-# 只放"中文只用于界面文案"的文件 —— 自检、日志、协议常量一律不碰。
+#
+# 只放"中文只用于**界面文案**"的文件 —— 自检、日志、协议常量一律不碰。
+#
+# 为什么 Core/ 一个都不在里面：
+#   · ActionCatalog   —— 300 多条标题/说明，已经在 Add() 这个显示出口统一翻译，
+#                        逐条包 Loc.T 只会把那份清单变成噪音；
+#   · AppHost.Notify / AppDialog / Toast / OSD —— 同理，在出口翻；
+#   · 其余 Core 里的中文大多是日志与异常消息（CoreLog.* 被 CS_SKIP_LINE 跳过），
+#     真正给用户看的已经通过上面几个出口覆盖。
 CS_TARGETS = [
-    "Core/Actions/ActionCatalog.cs",
     "UI/Views/SettingsView.xaml.cs",
     "UI/Views/BackupView.xaml.cs",
-    "UI/Views/KeysView.xaml.cs",
-    "UI/Views/KeysView.Inputs.cs",
     "UI/Views/MacrosView.xaml.cs",
     "UI/Views/AboutView.xaml.cs",
-    "UI/Views/HelpView.xaml.cs",
     "UI/Views/WindowsView.xaml.cs",
+    "UI/Views/GuideView.xaml.cs",
+    "UI/Views/HelpView.xaml.cs",
+    "UI/Views/KeyTestView.xaml.cs",
+    "UI/Views/ClipboardView.xaml.cs",
+    "UI/Views/LayersView.xaml.cs",
+    "UI/Views/QbarSettingsView.xaml.cs",
+    "UI/Views/KeysView.xaml.cs",
+    "UI/Views/KeysView.Inputs.cs",
+    "UI/Views/KeysView.Layers.cs",
+    "UI/Views/KeysView.Keyboard.cs",
+    "UI/Views/KeysView.CustomKey.cs",
+    "UI/Views/KeysView.Panels.cs",
+    "UI/Windows/AboutWindow.xaml.cs",
+    "UI/Windows/ClipboardHistoryWindow.xaml.cs",
+    "UI/Windows/KeyCaptureWindow.xaml.cs",
+    "UI/Windows/MainWindow.xaml.cs",
+    "UI/Windows/MathBoardWindow.xaml.cs",
+    "UI/Windows/NewPasswordWindow.xaml.cs",
+    "UI/Windows/OnboardingWindow.xaml.cs",
+    "UI/Windows/OsdWindow.xaml.cs",
+    "UI/Windows/PasswordPromptWindow.xaml.cs",
+    "UI/Windows/QbarWindow.xaml.cs",
+    "UI/Windows/RecordingHudWindow.xaml.cs",
+    "UI/Windows/RestoreWindow.xaml.cs",
+    "UI/Windows/StartupPasswordWindow.xaml.cs",
+    "UI/Windows/SubLayerEditorWindow.xaml.cs",
+    "UI/Windows/UpdatePromptWindow.xaml.cs",
+    "UI/Windows/WindowPickerWindow.xaml.cs",
 ]
 
 # 这些行上的中文字面量不自动包（语义是"值"而不是"文案"）
@@ -78,13 +112,18 @@ def strip_xaml_comments(s: str) -> str:
 
 
 def xaml_strings() -> "OrderedDict[str, list[str]]":
-    """XAML 里需要本地化的属性值 → 出现位置列表。"""
+    """XAML 里需要本地化的属性值 → 出现位置列表。
+
+    返回的**键是解码后的真实文本**（&amp;#x0a; → 换行、&amp;amp; → &）——
+    运行期 Loc.T 拿到的是 XML 解码之后的字符串，键必须跟它一模一样，
+    否则语言包里永远查不到、界面永远显示中文。
+    """
     out: "OrderedDict[str, list[str]]" = OrderedDict()
     for p in walk_source():
         if p.suffix.lower() != ".xaml":
             continue
         text = strip_xaml_comments(p.read_text(encoding="utf-8-sig"))
-        for m in re.finditer(r'(\w+)="([^"]*)"', text):
+        for m in re.finditer(r'([\w.:]+)="([^"]*)"', text):
             attr, val = m.group(1), m.group(2)
             if attr not in XAML_ATTRS:
                 continue
@@ -92,7 +131,7 @@ def xaml_strings() -> "OrderedDict[str, list[str]]":
                 continue
             if val.lstrip().startswith("{"):        # 已经是绑定/标记扩展
                 continue
-            out.setdefault(val, []).append(f"{p.relative_to(ROOT)}:{attr}")
+            out.setdefault(html.unescape(val), []).append(f"{p.relative_to(ROOT)}:{attr}")
     return out
 
 
@@ -168,10 +207,26 @@ def cmd_check(args):
             print(f"   原文 {k!r} ({a} 个) → 译文 {v!r} ({b} 个)")
 
 
+ENTITY = re.compile(r"&(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a-fA-F]+);")
+
+
 def xaml_escape(s: str) -> str:
-    """把原文塞进 {loc:T '…'} 里。"""
-    s = s.replace("&", "&amp;").replace("'", "&apos;")
-    return s
+    """把原文塞进 {loc:T '…'} 里，同时保证 XML 解码后**还是原来那段文本**。
+
+    两个坑：
+      · 单引号会截断标记扩展的字符串参数 → &apos;；
+      · 原文里的 &amp;#x0a; 这类实体必须原样留着，否则 XML 解码后得到的是
+        字面量 "&#x0a;" 而不是换行（第一版就踩了这个，界面直接显示六个字符）。
+        所以先把实体整段保护起来，只转义实体以外的 &。
+    """
+    buf: list[str] = []
+    last = 0
+    for m in ENTITY.finditer(s):
+        buf.append(s[last:m.start()].replace("&", "&amp;").replace("'", "&apos;").replace('"', "&quot;"))
+        buf.append(m.group(0))          # 实体原样保留，交给 XML 解析器解码
+        last = m.end()
+    buf.append(s[last:].replace("&", "&amp;").replace("'", "&apos;").replace('"', "&quot;"))
+    return "".join(buf)
 
 
 def cmd_apply_xaml(args):
@@ -191,7 +246,7 @@ def cmd_apply_xaml(args):
             changed_attrs += 1
             return f'{attr}="{{loc:T \'{xaml_escape(val)}\'}}"'
 
-        new = re.sub(r'(\w+)="([^"]*)"', repl, text)
+        new = re.sub(r'([\w.:]+)="([^"]*)"', repl, text)
         # 加 xmlns:loc（幂等）
         if new != raw and "xmlns:loc=" not in new:
             new = re.sub(

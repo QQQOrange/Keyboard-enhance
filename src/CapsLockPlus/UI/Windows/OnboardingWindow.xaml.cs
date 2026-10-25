@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core.Settings;
 
@@ -27,13 +27,13 @@ public partial class OnboardingWindow : Window
 
         (StepTitle.Text, StepSubtitle.Text) = _step switch
         {
-            0 => ("欢迎使用 CapsLock+", "花一分钟做三个选择，之后就能一直用了。"),
-            1 => ("启动方式", "让它在你需要的时候一定在。"),
-            _ => ("可以开始用了", "试试这几个组合，感受一下差别。"),
+            0 => (Loc.T("欢迎使用 CapsLock+"), Loc.T("花一分钟做三个选择，之后就能一直用了。")),
+            1 => (Loc.T("启动方式"), Loc.T("让它在你需要的时候一定在。")),
+            _ => (Loc.T("可以开始用了"), Loc.T("试试这几个组合，感受一下差别。")),
         };
         StepDots.Text = string.Join(" ", Enumerable.Range(0, 3).Select(i => i == _step ? "●" : "○"));
         BackButton.Visibility = _step > 0 ? Visibility.Visible : Visibility.Collapsed;
-        NextButton.Content = _step == 2 ? "开始使用" : "下一步";
+        NextButton.Content = _step == 2 ? Loc.T("开始使用") : Loc.T("下一步");
         SkipButton.Visibility = _step == 2 ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -70,6 +70,6 @@ public partial class OnboardingWindow : Window
         _host.SaveSettings();
         _host.RefreshTray();
         Close();
-        _host.Notify("设置完成，按住 CapsLock 试试吧");
+        _host.Notify(Loc.T("设置完成，按住 CapsLock 试试吧"));
     }
 }

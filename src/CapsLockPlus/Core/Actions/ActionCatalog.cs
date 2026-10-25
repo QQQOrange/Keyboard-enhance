@@ -13,8 +13,12 @@ public sealed record ActionInfo(
     /// <summary>
     /// 键帽上实际显示的文字。
     ///
-    /// 有短名用短名；没有就自动截到 5 字 —— 键帽只有约 26px 宽，
-    /// 再长的文字必然被裁，不如主动截断保证"能认出前几个字"。
+    /// 有短名用短名；没有就自动截断 —— 键帽只有约 26px 宽，再长的文字必然被裁，
+    /// 不如主动截断保证"能认出前几个字"。
+    ///
+    /// 中英文的截法不同：中文一个字符占一格，截 5 个字信息量够；
+    /// 拉丁字母 5 个字符常常只截出半个单词（"Bright"），所以英文按**词**截，
+    /// 上限 9 个字符 —— 再多键帽就装不下了。
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string KeycapTitle
@@ -22,8 +26,44 @@ public sealed record ActionInfo(
         get
         {
             string t = string.IsNullOrWhiteSpace(ShortTitle) ? Title : ShortTitle.Trim();
+            if (t.Length == 0) return t;
+
+            if (!NeedsCjkCut(t))
+                return t.Length <= 9 ? t : CutLatin(t);
+
             return t.Length <= 5 ? t : t[..5];
         }
+    }
+
+    /// <summary>
+    /// 分类名要按**当前语言**显示，但 <see cref="Category"/> 本身必须保持原文 ——
+    /// 它是各处比较用的**身份标识**（KeysView 的 `Tag as string == info.Category`、
+    /// 分类常量和自检断言都拿中文原文对），一旦翻译过就对不上了。
+    /// 所以"存原文、显示时翻"：显示走这个属性，比较走 Category。
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayCategory => Localization.Loc.T(Category);
+
+    /// <summary>
+    /// 这段文字是否要按"中文字数"截断。
+    ///
+    /// 判据不是"有没有汉字"而是"有没有中日韩字形"—— `Qbar：Bing` 里一个汉字都没有，
+    /// 但那个全角冒号就是中文排版，整串仍该按 5 字截（它也确实放不进 26px 的键帽）。
+    /// 纯 ASCII 的英文标题才走"按词截、上限 9 字符"那条路。
+    /// </summary>
+    private static bool NeedsCjkCut(string t)
+        => t.Any(c =>
+            (c >= '\u3000' && c <= '\u303f') ||   // CJK 标点：、「」。等
+            (c >= '\u3400' && c <= '\u9fff') ||   // 表意文字（含扩展 A）
+            (c >= '\uf900' && c <= '\ufaff') ||   // 兼容表意文字
+            (c >= '\ufe30' && c <= '\ufe4f') ||   // CJK 兼容形式
+            (c >= '\uff00' && c <= '\uffef'));    // 全角字符：：？！（）等
+
+    private static string CutLatin(string t)
+    {
+        int sp = t.IndexOf(' ');
+        string head = sp > 0 && sp <= 9 ? t[..sp] : t;
+        return head.Length <= 9 ? head : head[..9];
     }
 }
 
@@ -54,11 +94,12 @@ public sealed class ActionCatalog
     private static readonly Dictionary<string, string> StaticTitles =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>按 ID 取动作的中文标题（不存在时返回 null）。</summary>
+    /// <summary>按 ID 取动作的标题（不存在时返回 null）。</summary>
     public static string? TitleOf(string? id)
     {
         if (string.IsNullOrWhiteSpace(id)) return null;
-        return StaticTitles.TryGetValue(id, out var title) ? title : null;
+        // 表里存的是原文（身份/回退都用它），显示时按当前语言翻一次
+        return StaticTitles.TryGetValue(id, out var title) ? Localization.Loc.T(title) : null;
     }
 
     public ActionInfo? Get(string id) => _items.FirstOrDefault(i => i.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -70,13 +111,26 @@ public sealed class ActionCatalog
         return false;
     }
 
+    /// <summary>
+    /// 注册一个动作。
+    ///
+    /// **目录是文本的显示出口**：几百条标题/说明/短名全在下面的 <see cref="Create"/> 里写中文，
+    /// 翻译统一在这里做一次，调用点不用包 Loc.T —— 否则那 300 多处会变成噪音。
+    /// 换语言时 <see cref="Create"/> 会重新跑一遍（AppHost.RebuildActions），
+    /// 所以目录里存的就是"当前语言"的文本。
+    ///
+    /// 唯独 <paramref name="category"/> 保持原文：它是各处比较用的身份标识，翻了就对不上。
+    /// </summary>
     private void Add(string id, string category, string title, string desc, Func<string, bool> handler,
                      bool needsArg = false, string argHint = "", string shortTitle = "",
                      bool hidden = false)
     {
-        _items.Add(new ActionInfo(id, category, title, desc, needsArg, argHint, shortTitle, hidden));
+        _items.Add(new ActionInfo(
+            id, category,
+            Localization.Loc.T(title), Localization.Loc.T(desc),
+            needsArg, Localization.Loc.T(argHint), Localization.Loc.T(shortTitle), hidden));
         _handlers[id] = handler;
-        StaticTitles[id] = title;      // 供 TriggerKey.Detail 等"离线显示"用
+        StaticTitles[id] = title;      // 供 TriggerKey.Detail 等"离线显示"用（存原文，取时再翻）
     }
 
     public static ActionCatalog Create(ActionContext ctx)

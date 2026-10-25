@@ -284,7 +284,7 @@ public partial class OsdWindow : Window
             else
             {
                 /* 高带路径没有 WPF 窗口要建，真正的冷启动开销在
-                 * "第一次离屏渲染"（字体、DropShadowEffect、DIB 创建）。
+                 * Loc.T("第一次离屏渲染")（字体、DropShadowEffect、DIB 创建）。
                  * 先按 100% 渲染一张丢掉，把这条链路焐热。 */
                 _ = _instance.Render(50, 0.5, 1.0);
             }

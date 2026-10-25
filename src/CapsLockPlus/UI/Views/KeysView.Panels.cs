@@ -184,7 +184,7 @@ public partial class KeysView : UserControl
         var b = FindInCurrentLayer(CurrentCombo());
         if (b != null)
         {
-            b.Note = "微信";
+            b.Note = Loc.T("微信");
             _host.SaveSettings();
             BuildKeyboard();
         }
@@ -246,7 +246,7 @@ public partial class KeysView : UserControl
 
         if (id == "winBind")
         {
-            if (string.IsNullOrWhiteSpace(binding.Arg)) return "切换窗口（未选程序）";
+            if (string.IsNullOrWhiteSpace(binding.Arg)) return Loc.T("切换窗口（未选程序）");
 
             /* 用户自定义名优先。
              *
@@ -255,7 +255,7 @@ public partial class KeysView : UserControl
             if (!string.IsNullOrWhiteSpace(binding.Note)) return binding.Note!.Trim();
 
             try { return Path.GetFileNameWithoutExtension(binding.Arg); }
-            catch { return "切换窗口"; }
+            catch { return Loc.T("切换窗口"); }
         }
 
         if (id == "webPage")
@@ -281,7 +281,7 @@ public partial class KeysView : UserControl
         {
             string t = _host?.Actions.Get(id)?.Title ?? id;
             return t.StartsWith("播放宏：", StringComparison.OrdinalIgnoreCase)
-                ? "▶ " + t["播放宏：".Length..]
+                ? "▶ " + t[Loc.T("播放宏：").Length..]
                 : t;
         }
 
@@ -298,10 +298,10 @@ public partial class KeysView : UserControl
     internal static string FolderLabelOf(string? note, string? path)
     {
         if (!string.IsNullOrWhiteSpace(note)) return note.Trim();
-        if (string.IsNullOrWhiteSpace(path)) return "文件夹";
+        if (string.IsNullOrWhiteSpace(path)) return Loc.T("文件夹");
 
         string p = Core.Actions.ActionContext.ExpandFolderPath(path);
-        if (p.Length == 0) return "文件夹";
+        if (p.Length == 0) return Loc.T("文件夹");
 
         // shell:Downloads 这类虚拟路径没有"最后一段"，直接显示原值
         if (p.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
@@ -309,7 +309,7 @@ public partial class KeysView : UserControl
 
         string name;
         try { name = Path.GetFileName(p.TrimEnd('\\')); }
-        catch { return "文件夹"; }
+        catch { return Loc.T("文件夹"); }
 
         // "D:\" 这种根目录：GetFileName 返回空，退回盘符
         if (string.IsNullOrWhiteSpace(name)) name = p.TrimEnd('\\');
@@ -326,20 +326,20 @@ public partial class KeysView : UserControl
     internal static string FileLabelOf(string? note, string? path)
     {
         if (!string.IsNullOrWhiteSpace(note)) return note.Trim();
-        if (string.IsNullOrWhiteSpace(path)) return "文件";
+        if (string.IsNullOrWhiteSpace(path)) return Loc.T("文件");
 
         string p = Core.Actions.ActionContext.ExpandPath(path);
-        if (p.Length == 0) return "文件";
+        if (p.Length == 0) return Loc.T("文件");
 
         string name;
         try { name = Path.GetFileNameWithoutExtension(p); }
-        catch { return "文件"; }
+        catch { return Loc.T("文件"); }
 
         if (string.IsNullOrWhiteSpace(name))
         {
             try { name = Path.GetFileName(p); } catch { return "文件"; }
         }
-        if (string.IsNullOrWhiteSpace(name)) return "文件";
+        if (string.IsNullOrWhiteSpace(name)) return Loc.T("文件");
 
         return name.Length <= 8 ? name : name[..8] + "…";
     }
@@ -355,14 +355,14 @@ public partial class KeysView : UserControl
     internal static string TypeTextLabelOf(string? note, string? text)
     {
         if (!string.IsNullOrWhiteSpace(note)) return note.Trim();
-        if (string.IsNullOrWhiteSpace(text)) return "输入文本";
+        if (string.IsNullOrWhiteSpace(text)) return Loc.T("输入文本");
 
         // 只取第一行，把换行/制表压成空格 —— 键帽里不能出现多行
         string first = text.Replace("\r", " ").Replace("\n", " ").Replace("\t", " ").Trim();
         // 连续空格压成一个，避免显示成 "a    b"
         while (first.Contains("  ", StringComparison.Ordinal)) first = first.Replace("  ", " ");
 
-        if (first.Length == 0) return "输入文本";
+        if (first.Length == 0) return Loc.T("输入文本");
         return first.Length <= 6 ? first : first[..6] + "…";
     }
 

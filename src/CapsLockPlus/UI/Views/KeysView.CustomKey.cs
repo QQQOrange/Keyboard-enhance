@@ -88,7 +88,7 @@ public partial class KeysView : UserControl
         bool hasKey = !string.IsNullOrWhiteSpace(spec.Key);
         CustomKeyBadge.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed;
         CustomKeyBadgeText.Text = hasKey ? CustomKeyRunner.ComboDisplay(spec.Key) : "";
-        CustomKeyCaptureButton.Content = hasKey ? "重新设置…" : "按下要发送的键…";
+        CustomKeyCaptureButton.Content = hasKey ? Loc.T("重新设置…") : Loc.T("按下要发送的键…");
 
         // 应用状态：路径存不存在直接说，别等按下去才报错
         if (string.IsNullOrWhiteSpace(spec.AppPath))
@@ -106,17 +106,17 @@ public partial class KeysView : UserControl
         }
         else
         {
-            CustomAppStatus.Text = "这个路径现在不存在 —— 按下去会启动失败";
+            CustomAppStatus.Text = Loc.T("这个路径现在不存在 —— 按下去会启动失败");
         }
 
         CustomKeyHint.Text = spec.IsReady
             ? $"按这个键时：先看「{spec.ProcessName}」在不在运行 —— "
-              + "在运行就直接把键发过去；没运行就先启动它（"
-              + (spec.RunAsAdmin ? "以管理员身份" : "普通权限")
-              + "），等窗口出来再发键。"
-            : "还差：" + (hasKey ? "" : "「要发送的键」")
-              + (!hasKey && string.IsNullOrWhiteSpace(spec.AppPath) ? " 和 " : "")
-              + (string.IsNullOrWhiteSpace(spec.AppPath) ? "「绑定应用」" : "");
+              + Loc.T("在运行就直接把键发过去；没运行就先启动它（")
+              + (spec.RunAsAdmin ? Loc.T("以管理员身份") : Loc.T("普通权限"))
+              + Loc.T("），等窗口出来再发键。")
+            : Loc.T("还差：") + (hasKey ? "" : Loc.T("「要发送的键」"))
+              + (!hasKey && string.IsNullOrWhiteSpace(spec.AppPath) ? Loc.T(" 和 ") : "")
+              + (string.IsNullOrWhiteSpace(spec.AppPath) ? Loc.T("「绑定应用」") : "");
     }
 
     /// <summary>捕获"要发送的键"。</summary>
@@ -168,8 +168,8 @@ public partial class KeysView : UserControl
         if (_host == null) return;
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "选择要绑定的程序",
-            Filter = "程序 (*.exe)|*.exe|所有文件 (*.*)|*.*",
+            Title = Loc.T("选择要绑定的程序"),
+            Filter = Loc.T("程序 (*.exe)|*.exe|所有文件 (*.*)|*.*"),
             CheckFileExists = true,
         };
         if (dlg.ShowDialog(Window.GetWindow(this)) != true) return;
@@ -242,7 +242,7 @@ public partial class KeysView : UserControl
         if (!string.IsNullOrWhiteSpace(note)) return note.Trim();
         string proc = spec.ProcessName;
         if (proc.Length > 0) return proc.Length <= 8 ? proc : proc[..8] + "…";
-        return "自定义";
+        return Loc.T("自定义");
     }
 
     /// <summary>
@@ -262,17 +262,18 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
 
-        const string text =
-            "把基础层的按键全部恢复成默认值？\n" +
-            "· 你在这一层改过的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n" +
-            "· 你自己新增的组合键会保留，其它 9 层完全不动；\n" +
-            "· 这一步不能撤销。";
+        // 不是 const：文本要在**当前语言**下拼，编译期定不下来
+        string text =
+            Loc.T("把基础层的按键全部恢复成默认值？\n") +
+            Loc.T("· 你在这一层改过的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n") +
+            Loc.T("· 你自己新增的组合键会保留，其它 9 层完全不动；\n") +
+            Loc.T("· 这一步不能撤销。");
 
         if (!AppDialog.ConfirmDanger(Window.GetWindow(this), text,
-                "恢复默认按键", okText: "恢复默认")) return;
+                Loc.T("恢复默认按键"), okText: Loc.T("恢复默认"))) return;
 
         _host.ApplyHotkeyScheme(_host.Settings.Global.HotkeyScheme);
         Refresh();
-        _host.Notify("按键映射已恢复默认");
+        _host.Notify(Loc.T("按键映射已恢复默认"));
     }
 }

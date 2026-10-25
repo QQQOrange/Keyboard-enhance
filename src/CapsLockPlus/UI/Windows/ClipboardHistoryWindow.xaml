@@ -1,7 +1,8 @@
-<Window x:Class="CapsLockPlus.UI.Windows.ClipboardHistoryWindow"
+﻿<Window x:Class="CapsLockPlus.UI.Windows.ClipboardHistoryWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="剪贴板历史" Width="620" Height="560" MinWidth="420" MinHeight="360"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+        Title="{loc:T '剪贴板历史'}" Width="620" Height="560" MinWidth="420" MinHeight="360"
         WindowStartupLocation="CenterScreen" Background="{DynamicResource Brush.WindowGradient}"
         FontFamily="{StaticResource Font.Ui}" UseLayoutRounding="True">
 
@@ -19,7 +20,7 @@
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0">
-            <TextBlock Text="剪贴板历史" Style="{StaticResource Text.H3}" Margin="20,0,0,0"
+            <TextBlock Text="{loc:T '剪贴板历史'}" Style="{StaticResource Text.H3}" Margin="20,0,0,0"
                        VerticalAlignment="Center" />
             <Button Style="{StaticResource Button.Icon}" Content="&#xE8BB;" HorizontalAlignment="Right"
                     Margin="0,0,10,0" Click="OnClose" WindowChrome.IsHitTestVisibleInChrome="True" />
@@ -28,7 +29,7 @@
         <StackPanel Grid.Row="1" Margin="20,0,20,10">
             <TextBox x:Name="FilterBox" Style="{StaticResource TextBox.Base}" MinHeight="38"
                      VerticalContentAlignment="Center" TextChanged="OnFilterChanged" />
-            <TextBlock Text="双击任意一条即可粘贴到刚才的窗口。" Style="{StaticResource Text.Tertiary}"
+            <TextBlock Text="{loc:T '双击任意一条即可粘贴到刚才的窗口。'}" Style="{StaticResource Text.Tertiary}"
                        Margin="0,7,0,0" />
         </StackPanel>
 
@@ -50,10 +51,10 @@
         </Border>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="20,0,20,18">
-            <Button Content="粘贴选中" Style="{StaticResource Button.Primary}" Click="OnPaste" />
-            <Button Content="复制到剪贴板" Style="{StaticResource Button.Base}" Margin="8,0,0,0"
+            <Button Content="{loc:T '粘贴选中'}" Style="{StaticResource Button.Primary}" Click="OnPaste" />
+            <Button Content="{loc:T '复制到剪贴板'}" Style="{StaticResource Button.Base}" Margin="8,0,0,0"
                     Click="OnCopyToSystem" />
-            <Button Content="清空历史" Style="{StaticResource Button.Danger}" Margin="8,0,0,0"
+            <Button Content="{loc:T '清空历史'}" Style="{StaticResource Button.Danger}" Margin="8,0,0,0"
                     Click="OnClear" />
             <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
                        Margin="12,0,0,0" />

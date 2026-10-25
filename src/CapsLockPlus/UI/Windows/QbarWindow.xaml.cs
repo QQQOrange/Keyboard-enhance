@@ -460,7 +460,7 @@ public partial class QbarWindow : Window
             Input.FontSize = q.TextFontSize;
             // 字号变大时必须同步抬高输入框，否则上下缘会被裁掉。
             // 用真实字形高度来算（不是估系数），再留出安全余量。
-            Input.MinHeight = Core.Text.TextMetrics.MinBoxHeight(q.TextFontSize, "汉字Agqy");
+            Input.MinHeight = Core.Text.TextMetrics.MinBoxHeight(q.TextFontSize, Loc.T("汉字Agqy"));
             Results.MaxHeight = q.LineHeight * q.ListCount + 12;
             SizeToContent = SizeToContent.Height;
         }
@@ -503,7 +503,7 @@ public partial class QbarWindow : Window
         /* 抢前台 + 抢输入焦点。
          *
          * 原实现是 Show() 之后直接 Activate()/Focus() —— 那两步在
-         * "我们不是前台进程"时会被系统拒掉（前台锁定），
+         * Loc.T("我们不是前台进程")时会被系统拒掉（前台锁定），
          * 面板显示在最上面，但打字仍然打在原来的程序里。
          * 这就是用户说的"换出 Qbar 之后打的字不落在面板里"。 */
         _openedAt = DateTime.Now;
@@ -512,7 +512,7 @@ public partial class QbarWindow : Window
 
         /* prefill 有两种形态：
          *   ① "bd "           —— 引擎关键字（由 qbar:<key> 动作传入）
-         *   ② "要搜索的内容"   —— 普通预填文本
+         *   ② Loc.T("要搜索的内容")   —— 普通预填文本
          *
          * 形态 ① 必须**立刻变成标签**，否则它只是输入框里的一段文字：
          * 用户按 Caps+G 打开却看到输入框写着 "go "，还得自己再敲个空格
@@ -837,20 +837,20 @@ public partial class QbarWindow : Window
         {
             HintText.Text = _chip.Kind switch
             {
-                ChipKind.Search => "Enter 搜索",
-                ChipKind.Web => "Enter 打开",
-                _ => "Enter 启动",
+                ChipKind.Search => Loc.T("Enter 搜索"),
+                ChipKind.Web => Loc.T("Enter 打开"),
+                _ => Loc.T("Enter 启动"),
             };
             return;
         }
         string text = Input.Text;
-        string hint = "Enter 执行";
+        string hint = Loc.T("Enter 执行");
         if (text.StartsWith('=')) hint = "Enter 复制结果";
         else if (text.StartsWith('/')) hint = "内置命令";
         else if (text.Contains(' ') && _host.Settings.Search.Any(s =>
                      s.Key.Equals(text.Split(' ')[0], StringComparison.OrdinalIgnoreCase)))
-            hint = "搜索";
-        else if (text.Length > 0 && QbarService.LooksLikeMath(text)) hint = "计算";
+            hint = Loc.T("搜索");
+        else if (text.Length > 0 && QbarService.LooksLikeMath(text)) hint = Loc.T("计算");
         HintText.Text = hint;
     }
 
@@ -859,14 +859,14 @@ public partial class QbarWindow : Window
         if (Results.SelectedItem is not QbarItem item) return;
         HintText.Text = item.Result.Kind switch
         {
-            QbarKind.Math => "Enter 复制结果",
-            QbarKind.Clipboard => "Enter 粘贴",
-            QbarKind.Window => "Enter 切换窗口",
-            QbarKind.Command => "Enter 执行",
-            QbarKind.Search => _chip != null ? "Enter 搜索" : "Enter 打开搜索",
-            QbarKind.Web => "Enter 打开网址",
-            QbarKind.Run => "Enter 启动",
-            _ => "Enter 执行",
+            QbarKind.Math => Loc.T("Enter 复制结果"),
+            QbarKind.Clipboard => Loc.T("Enter 粘贴"),
+            QbarKind.Window => Loc.T("Enter 切换窗口"),
+            QbarKind.Command => Loc.T("Enter 执行"),
+            QbarKind.Search => _chip != null ? Loc.T("Enter 搜索") : Loc.T("Enter 打开搜索"),
+            QbarKind.Web => Loc.T("Enter 打开网址"),
+            QbarKind.Run => Loc.T("Enter 启动"),
+            _ => Loc.T("Enter 执行"),
         };
     }
 
@@ -907,7 +907,7 @@ public partial class QbarWindow : Window
             catch (Exception ex)
             {
                 CoreLog.Error("Qbar 执行失败", ex);
-                _host.Notify("执行失败：" + ex.Message);
+                _host.Notify(Loc.T("执行失败：") + ex.Message);
             }
         }), System.Windows.Threading.DispatcherPriority.Background);
     }
@@ -926,7 +926,7 @@ public partial class QbarWindow : Window
         }
         catch (Exception ex)
         {
-            _host.Notify("打开失败：" + ex.Message);
+            _host.Notify(Loc.T("打开失败：") + ex.Message);
         }
     }
 
@@ -944,7 +944,7 @@ public partial class QbarWindow : Window
         }
         catch (Exception ex)
         {
-            _host.Notify("启动失败：" + ex.Message);
+            _host.Notify(Loc.T("启动失败：") + ex.Message);
         }
     }
 
@@ -972,7 +972,7 @@ public partial class QbarWindow : Window
     /* 原来这里还有一个 OnResultDoubleClick（XAML MouseDoubleClick 也挂着）：
      * 单击已经会执行并收起面板，它纯属重复，而且不像单击那样判断点没点
      * 中条目 —— 双击列表空白处也会把当前选中项执行一遍。
-     * 已删除；"双击只执行一次"由 ExecuteSelected 里的 _closing 闸门保证。 */
+     * 已删除；Loc.T("双击只执行一次")由 ExecuteSelected 里的 _closing 闸门保证。 */
 
     private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
     {

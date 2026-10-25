@@ -73,7 +73,7 @@ public partial class RestoreWindow : Window
         if (_loading) return;
         if (_host == null)
         {
-            StatusText.Text = "没有可用的配置宿主，无法读取备份。";
+            StatusText.Text = Loc.T("没有可用的配置宿主，无法读取备份。");
             return;
         }
 
@@ -113,7 +113,7 @@ public partial class RestoreWindow : Window
     {
         if (_host == null) return;
 
-        StatusText.Text = "正在读取云端备份…";
+        StatusText.Text = Loc.T("正在读取云端备份…");
         List<RemoteFile> files;
         try
         {
@@ -121,7 +121,7 @@ public partial class RestoreWindow : Window
         }
         catch (Exception ex)
         {
-            StatusText.Text = "读取云端失败：" + ex.Message;
+            StatusText.Text = Loc.T("读取云端失败：") + ex.Message;
             return;
         }
 
@@ -131,7 +131,7 @@ public partial class RestoreWindow : Window
             {
                 Time = f.Modified == DateTimeOffset.MinValue
                     ? "—"
-                    : f.Modified.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+                    : Loc.FormatDateTime(f.Modified.ToLocalTime()),
                 Name = f.Name,
                 Size = f.Size > 0 ? $"{f.Size / 1024.0:0.#} KB" : "—",
                 State = "—",
@@ -140,7 +140,7 @@ public partial class RestoreWindow : Window
         }
 
         StatusText.Text = _rows.Count == 0
-            ? "云端还没有备份。"
+            ? Loc.T("云端还没有备份。")
             : $"云端共 {_rows.Count} 份备份（保留策略：最近 {_host!.Settings.Sync.KeepLocalBackups} 份"
               + $" / {_host!.Settings.Sync.CleanupDays} 天）。";
     }
@@ -152,10 +152,10 @@ public partial class RestoreWindow : Window
         {
             _rows.Add(new BackupRow
             {
-                Time = f.Time.ToString("yyyy-MM-dd HH:mm"),
+                Time = Loc.FormatDateTime(f.Time),
                 Name = f.Name,
                 Size = $"{f.Size / 1024.0:0.#} KB",
-                State = f.Encrypted ? "已加密" : "明文",
+                State = f.Encrypted ? Loc.T("已加密") : Loc.T("明文"),
                 Cloud = false,
                 Path = f.Path,
             });
@@ -177,9 +177,9 @@ public partial class RestoreWindow : Window
         {
             if (!AppDialog.ConfirmDanger(this,
                     $"从云端删除这份备份？\n\n　{row.Name}\n\n删了就找不回来了。",
-                    "删除云端备份", okText: "删除")) return;
+                    Loc.T("删除云端备份"), okText: Loc.T("删除"))) return;
 
-            StatusText.Text = "正在删除…";
+            StatusText.Text = Loc.T("正在删除…");
             var r = await _host.Sync.DeleteCloudAsync(row.Name).ConfigureAwait(true);
             StatusText.Text = (r.Ok ? "✓ " : "✗ ") + r.Message;
             if (r.Ok) await LoadAsync().ConfigureAwait(true);
@@ -190,14 +190,14 @@ public partial class RestoreWindow : Window
         {
             if (!AppDialog.ConfirmDanger(this,
                     $"删除这份本地备份？\n\n　{row.Name}\n　{row.Path}\n\n删了就找不回来了。",
-                    "删除本地备份", okText: "删除")) return;
+                    Loc.T("删除本地备份"), okText: Loc.T("删除"))) return;
             if (!string.IsNullOrEmpty(row.Path)) File.Delete(row.Path);
-            StatusText.Text = "✓ 已删除 " + row.Name;
+            StatusText.Text = Loc.T("✓ 已删除 ") + row.Name;
             await LoadAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            StatusText.Text = "✗ 删除失败：" + ex.Message;
+            StatusText.Text = Loc.T("✗ 删除失败：") + ex.Message;
         }
     }
 
@@ -208,7 +208,7 @@ public partial class RestoreWindow : Window
         if (_host == null) return;
         if (BackupList.SelectedItem is not BackupRow row)
         {
-            StatusText.Text = "先在上面选一份备份。";
+            StatusText.Text = Loc.T("先在上面选一份备份。");
             return;
         }
 
@@ -217,23 +217,23 @@ public partial class RestoreWindow : Window
         if (mode == RestoreMode.Overwrite)
         {
             if (!AppDialog.Confirm(this,
-                    "覆盖恢复会把当前配置整份换成备份里的内容。\n" +
-                    "恢复之前会自动把当前配置另存一份到本地备份目录，恢复错了还能退回去。\n\n" +
+                    Loc.T("覆盖恢复会把当前配置整份换成备份里的内容。\n") +
+                    Loc.T("恢复之前会自动把当前配置另存一份到本地备份目录，恢复错了还能退回去。\n\n") +
                     $"确定用「{row.Name}」覆盖吗？",
-                    "覆盖恢复", DialogKind.Warn, okText: "覆盖恢复")) return;
+                    Loc.T("覆盖恢复"), DialogKind.Warn, okText: Loc.T("覆盖恢复"))) return;
         }
 
         RestoreButton.IsEnabled = false;
         try
         {
-            StatusText.Text = row.Cloud ? "正在下载备份…" : "正在读取备份…";
+            StatusText.Text = row.Cloud ? Loc.T("正在下载备份…") : Loc.T("正在读取备份…");
             string? text = row.Cloud
                 ? await _host.Sync.DownloadByNameAsync(row.Name).ConfigureAwait(true)
                 : (string.IsNullOrEmpty(row.Path) ? null : File.ReadAllText(row.Path, System.Text.Encoding.UTF8));
 
             if (string.IsNullOrEmpty(text))
             {
-                StatusText.Text = "✗ 这份备份读不出来。";
+                StatusText.Text = Loc.T("✗ 这份备份读不出来。");
                 return;
             }
 
@@ -249,21 +249,21 @@ public partial class RestoreWindow : Window
                  * 而它们恰恰是最该能恢复的东西。所以请他输入"这份备份当时的密码"。 */
                 var prompt = new PasswordPromptWindow(
                     pass => SyncService.CanDecrypt(text, pass),
-                    "这份备份用的是旧密码",
-                    "当前备份密码解不开它 —— 请填生成这份备份时用的密码。",
-                    "用这个密码恢复")
+                    Loc.T("这份备份用的是旧密码"),
+                    Loc.T("当前备份密码解不开它 —— 请填生成这份备份时用的密码。"),
+                    Loc.T("用这个密码恢复"))
                 {
                     Owner = this,
                 };
                 if (prompt.ShowDialog() != true)
                 {
-                    StatusText.Text = "已取消恢复。";
+                    StatusText.Text = Loc.T("已取消恢复。");
                     return;
                 }
                 password = prompt.Password ?? "";
             }
 
-            StatusText.Text = mode == RestoreMode.Merge ? "正在合并…" : "正在恢复…";
+            StatusText.Text = mode == RestoreMode.Merge ? Loc.T("正在合并…") : Loc.T("正在恢复…");
             var outcome = _host.Sync.RestoreFromText(text, mode, password);
 
             // 立刻落盘：恢复完不保存等于白恢复
@@ -275,18 +275,18 @@ public partial class RestoreWindow : Window
 
             var msg = outcome.Summary
                       + (selfBackup != null ? $"\n\n恢复前的配置已另存：{System.IO.Path.GetFileName(selfBackup)}" : "");
-            AppDialog.Success(this, msg, "恢复完成");
+            AppDialog.Success(this, msg, Loc.T("恢复完成"));
             DialogResult = true;
             Close();
         }
         catch (BackupPasswordException ex)
         {
-            StatusText.Text = "✗ 解不开这份备份：" + ex.Message;
+            StatusText.Text = Loc.T("✗ 解不开这份备份：") + ex.Message;
         }
         catch (Exception ex)
         {
             CoreLog.Warn("恢复备份失败：" + ex);
-            StatusText.Text = "✗ 恢复失败：" + ex.Message;
+            StatusText.Text = Loc.T("✗ 恢复失败：") + ex.Message;
         }
         finally
         {
