@@ -37,7 +37,11 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
 [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, int dwExtraInfo);
+[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint esFlags);
 '@ -Name Win32Mouse -Namespace PsTest
+
+# 压住空闲计数，防止端到端跑到一半机器锁屏（锁屏后用户桌面隐藏，截图全是锁屏）
+[PsTest.Win32Mouse]::SetThreadExecutionState(0x80000000 -bor 0x00000002 -bor 0x00000001) | Out-Null
 
 function Shot([string]$name) {
     $p = Join-Path $Shot "$name.png"
