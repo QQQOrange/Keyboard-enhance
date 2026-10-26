@@ -87,8 +87,8 @@ public partial class AboutView : UserControl
             string scope = UpdateService.HasToken(_host?.Settings.Global.GitHubToken)
                 ? Loc.T("按你的账号")
                 : Loc.T("匿名（按 IP）");
-            string tail = info.Remaining > 0 ? $"还剩 {info.Remaining} 次" : Loc.T("已用完，整点恢复");
-            TokenUsageText.Text = $"本小时已用 {info.Used} 次 / 共 {info.Limit} 次（{scope} · {tail}）";
+            string tail = info.Remaining > 0 ? Loc.F("还剩 {0} 次", info.Remaining) : Loc.T("已用完，整点恢复");
+            TokenUsageText.Text = Loc.F("本小时已用 {0} 次 / 共 {1} 次（{2} · {3}）", info.Used, info.Limit, scope, tail);
         }
         finally
         {
@@ -204,12 +204,14 @@ public partial class AboutView : UserControl
         /* 只回答"有没有"，一个字符都不回显 —— 截图/录屏都不会带走东西。
          * 想看头尾几位？那也算泄露，用户明确要求去掉。 */
         TokenStatusText.Text = has
-            ? Loc.T("已保存（令牌不回显）　·　更新检查按账号限流，可以自动下载安装。")
-              + Loc.T("输入新令牌会覆盖它。令牌会跟着备份和导出一起走。")
-            : Loc.T("未填写　·　匿名访问每小时只有 60 次（同一网络下多台机器共用），容易撞上限。")
-              + Loc.T("填了才能一键自动下载；不填也行 —— 发现新版本时只提示、并给出 GitHub 下载地址，")
-              + Loc.T("程序内不提供下载按钮。只读公开仓库不需要勾任何权限。")
-              + Loc.T("令牌会跟着加密备份和网盘同步一起走，换台机器恢复后不用重新填。");
+            ? Loc.Cat(
+                Loc.T("已保存（令牌不回显）　·　更新检查按账号限流，可以自动下载安装。"),
+                Loc.T("输入新令牌会覆盖它。令牌会跟着备份和导出一起走。"))
+            : Loc.Cat(
+                Loc.T("未填写　·　匿名访问每小时只有 60 次（同一网络下多台机器共用），容易撞上限。"),
+                Loc.T("填了才能一键自动下载；不填也行 —— 发现新版本时只提示、并给出 GitHub 下载地址，"),
+                Loc.T("程序内不提供下载按钮。只读公开仓库不需要勾任何权限。"),
+                Loc.T("令牌会跟着加密备份和网盘同步一起走，换台机器恢复后不用重新填。"));
     }
 
     /// <summary>验证中：两个按钮都锁住，避免连点时把状态文字刷来刷去。</summary>
@@ -284,8 +286,9 @@ public partial class AboutView : UserControl
         {
             string cur = _host.Settings.Global.GitHubToken;
             TokenStatusText.Text = UpdateService.HasToken(cur)
-                ? Loc.T("令牌没有改动，仍是已保存的那个（不回显）。")
-                  + Loc.T("要换新的，直接在输入框里输入或粘贴即可。")
+                ? Loc.Cat(
+                    Loc.T("令牌没有改动，仍是已保存的那个（不回显）。"),
+                    Loc.T("要换新的，直接在输入框里输入或粘贴即可。"))
                 : Loc.T("输入框里只有占位圆点，先把新令牌粘进来。");
             return;
         }
@@ -304,8 +307,9 @@ public partial class AboutView : UserControl
         /* 只提示不拦截：GitHub 未来可能启用新前缀，卡死格式等于把用户挡在外面。 */
         if (!UpdateService.LooksLikeGitHubToken(token))
         {
-            TokenStatusText.Text = Loc.T("这个看起来不像 GitHub 令牌（通常以 ghp_ 或 github_pat_ 开头），")
-                                   + Loc.T("但已经按你填的保存了 —— 如果检查更新报「令牌无效」，回头核对一下。");
+            TokenStatusText.Text = Loc.Cat(
+                Loc.T("这个看起来不像 GitHub 令牌（通常以 ghp_ 或 github_pat_ 开头），"),
+                Loc.T("但已经按你填的保存了 —— 如果检查更新报「令牌无效」，回头核对一下。"));
             return;
         }
 
@@ -317,8 +321,9 @@ public partial class AboutView : UserControl
         if (_host == null) return;
         if (UpdateService.HasToken(_host.Settings.Global.GitHubToken) &&
             !AppDialog.ConfirmDanger(Window.GetWindow(this),
-                Loc.T("清除后更新检查会回到匿名访问（每小时 60 次），发现新版本时也不再自动下载，")
-                + Loc.T("只提示并给出下载地址。\n\n已保存的令牌会被删掉，需要重新填。"),
+                Loc.Cat(
+                    Loc.T("清除后更新检查会回到匿名访问（每小时 60 次），发现新版本时也不再自动下载，"),
+                    Loc.T("只提示并给出下载地址。\n\n已保存的令牌会被删掉，需要重新填。")),
                 Loc.T("清除 GitHub 令牌？"), Loc.T("清除")))
             return;
 
@@ -395,13 +400,13 @@ public partial class AboutView : UserControl
             }
             if (!result.IsNewer || result.Update == null)
             {
-                SetStatus($"已是最新版本（{UpdateService.CurrentVersion}）", "");
+                SetStatus(Loc.F("已是最新版本（{0}）", UpdateService.CurrentVersion), "");
                 return;
             }
 
             _pending = result.Update;
-            string head = $"发现新版本 {result.Update.Version}" +
-                          (result.Update.SizeText.Length > 0 ? $"（{result.Update.SizeText}）" : "");
+            string head = Loc.F("发现新版本 {0}", result.Update.Version) +
+                          (result.Update.SizeText.Length > 0 ? Loc.F("（{0}）", result.Update.SizeText) : "");
 
             /* 没填令牌：只提示 + 给下载地址，**程序内不提供下载入口**。
              * 判断和 UpdatePromptWindow 用同一个 HasToken，两处行为必须一致。 */
@@ -468,7 +473,7 @@ public partial class AboutView : UserControl
         CheckButton.IsEnabled = false;
         Progress.Visibility = Visibility.Visible;
         Progress.Value = 0;
-        SetStatus($"正在下载 {_pending.Version}…", "");
+        SetStatus(Loc.F("正在下载 {0}…", _pending.Version), "");
 
         try
         {

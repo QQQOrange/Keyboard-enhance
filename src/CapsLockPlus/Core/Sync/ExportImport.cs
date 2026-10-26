@@ -17,7 +17,14 @@ public sealed record ExportGroup(
     string Desc,
     string[] Keys,
     bool Private,
-    bool DefaultChecked);
+    bool DefaultChecked)
+{
+    /* 表里存的是中文原文（身份用 Id，不靠名字），显示时翻一次 ——
+     * 界面上这张表有十来行名字 + 说明，逐个调用点包 Loc.T 只会把那份清单弄脏。 */
+    public string DisplayName => Localization.Loc.T(Name);
+
+    public string DisplayDesc => Localization.Loc.T(Desc);
+}
 
 /// <summary>
 /// 配置的按项导出 / 导入。
@@ -222,7 +229,7 @@ public static class ExportImport
         var priv = PrivateNames(selected);
         if (priv.Count > 0)
             throw new InvalidOperationException(
-                $"勾选了隐私内容（{string.Join("、", priv)}），只能用加密导出。");
+                Loc.F("勾选了隐私内容（{0}），只能用加密导出。", Loc.Join(priv)));
 
         var (text, count) = Build(settings, selected);
         File.WriteAllText(path, text, System.Text.Encoding.UTF8);
@@ -289,7 +296,7 @@ public static class ExportImport
         }
         catch (Exception e)
         {
-            throw new InvalidOperationException($"文件内容不是有效的 JSON：{e.Message}");
+            throw new InvalidOperationException(Loc.F("文件内容不是有效的 JSON：{0}", e.Message));
         }
         if (node is not JsonObject root)
             throw new InvalidOperationException("文件内容不是一个 JSON 对象");
@@ -315,7 +322,7 @@ public static class ExportImport
         }
 
         if (!kind.Equals(ExportKind, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"不支持的文件类型：{kind}");
+            throw new InvalidOperationException(Loc.F("不支持的文件类型：{0}", kind));
 
         if (root["items"] is not JsonArray arr)
             throw new InvalidOperationException("导出文件的 items 字段不对（应当是字符串数组）");

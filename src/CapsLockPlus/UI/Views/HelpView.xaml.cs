@@ -118,7 +118,7 @@ public partial class HelpView : UserControl
             Loc.T("按住触发键（默认 CapsLock）就是「功能键」，此时再按其他键会执行你在「按键映射」里配的功能。"),
             Loc.T("一共 10 个图层，每层可以有**自己的触发键**（CapsLock、F13、右 Alt…），互不干扰。"),
             Loc.T("触发键只能是单个按键 —— 组合键留给层内绑定用，避免「同样按 Ctrl+K，到底算触发还是算绑定」的歧义。"),
-            $"当前配置：{s.Triggers.Count(t => t.Enabled)} 个启用的触发键。",
+            Loc.F("当前配置：{0} 个启用的触发键。", s.Triggers.Count(t => t.Enabled)),
         });
 
         AddSection(Loc.T("② 子层（层内修饰键）"), new[]
@@ -177,7 +177,7 @@ public partial class HelpView : UserControl
             Loc.T("「宏」页可以录制一串按键操作，然后把整个宏绑到一个键上。"),
             Loc.T("录制中的按键不会被拦截，录完在列表里可以调整每一步的延迟。"),
             Loc.T("绑定时分类选「宏」，再从功能下拉里选具体那个宏。"),
-            $"当前配置：{s.Macros.Count} 个宏。",
+            Loc.F("当前配置：{0} 个宏。", s.Macros.Count),
         });
 
         AddSection(Loc.T("⑧ 剪贴板与同步"), new[]
@@ -239,7 +239,7 @@ public partial class HelpView : UserControl
             var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == layer.Id);
             string layerPrefix = trigger != null
                 ? DescribeKey(trigger.Key)
-                : $"第{layer.Id}层";
+                : Loc.F("第{0}层", layer.Id);
 
             foreach (var binding in keys.Where(k => k.IsBound))
             {
@@ -289,7 +289,7 @@ public partial class HelpView : UserControl
             panel.Add(new HelpItem(Loc.T("短按触发键"), Loc.T("切换大小写"),
                 Loc.T("不按其他键时松开的默认行为，可在「触发键与层」里改")));
             panel.Add(new HelpItem(Loc.T("双击触发键"), Loc.T("打开 Qbar"),
-                $"{Core.Input.HotkeyEngine.DoubleTapWindowMs} 毫秒内连按两下"));
+                Loc.F("{0} 毫秒内连按两下", Core.Input.HotkeyEngine.DoubleTapWindowMs)));
             panel.Add(new HelpItem(Loc.T("Qbar 内"), Loc.T("↑ ↓ 选择"), Loc.T("Enter 执行，Esc 关闭，Tab 补全")));
             panel.Add(new HelpItem(Loc.T("Qbar 内"), "=1+2*3", Loc.T("直接计算并把结果复制到剪贴板")));
         }
@@ -341,7 +341,7 @@ public partial class HelpView : UserControl
             if (note != null) return note;
             var spec = Core.Actions.CustomKeySpec.FromArg(binding.Arg);
             if (!spec.IsReady) return Loc.T("自定义按键（还没配好）");
-            return $"把 {Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key)} 发给 {spec.ProcessName}"
+            return Loc.F("把 {0} 发给 {1}", Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key), spec.ProcessName)
                  + (spec.RunAsAdmin ? Loc.T("（需要时以管理员身份启动）") : "")
                  + (spec.BringFront ? Loc.T("，会先切到前台") : "");
         }
@@ -349,7 +349,7 @@ public partial class HelpView : UserControl
         if (id == "winBind" && !string.IsNullOrWhiteSpace(binding.Arg))
         {
             string name = note ?? System.IO.Path.GetFileNameWithoutExtension(binding.Arg);
-            return $"切到 {name}（再按一次最小化）";
+            return Loc.F("切到 {0}（再按一次最小化）", name);
         }
 
         if (id == "webPage")
@@ -381,7 +381,7 @@ public partial class HelpView : UserControl
         if (note != null) return note;
 
         return binding.Arg.Length > 0
-            ? $"{info.Description}（参数 {binding.Arg}）"
+            ? Loc.F("{0}（参数 {1}）", info.Description, binding.Arg)
             : info.Description;
     }
 

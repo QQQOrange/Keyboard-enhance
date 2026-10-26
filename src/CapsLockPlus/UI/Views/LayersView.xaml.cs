@@ -84,10 +84,11 @@ public partial class LayersView : UserControl
             rows.Add(new LayerRow(
                 Id: layer.Id,
                 Badge: badge,
-                Name: layer.Name,
+                Name: LayerName.Display(layer.Id, layer.Name),
                 Detail: trigger is { } t
-                    ? $"触发键 {KeyName.Display(t.Key)}（长按 {t.HoldMs}ms 进层）　·　{layer.Keys.Count} 个绑定"
-                    : $"未分配触发键　·　{layer.Keys.Count} 个绑定",
+                    ? Loc.F("触发键 {0}（长按 {1}ms 进层）　·　{2} 个绑定",
+                        KeyName.Display(t.Key), t.HoldMs, layer.Keys.Count)
+                    : Loc.F("未分配触发键　·　{0} 个绑定", layer.Keys.Count),
                 IsActiveLayer: layer.Id == activeLayerId));
         }
         LayerList.ItemsSource = rows;
@@ -118,7 +119,7 @@ public partial class LayersView : UserControl
         {
             LayerBox.Items.Add(new ComboBoxItem
             {
-                Content = $"{layer.Id}. {layer.Name}",
+                Content = $"{layer.Id}. {LayerName.Display(layer.Id, layer.Name)}",
                 Tag = layer.Id,
             });
             if (layer.Id == t.LayerId) LayerBox.SelectedIndex = LayerBox.Items.Count - 1;
@@ -243,7 +244,7 @@ public partial class LayersView : UserControl
         _editing = trigger;
         _host.SaveSettings();
         Reload();
-        _host.Notify($"已添加触发键 {KeyName.Display(key)} → 第 {layerId} 层");
+        _host.Notify(Loc.F("已添加触发键 {0} → 第 {1} 层", KeyName.Display(key), layerId));
     }
 
     private void OnDeleteTrigger(object sender, RoutedEventArgs e)
@@ -259,7 +260,7 @@ public partial class LayersView : UserControl
         _editing = null;
         _host.SaveSettings();
         Reload();
-        _host.Notify($"已删除触发键 {name}");
+        _host.Notify(Loc.F("已删除触发键 {0}", name));
     }
 
     private void OnChangeTriggerKey(object sender, RoutedEventArgs e)

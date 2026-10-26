@@ -98,20 +98,20 @@ public sealed class WindowBindingService
                     if (string.Equals(w.ExePath, info.ExePath, StringComparison.OrdinalIgnoreCase))
                         b.WindowIds.Add(w.Handle.ToInt64());
                 }
-                Notified?.Invoke($"槽位 {slot}：已绑定 {info.ExeName} 的全部窗口");
+                Notified?.Invoke(Loc.F("槽位 {0}：已绑定 {1} 的全部窗口", slot, info.ExeName));
             }
             else if (_tapCount == 1)
             {
                 b.Mode = WinBindMode.Single;
                 b.WindowIds.Clear();
                 b.WindowIds.Add(id);
-                Notified?.Invoke($"槽位 {slot} ← {info.Display}");
+                Notified?.Invoke(Loc.F("槽位 {0} ← {1}", slot, info.Display));
             }
             else
             {
                 b.Mode = WinBindMode.Multi;
                 if (!b.WindowIds.Contains(id)) b.WindowIds.Add(id);
-                Notified?.Invoke($"槽位 {slot}：已加入 {info.Display}（共 {b.WindowIds.Count} 个窗口）");
+                Notified?.Invoke(Loc.F("槽位 {0}：已加入 {1}（共 {2} 个窗口）", slot, info.Display, b.WindowIds.Count));
             }
         }
         return true;
@@ -123,7 +123,7 @@ public sealed class WindowBindingService
         var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
         if (b == null || b.IsEmpty)
         {
-            Notified?.Invoke($"槽位 {slot} 还没绑定窗口（先按 Caps+LAlt+{slot} 绑定）");
+            Notified?.Invoke(Loc.F("槽位 {0} 还没绑定窗口（先按 Caps+LAlt+{1} 绑定）", slot, slot));
             return false;
         }
 
@@ -149,7 +149,7 @@ public sealed class WindowBindingService
                     LaunchAndTrack(slot, b);
                     return true;
                 }
-                Notified?.Invoke($"槽位 {slot} 的窗口已经关闭");
+                Notified?.Invoke(Loc.F("槽位 {0} 的窗口已经关闭", slot));
                 return false;
             }
 
@@ -167,13 +167,13 @@ public sealed class WindowBindingService
                 {
                     // 再按一次：最小化（恢复原样）
                     WindowService.Minimize(h);
-                    Notified?.Invoke($"已最小化 {DescribeSlot(slot)}");
+                    Notified?.Invoke(Loc.F("已最小化 {0}", DescribeSlot(slot)));
                     return true;
                 }
 
                 // 切过去
                 WindowService.Activate(h);
-                Notified?.Invoke($"已切到 {DescribeSlot(slot)}");
+                Notified?.Invoke(Loc.F("已切到 {0}", DescribeSlot(slot)));
                 return true;
             }
 
@@ -187,12 +187,12 @@ public sealed class WindowBindingService
             {
                 // 又按回同一个：最小化
                 WindowService.Minimize(next);
-                Notified?.Invoke($"已最小化 {DescribeSlot(slot)}");
+                Notified?.Invoke(Loc.F("已最小化 {0}", DescribeSlot(slot)));
                 return true;
             }
             _cycleIndex[slot] = idx;
             WindowService.Activate(next);
-            Notified?.Invoke($"已切到 {DescribeSlot(slot)}");
+            Notified?.Invoke(Loc.F("已切到 {0}", DescribeSlot(slot)));
             return true;
         }
     }
@@ -220,7 +220,7 @@ public sealed class WindowBindingService
         if (LaunchInterceptForTest != null)
         {
             bool ok = LaunchInterceptForTest(exe);
-            Notified?.Invoke(ok ? $"正在启动 {b.DisplayName}…" : "启动失败：被拦截");
+            Notified?.Invoke(ok ? Loc.F("正在启动 {0}…", b.DisplayName) : "启动失败：被拦截");
             return;
         }
 
@@ -235,7 +235,7 @@ public sealed class WindowBindingService
             return;
         }
 
-        Notified?.Invoke($"正在启动 {b.DisplayName}…");
+        Notified?.Invoke(Loc.F("正在启动 {0}…", b.DisplayName));
         CoreLog.Info($"窗口绑定槽位 {slot}：启动 {exe}，等待窗口出现");
 
         // 放到后台线程等，避免卡住按键回调
@@ -272,7 +272,7 @@ public sealed class WindowBindingService
             if (found == IntPtr.Zero)
             {
                 CoreLog.Warn($"窗口绑定槽位 {slot}：等了 15 秒仍未看到 {b.DisplayName} 的窗口");
-                Notified?.Invoke($"{b.DisplayName} 好像还没启动完成，再按一次槽位键试试");
+                Notified?.Invoke(Loc.F("{0} 好像还没启动完成，再按一次槽位键试试", b.DisplayName));
                 return;
             }
 
@@ -337,8 +337,8 @@ public sealed class WindowBindingService
         }
 
         Notified?.Invoke(b.WindowIds.Count > 0
-            ? $"槽位 {slot} ← {b.DisplayName}（当前已开 {b.WindowIds.Count} 个窗口）"
-            : $"槽位 {slot} ← {b.DisplayName}（还没运行，按 {slot} 时会帮你打开）");
+            ? Loc.F("槽位 {0} ← {1}（当前已开 {2} 个窗口）", slot, b.DisplayName, b.WindowIds.Count)
+            : Loc.F("槽位 {0} ← {1}（还没运行，按 {2} 时会帮你打开）", slot, b.DisplayName, slot));
         return true;
     }
 
@@ -370,7 +370,7 @@ public sealed class WindowBindingService
             b.WindowIds.Clear();
             b.WindowIds.Add(info.Handle.ToInt64());
         }
-        Notified?.Invoke($"槽位 {slot} ← {info.ExeName}");
+        Notified?.Invoke(Loc.F("槽位 {0} ← {1}", slot, info.ExeName));
         return true;
     }
 
@@ -382,9 +382,9 @@ public sealed class WindowBindingService
         string name = string.IsNullOrEmpty(b.DisplayName) ? "已绑定" : b.DisplayName;
         return b.WindowIds.Count switch
         {
-            0 => $"{name}（未运行）",
-            1 => $"{name}（1 个窗口）",
-            _ => $"{name}（{b.WindowIds.Count} 个窗口循环）",
+            0 => Loc.F("{0}（未运行）", name),
+            1 => Loc.F("{0}（1 个窗口）", name),
+            _ => Loc.F("{0}（{1} 个窗口循环）", name, b.WindowIds.Count),
         };
     }
 
@@ -427,7 +427,7 @@ public sealed class WindowBindingService
 
         if (!File.Exists(exePath))
         {
-            Notified?.Invoke($"程序不存在：{exePath}");
+            Notified?.Invoke(Loc.F("程序不存在：{0}", exePath));
             return false;
         }
 
@@ -469,7 +469,7 @@ public sealed class WindowBindingService
             {
                 WindowService.Restore(minimized);
                 WindowService.Activate(minimized);
-                Notified?.Invoke($"已恢复 {name}");
+                Notified?.Invoke(Loc.F("已恢复 {0}", name));
                 return true;
             }
 
@@ -480,12 +480,12 @@ public sealed class WindowBindingService
                 if (IsSameWindow(fg, h))
                 {
                     WindowService.Minimize(h);
-                    Notified?.Invoke($"已最小化 {name}");
+                    Notified?.Invoke(Loc.F("已最小化 {0}", name));
                 }
                 else
                 {
                     WindowService.Activate(h);
-                    Notified?.Invoke($"已切到 {name}");
+                    Notified?.Invoke(Loc.F("已切到 {0}", name));
                 }
                 return true;
             }
@@ -500,13 +500,13 @@ public sealed class WindowBindingService
             if (IsSameWindow(next, fg))
             {
                 WindowService.Minimize(next);
-                Notified?.Invoke($"已最小化 {name}");
+                Notified?.Invoke(Loc.F("已最小化 {0}", name));
             }
             else
             {
                 _cycleIndex[StableHash(stateKey)] = idx;
                 WindowService.Activate(next);
-                Notified?.Invoke($"已切到 {name}（{handles.Count} 个窗口循环）");
+                Notified?.Invoke(Loc.F("已切到 {0}（{1} 个窗口循环）", name, handles.Count));
             }
             return true;
         }
@@ -532,7 +532,7 @@ public sealed class WindowBindingService
         if (LaunchInterceptForTest != null)
         {
             bool ok = LaunchInterceptForTest(exePath);
-            Notified?.Invoke(ok ? $"正在启动 {name}…" : "启动失败：被拦截");
+            Notified?.Invoke(ok ? Loc.F("正在启动 {0}…", name) : "启动失败：被拦截");
             return;
         }
 
@@ -547,7 +547,7 @@ public sealed class WindowBindingService
             return;
         }
 
-        Notified?.Invoke($"正在启动 {name}…");
+        Notified?.Invoke(Loc.F("正在启动 {0}…", name));
         CoreLog.Info($"按键绑定：启动 {exePath}，等待窗口出现");
 
         var th = new Thread(() =>
@@ -567,7 +567,7 @@ public sealed class WindowBindingService
             if (found == IntPtr.Zero)
             {
                 CoreLog.Warn($"按键绑定：等了 15 秒仍未看到 {name} 的窗口");
-                Notified?.Invoke($"{name} 好像还没启动完成，再按一次试试");
+                Notified?.Invoke(Loc.F("{0} 好像还没启动完成，再按一次试试", name));
                 return;
             }
 

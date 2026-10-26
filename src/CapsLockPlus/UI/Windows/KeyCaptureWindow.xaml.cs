@@ -290,9 +290,9 @@ public partial class KeyCaptureWindow : Window
                 PromptText.Text = combo;
                 DetailText.Text = known != null
                     ? (mods == KeyModifiers.None
-                        ? $"单键 {name}　·　按「确定绑定」生效"
-                        : $"组合键 {combo}　·　按「确定绑定」生效")
-                    : $"未收录的键（VK 0x{vk:X2}），按 {name} 记录　·　按「确定绑定」生效";
+                        ? Loc.F("单键 {0}　·　按「确定绑定」生效", name)
+                        : Loc.F("组合键 {0}　·　按「确定绑定」生效", combo))
+                    : Loc.F("未收录的键（VK 0x{0:X2}），按 {1} 记录　·　按「确定绑定」生效", vk, name);
                 ConfirmButton.IsEnabled = true;
             });
 

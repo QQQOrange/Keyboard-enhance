@@ -1,7 +1,7 @@
 ﻿<UserControl x:Class="CapsLockPlus.UI.Views.MacrosView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
              FontFamily="{StaticResource Font.Ui}">
     <!--
         版面取舍：宏列表只是"选一个"，录制与步骤编辑才是主要工作，

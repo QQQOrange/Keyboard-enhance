@@ -269,6 +269,7 @@ public static class RenderTools
                 try
                 {
                     DumpTextBoxMetrics(main, Path.Combine(outDir, $"metrics-{page}.txt"), page);
+                    DumpUntranslatedAudit(main, Path.Combine(outDir, $"untranslated-{page}.txt"), page);
                 }
                 catch (Exception ex)
                 {
@@ -315,7 +316,11 @@ public static class RenderTools
         qbar.UpdateLayout();
         Pump(120);
         Save(qbar, Path.Combine(outDir, "qbar-panel.png"));
-        if (DiagnosticsRequested) DumpTextBoxMetrics(qbar, Path.Combine(outDir, "metrics-win-qbar-panel.txt"), "Qbar 面板");
+        if (DiagnosticsRequested)
+        {
+            DumpTextBoxMetrics(qbar, Path.Combine(outDir, "metrics-win-qbar-panel.txt"), "Qbar 面板");
+            DumpUntranslatedAudit(qbar, Path.Combine(outDir, "untranslated-win-qbar-panel.txt"), "Qbar 面板");
+        }
         count++;
 
         // 标签形态：输入 "bd " 之后 bd 变成标签，输入框只剩搜索词
@@ -373,7 +378,11 @@ public static class RenderTools
         math.Show();
         Pump(200);
         Save(math, Path.Combine(outDir, "mathboard.png"));
-        if (DiagnosticsRequested) DumpTextBoxMetrics(math, Path.Combine(outDir, "metrics-win-mathboard.txt"), "计算板");
+        if (DiagnosticsRequested)
+        {
+            DumpTextBoxMetrics(math, Path.Combine(outDir, "metrics-win-mathboard.txt"), "计算板");
+            DumpUntranslatedAudit(math, Path.Combine(outDir, "untranslated-win-mathboard.txt"), "计算板");
+        }
         count++;
         math.Close();
 
@@ -389,7 +398,11 @@ public static class RenderTools
         clip.Show();
         Pump(240);
         Save(clip, Path.Combine(outDir, "clipboard.png"));
-        if (DiagnosticsRequested) DumpTextBoxMetrics(clip, Path.Combine(outDir, "metrics-win-clipboard.txt"), "剪贴板历史");
+        if (DiagnosticsRequested)
+        {
+            DumpTextBoxMetrics(clip, Path.Combine(outDir, "metrics-win-clipboard.txt"), "剪贴板历史");
+            DumpUntranslatedAudit(clip, Path.Combine(outDir, "untranslated-win-clipboard.txt"), "剪贴板历史");
+        }
         count++;
         clip.Close();
 
@@ -405,6 +418,71 @@ public static class RenderTools
 
         CoreLog.Info($"离屏渲染完成：{count} 张 → {outDir}");
         return 0;
+    }
+
+    /// <summary>
+    /// 「英文界面中文残留」审计：把视觉树里**当前真正显示出来**的文案全抓出来，
+    /// 挑出还含汉字的，连同它来自哪个控件一起写成清单。
+    ///
+    /// 为什么要这个：语言包齐不齐自检能查（键都在、占位符都对），
+    /// 但"某处文案到底有没有走翻译出口"自检查不出来 —— 只有把界面搭起来、
+    /// 把每个 TextBlock / Content / ToolTip 的实际文本抓一遍才看得见。
+    /// 逐张看截图也行，但 30 多张图靠眼睛扫一定会漏。
+    /// </summary>
+    public static void DumpUntranslatedAudit(DependencyObject root, string outPath, string page = "")
+    {
+        var hits = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        WalkAll(root, node =>
+        {
+            /* 顺序有讲究：HeaderedContentControl 本身就是 ContentControl，
+             * 先匹配 ContentControl 的话 Header 永远取不到。
+             * 占位文字不用单独取 —— 它是模板里的 TextBlock，走 TextBlock 那条就抓到了。 */
+            string? text = node switch
+            {
+                System.Windows.Controls.TextBlock tb => tb.Text,
+                System.Windows.Controls.TextBox box => box.Text,
+                System.Windows.Controls.HeaderedContentControl hc => (hc.Content as string) ?? (hc.Header as string),
+                System.Windows.Controls.HeaderedItemsControl hi => hi.Header as string,   // MenuItem / TabItem
+                System.Windows.Controls.ContentControl cc => cc.Content as string,
+                _ => null,
+            };
+            Collect(text, node);
+
+            if (node is FrameworkElement fe) Collect(fe.ToolTip as string, node);
+            if (node is Window win) Collect(win.Title, node);
+        });
+
+        WriteAudit(page);
+
+        void Collect(string? s, DependencyObject node)
+        {
+            if (string.IsNullOrWhiteSpace(s) || !HasCjk(s)) return;
+            string key = s!;
+            if (!seen.Add(key)) return;   // 同一句只报一次，避免长列表刷屏
+            hits.Add($"{node.GetType().Name,-22} {(node as FrameworkElement)?.Name ?? "",-20} {key.Replace("\n", " ⏎ ")}");
+        }
+
+        void WriteAudit(string pg)
+        {
+            var all = new List<string> { $"未翻译文案审计（页面：{pg}，语言：{Core.Localization.Loc.Language}）" };
+            all.Add(hits.Count == 0 ? "  没有发现中文残留 ✓" : $"  发现 {hits.Count} 条：");
+            all.AddRange(hits.Select(r => "  " + r));
+            File.WriteAllLines(outPath, all);
+        }
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex CjkText =
+        new(@"[\u4e00-\u9fff]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool HasCjk(string s) => CjkText.IsMatch(s);
+
+    private static void WalkAll(DependencyObject node, Action<DependencyObject> visit)
+    {
+        visit(node);
+        int n = VisualTreeHelper.GetChildrenCount(node);
+        for (int i = 0; i < n; i++) WalkAll(VisualTreeHelper.GetChild(node, i), visit);
     }
 
     /// <summary>

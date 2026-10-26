@@ -37,14 +37,14 @@ public sealed record QbarResult(
 
     public string KindLabel => Kind switch
     {
-        QbarKind.Command => "命令",
-        QbarKind.Search => "搜索",
-        QbarKind.Web => "网址",
-        QbarKind.Run => "程序",
-        QbarKind.Window => "窗口",
-        QbarKind.Math => "计算",
-        QbarKind.Clipboard => "剪贴板",
-        QbarKind.File => "文件",
+        QbarKind.Command => Loc.T("命令"),
+        QbarKind.Search => Loc.T("搜索"),
+        QbarKind.Web => Loc.T("网址"),
+        QbarKind.Run => Loc.T("程序"),
+        QbarKind.Window => Loc.T("窗口"),
+        QbarKind.Math => Loc.T("计算"),
+        QbarKind.Clipboard => Loc.T("剪贴板"),
+        QbarKind.File => Loc.T("文件"),
         _ => "",
     };
 }
@@ -139,7 +139,7 @@ public sealed class QbarService
                 {
                     string url = chip.Value.Replace("{q}", Uri.EscapeDataString(tail));
                     list.Add(new QbarResult(QbarKind.Search,
-                        tail.Length == 0 ? $"在 {chip.Label} 中搜索…" : tail,
+                        tail.Length == 0 ? Loc.F("在 {0} 中搜索…", chip.Label) : tail,
                         chip.Value.Replace("{q}", tail),
                         chip.Label, url)
                     {
@@ -179,7 +179,7 @@ public sealed class QbarService
             {
                 string formatted = ExpressionEvaluator.Format(v);
                 list.Insert(0, new QbarResult(QbarKind.Math, formatted,
-                    $"复制计算结果（{tail[1..].Trim()} = {formatted}）", "=", formatted) { Score = -200 });
+                    Loc.F("复制计算结果（{0} = {1}）", tail[1..].Trim(), formatted), "=", formatted) { Score = -200 });
             }
             return list.Take(limit).ToList();
         }
@@ -219,7 +219,7 @@ public sealed class QbarService
             if (ExpressionEvaluator.TryEvaluate(expr, out double value, out _))
             {
                 string formatted = ExpressionEvaluator.Format(value);
-                results.Add(new QbarResult(QbarKind.Math, formatted, $"复制计算结果（{expr.Trim()} = {formatted}）", "=", formatted)
+                results.Add(new QbarResult(QbarKind.Math, formatted, Loc.F("复制计算结果（{0} = {1}）", expr.Trim(), formatted), "=", formatted)
                 { Score = -10 });
                 if (text.StartsWith('=')) return results.Take(limit).ToList();
             }
@@ -236,7 +236,7 @@ public sealed class QbarService
         {
             string url = searchHit.Value.Replace("{q}", Uri.EscapeDataString(tail));
             results.Insert(0, new QbarResult(QbarKind.Search,
-                $"{searchHit.Key}：{tail}",
+                Loc.F("{0}：{1}", searchHit.Key, tail),
                 searchHit.Value.Replace("{q}", tail),
                 searchHit.Key, url) { Score = -20 });
             return results.Take(limit).ToList();
@@ -310,7 +310,7 @@ public sealed class QbarService
             x.Key.Equals("default", StringComparison.OrdinalIgnoreCase))?.Value
             ?? "https://www.bing.com/search?q={q}";
         string defaultUrl = defaultEngine.Replace("{q}", Uri.EscapeDataString(text));
-        results.Add(new QbarResult(QbarKind.Search, $"搜索“{text}”", defaultUrl, "默认", defaultUrl)
+        results.Add(new QbarResult(QbarKind.Search, Loc.F("搜索“{0}”", text), defaultUrl, "默认", defaultUrl)
         { Score = 500 });
 
         return results
@@ -433,8 +433,8 @@ public sealed class QbarService
                 s.Comment.Contains(text, StringComparison.OrdinalIgnoreCase))
             {
                 yield return new QbarResult(QbarKind.Search,
-                    string.IsNullOrEmpty(s.Comment) ? $"{s.Key} 搜索" : $"{s.Key}  ·  {s.Comment}",
-                    s.Value, "搜索", s.Value) { Score = 30 };
+                    string.IsNullOrEmpty(s.Comment) ? Loc.F("{0} 搜索", s.Key) : $"{s.Key}  ·  {s.Comment}",
+                    s.Value, Loc.T("搜索"), s.Value) { Score = 30 };
             }
         }
         foreach (var cmd in Commands)
@@ -515,7 +515,7 @@ public sealed class QbarService
         {
             case QbarKind.Math:
                 cb.CopyToClipboard(result.Payload);
-                cb.Notify($"已复制：{result.Payload}");
+                cb.Notify(Loc.F("已复制：{0}", result.Payload));
                 break;
             case QbarKind.Clipboard:
                 cb.Paste(result.Payload);

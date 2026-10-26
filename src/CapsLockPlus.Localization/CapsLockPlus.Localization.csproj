@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 本地化内核单独一个程序集（4.5.26 起）。
+       **为什么要独立**：XAML 里 {loc:T '…'} 引用的是 TExtension 这个类型。
+       只要这个类型在当前程序集里，WPF 的 MarkupCompilePass1 就必须先编一个
+       "临时程序集"才能跑第二趟 MarkupCompilePass2；而那趟临时编译会与正式产物
+       抢同一个中间文件（见主工程 csproj 的说明），带 RID 构建时直接导致
+       bin 里缺 KeyboardEnhance.dll。
+       把它挪到独立程序集后，XAML 通过 assembly= 限定就能解析到，pass2 不再需要，
+       构建回到单趟编译 —— 顺带也让增量构建快了一点。
+
+       两个 TFM 与主工程保持一致：net10 主线 / net7 Win7 线。 -->
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-windows;net7.0-windows</TargetFrameworks>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion Condition="'$(TargetFramework)' != 'net7.0-windows'">latest</LangVersion>
+    <AssemblyName>CapsLockPlus.Localization</AssemblyName>
+    <RootNamespace>CapsLockPlus</RootNamespace>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- 与主工程一致：调试符号嵌进程序集，不额外产出 .pdb。
+         否则单文件发布目录里会多躺一个 CapsLockPlus.Localization.pdb，用户看着莫名其妙。 -->
+    <DebugType>embedded</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- 这是库，不单独发布，也不需要自包含/RID 相关设置 -->
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 界面语言包（Core/Localization/Loc.cs）。
+         一个 json 一种语言，嵌进程序集 = 单文件发布后也在 exe 里，
+         不依赖磁盘目录，也不怕用户删了文件夹。
+         **加语言只需往这里丢一个 xx-YY.json，不用改代码。** -->
+    <EmbeddedResource Include="Assets\Lang\*.json" />
+  </ItemGroup>
+
+</Project>

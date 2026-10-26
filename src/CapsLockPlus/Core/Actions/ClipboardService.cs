@@ -62,7 +62,7 @@ public sealed class ClipboardService
             _activeSlot = slot;
             RecordHistory(text);
         }
-        Notified?.Invoke($"已复制到剪贴板 {slot}");
+        Notified?.Invoke(Loc.F("已复制到剪贴板 {0}", slot));
         return true;
     }
 
@@ -78,7 +78,7 @@ public sealed class ClipboardService
             _activeSlot = slot;
             RecordHistory(text);
         }
-        Notified?.Invoke($"已剪切到剪贴板 {slot}");
+        Notified?.Invoke(Loc.F("已剪切到剪贴板 {0}", slot));
         return true;
     }
 
@@ -87,7 +87,7 @@ public sealed class ClipboardService
         if (!Enabled || !ClipboardFeatureOn) return false;
         string? text;
         lock (_gate) text = _slots[slot];
-        if (string.IsNullOrEmpty(text)) { Notified?.Invoke($"剪贴板 {slot} 是空的"); return false; }
+        if (string.IsNullOrEmpty(text)) { Notified?.Invoke(Loc.F("剪贴板 {0} 是空的", slot)); return false; }
         lock (_gate) _activeSlot = slot;
         Text.TextActions.ReplaceSelection(text!);
         return true;

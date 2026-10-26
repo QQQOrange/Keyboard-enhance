@@ -71,8 +71,8 @@ public partial class RecordingHudWindow : Window
         try
         {
             _win.Clock.Text = Format(elapsedMs);
-            _win.Count.Text = $"{events} 个事件";
-            _win.LastKey.Text = string.IsNullOrEmpty(lastKey) ? "" : $"最后 {lastKey}";
+            _win.Count.Text = Loc.F("{0} 个事件", events);
+            _win.LastKey.Text = string.IsNullOrEmpty(lastKey) ? "" : Loc.F("最后 {0}", lastKey);
         }
         catch { /* 窗口正在关，忽略 */ }
     }

@@ -52,6 +52,12 @@ public sealed record KeyboardSizePreset(string Id, string Name, double Scale, st
         return All.First(p => p.Id == DefaultId);
     }
 
+    /// <summary>界面上的档位名（小/中/大/特大 只有一两个字，得跟着语言走）。</summary>
+    public string DisplayName => Localization.Loc.T(Name);
+
+    /// <summary>界面上的档位说明。</summary>
+    public string DisplayHint => Localization.Loc.T(Hint);
+
     /// <summary>
     /// 档位在界面上的标签，例如「大 · 1058」。
     ///
@@ -59,5 +65,5 @@ public sealed record KeyboardSizePreset(string Id, string Name, double Scale, st
     /// 而且带上"× 380"时，「特大」那档在下拉框里会被截成"1217 × 38"。
     /// 完整尺寸显示在下拉框右边那行小字里（见 KeysView.SizeText）。
     /// </summary>
-    public string Label(double naturalWidth) => $"{Name} · {naturalWidth * Scale:0}";
+    public string Label(double naturalWidth) => $"{DisplayName} · {naturalWidth * Scale:0}";
 }

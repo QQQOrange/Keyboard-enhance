@@ -124,7 +124,7 @@ public partial class MacrosView : UserControl
         RepeatBox.Text = (m?.Repeat ?? 1).ToString();
         _selectedStep = -1;
         RefreshSteps();
-        StatusText.Text = m == null ? Loc.T("选一个宏，或新建一个") : $"{m.Steps.Count} 步 · 时长约 {m.DurationText}";
+        StatusText.Text = m == null ? Loc.T("选一个宏，或新建一个") : Loc.F("{0} 步 · 时长约 {1}", m.Steps.Count, m.DurationText);
     }
 
     private void RefreshSteps(bool keepSelection = false)
@@ -149,9 +149,9 @@ public partial class MacrosView : UserControl
 
         _stepRows = rows;
         StepList.ItemsSource = rows;
-        StepCount.Text = m.Steps.Count == 0 ? "" : $"共 {m.Steps.Count} 步 · 约 {m.DurationText}";
+        StepCount.Text = m.Steps.Count == 0 ? "" : Loc.F("共 {0} 步 · 约 {1}", m.Steps.Count, m.DurationText);
         StepEmpty.Visibility = m.Steps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        StatusText.Text = m.Steps.Count == 0 ? Loc.T("还没有步骤，先录制或插入") : $"共 {m.Steps.Count} 步";
+        StatusText.Text = m.Steps.Count == 0 ? Loc.T("还没有步骤，先录制或插入") : Loc.F("共 {0} 步", m.Steps.Count);
 
         if (keepSelection && want >= 0 && want < rows.Count)
         {
@@ -166,11 +166,11 @@ public partial class MacrosView : UserControl
 
     private static string Describe(MacroStep s) => s.Kind switch
     {
-        "keyDown" => $"按下 {KeyName.Display(s.Key)}",
-        "keyUp" => $"抬起 {KeyName.Display(s.Key)}",
-        "delay" => $"等待 {s.DelayMs} ms",
-        "delayRandom" => $"等待 {s.MinMs}~{s.MaxMs} ms（随机）",
-        "text" => $"输入「{Truncate(s.Text, 24)}」",
+        "keyDown" => Loc.F("按下 {0}", KeyName.Display(s.Key)),
+        "keyUp" => Loc.F("抬起 {0}", KeyName.Display(s.Key)),
+        "delay" => Loc.F("等待 {0} ms", s.DelayMs),
+        "delayRandom" => Loc.F("等待 {0}~{1} ms（随机）", s.MinMs, s.MaxMs),
+        "text" => Loc.F("输入「{0}」", Truncate(s.Text, 24)),
         _ => s.Kind,
     };
 
@@ -190,6 +190,11 @@ public partial class MacrosView : UserControl
 
     private DispatcherTimer? _tick;
     private DispatcherTimer? _playTick;
+
+    // 播放中标志。**不能靠 StatusText.Text.StartsWith("播放中") 判断** ——
+    // 英文界面下状态行是 "Playing…"，拿中文去比永远不成立，
+    // 于是播放结束后状态行停在"播放中"，而且这个 bug 只在切到英文时才出现。
+    private bool _playing;
 
     private void OnRecordClick(object sender, RoutedEventArgs e)
     {
@@ -221,9 +226,9 @@ public partial class MacrosView : UserControl
             StopTick();
             RecordingHudWindow.HideHud();
             ApplyIdleUi();
-            RecordStatus.Text = $"已生成「{macro.Name}」· {macro.Steps.Count} 步 · {macro.DurationText}";
+            RecordStatus.Text = Loc.F("已生成「{0}」· {1} 步 · {2}", macro.Name, macro.Steps.Count, macro.DurationText);
             Focus();                       // 焦点从"停止并保存"按钮上挪开，别再被下一次敲键触发
-            _host.Notify($"宏已录制：{macro.Steps.Count} 步");
+            _host.Notify(Loc.F("宏已录制：{0} 步", macro.Steps.Count));
             return;
         }
 
@@ -320,10 +325,10 @@ public partial class MacrosView : UserControl
         int count = rec.EventCount;
         string clock = RecordingHudWindow.Format(ms);
 
-        RecordStatus.Text = $"录制中… {clock} · {count} 个事件";
+        RecordStatus.Text = Loc.F("录制中… {0} · {1} 个事件", clock, count);
         LiveStats.Text = count == 0
             ? Loc.T("等待第一个按键…")
-            : $"{count} 个事件 · {clock} · 停止后约 {_live.Count} 步";
+            : Loc.F("{0} 个事件 · {1} · 停止后约 {2} 步", count, clock, _live.Count);
 
         RecordingHudWindow.UpdateHud(ms, count, _lastKeyLabel);
 
@@ -430,7 +435,7 @@ public partial class MacrosView : UserControl
         _editing = null;
         SaveAndRebuild();
         Reload();
-        _host.Notify($"已删除宏「{name}」");
+        _host.Notify(Loc.F("已删除宏「{0}」", name));
     }
 
     private void OnTestClick(object sender, RoutedEventArgs e)
@@ -445,6 +450,7 @@ public partial class MacrosView : UserControl
             StatusText.Text = Loc.T("这个宏还没有步骤");
             return;
         }
+        _playing = true;
         _host.Context.MacroPlayer.Play(_editing, onCompleted: () =>
             Dispatcher.BeginInvoke(OnPlayFinished));
         StatusText.Text = Loc.T("播放中…按 Esc 或点「停止」可中断");
@@ -485,7 +491,7 @@ public partial class MacrosView : UserControl
         for (int i = 0; i < _stepRows.Count; i++) _stepRows[i].IsCurrent = i == idx;
         if (idx >= 0 && idx < _stepRows.Count)
         {
-            StatusText.Text = $"播放中… 第 {idx + 1} / {_editing.Steps.Count} 步（Esc 停止）";
+            StatusText.Text = Loc.F("播放中… 第 {0} / {1} 步（Esc 停止）", idx + 1, _editing.Steps.Count);
             StepList.ScrollIntoView(_stepRows[idx]);
         }
     }
@@ -500,7 +506,11 @@ public partial class MacrosView : UserControl
         StopPlayButton.Visibility = Visibility.Collapsed;
         _playTick?.Stop();
         ClearCurrentMarker();
-        if (StatusText.Text.StartsWith("播放中")) StatusText.Text = "播放结束";
+        if (_playing)
+        {
+            _playing = false;
+            StatusText.Text = Loc.T("播放结束");
+        }
     }
 
     // ---------------- 编辑 ----------------
@@ -548,7 +558,7 @@ public partial class MacrosView : UserControl
     {
         _selectedStep = StepList.SelectedItem is StepVm vm ? vm.Index : -1;
         InsertHint.Text = _selectedStep >= 0
-            ? $"插入（插到第 {_selectedStep + 1} 步之后）"
+            ? Loc.F("插入（插到第 {0} 步之后）", _selectedStep + 1)
             : Loc.T("插入（追加到末尾）");
         BindStepEditor();
     }
@@ -564,7 +574,7 @@ public partial class MacrosView : UserControl
 
         var step = _editing.Steps[_selectedStep];
         StepEditor.Visibility = Visibility.Visible;
-        StepEditorTitle.Text = $"第 {_selectedStep + 1} 步";
+        StepEditorTitle.Text = Loc.F("第 {0} 步", _selectedStep + 1);
         _suppress = true;
 
         DelayEditPanel.Visibility = step.Kind == "delay" ? Visibility.Visible : Visibility.Collapsed;
@@ -859,7 +869,7 @@ public partial class MacrosView : UserControl
         public static LiveRow Delay(int gapMs) => new()
         {
             Time = "",
-            Text = $"等待 {gapMs} ms",
+            Text = Loc.F("等待 {0} ms", gapMs),
             IsDelay = true,
         };
     }

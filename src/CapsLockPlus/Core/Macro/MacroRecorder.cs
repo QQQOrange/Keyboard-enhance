@@ -135,7 +135,7 @@ public sealed class MacroRecorder
                 macro.Steps.Add(new MacroStep { Kind = "delay", DelayMs = 100 });
 
             CoreLog.Info($"宏录制完成：{events.Count} 个事件，时长 {sw}ms，" +
-                         $"生成 {macro.Steps.Count} 步");
+                         Loc.F("生成 {0} 步", macro.Steps.Count));
             return macro;
         }
     }

@@ -11,7 +11,7 @@ namespace CapsLockPlus.Core.Windows;
 
 public sealed record WindowInfo(IntPtr Handle, string Title, string ClassName, string ExePath, string ExeName)
 {
-    public string Display => string.IsNullOrWhiteSpace(Title) ? $"{ExeName} (无标题)" : Title;
+    public string Display => string.IsNullOrWhiteSpace(Title) ? Loc.F("{0} (无标题)", ExeName) : Title;
 }
 
 public enum SnapSide

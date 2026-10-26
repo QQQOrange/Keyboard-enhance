@@ -347,7 +347,10 @@ public partial class App : Application
 
         /* 界面语言：**必须在这里**（主题之后、密码门之前）——
          * 密码窗、主窗口、托盘菜单都要用当前语言，晚一步就会先闪一下中文。
-         * 之后用户在设置里切换时走 Loc.Apply，不需要重启。 */
+         * 之后用户在设置里切换时走 Loc.Apply，不需要重启。
+         * 本地化内核在独立程序集里，日志出口需要在这里接一次（接不上就静默，
+         * 语言包坏了最差也只是显示中文原文，不该影响功能）。 */
+        Loc.ErrorSink = CoreLog.Error;
         Loc.Initialize(settings.Global.Language);
 
         /* ---- 启动密码门：密码不对，软件就不启动 ----
@@ -445,7 +448,7 @@ public partial class App : Application
             // “已更新到 x.x.x”只在用户没关掉提示时才弹。
             // 开机自启场景下每次更新都弹一次通知很烦，所以把它做成可选项。
             if (settings.Global.ShowUpdateToast)
-                Host.Notify($"已更新到 {UpdateService.CurrentVersion}");
+                Host.Notify(Loc.F("已更新到 {0}", UpdateService.CurrentVersion));
             else
                 CoreLog.Info($"已更新到 {UpdateService.CurrentVersion}（提示已在设置中关闭）");
         }

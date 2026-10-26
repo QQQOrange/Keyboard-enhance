@@ -336,7 +336,7 @@ public partial class WindowPickerWindow : Window
 
         var info = WindowService.Describe(target);
         HoverTitle.Text = string.IsNullOrWhiteSpace(info?.Title) ? Loc.T("(无标题)") : info!.Title;
-        HoverProcess.Text = $"{info?.ExeName}　·　{rect.Width}×{rect.Height}　·　左键选中 / 右键取消";
+        HoverProcess.Text = Loc.F("{0}　·　{1}×{2}　·　左键选中 / 右键取消", info?.ExeName, rect.Width, rect.Height);
         HoverInfo.Visibility = Visibility.Visible;
 
         /* 提示卡跟着鼠标走。

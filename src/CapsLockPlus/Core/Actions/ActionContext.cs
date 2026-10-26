@@ -56,7 +56,7 @@ public sealed partial class ActionContext
         }
         int? repeat = int.TryParse(arg, out int n) && n > 0 ? n : null;
         MacroPlayer.Play(macro, repeat);
-        Notify($"播放宏：{macro.Name}");
+        Notify(Loc.F("播放宏：{0}", macro.Name));
     }
 
     /// <summary>全局宏播放器（一个进程一个就够了）。</summary>

@@ -597,7 +597,7 @@ public static class BrightnessService
             {
                 int n = _ddc?.Count ?? 0;
                 if (n == 0) return "没找到支持 DDC/CI 的显示器，请确认显示器菜单里的 DDC/CI 已开启";
-                return $"显示器（{_ddc![0].Description}）没有响应亮度命令 —— 常见于 HDMI 转接器 / KVM / 扩展坞不透传 DDC，换直连试试";
+                return Loc.F("显示器（{0}）没有响应亮度命令 —— 常见于 HDMI 转接器 / KVM / 扩展坞不透传 DDC，换直连试试", _ddc![0].Description);
             }
 
             return "亮度命令没有生效，请把日志里的「[亮度]」几行发出来";
@@ -619,7 +619,7 @@ public static class BrightnessService
             if (_ddc != null)
             {
                 for (int i = 0; i < _ddc.Count; i++)
-                    list.Add($"DDC 屏{i + 1}：{_ddc[i].Description}，量程 0~{_ddc[i].Max}");
+                    list.Add(Loc.F("DDC 屏{0}：{1}，量程 0~{2}", i + 1, _ddc[i].Description, _ddc[i].Max));
             }
             return list;
         }

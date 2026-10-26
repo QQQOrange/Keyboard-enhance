@@ -246,7 +246,7 @@ public sealed partial class ActionContext
         switch (hit.Kind)
         {
             case SmartKind.Url:
-                Notify($"打开网址：{UrlUtil.HostOf(hit.Target)}");
+                Notify(Loc.F("打开网址：{0}", UrlUtil.HostOf(hit.Target)));
                 OpenUrl(hit.Target);
                 break;
 
@@ -261,11 +261,11 @@ public sealed partial class ActionContext
                 break;
 
             case SmartKind.MissingFolder:
-                Notify($"文件夹不存在：{hit.Target}");
+                Notify(Loc.F("文件夹不存在：{0}", hit.Target));
                 break;
 
             case SmartKind.MissingFile:
-                Notify($"文件不存在：{hit.Target}");
+                Notify(Loc.F("文件不存在：{0}", hit.Target));
                 break;
 
             default:

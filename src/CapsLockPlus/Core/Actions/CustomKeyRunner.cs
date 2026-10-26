@@ -72,14 +72,14 @@ public static class CustomKeyRunner
         if (!running)
         {
             if (!Launch(spec, out string err))
-                return new Result(false, $"启动「{proc}」失败：{err}");
+                return new Result(false, Loc.F("启动「{0}」失败：{1}", proc, err));
 
-            prefix = $"已启动「{proc}」";
+            prefix = Loc.F("已启动「{0}」", proc);
 
             // ② 等窗口。等不到就到此为止 —— 没有窗口，键发出去也没人接。
             IntPtr hwnd = WaitForWindow(proc, WaitWindowMsForTest);
             if (hwnd == IntPtr.Zero)
-                return new Result(true, $"{prefix}，但没等到它的窗口，按键没有发送");
+                return new Result(true, Loc.F("{0}，但没等到它的窗口，按键没有发送", prefix));
 
             /* ③ 窗口建出来 ≠ 能收键盘：程序还在读配置、建 UI、加载数据。
              * QuickSearch 里这一拍默认 900ms 且可按程序调，这里保持一致。 */
@@ -89,7 +89,7 @@ public static class CustomKeyRunner
             return Deliver(spec, hwnd, prefix);
         }
 
-        prefix = $"「{proc}」已在运行";
+        prefix = Loc.F("「{0}」已在运行", proc);
         IntPtr existing = FindWindowForTest?.Invoke(proc) ?? FindWindow(proc);
         return Deliver(spec, existing, prefix);
     }
@@ -107,7 +107,7 @@ public static class CustomKeyRunner
         if (SendForTest != null)
         {
             SendForTest(spec.Key);
-            return new Result(true, $"{prefix}，已发送 {ComboDisplay(spec.Key)}");
+            return new Result(true, Loc.F("{0}，已发送 {1}", prefix, ComboDisplay(spec.Key)));
         }
 
         if (spec.BringFront && hwnd != IntPtr.Zero)
@@ -115,7 +115,7 @@ public static class CustomKeyRunner
 
         SendCombo(spec.Key);
         return new Result(true,
-            $"{prefix}，已发送 {ComboDisplay(spec.Key)}" + (spec.BringFront ? "（已切到前台）" : ""));
+            Loc.F("{0}，已发送 {1}", prefix, ComboDisplay(spec.Key)) + (spec.BringFront ? "（已切到前台）" : ""));
     }
 
     // ---------------- 进程 / 窗口 ----------------

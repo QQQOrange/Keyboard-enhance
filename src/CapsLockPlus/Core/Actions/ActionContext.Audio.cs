@@ -265,7 +265,7 @@ public sealed partial class ActionContext
         var s = Settings();
         s.Global.MouseSpeed = Math.Clamp(s.Global.MouseSpeed + delta, 1, 20);
         Mouse.Speed = s.Global.MouseSpeed;
-        Notify($"鼠标速度 {s.Global.MouseSpeed}");
+        Notify(Loc.F("鼠标速度 {0}", s.Global.MouseSpeed));
         return true;
     }
 }

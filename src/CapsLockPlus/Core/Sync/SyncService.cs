@@ -319,7 +319,7 @@ public sealed class SyncService
              * 单独用一句话说清楚 —— 用户最关心的是"我的令牌被动了没有"。 */
             string tokenNote = mergeToken ? "；已带上备份里的 GitHub 令牌" : "";
             return new RestoreOutcome(mode, added, replaced,
-                $"已合并：新增 {added} 项，覆盖 {replaced} 项（本地独有的内容保留）{tokenNote}",
+                Loc.F("已合并：新增 {0} 项，覆盖 {1} 项（本地独有的内容保留）{2}", added, replaced, tokenNote),
                 mergeToken);
         }
 
@@ -406,7 +406,7 @@ public sealed class SyncService
             bytes = b;
         }
 
-        string summary = BuildCleanupSummary($"早于 {dayN} 天的备份", local, remote, bytes, skipped);
+        string summary = BuildCleanupSummary(Loc.F("早于 {0} 天的备份", dayN), local, remote, bytes, skipped);
         CoreLog.Info($"清理旧备份（>{dayN} 天）：本地 {local} 份，云端 {remote} 份");
         return new CleanupResult(local, remote, bytes, skipped, summary);
     }
@@ -429,7 +429,7 @@ public sealed class SyncService
             bytes = b;
         }
 
-        string summary = BuildCleanupSummary($"只保留最近 {keepN} 份", local, remote, bytes, skipped);
+        string summary = BuildCleanupSummary(Loc.F("只保留最近 {0} 份", keepN), local, remote, bytes, skipped);
         CoreLog.Info($"保留最近 {keepN} 份：本地删 {local}，云端删 {remote}");
         return new CleanupResult(local, remote, bytes, skipped, summary);
     }
@@ -509,9 +509,9 @@ public sealed class SyncService
         }
 
         string summary = deleted == 0
-            ? $"云端没有冗余或无效数据（检查了 {all.Count} 个文件，其中 {checkedCount} 份备份做了内容比对）。"
-            : $"已清除 {deleted} 个冗余/无效文件，释放约 {bytes / 1024.0:0.#} KB"
-              + $"（检查了 {all.Count} 个文件，其中 {checkedCount} 份备份做了内容比对）。";
+            ? Loc.F("云端没有冗余或无效数据（检查了 {0} 个文件，其中 {1} 份备份做了内容比对）。", all.Count, checkedCount)
+            : Loc.F("已清除 {0} 个冗余/无效文件，释放约 {1:0.#} KB", deleted, bytes / 1024.0)
+              + Loc.F("（检查了 {0} 个文件，其中 {1} 份备份做了内容比对）。", all.Count, checkedCount);
 
         CoreLog.Info("清除云端冗余：" + summary);
         return new CleanupResult(0, deleted, bytes, false, summary);
@@ -536,14 +536,14 @@ public sealed class SyncService
     {
         var parts = new List<string>
         {
-            local > 0 ? $"本地删除 {local} 份" : "本地没有需要清理的",
+            local > 0 ? Loc.F("本地删除 {0} 份", local) : "本地没有需要清理的",
         };
 
         if (remoteSkipped) parts.Add("云端未配置，已跳过");
-        else parts.Add(remote > 0 ? $"云端删除 {remote} 份" : "云端没有需要清理的");
+        else parts.Add(remote > 0 ? Loc.F("云端删除 {0} 份", remote) : "云端没有需要清理的");
 
-        string freed = bytes > 0 ? $"，云端释放约 {bytes / 1024.0:0.#} KB" : "";
-        return $"{what}：{string.Join("，", parts)}{freed}。最新一份始终保留。";
+        string freed = bytes > 0 ? Loc.F("，云端释放约 {0:0.#} KB", bytes / 1024.0) : "";
+        return Loc.F("{0}：{1}{2}。最新一份始终保留。", what, Loc.Join(parts), freed);
     }
 
     /// <summary>
@@ -728,7 +728,7 @@ public sealed class SyncService
             await client.UploadAsync(WebDavClient.LatestFile, payload, ct).ConfigureAwait(false);
 
             s.Sync.LastSyncAt = DateTime.Now;
-            s.Sync.LastSyncInfo = $"已上传 {stampName}";
+            s.Sync.LastSyncInfo = Loc.F("已上传 {0}", stampName);
 
             long kb = payload.Length / 1024;
             CoreLog.Info($"WebDAV 上传完成：{stampName}（已加密，{kb}KB）");
@@ -736,8 +736,8 @@ public sealed class SyncService
             // ③ 云端也按同一套策略清理，不然网盘会越堆越满
             int pruned = await PruneCloudAsync(client, ct).ConfigureAwait(false);
 
-            return SyncResult.Done($"已上传 {stampName}（已加密，{kb}KB）"
-                                   + (pruned > 0 ? $"，顺手清掉 {pruned} 份旧备份" : ""));
+            return SyncResult.Done(Loc.F("已上传 {0}（已加密，{1}KB）", stampName, kb)
+                                   + (pruned > 0 ? Loc.F("，顺手清掉 {0} 份旧备份", pruned) : ""));
         }
         catch (Exception e)
         {
@@ -782,10 +782,10 @@ public sealed class SyncService
 
             var s = _settings();
             s.Sync.LastSyncAt = DateTime.Now;
-            s.Sync.LastSyncInfo = $"已恢复 {usedName}";
+            s.Sync.LastSyncInfo = Loc.F("已恢复 {0}", usedName);
 
             CoreLog.Info($"WebDAV 恢复完成：{usedName}");
-            return SyncResult.Done($"已从 {usedName} 恢复配置（恢复前的配置已另存一份）");
+            return SyncResult.Done(Loc.F("已从 {0} 恢复配置（恢复前的配置已另存一份）", usedName));
         }
         catch (Exception e)
         {
@@ -845,7 +845,7 @@ public sealed class SyncService
         try
         {
             await Client().DeleteAsync(name, ct).ConfigureAwait(false);
-            return SyncResult.Done($"已删除云端备份 {name}");
+            return SyncResult.Done(Loc.F("已删除云端备份 {0}", name));
         }
         catch (Exception e)
         {
@@ -955,7 +955,7 @@ public sealed class SyncService
             _lastAutoHash = hash;
             s.Sync.LastSyncAt = DateTime.Now;
             s.Sync.LastSyncInfo = "自动备份（本地）";
-            return SyncResult.Done($"已自动备份到本地：{Path.GetFileName(path)}");
+            return SyncResult.Done(Loc.F("已自动备份到本地：{0}", Path.GetFileName(path)));
         }
 
         var r = await UploadAsync(ct).ConfigureAwait(false);
@@ -998,14 +998,14 @@ public sealed class SyncService
                 // 云端更新 → 拉下来
                 var down = await DownloadAsync(ct).ConfigureAwait(false);
                 return down.Ok
-                    ? SyncResult.Done($"云端备份更新（{remoteLocal:MM-dd HH:mm}），已恢复")
+                    ? SyncResult.Done(Loc.F("云端备份更新（{0:MM-dd HH:mm}），已恢复", remoteLocal))
                     : down;
             }
 
             // 本机更新或一样新 → 推上去
             var res = await UploadAsync(ct).ConfigureAwait(false);
             return res.Ok
-                ? SyncResult.Done($"本机配置更新，已上传（云端那份是 {remoteLocal:MM-dd HH:mm}）")
+                ? SyncResult.Done(Loc.F("本机配置更新，已上传（云端那份是 {0:MM-dd HH:mm}）", remoteLocal))
                 : res;
         }
         catch (Exception e)

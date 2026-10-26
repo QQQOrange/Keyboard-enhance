@@ -26,11 +26,13 @@ public partial class KeysView : UserControl
         {
             var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == layer.Id);
             string suffix = trigger != null
-                ? $"　← 长按 {KeyName.Display(trigger.Key)}"
+                ? Loc.F("　← 长按 {0}", KeyName.Display(trigger.Key))
                 : Loc.T("　（未分配触发键）");
             LayerBox.Items.Add(new ComboBoxItem
             {
-                Content = $"{layer.Id}. {layer.Name}{suffix}",
+                /* 序号 + 层名 + 触发键提示：序号是纯数字，层名走 LayerName（默认名跟着语言，
+                 * 用户改过的名字原样），提示已经是译好的整句。 */
+                Content = $"{layer.Id}. {LayerName.Display(layer.Id, layer.Name)}{suffix}",
                 Tag = layer.Id,
             });
             if (layer.Id == _layerId) LayerBox.SelectedIndex = LayerBox.Items.Count - 1;
@@ -114,8 +116,8 @@ public partial class KeysView : UserControl
             Background = background,
             BorderBrush = borderBrush,
             ToolTip = isTrigger
-                ? $"★ {label} = 本层触发键\n长按它进入这一层；短按执行短按动作"
-                : isBound ? $"{label} → {actionTitle}" : $"{label}（未绑定）",
+                ? Loc.F("★ {0} = 本层触发键\n长按它进入这一层；短按执行短按动作", label)
+                : isBound ? $"{label} → {actionTitle}" : Loc.F("{0}（未绑定）", label),
         };
 
         /* 当前选中的键用更粗的描边圈出来。
@@ -291,7 +293,7 @@ public partial class KeysView : UserControl
         {
             if (string.IsNullOrWhiteSpace(sub.Key)) continue;
             AddButton("+ " + sub.Display, sub.Key,
-                $"进入层后再按住 {sub.Display} 按的键");
+                Loc.F("进入层后再按住 {0} 按的键", sub.Display));
         }
 
         RefreshSubLayerSelection();
@@ -403,7 +405,7 @@ public partial class KeysView : UserControl
 
         UpdateLayerButtons();
         SelectKey(_selectedKey);
-        ShowBindStatus($"「{layer.Name}」现有 {layer.EffectiveSubLayers.Count} 个子层");
+        ShowBindStatus(Loc.F("「{0}」现有 {1} 个子层", layer.Name, layer.EffectiveSubLayers.Count));
     }
 
     private void SelectKey(string keyId)
@@ -568,10 +570,10 @@ public partial class KeysView : UserControl
             "runProgram" => Loc.T("例如 notepad.exe"),
             "wrapSelection" => Loc.T("例如 ( 会把选中文字变成 (文字)"),
             "volumeUp" or "volumeDown" =>
-                $"按一次调多少音量：留空 = 用设置里的 {def}%。"
+                Loc.F("按一次调多少音量：留空 = 用设置里的 {0}%。", def)
                 + Loc.T("按住不放时会自动切成 1% 细调，一路平滑地加上去"),
             "brightnessUp" or "brightnessDown" =>
-                $"按一次调多少亮度：留空 = 用设置里的 {def}%。"
+                Loc.F("按一次调多少亮度：留空 = 用设置里的 {0}%。", def)
                 + Loc.T("按住不放时会自动切成 1% 细调，一路平滑地加上去"),
             _ => Loc.T("不填默认 1，填 5 表示一次移动 5 个字符"),
         };

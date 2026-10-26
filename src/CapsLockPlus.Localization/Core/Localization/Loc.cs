@@ -4,7 +4,10 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+
+[assembly: InternalsVisibleTo("KeyboardEnhance")]
 
 namespace CapsLockPlus.Core.Localization;
 
@@ -76,6 +79,13 @@ public static class Loc
     /// <summary>语言切换后触发。常驻文本（菜单/列表/托盘）在订阅里重建。</summary>
     public static event Action? Changed;
 
+    /// <summary>
+    /// 出错时的日志出口。本程序集是最底层（不引用主程序集），所以日志由主程序在启动时
+    /// 接进来（`Loc.ErrorSink = CoreLog.Error;`）；没人接就静默 —— 语言包坏了最差只是
+    /// 界面显示中文原文，不该因此让程序崩掉或反复弹窗。
+    /// </summary>
+    public static Action<string, Exception?>? ErrorSink { get; set; }
+
     /// <summary>可用语言（中文固定排第一）。</summary>
     public static IReadOnlyList<LocLanguage> Available => _available ??= Discover();
 
@@ -102,6 +112,51 @@ public static class Loc
             // 译文里占位符写错了也不能让界面崩：原样返回，自检会盯着这种包
             return fmt;
         }
+    }
+
+    /// <summary>
+    /// 把若干词连成一句：「甲、乙、丙」/「A, B, C」。
+    ///
+    /// 顿号也是语言的一部分 —— 英文里写成「工具、设置」比漏翻还刺眼，
+    /// 所以分隔符本身也当成一条原文去查（zh 包里就是顿号本身，不变）。
+    /// </summary>
+    public static string Join(IEnumerable<string?> items)
+        => string.Join(T("、"), items.Where(i => !string.IsNullOrEmpty(i)));
+
+    /// <summary>
+    /// 把几段**已翻好**的文本拼成一句，在需要的地方补一个空格。
+    ///
+    /// 为什么需要：语言包是"一句一条"组织的，但界面上确实有"两句接一句"的说明
+    /// （第一句说"已加密"，紧接一句"拷到别的电脑也打不开"）。中文里 `。` 后面
+    /// 直接就是一串汉字，英文里 `...` 后面必须空一格 —— 靠"译文末尾偷偷带个空格"
+    /// 解决，肉眼看不见、翻译的人改一次就丢，然后英文界面出现 `recommended.Hotkeys`
+    /// 这种粘在一起的句子。
+    ///
+    /// 规则：前一段末尾是标点、后一段开头是字母/数字时补空格；
+    /// 后一段开头是汉字/全角标点（中文语序）时不动。
+    /// </summary>
+    public static string Cat(params string?[] parts)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (string? p in parts)
+        {
+            if (string.IsNullOrEmpty(p)) continue;
+            if (sb.Length > 0 && NeedsSpace(sb[^1], p[0])) sb.Append(' ');
+            sb.Append(p);
+        }
+        return sb.ToString();
+    }
+
+    private static bool NeedsSpace(char left, char right)
+    {
+        if (char.IsWhiteSpace(left) || char.IsWhiteSpace(right)) return false;
+        bool afterPunct = left is '.' or ',' or ';' or ':' or '!' or '?'
+            or '。' or '，' or '；' or '：' or '！' or '？' or '、' or '…' or ')' or '）';
+        if (!afterPunct) return false;
+
+        // U+3000 以后是汉字、全角标点、日文假名 —— 中文语序，不加空格
+        if (right >= '\u3000') return false;
+        return char.IsLetterOrDigit(right) || right is '(' or '"' or '\'';
     }
 
     // ── 日期时间 ──────────────────────────────────────────────────
@@ -159,7 +214,7 @@ public static class Loc
         // 令牌缓存对所有语言通用：让每个令牌重新读一次
         LocTokens.InvalidateAll();
         try { Changed?.Invoke(); }
-        catch (Exception ex) { Core.CoreLog.Error("语言切换回调抛异常（界面可能只更新了一部分）", ex); }
+        catch (Exception ex) { ErrorSink?.Invoke("语言切换回调抛异常（界面可能只更新了一部分）", ex); }
     }
 
     /// <summary>启动时调用一次（App.OnStartup）。</summary>
@@ -243,7 +298,7 @@ public static class Loc
         }
         catch (Exception ex)
         {
-            Core.CoreLog.Error($"语言包 {code} 读取失败，界面将显示原文", ex);
+            ErrorSink?.Invoke($"语言包 {code} 读取失败，界面将显示原文", ex);
         }
         return map;
     }

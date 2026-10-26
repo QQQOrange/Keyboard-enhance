@@ -112,6 +112,9 @@ public static partial class SelfTest
         Section("界面文案");
         TestUiText();
 
+        Section("界面语言");
+        TestLocalization();
+
         Section("关于页 · GitHub 令牌");
         TestAboutTokenUi();
 

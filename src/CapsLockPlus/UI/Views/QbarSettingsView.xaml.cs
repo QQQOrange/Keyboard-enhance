@@ -113,8 +113,8 @@ public partial class QbarSettingsView : UserControl
         if (FilterCount != null)
         {
             FilterCount.Text = filter.Length > 0
-                ? $"匹配 {items.Count} / {total}"
-                : $"共 {total} 项";
+                ? Loc.F("匹配 {0} / {1}", items.Count, total)
+                : Loc.F("共 {0} 项", total);
         }
 
         ValueHelp.Text = _tab switch
@@ -152,7 +152,7 @@ public partial class QbarSettingsView : UserControl
         ValueBox.Text = entry.Value;
         CommentBox.Text = entry.Comment;
         IconBox.Text = entry.IconPath;
-        EditTitle.Text = string.IsNullOrEmpty(entry.Key) ? Loc.T("新条目") : $"正在编辑：{entry.Key}";
+        EditTitle.Text = string.IsNullOrEmpty(entry.Key) ? Loc.T("新条目") : Loc.F("正在编辑：{0}", entry.Key);
         _suppress = false;
         UpdateIconPreview(entry);
     }

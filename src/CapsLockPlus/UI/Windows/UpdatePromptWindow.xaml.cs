@@ -20,9 +20,9 @@ public partial class UpdatePromptWindow : Window
         _host = host;
         _info = info;
         InitializeComponent();
-        TitleText.Text = $"发现新版本 {info.Version}";
-        SubText.Text = $"当前 {UpdateService.CurrentVersion}" +
-                       (info.SizeText.Length > 0 ? $"　·　{info.SizeText}" : "");
+        TitleText.Text = Loc.F("发现新版本 {0}", info.Version);
+        SubText.Text = Loc.F("当前 {0}", UpdateService.CurrentVersion) +
+                       (info.SizeText.Length > 0 ? Loc.F("　·　{0}", info.SizeText) : "");
         NotesText.Text = string.IsNullOrWhiteSpace(info.ReleaseNotes)
             ? Loc.T("（该版本没有填写更新说明）")
             : info.ReleaseNotes;
@@ -85,7 +85,7 @@ public partial class UpdatePromptWindow : Window
     {
         _host.Settings.Global.SkippedVersion = _info.Version;
         _host.SaveSettings();
-        _host.Notify($"已跳过 {_info.Version}，下次有新版本还会提醒");
+        _host.Notify(Loc.F("已跳过 {0}，下次有新版本还会提醒", _info.Version));
         Close();
     }
 
@@ -104,7 +104,7 @@ public partial class UpdatePromptWindow : Window
             var progress = new Progress<double>(p =>
             {
                 Progress.Value = p * 100;
-                StatusText.Text = $"正在下载… {p * 100:0}%";
+                StatusText.Text = Loc.F("正在下载… {0:0}%", p * 100);
             });
             var (ok, path, error) = await _service.DownloadAsync(_info, progress);
             if (!ok)

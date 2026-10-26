@@ -1,0 +1,1859 @@
+__name	English
+__culture	en-US
+按键增强	Keyboard Enhance
+Keyboard Enhance · 让每一个按键都能变成你的快捷键	Keyboard Enhance · Turn every key into your own shortcut
+在浏览器中打开项目主页	Open the project page in your browser
+更新	Update
+自动更新	Automatic updates
+每次启动时静默检查，有新版本会先询问再下载	Check silently at every launch; ask before downloading a new version
+GitHub 个人访问令牌	GitHub personal access token
+什么是 GitHub 个人访问令牌（打开官方帮助）	What is a GitHub personal access token? (opens official help)
+在浏览器中打开 GitHub 官方中文文档：管理个人访问令牌	Open GitHub's official docs in your browser: managing personal access tokens
+个人访问令牌（PAT）相当于给程序用的专用密码：填了之后，本程序以你的账号身份调用 GitHub 接口，配额从每小时 60 次提到 5000 次，还能一键自动下载更新。只读公开仓库不需要勾任何权限。\n\n点这个问号，在浏览器里打开 GitHub 官方说明（含创建步骤）。	A personal access token (PAT) is like a dedicated password for this app: once set, the app calls GitHub as your account, raising the quota from 60 to 5000 requests per hour and enabling one-click update downloads. Read-only access to public repositories needs no extra scopes.\n\nClick this question mark to open GitHub's official guide (with creation steps) in your browser.
+已保存时显示为圆点；直接输入或粘贴新令牌就会替换掉旧的	Shown as dots once saved; type or paste a new token to replace the old one
+验证	Verify
+用这个令牌请求一次 GitHub，确认真能用（顺便显示剩余配额）	Make one request to GitHub with this token to confirm it works (and show the remaining quota)
+保存	Save
+清除	Clear
+去创建	Create one
+打开 GitHub 的令牌管理页（只需勾选 Public repositories 只读）	Open GitHub's token page (only Public repositories read access is needed)
+当前版本	Current version
+检查更新	Check for updates
+下载并安装	Download and install
+没有填写 GitHub 个人访问令牌，所以只能提示、不能自动下载。点下面的地址用浏览器下载：	No GitHub personal access token is set, so the app can only notify you instead of downloading. Open the address below to download in your browser:
+在默认浏览器里打开发布页（新标签页）	Open the release page in your default browser (new tab)
+在浏览器中打开这个版本的 GitHub 下载地址	Open this version's GitHub download address in your browser
+打开浏览器下载新版本	Open the browser to download the new version
+关于	About
+版本	Version
+项目主页	Project page
+点击在浏览器中打开	Click to open in your browser
+上游项目	Upstream project
+wo52616111/capslock-plus（AutoHotkey 原版）	wo52616111/capslock-plus (the AutoHotkey original)
+开源协议	License
+设置文件	Settings file
+关于这个程序	About this app
+按键增强（Keyboard Enhance）是一个 Windows 键盘增强工具：按住一个触发键进入功能层，就能把任意按键变成快捷键 —— 光标移动、文字选择、窗口切换、打开网页、播放宏，全部可以自己配。	Keyboard Enhance is a Windows keyboard utility: hold a trigger key to enter a function layer, then any key becomes a shortcut — move the cursor, select text, switch windows, open websites, play macros. All of it is up to you.
+支持 10 个独立图层，每层可以有自己的触发键和整套按键绑定。所有配置都在图形界面里完成，也支持 WebDAV 同步与导入导出。	Ten independent layers, each with its own trigger key and full set of bindings. Everything is configured in the GUI, with WebDAV sync, import and export.
+本程序的按键语义源自 Junkai Chen 的 AutoHotkey 版 CapsLock+，界面、引擎与全部设置系统为重新实现。	The key semantics come from Junkai Chen's AutoHotkey-based CapsLock+; the UI, engine and settings system are a fresh implementation.
+WebDAV 同步	WebDAV sync
+把配置备份到网盘（坚果云等）。启动同步、退出同步、自动备份是三个独立开关，可以同时打开。	Back up your settings to cloud storage (Nutstore, etc.). Sync on launch, sync on exit and auto backup are three independent switches that can all be on.
+传上去的是密文（用下面的备份密码加密后才上传），里面包含 GitHub 个人访问令牌这类凭据 —— 换台机器用同一个密码恢复，令牌就一起带过去了。	What gets uploaded is ciphertext (encrypted with the backup password below) and it contains credentials such as the GitHub personal access token — restore on another machine with the same password and the token comes along.
+服务器地址	Server address
+例：https://dav.jianguoyun.com/dav/　（只填到 dav/ 即可；软件会在里面建一个 KeyboardEnhance/ 子目录，点「测连接」时如果还没有会当场建好）	e.g. https://dav.jianguoyun.com/dav/  (stop at dav/; the app creates a KeyboardEnhance/ subfolder inside, and "Test connection" will create it if missing)
+用户名	Username
+密码	Password
+坚果云要用「应用密码」，不是登录密码	Nutstore needs an app password, not your login password
+备份密码（加密用）	Backup password (for encryption)
+没设备份密码 —— 现在不能备份。备份和本地数据都必须加密，设一个密码就能用。	No backup password yet — backups are unavailable. Local data and backups must be encrypted; set a password to enable them.
+启动时同步	Sync on launch
+比云端与本机哪份新，谁新用谁	Compare cloud and local copies, use whichever is newer
+退出时同步	Sync on exit
+退出前把当前配置推上去（最多等 8 秒）	Push the current settings before exiting (waits up to 8 seconds)
+测连接	Test connection
+立即备份并上传	Back up and upload now
+从备份恢复…	Restore from backup…
+备份维护	Backup maintenance
+清理只动备份文件，不碰当前正在用的配置；两种情况都**至少保留最新一份**。	Cleanup only touches backup files, never the settings in use; either way the newest one is always kept.
+从云端恢复…	Restore from cloud…
+列出云端所有备份，挑一份恢复（含时间、大小）	List every cloud backup and restore one (with time and size)
+清理 7 天前…	Remove backups older than 7 days…
+删掉本地和云端早于 7 天的备份	Delete local and cloud backups older than 7 days
+仅保留最近 10 份…	Keep only the newest 10…
+本地和云端都只留最新 10 份，其余删掉	Keep only the newest 10 both locally and in the cloud, delete the rest
+清除冗余数据…	Remove redundant data…
+清掉云端的上传残留、0 字节、重复内容和打不开的文件	Remove leftover uploads, zero-byte files, duplicates and unreadable files in the cloud
+本地备份	Local backups
+备份就放在软件旁边的「KeyboardEnhance Back」文件夹里，拷走整个文件夹就带走了软件和全部备份。	Backups live in the "KeyboardEnhance Back" folder next to the app; copy that whole folder and you take the app plus every backup with you.
+软件目录不可写，备份已改放到数据目录。	The app folder is not writable, so backups were moved to the data folder.
+用户数据目录	User data folder
+打开备份目录	Open backup folder
+打开配置目录	Open settings folder
+现在就备份一次	Back up now
+保留策略	Retention policy
+本地和云端用同一套规则；最新那份永远保留，不会因为超期被删光。	Local and cloud share one rule; the newest backup is always kept and never ages out.
+只保留最近	Keep only the newest
+份	backups
+清掉	Remove backups older than
+天前的（0 = 不按天数清）	days (0 = no age-based cleanup)
+自动备份	Auto backup
+按间隔自动打包一份；配置没变化就跳过	Pack a copy on a timer; skipped when the settings have not changed
+间隔	Interval
+分钟	minutes
+导出配置	Export settings
+勾了哪一组，就导出那一组的全部内容 —— **GitHub 个人访问令牌也在里面**，换台机器导入后不用重新填。默认加密导出；关掉加密只是不加密文件，不会少东西（网盘密码与备份密码除外）。	Whatever group you tick, that group's full contents are exported — **including the GitHub personal access token**, so you need not re-enter it after importing on another machine. Encryption is on by default; turning it off only leaves the file unencrypted, nothing is dropped (apart from the WebDAV and backup passwords).
+加密导出	Encrypted export
+已加密	Encrypted
+用备份密码加密，含 GitHub 令牌 / 全部配置。换台机器导入时输入同一个密码即可。	Encrypted with the backup password; includes the GitHub token and all settings. Enter the same password when importing elsewhere.
+隐私 · 默认不勾	Private · off by default
+全不选	Select none
+只选非隐私	Select non-private only
+全选	Select all
+导出到文件…	Export to file…
+导入配置	Import settings
+加密导出和明文导出都能导入（加密的会问你要密码）。\n导入是合并式的：只覆盖导出文件里包含的那些项。	Both encrypted and plain exports can be imported (encrypted ones ask for the password).\nImport merges: only the items present in the file are overwritten.
+选择文件导入…	Choose a file to import…
+两个互不干扰的剪贴板	Two independent clipboards
+Caps+C / V 用剪贴板 1，Caps+LAlt+C / V 用剪贴板 2，不会覆盖系统剪贴板里的内容。	Caps+C / V uses clipboard 1 and Caps+LAlt+C / V uses clipboard 2, without trampling the system clipboard.
+剪贴板 1	Clipboard 1
+（空）	(empty)
+粘贴	Paste
+清空	Clear
+剪贴板 2	Clipboard 2
+最近复制	Recently copied
+清空历史	Clear history
+让每一个按键，都能变成你的快捷键	Turn every key into your own shortcut
+按住触发键就是功能键：字母键移动 / 选择光标，数字键切换窗口，Q 打开搜索面板。	Hold the trigger key and it becomes a function key: letters move or select the caret, digits switch windows, Q opens the search panel.
+开始 3 步设置	Start the 3-step setup
+查看快捷键速查	Open the shortcut cheat sheet
+运行状态	Status
+已启用	Enabled
+按住触发键即可使用全部功能	Hold the trigger key to use every feature
+开机自启	Start with Windows
+未开启	Off
+建议开启，开机即可使用	Recommended — available right after boot
+三步就能用起来	Up and running in three steps
+不用记命令，也不用改配置文件。	No commands to memorise, no config files to edit.
+试一下组合键	Try a combo
+按住触发键再按 S / D / E / F，光标会按字符移动；配合 H / J / K / L 是选择。	Hold the trigger key and press S / D / E / F to move the caret by character; add H / J / K / L to select.
+打开 Qbar	Open Qbar
+按 Caps+Q：输入程序名直接回车启动，输入关键词回车搜索，输入 =1+2*3 直接算结果。	Press Caps+Q: type an app name and Enter to launch, a keyword and Enter to search, or =1+2*3 to calculate.
+按自己的习惯改	Change it to your own habits
+「按键映射」里点任意一项即可换成别的功能，改完立刻生效，不用重启。	Click any entry on "Key mapping" to swap in another function — it takes effect instantly, no restart.
+最常用的 8 个组合	The 8 most used combos
+全部快捷键	All shortcuts
+按住	Hold
+再看下面的按键 —— 未绑定的键可以到「按键映射」里自己加。	Then look at the keys below — unbound keys can be added on "Key mapping".
+筛选按键或功能	Filter keys or actions
+使用指南	Guide
+图层、触发键、子层、宏、窗口绑定…（点开查看）	Layers, trigger keys, sub-layers, macros, window binding… (click to expand)
+点击键盘上任意键即可编辑它的功能，修改立即生效	Click any key on the keyboard to edit its function; changes apply immediately
+恢复默认	Restore defaults
+按住 CapsLock	Hold CapsLock
++ 下面的键	+ the key below
+当前：基础层	Current: base layer
+键盘大小	Keyboard size
+选一个当作默认大小；这就是这个页面能缩到的最小尺寸	Pick one as the default size; it is also the smallest this page can shrink to
+层	Layer
+层内修饰键	Layer modifiers
+设置子层…	Configure sub-layers…
+配置这一层要用哪些修饰键作为子层（最多 10 个）	Choose which modifier keys act as sub-layers in this layer (up to 10)
+已绑定	Bound
+未绑定	Unbound
+编辑绑定	Edit binding
+测试一下	Try it
+执行一次这个功能（可能影响当前窗口）	Run this function once (may affect the current window)
+清除绑定	Clear binding
+搜索	Search
+搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github	Search action names, categories, macro names or URLs, e.g. delete / macro / github
+分类	Category
+功能	Function
+绑定方式	Binding method
+鼠标变成准星，点哪个窗口就绑哪个程序	The cursor turns into a crosshair; click a window to bind that app
+点选窗口	Pick a window
+从资源管理器挑一个 exe（程序没在运行也能绑）	Choose an exe in Explorer (works even if the app is not running)
+选择程序文件	Choose program file
+点选窗口：鼠标变准星，点哪个窗口就绑哪个；选择程序文件：从资源管理器挑 exe（程序没在运行也能绑）。	Pick a window: the cursor becomes a crosshair, click one to bind it. Choose program file: pick an exe in Explorer (works even if the app is not running).
+备注（可选）	Note (optional)
+给这个链接起个好记的名字，会显示在键帽上	Give this link a memorable name; it shows on the keycap
+目标（网址 / 文件夹 / 文件，自动识别）	Target (URL / folder / file, auto-detected)
+网址（https://github.com 或不带 http 的 github.com）、文件夹、文件都能填，类型自动识别	Accepts a URL (https://github.com or github.com without the scheme), a folder or a file — the type is detected automatically
+浏览…	Browse…
+从资源管理器里挑一个文件夹	Pick a folder in Explorer
+从资源管理器里挑一个文件	Pick a file in Explorer
+自动识别	Auto-detect
+重新取标题	Re-fetch title
+再抓一次那个网页的标题	Fetch that page's title again
+网址、文件夹、文件都填在这里，类型自动识别，不用自己选。填网址会自动抓网页标题当备注；路径不填备注时用文件夹名或文件名。备注会显示在键帽上。	Put a URL, folder or file here — the type is detected automatically. For a URL the page title is fetched as the note; for a path the folder or file name is used when the note is empty. The note shows on the keycap.
+给这段文字起个好记的名字，会显示在键帽上	Give this text a memorable name; it shows on the keycap
+备注会显示在键帽上；不填就显示文字开头几个字。	The note shows on the keycap; if empty, the first few characters do.
+要输入的文字	Text to type
+触发这个键时，会把这里的内容直接输入到当前光标处	Pressing this key types this text at the current caret
+支持中文与 emoji；不会动你的剪贴板。可以多行（会带换行一起输入）。	Chinese and emoji supported; your clipboard is untouched. Multiple lines are fine (line breaks are typed too).
+要发送的键	Key to send
+按下要发送的键…	Press the key to send…
+点一下，然后在键盘上按你想发给应用的键（支持 Ctrl / Shift / Alt 组合）	Click here, then press the key you want to send to the app (Ctrl / Shift / Alt combos supported)
+给这个键起个好记的名字，会显示在键帽上	Give this key a memorable name; it shows on the keycap
+绑定应用	Target app
+要接收这个键的程序，例如 C:\\Program Files\\Tencent\\Weixin\\Weixin.exe	The app that receives this key, e.g. C:\\Program Files\\Tencent\\Weixin\\Weixin.exe
+从资源管理器里挑一个 exe	Pick an exe in Explorer
+以管理员身份启动	Launch as administrator
+仅在需要拉起这个程序时生效，会弹一次 UAC 确认。程序本来就在跑时不受影响。	Only applies when the app has to be launched, which triggers one UAC prompt. No effect if the app is already running.
+仅拉起程序时生效，会弹一次 UAC。	Only when launching the app; shows one UAC prompt.
+把主窗口切到前台	Bring the main window to the foreground
+关（默认）：不动它的窗口，按键直接交给系统 —— 应用把这个键注册成全局热键时，在后台也能收到。\n开：先把它的主窗口切到前台再发键，适合「这个键只在它被激活时才有意义」。会抢走你当前的焦点。	Off (default): leave its windows alone and hand the key to the system — if the app registers it as a global hotkey it still receives it in the background.\nOn: bring its main window to the foreground first, which suits keys that only make sense while it is active. This steals your current focus.
+开会抢焦点；关着时后台也能收到热键。	On steals focus; off still delivers hotkeys in the background.
+发键前等待	Wait before sending
+窗口出现不代表能收键盘（程序还在加载界面）。大型软件常常 900 毫秒不够，可以调大；小工具可以调小甚至填 0。	A visible window does not mean it can take input (it may still be loading). Big apps often need more than 900 ms; small tools can go lower or even 0.
+毫秒	ms
+窗口出现 ≠ 能收键盘，大软件可调大。	A window appearing ≠ ready for input; raise it for big apps.
+参数	Argument
+用默认	Use default
+清空这里，改用设置页里的调节幅度	Empty this to use the step size from Settings
+当前绑定	Current binding
+还没选择	Nothing selected yet
+显示名称（可选）	Display name (optional)
+留空则用程序文件名。可以改成你认得的名字，会显示在键帽上	Leave empty to use the exe name. Set something you recognise — it shows on the keycap.
+实时状态	Live status
+在这个页面里直接按键即可。按住触发键再按别的键，下面会立刻显示切到了第几层。	Just press keys on this page. Hold the trigger key and press another key — the layer it switches to shows up below right away.
+最近按下的键	Recent keys
+按任意键开始测试	Press any key to start testing
+键盘钩子	Keyboard hook
+检查中	Checking
+触发键	Trigger key
+未按住	Not held
+当前层	Current layer
+未进层	No layer
+提示：按住触发键不放，界面会在 200ms 后进入层模式；按住期间按其他键会立刻进层。	Tip: hold the trigger key and the UI enters layer mode after 200 ms; pressing another key while holding goes in immediately.
+按键流水	Key log
+每一行 = 一次真实按键，附带它所在层会执行的动作。只记录真实按键，软件自己注入的不算。	Each row is one real key press plus the action its layer performs. Only real presses are logged; keys the app injects are not.
+时间	Time
+按键	Key
+动作	Action
+复制诊断信息	Copy diagnostics
+触发键与键盘层	Trigger keys and layers
+按住触发键超过阈值即进入它绑定的层；短按则保留原键盘功能。\n每个触发键可绑定不同层，层与层之间按键互不干扰。	Hold the trigger key past the threshold to enter its layer; a short tap keeps the key's normal function.\nEach trigger key can bind to a different layer, and layers never interfere with each other.
+每一项直接显示：按哪个键、进第几层、怎么进层。	Each row says which key, which layer, and how the layer is entered.
+＋ 添加触发键	+ Add trigger key
+删除	Delete
+触发键设置	Trigger key settings
+先在左边选一个触发键	Select a trigger key on the left first
+物理键	Physical key
+改键…	Change key…
+按一下目标键即可更换触发键	Press the target key to change the trigger key
+绑定到哪一层	Bound layer
+长按阈值（毫秒）	Hold threshold (ms)
+按住超过这个时间才进入层；在此之前松开 = 短按，走下面的短按动作。	Holding longer than this enters the layer; releasing earlier counts as a tap and runs the tap action below.
+按住触发键时按别的键，立即进层	Enter the layer immediately when another key is pressed while holding
+推荐开启。否则每次按组合键都要先等满上面的阈值，手感会明显发涩。	Recommended. Without it every combo waits out the threshold above, which feels sluggish.
+短按动作	Tap action
+双击动作（留空 = 关闭双击）	Double-tap action (empty = disabled)
+层（共 10 个）	Layers (10 total)
+每层的按键绑定在「按键映射」页编辑；从这里跳过去会自动切到对应层。	Bindings are edited on the Key mapping page; jumping there switches to the matching layer.
+编辑按键	Edit keys
+宏	Macros
+录一段操作，绑到任意按键上。	Record a sequence and bind it to any key.
+还没有宏\n点「开始录制」，或点下面「＋ 新建」	No macros yet\nClick "Start recording", or "+ New" below
+＋ 新建	+ New
+测试播放	Test play
+■ 停止	■ Stop
+停止正在播放的宏（按 Esc 也可以）	Stop the macro that is playing (Esc works too)
+绑定：按键映射 → 功能 → 宏 → 播放宏：xxx。参数栏填数字可临时覆盖重复次数。	Binding: Key mapping → Function → Macros → Play macro: xxx. A number in the argument field overrides the repeat count.
+录制宏	Record a macro
+点「开始录制」后照常操作键盘，按键会立刻出现在下面。录制期间不影响正常输入。	After "Start recording" just type as usual — keys appear below immediately. Recording does not affect normal input.
+未开始	Not started
+● 录制中	● Recording
+● 开始录制	● Start recording
+取消录制	Cancel recording
+丢掉这次录制，不生成宏	Discard this recording without creating a macro
+步骤	Steps
+名称	Name
+重复	Repeat
+播放几次。0 = 一直循环，直到按 Esc	How many times to play. 0 = loop until Esc
+次	times
+删除这一步	Delete this step
+还没有步骤\n点上面「开始录制」，或用下面的按钮手动插入	No steps yet\nClick "Start recording" above, or insert steps with the buttons below
+和上一步交换	Swap with previous
+和下一步交换	Swap with next
+等待	Wait
+随机	Random
+毫秒（每次播放随机取）	ms (randomised on every play)
+换成别的键…	Change to another key…
+插入（追加到末尾）	Insert (append at end)
+点一行选中它，插入会插到它后面	Click a row to select it; the insert goes after it
+延迟(毫秒)	Delay (ms)
+随机延迟	Random delay
+文本	Text
+按键 按下	Key down
+按键 抬起	Key up
+实时记录	Live log
+等待第一个按键…	Waiting for the first key…
+停止后这些会变成可编辑的步骤	These become editable steps after you stop
+提示：录制期间按键照常传给当前程序，不会吞键；间隔超过 15ms 会记成一次等待。	Tip: while recording keys still reach the current app — nothing is swallowed. Gaps over 15 ms become wait steps.
+Qbar：一个输入框搞定搜索、启动、计算	Qbar: one box for search, launching and math
+按 Caps+Q 打开。输入 bd 关键词 搜索、输入程序名回车启动、输入 =1+2*3 直接算。	Press Caps+Q to open. Type "bd keyword" to search, an app name and Enter to launch, "=1+2*3" to calculate.
+现在试一下	Try it now
+搜索指令	Search commands
+启动程序	Launch apps
+常用网址	Favourite sites
+文字替换	Text snippets
+新增	Add
+编辑条目	Edit entry
+（选择左边的条目，或点新增）	(Select an entry on the left, or click Add)
+关键字	Keyword
+内容	Content
+图标（可选）	Icon (optional)
+图片（png/ico）或 exe 路径；留空则自动使用程序图标	An image (png/ico) or an exe path; empty uses the app icon
+选择…	Choose…
+外观	Appearance
+主色调	Accent colour
+列表显示行数	Rows shown in the list
+输入框字号	Input font size
+预览 Preview 文字测试 qgp	Preview text test qgp
+显示图标	Show icons
+恢复默认外观	Restore default appearance
+启动与运行	Startup and running
+这些选项会立刻保存，不需要重启程序。	These options save immediately; no restart needed.
+开机自动启动	Start with Windows
+登录 Windows 后自动在托盘运行	Runs in the tray after you sign in to Windows
+关闭窗口时最小化到托盘	Minimise to tray when the window closes
+保留热键继续工作；从托盘菜单可以完全退出	Hotkeys keep working; exit completely from the tray menu
+启动时打开设置窗口	Open the settings window at launch
+关闭后只在托盘运行，按 Caps+Q 依然可用	Off means tray-only, and Caps+Q still works
+操作后显示轻提示	Show a toast after actions
+例如切换置顶、复制到剪贴板时，在屏幕角落提示一下	For example when toggling always-on-top or copying to the clipboard, flash a hint in the screen corner
+管理员	Administrator
+开启后下次启动会弹一次 UAC 确认；关闭则一直以普通权限运行	On shows one UAC prompt at the next launch; off keeps running with normal privileges
+立即重启以生效	Restart now to apply
+启动密码保护	Startup password protection
+每次启动软件时先要求输入密码，正确才进入主界面	Ask for a password at every launch and only open the main UI when it is correct
+开启时需要先设置一个新密码；关闭时需要验证当前密码	Turning it on requires a new password; turning it off requires the current one
+修改密码	Change password
+更新完成后弹提示	Notify me after an update
+自动更新装上新版后，在屏幕角落提示一句「已更新到 x.x.x」	After an auto-update installs a new build, flash "Updated to x.x.x" in the screen corner
+显示按键反馈	Show key feedback
+每次组合键生效时在屏幕角落闪一下功能名，用来确认按键有没有被识别	Flash the action name in the screen corner whenever a combo fires, so you can tell whether the key was recognised
+按键行为	Key behaviour
+短按 CapsLock	Tap CapsLock
+不按其他键、直接松开 Caps 时的行为	What happens when you release Caps without pressing another key
+切换大小写（默认）	Toggle caps lock (default)
+发送 Esc	Send Esc
+什么都不做	Do nothing
+输入文本方式	Text input method
+「输入文本」怎么把文字打进光标处。默认「自动」：长文本走剪贴板粘贴（粘完把剪贴板还原），短文本英文走真实按键（密码框也认）、中文走 Unicode 注入；中文输入法开着时会临时切到英文输入，打完自动切回。密码框仍打不进时改选「真实按键」（此时长文本也逐字敲，可能被程序吞字）。	How "Type text" gets characters into the caret. The default "Auto" pastes long text via the clipboard (restoring it afterwards), sends short Latin text as real key strokes (works in password boxes) and injects Chinese via Unicode; with a Chinese IME active it temporarily switches to English input and back. If password boxes still reject it, choose "Real key strokes" (long text is then typed character by character and some apps may drop keys).
+自动（推荐）	Auto (recommended)
+真实按键	Real key strokes
+Unicode 注入	Unicode injection
+双击 CapsLock 打开 Qbar	Double-tap CapsLock to open Qbar
+快速双击 Caps（420 毫秒内）直接打开搜索面板	Double-tap Caps quickly (within 420 ms) to open the search panel
+按住组合键时连续触发	Repeat while the combo is held
+按住 Caps+S 不松手可以一直向左移动光标	Hold Caps+S to keep moving the cursor left
+鼠标移动速度	Mouse speed
+3（Caps+LAlt+滚轮 可快速调整）	3 (Caps+LAlt+wheel adjusts it quickly)
+音量调节幅度	Volume step
+亮度调节幅度	Brightness step
+主题	Theme
+跟随系统会随 Windows 的深浅色设置自动切换	Follow system tracks the Windows light/dark setting
+浅色	Light
+深色	Dark
+跟随系统	Follow system
+界面语言	Interface language
+切换后立即生效，不用重启	Applies immediately; no restart needed
+数据与维护	Data and maintenance
+从旧版 CapsLock+ 导入设置	Import settings from the old CapsLock+
+打开设置文件	Open settings file
+打开日志	Open log
+重新加载配置	Reload settings
+重置全部设置	Reset all settings
+取消	Cancel
+确定	OK
+剪贴板历史	Clipboard history
+双击任意一条即可粘贴到刚才的窗口。	Double-click any entry to paste it into the previous window.
+粘贴选中	Paste selected
+复制到剪贴板	Copy to clipboard
+自定义按键	Custom key
+按下目标组合键	Press the target combo
+例如 Ctrl+Shift+K、Alt+D。支持小键盘、功能键、媒体键等键盘上不显示的按键。\nEsc 取消。	e.g. Ctrl+Shift+K, Alt+D. Numpad keys, function keys, media keys and other keys not printed on the keyboard are supported.\nEsc cancels.
+等待按键…	Waiting for a key…
+确定绑定	Confirm binding
+按键增强 Keyboard Enhance	Keyboard Enhance
+快速上手	Getting started
+按键映射	Key mapping
+Qbar 面板	Qbar panel
+剪贴板	Clipboard
+触发键与层	Trigger keys and layers
+同步与备份	Sync and backup
+设置	Settings
+测试	Test
+快捷键速查	Shortcut cheat sheet
+正在运行	Running
+键盘钩子正常	Keyboard hook OK
+CapsLock 增强	CapsLock enhancements
+暂停	Pause
+临时暂停所有按键增强热键	Temporarily pause all Keyboard Enhance hotkeys
+切换深浅色	Toggle light/dark
+最小化	Minimise
+关闭到托盘	Close to tray
+计算器	Calculator
+复制结果	Copy result
+历史记录	History
+设置启动密码	Set startup password
+设好后，每次启动本软件都要先输入这个密码才能进入主界面。	Once set, every launch requires this password before the main UI opens.
+新密码	New password
+再输一遍确认	Type it again to confirm
+至少 4 位。启动密码与备份密码相互独立，互不影响。忘记密码可删除数据目录里的 startup.json 解除保护（其他设置不受影响）。	At least 4 characters. The startup password and the backup password are independent. If you forget it, delete startup.json in the data folder to remove protection (other settings are unaffected).
+欢迎使用按键增强	Welcome to Keyboard Enhance
+让 Caps 键成为你最顺手的修饰键	Make Caps your most comfortable modifier
+光标移动不用离开主键区	Move the caret without leaving the home row
+一个 Qbar 搞定搜索与启动	One Qbar for search and launching
+全部设置都能可视化修改	Every setting is editable in the GUI
+欢迎	Welcome
+花一分钟做三个选择，之后就能一直用了。	Three choices in about a minute, then you are set for good.
+1 · 选一个按键方案	1 · Pick a key scheme
+两种方案功能一样，只是字母键的位置不同。不确定就选 Capslox。	Both schemes do the same thing — only the letter positions differ. Pick Capslox if unsure.
+Capslox（默认，推荐）	Capslox (default, recommended)
+Caps+S/D/E/F 移动，Caps+J/K/I/L 选择	Caps+S/D/E/F moves, Caps+J/K/I/L selects
+经典布局（旧版）	Classic layout (legacy)
+Caps+LAlt+方向 切窗口，Caps+Z 撤销重做	Caps+LAlt+arrows switch windows, Caps+Z undoes and redoes
+2 · 是否开机自启	2 · Start with Windows?
+开启后登录 Windows 就会自动在托盘运行，随时可用。	On means it runs in the tray after you sign in to Windows, ready at any time.
+开启（推荐）	On (recommended)
+开机即可用，不占用桌面	Available right after boot, no desktop clutter
+先不开	Not now
+以后可以在设置里随时打开	You can turn it on in Settings later
+3 · 试一下	3 · Try it
+按下面的顺序按一遍，就能体会到它和普通改键的区别。	Press these in order to feel how it differs from ordinary remapping.
+光标左移一个字符	Move the caret one character left
+打开 Qbar，输入 calc 回车	Open Qbar, type "calc" and press Enter
+打开计算器	Open the calculator
+跳过	Skip
+上一步	Back
+下一步	Next
+按键增强 横条	Keyboard Enhance band
+解锁本地数据	Unlock local data
+本地数据已加密	Local data is encrypted
+请输入你在「同步与备份」里设置的备份密码。只需要这一次 —— 解锁后密钥会交给 Windows 凭据缓存，以后启动不再询问。	Enter the backup password you set under "Sync and backup". Only once — the key is then handed to the Windows credential cache and later launches will not ask.
+备份密码	Backup password
+先不解锁	Not now
+解锁	Unlock
+选择「先不解锁」会以空白配置启动，并且不会写入磁盘 —— 你原来的数据不会被覆盖。	Choosing "Not now" starts with an empty configuration and writes nothing to disk — your existing data is not overwritten.
+百度	Baidu
+移除标签（Backspace）	Remove tag (Backspace)
+Enter 执行	Enter runs
+↑↓ 选择    Enter 执行    Tab 补全    Esc 关闭	↑↓ select    Enter run    Tab complete    Esc close
+正在录制宏	Recording macro
+录制中	Recording
+0 个事件	0 events
+从备份恢复	Restore from backup
+先拉取备份清单，挑一份再决定怎么恢复。备份都是加密的，恢复时会用你设的备份密码解开。	Fetch the backup list first, pick one, then choose how to restore. Backups are encrypted and are decrypted with your backup password.
+云端备份	Cloud backups
+刷新	Refresh
+删除选中	Delete selected
+备份文件	Backup file
+大小	Size
+加密	Encrypted
+恢复方式	Restore mode
+合并恢复（推荐）	Merge (recommended)
+按主键对齐：同一个按键 / 宏 / 搜索项以备份里的为准，本地独有的内容保留。全局设置、网盘与备份密码不动。	Aligns by key: for the same key / macro / search entry the backup wins, and local-only items are kept. Global settings, WebDAV and the backup password are untouched.
+覆盖恢复	Overwrite
+整份替换成备份里的内容，本地当前配置会被清掉（恢复前会自动另存一份）。网盘与备份密码始终保留本机。	Replaces everything with the backup contents, discarding the current local settings (a copy is saved first). WebDAV and the backup password always stay local.
+恢复选中这份	Restore this one
+启动密码	Startup password
+这个软件已设置启动密码，请输入密码进入主界面。	This app is protected by a startup password. Enter it to open the main UI.
+退出	Exit
+进入	Enter
+启动密码与备份密码相互独立：这一个只决定谁能打开本软件，改了它也不会影响备份与数据加密。	The startup password is independent of the backup password: this one only decides who may open the app, and changing it never affects backups or data encryption.
+层内子层设置	Sub-layer settings
+层内子层	Sub-layers
+进入本层后再按住下面配置的键，就能用到另一套独立绑定。子层键可以是任意物理键（Ctrl、Tab、CapsLock…），也能给它起个名字。最多 10 个。	After entering this layer, holding one of the keys below gives you a second independent set of bindings. A sub-layer key can be any physical key (Ctrl, Tab, CapsLock…) and can be given a name. Up to 10.
+留空则用键名自身	Empty uses the key name itself
++ 添加子层	+ Add sub-layer
+提示	Tip
+发现新版本	New version available
+没有填写 GitHub 个人访问令牌，这一版不能自动下载。点下面的地址用浏览器下载：	No GitHub personal access token is set, so this version cannot download automatically. Use the address below to download in your browser:
+在默认浏览器里打开这个版本的下载地址（新标签页）	Open this version's download address in your default browser (new tab)
+在浏览器中打开 GitHub 下载地址	Open the GitHub download address in your browser
+跳过此版本	Skip this version
+稍后	Later
+选择窗口	Pick a window
+点击要绑定的窗口	Click the window you want to bind
+左键选中　·　右键或 Esc 取消	Left click selects · Right click or Esc cancels
+结论：目标不存在，无法测试	Result: the target does not exist, cannot test
+结论：前台不是目标窗口 ✗	Result: the foreground window is not the target ✗
+异常：	Exception: 
+已更新到 {0}	Updated to {0}
+这个软件已设置启动密码，请输入密码进入主界面。\n\n	This app is protected by a startup password. Enter it to open the main window.\n\n
+启动密码与备份密码相互独立：这一个只决定谁能打开本软件，	The startup password and the backup password are independent: this one only decides who can open the app,
+改了它也不会影响备份与数据加密。	changing it does not affect backups or data encryption.
+出错了：	Something went wrong: 
+软件目录不可写，数据改放在这里（换位置请先给软件目录写权限）	The app folder is not writable, so data is kept here (to move it back, grant write access to the app folder first)
+数据就在软件旁边的「{0}」文件夹里	The data lives in the "{0}" folder next to the app
+基础	Basics
+不绑定	Unbound
+该组合键不执行任何动作	This combo does nothing
+切换大小写	Toggle caps lock
+等价于按一下 CapsLock	Same as pressing CapsLock once
+大小写	Caps
+保留按键原功能	Keep the key's normal function
+短按触发键 = 这个键本来的意思。把 F5 设为触发键时，短按就是刷新	Tap the trigger key = the key does what it always did. Set F5 as the trigger and a tap refreshes.
+回车	Enter
+发送回车	Send Enter
+发送 Tab	Send Tab
+空格	Space
+发送空格	Send Space
+退格	Backspace
+发送退格	Send Backspace
+发送 Delete	Send Delete
+打开设置	Open settings
+打开 按键增强 设置窗口	Open the Keyboard Enhance settings window
+启用/暂停	Enable / pause
+临时暂停或恢复所有按键增强热键	Temporarily pause or resume every Keyboard Enhance hotkey
+启暂停	On/Off
+光标移动	Move caret
+左移	Left
+光标左移一个字符（可长按连续）	Move the caret one character left (hold to repeat)
+右移	Right
+光标右移一个字符	Move the caret one character right
+上移	Up
+光标上移一行	Move the caret one line up
+下移	Down
+光标下移一行	Move the caret one line down
+左移一个单词	Word left
+词←	←Word
+右移一个单词	Word right
+词→	Word→
+行首	Line start
+行尾	Line end
+文档开头	Document start
+文档结尾	Document end
+上一页	Page up
+下一页	Page down
+页面上移一行	Scroll up one line
+Ctrl+↑，光标不动	Ctrl+↑; the caret stays put
+页↑	PgUp
+页面下移一行	Scroll down one line
+Ctrl+↓，光标不动	Ctrl+↓; the caret stays put
+页↓	PgDn
+在行尾换行	New line at the end of the line
+先 End 再回车（不管光标在哪）	End then Enter, wherever the caret is
+选择	Selection
+向左选中	Select left
+选←	Sel←
+向右选中	Select right
+选→	Sel→
+向上选中	Select up
+选↑	Sel↑
+向下选中	Select down
+选↓	Sel↓
+向左选中单词	Select word left
+选词←	SelW←
+向右选中单词	Select word right
+选词→	SelW→
+选中到行首	Select to line start
+选行首	SelHome
+选中到行尾	Select to line end
+选行尾	SelEnd
+选中到文档开头	Select to document start
+选到首	SelTop
+选中到文档结尾	Select to document end
+选到尾	SelBot
+选中当前单词	Select the current word
+Ctrl+← 再 Ctrl+Shift+→	Ctrl+← then Ctrl+Shift+→
+选中词	SelWord
+选中当前行	Select the current line
+Home 再 Shift+End	Home then Shift+End
+选行	SelLine
+编辑	Editing
+删除整行	Delete the whole line
+End + Shift+Home + 退格	End + Shift+Home + Backspace
+删行	DelLine
+删除到行首	Delete to line start
+Shift+Home + 退格	Shift+Home + Backspace
+删到首	DelHome
+删除到行尾	Delete to line end
+Shift+End + 退格	Shift+End + Backspace
+删到尾	DelEnd
+删除到文档开头	Delete to document start
+Ctrl+Shift+Home + 退格	Ctrl+Shift+Home + Backspace
+删到顶	DelTop
+删除到文档结尾	Delete to document end
+Ctrl+Shift+End + 退格	Ctrl+Shift+End + Backspace
+删到底	DelBot
+删除前一个单词	Delete the previous word
+Ctrl+Shift+← 再删除	Ctrl+Shift+← then delete
+删词	DelWord
+删除后一个单词	Delete the next word
+Ctrl+Shift+→ 再删除	Ctrl+Shift+→ then delete
+删词后	DelW→
+用符号包裹选区	Wrap the selection in a symbol
+例如把选中的文字变成 (文字)，参数为起始符号	e.g. turn the selected text into (text); the argument is the opening symbol
+例如 ( 或 [ 或 "	e.g. ( or [ or "
+清空内容	Clear the content
+Ctrl+A 再删除	Ctrl+A then delete
+撤销 / 重做	Undo / redo
+交替发送 Ctrl+Z 与 Ctrl+Y	Alternates Ctrl+Z and Ctrl+Y
+撤销	Undo
+转大写	Upper case
+把选中文本转成大写	Turn the selected text into upper case
+转小写	Lower case
+把选中文本转成小写	Turn the selected text into lower case
+首字母大写	Title case
+把选中文本转成词首大写	Turn the selected text into title case
+复制到剪贴板 1	Copy to clipboard 1
+按下触发键 + C：复制到独立剪贴板 1	Trigger + C: copy into the separate clipboard 1
+复制1	Copy1
+剪切到剪贴板 1	Cut to clipboard 1
+按下触发键 + X	Trigger + X
+剪到1	Cut1
+粘贴剪贴板 1	Paste clipboard 1
+按下触发键 + V	Trigger + V
+粘1	Paste1
+复制到剪贴板 2	Copy to clipboard 2
+按下触发键 + LAlt + C：复制到独立剪贴板 2	Trigger + LAlt + C: copy into the separate clipboard 2
+复制2	Copy2
+剪切到剪贴板 2	Cut to clipboard 2
+按下触发键 + LAlt + X	Trigger + LAlt + X
+剪到2	Cut2
+粘贴剪贴板 2	Paste clipboard 2
+按下触发键 + LAlt + V	Trigger + LAlt + V
+粘2	Paste2
+粘贴系统剪贴板	Paste the system clipboard
+恢复系统剪贴板后粘贴	Restore the system clipboard, then paste
+粘系统	PasteOS
+开关独立剪贴板	Toggle the separate clipboards
+开/关 按键增强剪贴板功能	Turn the Keyboard Enhance clipboard feature on or off
+查看并粘贴最近的复制内容	Browse and paste recently copied items
+面板	Panel
+Qbar 快速启动	Qbar launcher
+打开 Qbar：搜索、启动程序、打开网址、计算	Open Qbar: search, launch apps, open URLs, calculate
+Qbar 搜索	Qbar search
+打开 Qbar 并直接用「{0}」搜索	Open Qbar and search directly for "{0}"
+打开带历史记录的计算器	Open the calculator with history
+Tab 计算 / 热字串	Tab calculate / text expansion
+把光标前的算式直接算出结果，或展开热字串	Evaluate the expression before the caret, or expand a text shortcut
+计算板	Calc
+使用帮助	Help
+打开内置帮助	Open the built-in help
+重新读取设置并重装钩子	Re-read the settings and reinstall the hook
+重载	Reload
+直接搜索	Search
+搜索：{0}	Search: {0}
+在默认浏览器里用「{0}」搜索当前选中的文字	Search the selected text for "{0}" in your default browser
+窗口	Windows
+窗口置顶 / 取消	Always on top / off
+让当前窗口永远在最前面	Keep the current window above all others
+置顶	OnTop
+窗口透明度切换	Cycle window opacity
+在几档透明度之间循环	Cycle through a few opacity levels
+透明	Opacity
+最小化窗口	Minimise the window
+最小化当前窗口	Minimise the current window
+最大化 / 还原	Maximise / restore
+切换最大化状态	Toggle the maximised state
+最大化	Max
+关闭窗口	Close the window
+关闭当前窗口	Close the current window
+窗口居中	Centre the window
+把窗口移到屏幕中央	Move the window to the centre of the screen
+贴左半屏	Snap left half
+Win11 风格贴边	Windows 11 style snapping
+贴右半屏	Snap right half
+贴上半屏	Snap top half
+顶部半屏	Top half
+贴下半屏	Snap bottom half
+底部半屏	Bottom half
+贴左上角	Snap top left
+四分之一屏	Quarter screen
+贴右上角	Snap top right
+贴左下角	Snap bottom left
+贴右下角	Snap bottom right
+窗口置底	Send to back
+把窗口压到最下面	Push the window to the bottom
+同程序下一个窗口	Next window of the same app
+在当前程序的窗口间循环	Cycle through the windows of the current app
+下窗口	Win↓
+同程序上一个窗口	Previous window of the same app
+反向循环	Cycle backwards
+上窗口	Win↑
+激活左边的窗口	Activate the window on the left
+按屏幕位置找左边最近的窗口	Find the nearest window to the left on screen
+左窗	Win←
+激活右边的窗口	Activate the window on the right
+按屏幕位置找右边最近的窗口	Find the nearest window to the right on screen
+右窗	Win→
+激活上边的窗口	Activate the window above
+按屏幕位置找上边最近的窗口	Find the nearest window above on screen
+上窗	WinTop
+激活下边的窗口	Activate the window below
+按屏幕位置找下边最近的窗口	Find the nearest window below on screen
+下窗	WinBot
+鼠标	Mouse
+鼠标左移	Mouse left
+可长按加速	Hold to accelerate
+鼠标右移	Mouse right
+鼠标上移	Mouse up
+鼠标下移	Mouse down
+鼠标左键	Left click
+点击左键	Click the left button
+鼠标右键	Right click
+点击右键	Click the right button
+滚轮上滚	Wheel up
+向上滚动	Scroll up
+滚轮下滚	Wheel down
+向下滚动	Scroll down
+鼠标速度 +	Mouse speed +
+进入层并按住 LAlt 时的鼠标速度加一	Raises the mouse speed by one while LAlt is held in a layer
+鼠速+	Spd+
+鼠标速度 -	Mouse speed -
+鼠标速度减一	Lowers the mouse speed by one
+鼠速-	Spd-
+系统功能	System
+上一首	Previous track
+媒体键：跳到上一首	Media key: skip to the previous track
+下一首	Next track
+媒体键：跳到下一首	Media key: skip to the next track
+播放 / 暂停	Play / pause
+媒体键：播放或暂停	Media key: play or pause
+播放	Play
+停止播放	Stop playback
+媒体键：停止	Media key: stop
+音量 +	Volume +
+系统音量键：调高音量并弹出 Windows 自带的横条（可在下面单独填步进，留空用设置里的幅度；按住连续调）	System volume key: raises the volume and shows the Windows band (set a step below, or leave it empty to use the step from Settings; hold to keep changing)
+音量+	Vol+
+音量 -	Volume -
+系统音量键：调低音量并弹出 Windows 自带的横条（可在下面单独填步进，留空用设置里的幅度；按住连续调）	System volume key: lowers the volume and shows the Windows band (set a step below, or leave it empty to use the step from Settings; hold to keep changing)
+音量-	Vol-
+静音	Mute
+静音 / 取消静音（切换）	Mute / unmute (toggle)
+打开 Windows 自带的计算器	Open the built-in Windows calculator
+亮度 +	Brightness +
+屏幕亮度提高（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，	Raises the screen brightness (set a step below, or leave it empty to use the step from Settings; the band climbs smoothly,
+按住越久每步越大，约 0.7 秒到满速 2.5 倍；外接屏需开启 DDC/CI）	the longer you hold it the bigger each step — about 2.5x at full speed after 0.7 s; external monitors need DDC/CI enabled)
+亮+	Bri+
+亮度 -	Brightness -
+屏幕亮度降低（可在下面单独填步进，留空用设置里的幅度；横条会平滑爬升，	Lowers the screen brightness (set a step below, or leave it empty to use the step from Settings; the band climbs smoothly,
+亮-	Bri-
+打开文件资源管理器	Open File Explorer
+打开「此电脑」	Open "This PC"
+资源	Files
+打开任务管理器	Open Task Manager
+任务	Tasks
+锁定屏幕	Lock the screen
+截图	Take a screenshot
+调用系统截图工具	Invoke the system screenshot tool
+系统	System
+打开网址	Open a URL
+打开参数里的网址	Open the URL in the argument
+运行程序	Run a program
+运行参数里的程序或命令	Run the program or command in the argument
+智能直达	Smart open
+先选中一段文字再按这个键：是网址就用浏览器打开，是文件夹就用资源管理器打开，是文件就用默认程序打开	Select some text, then press this key: a URL opens in the browser, a folder in Explorer, a file in its default app
+直达链接	Direct links
+直达网址	Direct URL
+用默认浏览器打开这个网址；可以加备注，备注会显示在键帽上	Open this URL in the default browser; add a note and it shows on the keycap
+直达文件夹	Direct folder
+在文件资源管理器里打开这个文件夹；可以加备注，备注会显示在键帽上	Open this folder in Explorer; add a note and it shows on the keycap
+直达文件	Direct file
+用系统默认程序打开这个文件（.docx 进 Word、.mp4 进播放器，跟双击一样）；可以加备注，备注会显示在键帽上	Open this file in its default app (.docx in Word, .mp4 in the player — just like double-clicking); add a note and it shows on the keycap
+发送按键到应用	Send a key to an app
+先确认绑定的应用在运行（没运行就先启动），再把设定的键发给它	Make sure the bound app is running (launch it if not), then send it the configured key
+自定义	Custom
+输入文本	Type text
+输入一段文字	Type some text
+把这段文字直接输入到当前光标处（支持中文与 emoji）	Type this text at the current caret (Chinese and emoji supported)
+窗口绑定	Window binding
+切换窗口	Switch window
+选定一个程序后：按一下切过去，再按一次最小化；没开就自动启动	With an app selected: press once to switch to it, again to minimise it; launches it if it is not running
+播放宏：{0}	Playing macro: {0}
+共 {0} 步，约 {1}ms	{0} steps, about {1}ms
+打开宏管理	Open macro manager
+录制 / 编辑 / 绑定宏	Record, edit and bind macros
+没有找到可用的播放设备，音量调不了	No playback device found, the volume cannot be changed
+没有找到可用的播放设备，静音切不了	No playback device found, mute cannot be toggled
+鼠标速度 {0}	Mouse speed {0}
+宏不存在，可能已被删除	The macro does not exist; it may have been deleted
+文件夹不存在：{0}	Folder not found: {0}
+打开文件夹	open the folder
+文件不存在：{0}	File not found: {0}
+打开这个文件	open this file
+运行这个程序	run this program
+启动截图工具	start the Snipping Tool
+这个搜索引擎还没配置	This search engine is not configured yet
+没读到选中文字（管理员模式取不到普通程序的选区）。请按一下 Ctrl+C，我马上用它搜索	Could not read the selected text (elevated mode cannot read a normal app's selection). Press Ctrl+C and it will be searched right away
+没读到选中文字，请按一下 Ctrl+C，我马上用它搜索	Could not read the selected text. Press Ctrl+C and it will be searched right away
+没有取到选中的文字 —— 先选中要搜索的内容再按这个键	No selected text — select what you want to search first, then press this key
+正在搜索选中的文字…	Searching the selected text…
+正在搜索…	Searching…
+输入文字	type text
+没读到选中内容（管理员模式取不到普通程序的选区）。请按一下 Ctrl+C，我马上打开它	Could not read the selection (elevated mode cannot read a normal app's selection). Press Ctrl+C and it will be opened right away
+没读到选中内容，请按一下 Ctrl+C，我马上打开它	Could not read the selection. Press Ctrl+C and it will be opened right away
+先选中一段文字（网址、文件夹或文件路径），再按这个键	Select some text first (a URL, a folder or a file path), then press this key
+打开网址：{0}	Opening URL: {0}
+正在打开文件夹…	Opening the folder…
+正在用默认程序打开…	Opening with the default app…
+选中的内容既不是网址，也不是文件夹或文件路径	The selection is neither a URL nor a folder or file path
+算出结果	evaluate the expression
+没有可复制的内容	Nothing to copy
+已复制到剪贴板 {0}	Copied to clipboard {0}
+已剪切到剪贴板 {0}	Cut to clipboard {0}
+剪贴板 {0} 是空的	Clipboard {0} is empty
+独立剪贴板已开启	Standalone clipboard on
+独立剪贴板已关闭	Standalone clipboard off
+自定义按键还没设置要发送的键	This custom key has no keys to send yet
+自定义按键还没绑定应用	This custom key is not bound to an app yet
+绑定的应用路径不对	The bound app path is invalid
+启动「{0}」失败：{1}	Failed to launch "{0}": {1}
+已启动「{0}」	Launched "{0}"
+{0}，但没等到它的窗口，按键没有发送	{0}, but its window never appeared — the key was not sent
+「{0}」已在运行	"{0}" is already running
+{0}，已发送 {1}	{0}, sent {1}
+（已切到前台）	 (switched to the foreground)
+被自检拦截	blocked by the self-test
+你取消了管理员授权	You cancelled the administrator prompt
+网址	URL
+文件夹	folder
+文件	file
+未知	unknown
+网页	web page
+没有可绑定的窗口	No window to bind
+不能绑定按键增强自己的窗口	Cannot bind Keyboard Enhance's own window
+槽位 {0}：已绑定 {1} 的全部窗口	Slot {0}: bound to all windows of {1}
+槽位 {0} ← {1}	Slot {0} ← {1}
+槽位 {0}：已加入 {1}（共 {2} 个窗口）	Slot {0}: added {1} ({2} windows)
+槽位 {0} 还没绑定窗口（先按 Caps+LAlt+{1} 绑定）	Slot {0} has no windows yet (press Caps+LAlt+{1} to bind one first)
+槽位 {0} 的窗口已经关闭	The window in slot {0} has closed
+已最小化 {0}	Minimised {0}
+已切到 {0}	Switched to {0}
+正在启动 {0}…	Launching {0}…
+启动失败：被拦截	Launch failed: blocked
+启动这个程序	launch this program
+{0} 好像还没启动完成，再按一次槽位键试试	{0} does not seem to be ready yet — press the slot key again
+找不到这个程序文件	This program file was not found
+不能绑定按键增强自己	Cannot bind Keyboard Enhance itself
+槽位 {0} ← {1}（当前已开 {2} 个窗口）	Slot {0} ← {1} ({2} windows open)
+槽位 {0} ← {1}（还没运行，按 {2} 时会帮你打开）	Slot {0} ← {1} (not running — pressing {2} will start it)
+选中的不是有效窗口	The selection is not a valid window
+{0}（未运行）	{0} (not running)
+{0}（1 个窗口）	{0} (1 window)
+{0}（{1} 个窗口循环）	{0} ({1} windows, cycling)
+这个按键还没选要绑定的程序	No app has been picked for this key yet
+程序不存在：{0}	Program not found: {0}
+已恢复 {0}	Restored {0}
+已切到 {0}（{1} 个窗口循环）	Switched to {0} ({1} windows, cycling)
+{0} 好像还没启动完成，再按一次试试	{0} does not seem to be ready yet — try again
+当前已经是管理员权限	Already running as administrator
+取不到程序路径	Could not get the program path
+管理员权限：可以操作管理员程序的窗口，键盘钩子能收到所有普通窗口的输入。	Elevated: windows of elevated apps can be controlled, and the keyboard hook receives input from all normal windows.
+但锁屏状态下快捷键无法使用 —— 那是 Windows 的安全桌面限制，管理员权限也绕不过。	Hotkeys do not work on the lock screen though — that is Windows' secure desktop, which even elevation cannot bypass.
+普通权限：对着「以管理员身份运行」的程序按快捷键不会有反应，建议以管理员身份运行。	Normal privileges: hotkeys do nothing in apps running as administrator; running as administrator is recommended.
+另外锁屏状态下快捷键同样无法使用（Windows 安全限制）。	Hotkeys also do not work on the lock screen (a Windows security restriction).
+  跳过 	  skipped 
+: 几何体为空	: the geometry is empty
+: 画笔和笔刷都为空	: both pen and brush are null
+  group 为空 -> 返回 null	  group is empty -> returning null
+Enabled 切换	Enabled toggles
+Suspended 切换	Suspended toggles
+触发键重新按下	the trigger key was pressed again
+左 Ctrl	Left Ctrl
+右 Ctrl	Right Ctrl
+左 Shift	Left Shift
+右 Shift	Right Shift
+左 Alt	Left Alt
+左 Win	Left Win
+右 Win	Right Win
+播放/暂停	Play/Pause
+浏览器后退	Browser Back
+浏览器前进	Browser Forward
+浏览器刷新	Browser Refresh
+浏览器停止	Browser Stop
+浏览器搜索	Browser Search
+浏览器收藏	Browser Favorites
+浏览器主页	Browser Home
+小键盘 0	Num 0
+小键盘 1	Num 1
+小键盘 2	Num 2
+小键盘 3	Num 3
+小键盘 4	Num 4
+小键盘 5	Num 5
+小键盘 6	Num 6
+小键盘 7	Num 7
+小键盘 8	Num 8
+小键盘 9	Num 9
+小键盘 *	Num *
+小键盘 +	Num +
+小键盘 -	Num -
+小键盘 .	Num .
+小键盘 /	Num /
+生成 {0} 步	Created {0} steps
+命令	command
+程序	program
+计算	calculate
+按键增强 设置窗口	Keyboard Enhance settings window
+窗口绑定管理	Window binding manager
+管理 10 个窗口槽位	manage 10 window slots
+最近复制的内容	recently copied items
+快捷键速查表	hotkey cheat sheet
+带历史记录的计算器	calculator with history
+重新读取设置文件	reload the settings file
+暂停 / 恢复	Pause / Resume
+临时关闭按键增强热键	temporarily disable Keyboard Enhance hotkeys
+退出按键增强	Quit Keyboard Enhance
+完全退出程序	quit the app completely
+在 {0} 中搜索…	Searching in {0}…
+复制计算结果（{0} = {1}）	Copy the result ({0} = {1})
+粘贴这段剪贴板内容	paste this clipboard entry
+打开这个网址	open this URL
+在资源管理器中打开	open in File Explorer
+这个路径不存在	This path does not exist
+路径	path
+搜索“{0}”	Search "{0}"
+默认	default
+输入关键字搜索，或直接回车用默认搜索引擎	type keywords to search, or press Enter to use the default engine
+输入 =算式 可以直接计算	type =expression to calculate directly
+{0} 搜索	{0} search
+已复制：{0}	Copied: {0}
+(未设置)	(not set)
+未绑定层	unbound layer
+第 {0} 层	Layer {0}
+无	none
+保留原功能	keep the original function
+一按别的键就进层	enter the layer on any other key
+长按 {0}ms 进层	hold {0}ms to enter
+{0}　·　短按：{1}	{0} · tap: {1}
+新宏	new macro
+（未命名宏）	(unnamed macro)
+循环播放	loop
+播放一次	play once
+播放 {0} 次	play {0} times
+{0} 步　·　{1}	{0} steps · {1}
+小	Small
+窄屏可用，字会小一些	fits narrow screens, smaller text
+中	Medium
+1366~1600 宽的屏比较合适	good for 1366–1600 wide screens
+大	Large
+设计尺寸，字最清楚	design size, sharpest text
+特大	Extra large
+2K 屏，不凑近也认得出	for 2K screens, readable from a distance
+基础层	Base layer
+默认搜索	default search
+设置文件读不出来，已把原文件另存为 {0}，\n	The settings file could not be read; the original was saved as {0},\n
+本次先用默认设置启动（原文件没有被删除，可以手工修复后换回去）。	Started with default settings this time (the original file was not deleted; repair it by hand and swap it back).
+设置文件读不出来，本次先用默认设置启动（原文件可能已被占用或权限不足）。	The settings file could not be read, so default settings are used this time (the file may be locked or access denied).
+清理旧条目 {0} 个（引擎表版本 → {1}）	Removed {0} legacy entries (engine table version → {1})
+知乎	Zhihu
+哔哩哔哩	Bilibili
+淘宝	Taobao
+维基百科	Wikipedia
+115 网盘	115 Cloud Drive
+1905 电影网	1905 Movie Network
+Brave 搜索	Brave Search
+Chrome商店	Chrome Web Store
+Edge商店	Edge Add-ons
+Epic 商店	Epic Games Store
+IEEE 标准	IEEE Standards
+IT之家	ITHome
+QQ音乐	QQ Music
+Wikipedia（英文）	Wikipedia (English)
+Yandex 图片	Yandex Images
+丁香医生	Dingxiang Doctor
+万方	Wanfang Data
+下厨房	Xiachufang
+东方财富	Eastmoney
+中国大学MOOC	Chinese University MOOC
+中国新闻网	China News Service
+乐天市场	Rakuten Ichiba
+亚马逊	Amazon
+京东	JD.com
+什么值得买	SMZDM
+今日头条	Toutiao
+企查查	Qichacha
+优酷	Youku
+凤凰网	ifeng
+剑桥词典	Cambridge Dictionary
+博客园	Cnblogs
+即刻	Jike
+古诗文网	Gushiwen
+咪咕音乐	Migu Music
+唯品会	Vipshop
+大众点评	Dianping
+天气网	Tianqi.com
+天猫	Tmall
+天眼查	Tianyancha
+太平洋汽车	PCauto
+央视网	CCTV.com
+头条搜索	Toutiao Search
+夸克搜索	Quark Search
+夸克网盘	Quark Drive
+好大夫在线	Haodf
+好看视频	Haokan Video
+孔夫子旧书网	Kongfz
+宜家	IKEA
+小米应用商店	Xiaomi GetApps
+小红书	Xiaohongshu (RED)
+少数派	SSPAI
+开源中国	OSChina
+当当	Dangdang
+微信(搜狗)	WeChat (Sogou)
+微信读书	WeRead
+微博	Weibo
+必应图片	Bing Images
+必应地图	Bing Maps
+快手	Kuaishou
+快递100	Kuaidi100
+慕课网	Imooc
+懂车帝	Dongchedi
+抖音	Douyin
+拼多多	Pinduoduo
+掘金	Juejin
+搜狐视频	Sohu Video
+搜狗	Sogou
+搜狗图片	Sogou Images
+文心一言	ERNIE Bot
+新浪新闻	Sina News
+易车	Yiche
+晋江文学城	Jinjiang Literature
+智谱清言	Zhipu Qingyan
+有道词典	Youdao Dictionary
+果壳	Guokr
+柯林斯词典	Collins Dictionary
+汉典	Zdic (Hanzi Dictionary)
+汽车之家	Autohome
+海螺AI	Hailuo AI
+海词	Dict.cn
+游民星空	Gamersky
+澎湃新闻	The Paper
+爱企查	Aiqicha
+爱卡汽车	Xcar
+爱奇艺	iQIYI
+牛津词典	Oxford Dictionary
+百度图片	Baidu Images
+百度地图	Baidu Maps
+百度学术	Baidu Scholar
+百度文库	Baidu Wenku
+百度汉语	Baidu Hanyu
+百度百科	Baidu Baike
+百度知道	Baidu Zhidao
+百度经验	Baidu Jingyan
+百度网盘	Baidu Netdisk
+知乎直答	Zhihu Direct Answer
+知网	CNKI
+秘塔AI搜索	Metaso AI Search
+站酷	ZCOOL
+站长之家	Chinaz
+第一财经	Yicai
+简书	Jianshu
+纵横中文网	Zongheng Novels
+维基文库	Wikisource
+网易严选	NetEase Yanxuan
+网易云课堂	NetEase Cloud Classroom
+网易云音乐	NetEase Cloud Music
+网易新闻	NetEase News
+脉脉	Maimai
+腾讯云社区	Tencent Cloud Community
+腾讯元宝	Tencent Yuanbao
+腾讯地图	Tencent Maps
+腾讯视频	Tencent Video
+腾讯软件中心	Tencent Software Center
+芒果TV	Mango TV
+花瓣	Huaban
+苏宁易购	Suning
+菜鸟教程	Runoob
+萌娘百科	Moegirlpedia
+虎嗅	Huxiu
+虎扑	Hupu
+西瓜视频	Xigua Video
+谷歌地图	Google Maps
+谷歌地球	Google Earth
+谷歌学术	Google Scholar
+谷歌新闻	Google News
+豆包	Doubao
+豆瓣	Douban
+豆瓣电影	Douban Movie
+豆瓣读书	Douban Books
+贴吧	Baidu Tieba
+起点中文网	Qidian
+路透社	Reuters
+通义	Tongyi
+酷安	Coolapk
+酷我音乐	Kuwo Music
+酷狗5sing	Kugou 5sing
+金山词霸	Kingsoft PowerWord
+闲鱼	Xianyu
+阿里云开发者	Alibaba Cloud Developer
+阿里云盘	Alibaba Cloud Drive
+雪球	Xueqiu
+韦氏词典	Merriam-Webster
+高德地图	Amap
+记事本	Notepad
+画图	Paint
+文件资源管理器	File Explorer
+命令提示符	Command Prompt
+任务管理器	Task Manager
+B 站	Bilibili
+展开成 CapsLock+	expand to CapsLock+
+你的邮箱@example.com	you@example.com
+邮箱	email
+请先输入密码	Enter a password first
+密码不能只有空格	The password cannot be only spaces
+密码至少 {0} 位	Password must be at least {0} characters
+密码最长 {0} 位	Password must be at most {0} characters
+保存密码失败：	Failed to save the password: 
+合并后的配置解析失败	Failed to parse the merged configuration
+备份密码不能只有空格 —— 换个真实密码，或者清空密码改用不加密备份	The backup password cannot be only spaces — use a real password, or clear it to use unencrypted backups
+这份备份是加密的，但还没设置备份密码 —— 先在设置里填上再恢复	This backup is encrypted but no backup password is set — set one in Settings first, then restore
+备份不是有效 JSON：{0}	The backup is not valid JSON: {0}
+不认识的加密格式	Unknown encryption format
+备份的加密参数不对（文件可能被改过）	Bad encryption parameters in the backup (the file may have been modified)
+备份里的 KDF 参数不合理（文件可能被改过）	Unreasonable KDF parameters in the backup (the file may have been modified)
+不支持的密钥派生算法：{0}	Unsupported key derivation: {0}
+解密失败 —— 备份密码不对（或这份备份不是用这个密码加密的）	Decryption failed — wrong backup password (or this backup was not encrypted with it)
+备份里的 base64 解不开（文件可能被截断或改过）	The base64 in the backup cannot be decoded (the file may be truncated or modified)
+所有层的按键绑定（含自定义组合键与宏绑定）	key bindings of all layers (including custom combos and macro bindings)
+触发键配置、10 个层的名称与启用状态	trigger key setup, names and enabled state of the 10 layers
+录制好的宏与步骤（不含按键绑定）	recorded macros and their steps (without key bindings)
+搜索引擎	search engines
+Qbar 的搜索引擎表与图标标记	Qbar's search engine list and icon tags
+启动项与网址	launchers and URLs
+Qbar 的程序启动项、常用网址、热字串	Qbar's program launchers, favourite URLs and hotstrings
+10 个窗口槽位绑定的程序	programs bound to the 10 window slots
+外观与行为	appearance and behaviour
+主题、Qbar 面板样式、鼠标速度、按键行为等	theme, Qbar panel style, mouse speed, key behaviour…
+同步与备份设置	sync and backup settings
+WebDAV 地址、用户名、备份保留策略；加密导出时含密码	WebDAV address, user name, backup retention; includes the password when exporting encrypted
+勾选了隐私内容（{0}），只能用加密导出。	Privacy groups selected ({0}); only encrypted export is allowed.
+加密导出需要密码 —— 先在「备份密码」里设一个，或改成明文导出	Encrypted export needs a password — set one under Backup password, or export as plain text
+文件内容不是有效的 JSON：{0}	The file is not valid JSON: {0}
+文件内容不是一个 JSON 对象	The file content is not a JSON object
+这个文件既不是导出配置、也不是备份（里面没有可识别的配置字段）。	This file is neither an exported configuration nor a backup (no recognisable fields inside).
+请确认选的是 KeyboardEnhance 导出的 .clpconf 或备份的 .keyboardenhance 文件。	Make sure you picked a .clpconf exported by KeyboardEnhance or a .keyboardenhance backup.
+不支持的文件类型：{0}	Unsupported file type: {0}
+导出文件的 items 字段不对（应当是字符串数组）	The export's items field is invalid (it should be an array of strings)
+这份导出里没有任何数据（导出时大概什么都没勾）	This export contains no data (nothing was ticked when exporting)
+文件超过 32MB，确认选对了吗	The file is over 32MB — did you pick the right one?
+导入的数据解析失败	Failed to parse the imported data
+KeyboardEnhance 备份	KeyboardEnhance backup
+还没设备份密码。备份一律加密，请先在「备份密码」里设一个再备份。	No backup password yet. Backups are always encrypted — set one under Backup password first.
+备份内容解析失败	Failed to parse the backup content
+，采用了备份里的 GitHub 令牌	, used the GitHub token from the backup
+；已带上备份里的 GitHub 令牌	; the GitHub token from the backup was included
+已合并：新增 {0} 项，覆盖 {1} 项（本地独有的内容保留）{2}	Merged: {0} added, {1} replaced (items only present locally were kept){2}
+；GitHub 令牌已换成备份里的	; the GitHub token was replaced with the one from the backup
+；GitHub 令牌保留本机的	; kept this machine's GitHub token
+已整份恢复（覆盖，网盘与备份密码保留本机）	Fully restored (overwrote everything; cloud drive and backup password stay local)
+早于 {0} 天的备份	Backups older than {0} days
+只保留最近 {0} 份	Keep only the latest {0}
+还没填 WebDAV 地址，云端没有可清理的对象。	No WebDAV address yet, so there is nothing to clean up in the cloud.
+云端没有冗余或无效数据（检查了 {0} 个文件，其中 {1} 份备份做了内容比对）。	Nothing redundant or invalid in the cloud ({0} files checked, {1} backups compared byte for byte).
+已清除 {0} 个冗余/无效文件，释放约 {1:0.#} KB	Removed {0} redundant/invalid files, freed about {1:0.#} KB
+（检查了 {0} 个文件，其中 {1} 份备份做了内容比对）。	({0} files checked, {1} backups compared byte for byte).
+本地删除 {0} 份	Deleted {0} locally
+本地没有需要清理的	Nothing to clean up locally
+云端未配置，已跳过	Cloud is not configured, skipped
+云端删除 {0} 份	Deleted {0} in the cloud
+云端没有需要清理的	Nothing to clean up in the cloud
+，云端释放约 {0:0.#} KB	, freed about {0:0.#} KB in the cloud
+{0}：{1}{2}。最新一份始终保留。	{0}: {1}{2}. The latest backup is always kept.
+还没填 WebDAV 地址	No WebDAV address yet
+已有同步在进行，稍后再试	A sync is already running, try again later
+已上传 {0}	Uploaded {0}
+已上传 {0}（已加密，{1}KB）	Uploaded {0} (encrypted, {1}KB)
+，顺手清掉 {0} 份旧备份	, also removed {0} old backups
+云端还没有任何备份	No backups in the cloud yet
+云端备份读不出来	The cloud backup could not be read
+已从 {0} 恢复配置（恢复前的配置已另存一份）	Restored the configuration from {0} (the previous one was saved separately)
+已删除云端备份 {0}	Deleted cloud backup {0}
+配置没有变化，跳过这次自动备份	The configuration is unchanged, skipping this automatic backup
+自动备份失败	Automatic backup failed
+自动备份（本地）	Automatic backup (local)
+已自动备份到本地：{0}	Auto-backed up locally: {0}
+已开启启动同步，但没填 WebDAV 地址	Sync at startup is on, but no WebDAV address is set
+云端还没有备份，已把本机配置推上去	There was no backup in the cloud yet, so this machine's configuration was uploaded
+云端备份更新（{0:MM-dd HH:mm}），已恢复	Cloud backup updated ({0:MM-dd HH:mm}) — restored
+本机配置更新，已上传（云端那份是 {0:MM-dd HH:mm}）	Local configuration updated and uploaded (the cloud copy was {0:MM-dd HH:mm})
+退出同步超时，本次未上传	Sync at exit timed out, nothing was uploaded
+退出同步失败	Sync at exit failed
+地址格式不对，应该像 https://dav.jianguoyun.com/dav/ 这样	Invalid address format; it should look like https://dav.jianguoyun.com/dav/
+只支持 http / https 地址	Only http / https addresses are supported
+连接成功，已自动创建目录 {0}/，云端有 {1} 份备份	Connected, created the folder {0}/, {1} backups in the cloud
+连接成功，云端有 {0} 份备份	Connected, {0} backups in the cloud
+上传	upload
+下载	download
+列出目录	list the directory
+连接超时 —— 检查网络，或地址是否写错	Connection timed out — check the network or the address
+认证失败 —— 用户名或密码不对（坚果云要用「应用密码」，不是登录密码）	Authentication failed — wrong user name or password (Nutstore needs an app password, not the login password)
+服务器拒绝访问 —— 检查账号权限或目录是否存在	The server refused access — check the account permissions or whether the folder exists
+地址不存在 —— 检查 WebDAV 地址是否写对	The address does not exist — check the WebDAV address
+网络请求失败：{0}	Network request failed: {0}
+{0}失败：认证不通过（用户名或密码不对）	{0} failed: authentication rejected (wrong user name or password)
+{0}失败：没有权限	{0} failed: no permission
+{0}失败：地址或目录不存在	{0} failed: address or folder does not exist
+{0}失败：网盘空间不足	{0} failed: cloud storage is full
+{0}失败：服务器返回 {1} {2}	{0} failed: the server returned {1} {2}
+用法：KeyboardEnhance.exe --webdav-test <地址> [用户名] [密码]	Usage: KeyboardEnhance.exe --webdav-test <address> [user] [password]
+端到端测试密码	end-to-end password test
+能连上服务器并列出目录	can connect and list the directory
+端到端测试宏	end-to-end macro test
+上传成功	upload succeeded
+能取到云端修改时间	can read the cloud modification time
+返回 null	returned null
+修改时间是合理的时间戳	the modification time is a sane timestamp
+本地这份应该被覆盖	the local copy should be overwritten
+从云端恢复成功	restore from the cloud succeeded
+恢复后拿回了云端那份宏	after restoring, the cloud's macro is back
+恢复后本地那份被替换掉	after restoring, the local one was replaced
+恢复后内容一致	after restoring, the content matches
+目录里能看到备份文件	the backup file is visible in the directory
+错误密码	wrong password
+用错误密码恢复会被拒绝	restoring with a wrong password is rejected
+整个过程没有抛异常	nothing threw during the whole run
+空表达式	empty expression
+无法解析：{0}	Cannot parse: {0}
+结果不是有限数	the result is not a finite number
+除数不能为 0	the divisor cannot be 0
+取模的除数不能为 0	the modulo divisor cannot be 0
+表达式不完整	incomplete expression
+缺少右括号	missing closing parenthesis
+无法识别的数字：{0}	Unrecognised number: {0}
+函数缺少右括号	the function is missing a closing parenthesis
+未知标识符：{0}	Unknown identifier: {0}
+无法识别的字符：{0}	Unrecognised character: {0}
+{0} 参数不足	{0} needs more arguments
+未知函数：{0}	Unknown function: {0}
+(无文本)	(no text)
+(异常:	(exception:
+(空)	(empty)
+汉字Agqy	
+已{0}	Done: {0}
+没能{0}	Could not {0}
+没能{0}：{1}	Could not {0}: {1}
+返回里没有 core 配额	no core quota in the response
+超时	timed out
+仓库还没有发布任何版本	The repository has not published any release yet
+GitHub 令牌无效或已过期 —— 到「更新」里重新填一个，或者清空它改回匿名访问	The GitHub token is invalid or expired — enter a new one in Update, or clear it to go back to anonymous access
+这个令牌的接口配额也用完了（5000 次/小时），一小时后再试	This token's API quota is used up as well (5000/hour); try again in an hour
+令牌没有读取公开仓库的权限 —— fine-grained 令牌请勾上 Public repositories (read)	The token cannot read public repositories — for fine-grained tokens tick Public repositories (read)
+GitHub 接口访问频率已达上限（未填令牌时每小时 60 次）。	The GitHub API rate limit is reached (60 per hour without a token).
+到「更新」里填一个个人访问令牌，可提到 5000 次/小时	Add a personal access token in Update to raise it to 5000 per hour
+GitHub 拒绝了这次请求（HTTP 403）—— 可以试着填一个个人访问令牌	GitHub rejected the request (HTTP 403) — try adding a personal access token
+无法访问 GitHub（HTTP {0}）	Cannot reach GitHub (HTTP {0})
+返回内容无法解析	The response could not be parsed
+无法识别版本号：{0}	Unrecognised version: {0}
+发现新版本 {0}，但该版本没有附带 exe 安装包	Version {0} found, but it has no exe attached
+已是最新版本	Already up to date
+发现新版本 {0}	New version {0} is available
+检查更新超时，请稍后再试	The update check timed out, try again later
+检查更新失败：	Update check failed: 
+无法创建下载目录：	Could not create the download folder: 
+下载失败：	Download failed: 
+下载不完整（{0}/{1} 字节）	Download incomplete ({0}/{1} bytes)
+校验失败，文件可能已损坏（期望 {0}…，	Checksum mismatch, the file may be corrupt (expected {0}…, 
+实际 {0}…）	actual {0}…)
+先填一个令牌再验证	Enter a token before verifying
+令牌无效、已过期或已被撤销（HTTP 401）	The token is invalid, expired or revoked (HTTP 401)
+令牌本身有效，但这个 IP 的配额刚好用完了，一小时后再试	The token itself is valid, but this IP's quota is used up; try again in an hour
+令牌被拒绝（HTTP 403）—— fine-grained 令牌需要至少 Public repositories 的读权限	The token was rejected (HTTP 403) — fine-grained tokens need at least public repository read access
+GitHub 返回 HTTP {0}	GitHub returned HTTP {0}
+（仓库只读，账号名不可见）	(read-only repository, account name not visible)
+令牌有效：{0}　·　配额 {1}/小时，当前剩余 {2}	Token valid: {0} · quota {1}/hour, {2} left
+验证超时，检查一下网络或代理	Verification timed out — check the network or proxy
+验证失败：	Verification failed: 
+WMI（内置屏）	WMI (built-in panel)
+DDC/CI（外接屏）	DDC/CI (external monitor)
+不支持	not supported
+未探测	not probed
+没找到能调亮度的显示器：外接屏要在显示器菜单里把 DDC/CI 打开（有的型号叫「显示器控制」），笔记本内置屏需要显卡驱动正常	No monitor that supports brightness was found: for external screens enable DDC/CI in the monitor menu (some models call it Monitor Control), and a laptop's built-in panel needs a working graphics driver
+没找到支持 DDC/CI 的显示器，请确认显示器菜单里的 DDC/CI 已开启	No DDC/CI-capable monitor found — make sure DDC/CI is enabled in the monitor menu
+显示器（{0}）没有响应亮度命令 —— 常见于 HDMI 转接器 / KVM / 扩展坞不透传 DDC，换直连试试	The display ({0}) does not answer brightness commands — common with HDMI adapters / KVMs / docks that do not pass DDC through; try a direct connection
+亮度命令没有生效，请把日志里的「[亮度]」几行发出来	The brightness command had no effect — please send the [Brightness] lines from the log
+通道：	Channel: 
+WMI：内置屏	WMI: built-in panel
+DDC 屏{0}：{1}，量程 0~{2}	DDC display {0}: {1}, range 0~{2}
+读取音量失败：	Failed to read the volume: 
+写入音量失败：	Failed to set the volume: 
+读取静音状态失败：	Failed to read the mute state: 
+写入静音状态失败：	Failed to set the mute state: 
+初始化音频接口失败：	Failed to initialise the audio interface: 
+{0} (无标题)	{0} (untitled)
+请直接使用 MacroRecorder 属性	use the MacroRecorder property directly
+ 已启用	 enabled
+ 已暂停	 paused
+配置已重新加载	Settings reloaded
+同步：	Sync: 
+键盘钩子已自动恢复	Keyboard hook recovered automatically
+ 已启动	 started
+打开设置…	Open settings…
+打开 Qbar  (Caps+{0})	Open Qbar  (Caps+{0})
+计算器  (Caps+F2)	Calculator  (Caps+F2)
+窗口绑定（按键映射页）	Window binding (key mapping page)
+重新加载配置  (Caps+F5)	Reload settings  (Caps+F5)
+，或按 {0}+{1} 打开搜索面板	, or press {0}+{1} to open the search panel
+按住 {0} 即可使用层内绑定{1}。	Hold {0} to use the bindings in your layer{1}.
+按住 {0} 试试 {1}{2}。	Hold {0} and try {1}{2}.
+按住触发键即可使用全部功能。	Hold the trigger key to use every feature.
+暂停 {0}	Pause {0}
+恢复 {0}	Resume {0}
+大写锁定：开	Caps lock: on
+大写锁定：关	Caps lock: off
+{0}（双击打开设置）	{0} (double-click to open settings)
+{0} 已暂停（双击打开设置）	{0} is paused (double-click to open settings)
+正在读取配额…	Reading the quota…
+配额暂时读不到（	Quota unavailable for now (
+按你的账号	your account
+匿名（按 IP）	anonymous (by IP)
+还剩 {0} 次	{0} left
+已用完，整点恢复	used up, resets on the hour
+本小时已用 {0} 次 / 共 {1} 次（{2} · {3}）	{0} used this hour / {1} in total ({2} · {3})
+已保存（令牌不回显）　·　更新检查按账号限流，可以自动下载安装。	Saved (the token is never echoed back)  ·  update checks use your account quota and can download and install automatically.
+输入新令牌会覆盖它。令牌会跟着备份和导出一起走。	Entering a new token replaces it. The token travels with backups and exports.
+未填写　·　匿名访问每小时只有 60 次（同一网络下多台机器共用），容易撞上限。	Not set  ·  anonymous access allows only 60 requests per hour (shared by machines on the same network), which is easy to hit.
+填了才能一键自动下载；不填也行 —— 发现新版本时只提示、并给出 GitHub 下载地址，	Set one to enable one-click auto download; you can skip it — a new version only triggers a notice plus a GitHub download address,
+程序内不提供下载按钮。只读公开仓库不需要勾任何权限。	with no in-app download button. Read-only access to public repositories needs no extra scopes.
+令牌会跟着加密备份和网盘同步一起走，换台机器恢复后不用重新填。	The token travels with encrypted backups and WebDAV sync, so a restore elsewhere needs no re-entry.
+先把令牌粘进左边的输入框，再点「验证」。	Paste the token into the box on the left first, then click "Verify".
+正在验证已保存的令牌…	Verifying the saved token…
+正在用这个令牌请求 GitHub…	Requesting GitHub with this token…
+　（这就是已保存的令牌）	 (this is the saved token)
+　—— 点「保存」把它存下来	 — click "Save" to keep it
+令牌没有改动，仍是已保存的那个（不回显）。	The token is unchanged and still the saved one (never echoed).
+要换新的，直接在输入框里输入或粘贴即可。	To replace it, just type or paste in the box.
+输入框里只有占位圆点，先把新令牌粘进来。	The box only holds placeholder dots; paste the new token first.
+输入框是空的 —— 要清掉已保存的令牌请点「清除」。	The box is empty — to remove the saved token, click "Clear".
+这个看起来不像 GitHub 令牌（通常以 ghp_ 或 github_pat_ 开头），	This does not look like a GitHub token (they usually start with ghp_ or github_pat_),
+但已经按你填的保存了 —— 如果检查更新报「令牌无效」，回头核对一下。	but it was saved as entered — if update checks report an invalid token, double-check it.
+令牌已保存，更新检查改用你的账号配额（5000 次/小时）	Token saved; update checks now use your account quota (5000 per hour)
+清除后更新检查会回到匿名访问（每小时 60 次），发现新版本时也不再自动下载，	After clearing, update checks return to anonymous access (60 per hour) and new versions no longer download automatically —
+只提示并给出下载地址。\n\n已保存的令牌会被删掉，需要重新填。	only a notice and a download address.\n\nThe saved token is deleted and must be entered again.
+清除 GitHub 令牌？	Clear the GitHub token?
+已清除令牌，更新检查回到匿名访问	Token cleared; update checks are back to anonymous access
+打开链接	Open link
+已开启自动更新	Automatic updates on
+已关闭自动更新	Automatic updates off
+正在检查更新…	Checking for updates…
+已是最新版本（{0}）	Already up to date ({0})
+ —— 没填 GitHub 令牌，不能自动下载，请点下面的地址用浏览器下载	 — no GitHub token is set, so automatic download is unavailable; use the address below in your browser
+正在下载 {0}…	Downloading {0}…
+下载完成，正在替换并重启…	Download finished; replacing and restarting…
+替换失败，请手动下载安装包	Replacement failed; please download the installer manually
+打开下载页	Open download page
+还没同步过	Never synced
+上次同步：{0:yyyy-MM-dd HH:mm}　{1}	Last sync: {0:yyyy-MM-dd HH:mm} {1}
+⚠ 本地数据还是明文 —— 设一个「备份密码」就会立刻转成密文（AES-256-GCM）。	⚠ Local data is still plaintext — set a backup password and it is converted to ciphertext (AES-256-GCM) immediately.
+✓ 本地数据已加密（AES-256-GCM，密钥由备份密码派生）	✓ Local data is encrypted (AES-256-GCM, key derived from the backup password)
+✓ 本地数据已加密，但本次会话还没解锁 —— 修改不会被保存，解锁后恢复正常。	✓ Local data is encrypted but this session is not unlocked — changes will not be saved until you unlock.
+还没有本地备份。点「现在就备份一次」会生成一份 {0} 文件。	No local backup yet. Click "Back up now" to create a {0} file.
+本地 {0} 份（{1} 份已加密，共 {2:0.#} KB）	{0} local ({1} encrypted, {2:0.#} KB total)
+，最近一份 {0:MM-dd HH:mm}。	, latest {0:MM-dd HH:mm}.
+已关闭本地加密：数据恢复为明文存储。	Local encryption turned off: data is stored as plaintext again.
+已启用本地加密：设置、宏、按键绑定、窗口绑定全部改为 AES-256-GCM 密文存储，	Local encryption enabled: settings, macros, key bindings and window bindings are now stored as AES-256-GCM ciphertext,
+文件拷到别的电脑也打不开。日常启动不需要输密码（密钥用 Windows DPAPI 缓存）。	so the files cannot be opened on another PC. Daily launches need no password (the key is cached by Windows DPAPI).
+密码已更新，本地数据已用新密钥重新加密。	Password updated; local data was re-encrypted with the new key.
+加密失败：	Encryption failed: 
+本地数据已加密（AES-256-GCM）：设置、宏、按键绑定、窗口绑定都以密文存储。	Local data is encrypted (AES-256-GCM): settings, macros, key bindings and window bindings are all stored as ciphertext.
+✗ 自动备份需要先设「备份密码」—— 备份必须是密文。	✗ Automatic backup needs a backup password first — backups must be ciphertext.
+✓ 已开启自动备份：每 {0} 分钟一次（配置没变化会跳过）	✓ Auto backup on: every {0} min (skipped when the config has not changed)
+已关闭自动备份。	Automatic backup turned off.
+✓ 已只保留最近 {0} 份，清掉 {1} 份旧备份	✓ Keeping only the latest {0}; removed {1} old backups
+✓ 保留份数改为 {0}，暂时没有需要清理的	✓ Keeping {0} backups now — nothing to clean up yet
+✓ 已关闭按天数清理，只按份数保留	✓ Age-based cleanup is off; only the count limit applies
+✓ 已清掉 {0} 份 {1} 天前的备份（最新一份永远保留）	✓ Removed {0} backups older than {1} days (the latest one is always kept)
+✓ 清理天数改为 {0} 天，暂时没有超期的备份	✓ Cleanup age set to {0} days — nothing is overdue yet
+正在连接…	Connecting…
+✗ 请先填 WebDAV 地址	✗ Enter the WebDAV address first
+正在上传…	Uploading…
+已恢复	Restored
+已从备份恢复配置	Settings restored from backup
+✓ 已备份到 {0}（已加密）	✓ Backed up to {0} (encrypted)
+还没填 WebDAV 地址，云端没有可恢复的备份。\n\n	No WebDAV address is set, so there are no cloud backups to restore.\n\n
+先在上面填好地址与账号，点「测连接」确认能用。	Fill in the address and account above, then click "Test connection" to confirm it works.
+云端未配置	Cloud not configured
+正在读取云端备份清单…	Reading the cloud backup list…
+已从云端恢复	Restored from the cloud
+清理 7 天前的备份	Remove backups older than 7 days
+删除本地和云端**早于 7 天**的备份。\n\n	Delete local and cloud backups **older than 7 days**.\n\n
+· 本地目录：{0}\n	· Local folder: {0}\n
+· 云端：同样按时间清理\n	· Cloud: cleaned by age as well\n
+· 云端：未配置，这次只清本地\n	· Cloud: not configured, so only local backups are cleaned\n
+\n最新一份始终保留；当前正在用的配置不受影响。	\nThe newest one is always kept, and the settings in use are never touched.
+只保留最近 10 份备份	Keep only the newest 10 backups
+本地和云端都只保留**最新 10 份**，更旧的删掉。\n\n	Keep only the **newest 10** locally and in the cloud, deleting older ones.\n\n
+· 本地与云端一起处理\n	· Local and cloud are handled together\n
+· 云端未配置，这次只清本地\n	· Cloud not configured, so only local backups are cleaned\n
+清除云端冗余数据	Remove redundant cloud data
+只清理**云端**目录里这些东西：\n\n	Only these items in the **cloud** folder are removed:\n\n
+· 上传中断的残留（.tmp / .part / .crdownload / ~$ 开头）\n	· leftover fragments from interrupted uploads (.tmp / .part / .crdownload / ~$)\n
+· 0 字节或小于 64 字节的文件\n	· files of 0 bytes or under 64 bytes\n
+· 内容完全重复的备份（只留最新那份）\n	· backups with identical contents (only the newest is kept)\n
+· 打不开的：既不是加密备份，也不是明文导出\n\n	· unreadable ones: neither an encrypted backup nor a plaintext export\n\n
+本地备份目录不会被动 —— 那里可能有你自己的文件。	The local backup folder is left alone — it may hold your own files.
+开始清理	Start cleanup
+正在清理…	Cleaning…
+ · 完成	 · done
+ · 失败	 · failed
+勾选了隐私内容（{0}），导出必须加密 —— 	Privacy groups selected ({0}), so export has to be encrypted — 
+这些组里有网盘密码、备份密码这类凭据，明文文件被转发就等于把凭据送出去。	These groups contain credentials such as the WebDAV and backup passwords; forwarding a plaintext file hands them over.
+加密导出：用备份密码把文件变成密文	Encrypted export: turn the file into ciphertext with the backup password
+明文	plain text
+不加密，任何人拿到都能读 —— 里面的 GitHub 令牌也看得见，别公开分享。	No encryption — anyone who gets the file can read it, including the GitHub token. Do not share it publicly.
+为免更严重的泄露，仍会剔除网盘密码与备份密码。	To avoid a worse leak, the WebDAV and backup passwords are still stripped.
+一项都没勾，没什么可导出的。	Nothing is ticked, so there is nothing to export.
+还没有「备份密码」，没法加密导出。\n\n	No backup password yet, so an encrypted export is not possible.\n\n
+可以先去上面的「备份密码」里设一个（本地数据也会一起变成密文），\n	Set one under "Backup password" above (local data becomes ciphertext as well),\n
+或者关掉「加密导出」改用明文导出。	or turn off "Encrypted export" and export as plaintext.
+需要先设密码	Set a password first
+勾选了隐私内容（{0}），只能用加密导出。\n\n	Privacy groups selected ({0}); only encrypted export is allowed.\n\n
+必须加密导出	Encrypted export required
+\n\n注意：这份文件里包含你的 GitHub 个人访问令牌，以及全部已勾选的配置。	\n\nNote: this file contains your GitHub personal access token and every ticked group of settings.
+这次是明文导出，谁拿到文件都能读到内容。	This is a plaintext export; anyone who gets the file can read it.
+\n\n（网盘密码与备份密码仍会剔除）确定要继续吗？	\n\n(The WebDAV and backup passwords are still stripped.) Continue?
+明文导出	Plaintext export
+继续导出	Continue export
+导出配置（加密）	Export settings (encrypted)
+导出配置（明文）	Export settings (plaintext)
+KeyboardEnhance配置({0:yyyy-MM-dd HH-mm-ss}){1}	KeyboardEnhance config ({0:yyyy-MM-dd HH-mm-ss}){1}
+KeyboardEnhance 配置|*{0}|所有文件|*.*	KeyboardEnhance config|*{0}|All files|*.*
+已导出（加密，{0} 个设置项，含令牌与全部字段）	Exported (encrypted, {0} settings, token and every field included)
+已导出（明文，{0} 个设置项，含令牌）	Exported (plaintext, {0} settings, token included)
+已导出到：{0}\n共 {1} 个设置项，包含 {2} 个分组。\n	Exported to: {0}\n{1} settings across {2} groups.\n
+文件是密文，导入时需要同一个备份密码。	The file is ciphertext; importing needs the same backup password.
+这是明文文件：里面的 GitHub 令牌与配置都能被直接读到，别公开分享。	This is a plaintext file: its GitHub token and settings can be read directly. Do not share it publicly.
+导出失败：	Export failed: 
+导入配置（导出文件或备份文件都行）	Import settings (an export or a backup file both work)
+KeyboardEnhance 配置|*{0};*{1}	KeyboardEnhance config|*{0};*{1}
+|导出的配置 (*{0})|*{1}	|Exported config (*{0})|*{1}
+|备份文件 (*{0})|*{1}	|Backup file (*{0})|*{1}
+|所有文件|*.*	|All files|*.*
+这份导出是加密的	This export is encrypted
+请输入导出它时用的备份密码。	Enter the backup password used when it was exported.
+用这个密码导入	Import with this password
+已取消导入：没有输入这份文件当时的密码。	Import cancelled: the password used for this file was not entered.
+这份导出里没有认得的分组，可能来自别的版本。	This export has no recognised groups; it may come from another version.
+这是一份**备份文件**（整份配置，不是按项导出）。\n\n	This is a **backup file** (a whole configuration, not a per-group export).\n\n
+导入会按整份配置覆盖对应的项；导入前建议先点「现在就备份一次」。\n\n继续吗？	Importing overwrites the matching items with the whole configuration; back up first with "Back up now".\n\nContinue?
+将导入以下内容（会覆盖当前对应的项）：\n\n　{0}\n\n继续吗？	The following will be imported (it overwrites the matching items):\n\n {0}\n\nContinue?
+导入备份文件	Import backup file
+导入	Import
+导入成功：{0} 个分组\n　{1}	Imported: {0} groups\n  {1}
+已导入 {0} 个分组的配置	Imported settings from {0} groups
+导入失败：	Import failed: 
+导入失败	Import failed
+剪贴板 1 是空的	Clipboard 1 is empty
+剪贴板 2 是空的	Clipboard 2 is empty
+已粘贴	Pasted
+已暂停	Paused
+按住 CapsLock 即可使用全部功能	Hold CapsLock to use every feature
+点击标题栏的「恢复」重新启用	Click "Resume" in the title bar to re-enable
+已开启	On
+搜索 / 启动程序 / 计算	Search / launch / calculate
+独立的第二个剪贴板	A separate second clipboard
+不会覆盖系统剪贴板	Never overwrites the system clipboard
+光标左移	Caret left
+D E F 分别对应下 / 上 / 右	D E F map to down / up / right
+J K L 对应左 / 下 / 右	J K L map to left / down / right
+退格（删前一个字符）	Backspace (delete the previous character)
+R 是删除（删后一个字符）	R is delete (removes the next character)
+计算 / 展开	Calculate / expand
+把光标前的算式算出结果	Evaluate the expression before the caret
+窗口置顶	Always on top
+再按一次取消	Press again to cancel
+（未设置）	(not set)
+还没有触发键 —— 到「触发键与层」页给某一层分配一个。	No trigger key yet — assign one to a layer on the "Trigger keys and layers" page.
+每一层可以用不同的触发键，速查表按层分列。	Each layer can use a different trigger key; the cheat sheet is grouped by layer.
+① 触发键与图层	① Trigger keys and layers
+按住触发键（默认 CapsLock）就是「功能键」，此时再按其他键会执行你在「按键映射」里配的功能。	Holding the trigger key (CapsLock by default) makes it a function key; pressing another key then runs whatever you set up on "Key mapping".
+一共 10 个图层，每层可以有**自己的触发键**（CapsLock、F13、右 Alt…），互不干扰。	Ten layers, each with **its own trigger key** (CapsLock, F13, right Alt…), fully independent.
+触发键只能是单个按键 —— 组合键留给层内绑定用，避免「同样按 Ctrl+K，到底算触发还是算绑定」的歧义。	A trigger key must be a single key — combos are reserved for layer bindings, so there is no ambiguity about whether Ctrl+K triggers a layer or runs a binding.
+当前配置：{0} 个启用的触发键。	Current setup: {0} enabled trigger keys.
+② 子层（层内修饰键）	② Sub-layers (layer modifiers)
+进入某一层后，再按住修饰键（Ctrl / Shift / Alt / Win 及其组合），可以用到**另一套独立绑定**。	Inside a layer, holding a modifier (Ctrl / Shift / Alt / Win or a combination) gives you **a second independent set of bindings**.
+每层最多 10 个子层，在「按键映射」页点「设置子层…」自由勾选。	Up to 10 sub-layers per layer; tick them under "Configure sub-layers…" on "Key mapping".
+例：基础层按 Q 打开面板，按住 Ctrl 再按 Q 则可以是「删除前一个单词」。	For example: Q opens the panel in the base layer, while Ctrl+Q can delete the previous word.
+每个子层都有独立的按键绑定，互不覆盖。	Each sub-layer has its own bindings and none of them overwrite each other.
+③ 按键映射	③ Key mapping
+左半是完整 108 键键盘：点任意键即可编辑它的功能，修改立刻生效。	The left half is a full 108-key keyboard: click any key to edit its function, and changes apply at once.
+深蓝色键帽 = 已绑定功能；浅蓝色 = 未绑定。键帽上方的小字是**功能分类**，中间是功能名，下方是键名。	Dark blue keycaps are bound; light blue are unbound. The small text above a keycap is its **category**, the middle is the action name and the bottom is the key name.
+右侧「编辑绑定」顶部的搜索框可以按功能名、分类、宏名、网址快速找到要绑的功能。	The search box at the top of "Edit binding" on the right finds actions by name, category, macro name or URL.
+「分类」决定功能下拉里显示哪一类；「窗口绑定」「直达链接」「输入文本」这三类会换成专用的编辑界面。	"Category" decides which group the function drop-down shows; "Window binding", "Direct links" and "Type text" switch to a dedicated editor.
+④ 窗口绑定	④ Window binding
+分类选「窗口绑定」后，有两个按钮：点选窗口（准星点一下已开的窗口）或选择程序文件。	With "Window binding" selected there are two buttons: pick a window (click an open window with the crosshair) or choose a program file.
+绑定后按该键：程序没开就自动启动，已开着就切过去，已经在前台再按一次会最小化。	Once bound, pressing the key launches the app if needed, switches to it if it is open, and minimises it if it is already in front.
+exe 名不一定是软件名（idea64.exe 是 IDEA），可以在「显示名称」里改成你认得的名字。	An exe name is not always the product name (idea64.exe is IDEA); rename it to something you recognise under "Display name".
+⑤ 直达链接	⑤ Direct links
+这里有两种用法，别混：一种是「先填好、按键就开」，一种是「选中什么就开什么」。	Two different uses — do not mix them up: "fill it in and the key opens it" and "open whatever is selected".
+【先填好】分类选「直达链接」，再选类型：直达网址用默认浏览器打开，直达文件夹在资源管理器里打开，直达文件用系统默认程序打开（和双击一样）。	[Fill it in] Choose "Direct links", then a type: a direct URL opens in the default browser, a direct folder in Explorer, a direct file in its default app (like double-clicking).
+网址写成 github.com 也行，会自动补 https://；填完会自动抓网页标题当备注。文件夹和文件都能点「浏览…」直接挑。	A URL can be written as github.com; https:// is added automatically, and the page title is fetched as the note. Folders and files can be picked with "Browse…".
+路径支持 %USERPROFILE%\\Desktop、~\\Downloads、shell:Downloads 这些写法；备注会显示在键帽上，不写备注时显示域名 / 文件夹名 / 文件名。	Paths accept %USERPROFILE%/Desktop, ~/Downloads and shell:Downloads; the note shows on the keycap, and without one the domain / folder name / file name is used.
+【选中什么就开什么】分类选「智能直达」（这一类里只有它一个动作）：在任意程序里选中一段文字，按这个键 —— 是网址就开浏览器、是文件夹就开资源管理器、是文件就用默认程序打开。不用预先配置。	[Open whatever is selected] Choose "Smart open" (the only action in that category): select some text in any app and press this key — a URL opens the browser, a folder opens Explorer, a file opens in its default app. No setup needed.
+智能识别支持带协议的网址、裸域名、盘符路径、UNC 网络路径、环境变量路径，以及 file:/// 开头的地址；选中普通句子时会明确告诉你「这不是链接」，不会乱开浏览器。	Detection covers URLs with a scheme, bare domains, drive paths, UNC network paths, environment-variable paths and file:/// addresses; selecting an ordinary sentence tells you plainly that it is not a link instead of opening the browser.
+⑤b 自定义按键	⑤b Custom key
+分类选「自定义按键」：设一个要发送的键 + 一个应用。按这个键时先看应用在不在运行 —— 在运行就直接把键发过去，没运行就先启动它、等窗口出来再发。	Choose "Custom key": set a key to send plus an app. Pressing the key first checks whether the app is running — if so the key goes straight to it, otherwise the app is launched and the key is sent once its window appears.
+典型用法：把 F13 绑给微信，按一下就切到微信并按 F13；或者把某个键绑给常驻的笔记软件，按下去直接在里面触发它的快捷键。	Typical use: bind F13 to WeChat and one press switches to WeChat and sends F13; or bind a key to an always-on notes app and trigger its shortcut from anywhere.
+「以管理员身份启动」只在需要拉起这个程序时生效，会弹一次 UAC；程序本来就在跑时不受影响。	"Launch as administrator" only applies when the app has to be launched, and shows one UAC prompt; a running app is unaffected.
+「把应用主窗口切到前台」默认关：不动它的窗口，按键直接交给系统（应用把它注册成全局热键时后台也能收到）；开了会先切前台再发键，但会抢走焦点。	"Bring the app's main window to the foreground" is off by default: its windows are left alone and the key goes to the system (so a global hotkey still registers in the background). Turning it on brings the window forward first, but steals focus.
+「启动后等多久再发键」默认 900 毫秒 —— 窗口出现不代表能收键盘，大型软件要调大。	"How long to wait before sending" defaults to 900 ms — a visible window does not mean it accepts input, and big apps need more.
+备注会显示在键帽上；不填时显示绑定的应用名。	The note shows on the keycap; without one the bound app's name is used.
+⑥ 直接搜索	⑥ Direct search
+分类选「直接搜索」，再挑一个搜索引擎（百度、知乎、B站、Google…）。	Choose "Direct search", then pick a search engine (Bing, Baidu, Google…).
+用法：在任意程序里选中一段文字，按这个键 —— 直接用该引擎在默认浏览器里搜索。	Usage: select some text in any app and press this key to search for it with that engine in your default browser.
+不经过 Qbar 面板，是「看到就查」的最快路径。没选中文字时会提示先选中。	It skips the Qbar panel — the fastest path when you see something and want to look it up. With nothing selected it tells you to select something first.
+它和「Qbar 搜索」的区别：Qbar 搜索是打开面板再输入；直接搜索是拿选区直接搜。	How it differs from "Qbar search": Qbar search opens the panel for you to type; direct search searches the selection as is.
+⑦ 宏	⑦ Macros
+「宏」页可以录制一串按键操作，然后把整个宏绑到一个键上。	The "Macros" page records a sequence of key presses, then binds the whole macro to one key.
+录制中的按键不会被拦截，录完在列表里可以调整每一步的延迟。	Keystrokes are not intercepted while recording, and each step's delay can be tuned in the list afterwards.
+绑定时分类选「宏」，再从功能下拉里选具体那个宏。	When binding, choose the "Macros" category and then the specific macro from the function drop-down.
+当前配置：{0} 个宏。	Current setup: {0} macros.
+⑧ 剪贴板与同步	⑧ Clipboard and sync
+内置 10 组独立剪贴板（Caps+C / Caps+V 那一套），与系统剪贴板分开。	Ten separate clipboards are built in (the Caps+C / Caps+V set), kept apart from the system clipboard.
+所有用户数据都在软件旁边的「KeyboardEnhance Data」文件夹里，备份在「KeyboardEnhance Back」里 —— 拷走整个文件夹就带走了软件和全部数据。	All user data lives in the "KeyboardEnhance Data" folder next to the app, with backups in "KeyboardEnhance Back" — copy that folder and you take the app plus all data.
+本地数据一律加密（AES-256-GCM），密钥由「备份密码」派生；没设密码时是明文，设了会立刻转成密文。	Local data is always encrypted (AES-256-GCM) with a key derived from the backup password; without a password it stays plaintext, and setting one converts it immediately.
+「同步与备份」支持 WebDAV：可以把整套配置同步到网盘，也能导入导出。导出默认加密、含全部字段；关掉加密则是明文，会剔除密码类字段。	"Sync and backup" supports WebDAV: the whole configuration can be synced to cloud storage, imported and exported. Exports are encrypted and complete by default; disabling encryption makes them plaintext and strips password fields.
+⑨ 常见问题	⑨ FAQ
+改了按键没生效？确认当前在正确的层（看键盘上方的层下拉），以及引擎没有处于「暂停」状态。	Changed a key and nothing happened? Check that you are in the right layer (see the layer drop-down above the keyboard) and that the engine is not paused.
+锁屏（Win+L）后热键失效是系统限制 —— 锁屏界面在独立的安全桌面上，任何程序都无法在上面拦截键盘。	Hotkeys not working after locking (Win+L) is a system limit — the lock screen runs on a separate secure desktop where no app can intercept the keyboard.
+开机自启在「设置」里开关；它写入的是当前用户的注册表，不需要管理员权限。	Start with Windows is toggled in Settings; it writes to the current user's registry and needs no administrator rights.
+第{0}层	layer {0}
+短按触发键	Tap the trigger key
+不按其他键时松开的默认行为，可在「触发键与层」里改	The default when you release without pressing another key; change it under "Trigger keys and layers"
+双击触发键	Double-tap the trigger key
+{0} 毫秒内连按两下	double-tap within {0} ms
+Qbar 内	In Qbar
+↑ ↓ 选择	↑ ↓ select
+Enter 执行，Esc 关闭，Tab 补全	Enter runs, Esc closes, Tab completes
+直接计算并把结果复制到剪贴板	Evaluate immediately and copy the result to the clipboard
+自定义按键（还没配好）	Custom key (not configured yet)
+把 {0} 发给 {1}	Send {0} to {1}
+（需要时以管理员身份启动）	 (launches as administrator when needed)
+，会先切到前台	, brings it to the foreground first
+切到 {0}（再按一次最小化）	Switch to {0} (press again to minimise)
+打开 	Open 
+打开文件夹 	Open folder 
+打开文件 	Open file 
+输入文本（内容已隐藏）	Type text (content hidden)
+输入文本 · 	Type text · 
+{0}（参数 {1}）	{0} (argument {1})
+重新设置…	Set up again…
+已找到：{0}（进程名 {1}）	Found: {0} (process name {1})
+按进程名「{0}」匹配（没有填完整路径）	Matched by process name "{0}" (no full path given)
+这个路径现在不存在 —— 按下去会启动失败	This path does not exist right now — pressing the key will fail to launch
+按这个键时：先看「{0}」在不在运行 —— 	On this key: first check whether "{0}" is running — 
+在运行就直接把键发过去；没运行就先启动它（	If it is running the key goes straight to it; otherwise it is launched first (
+以管理员身份	as administrator
+普通权限	normal privileges
+），等窗口出来再发键。	) and the key is sent once its window appears.
+还差：	Still missing: 
+「要发送的键」	the key to send
+ 和 	 and 
+「绑定应用」	the target app
+已设置要发送的键：{0}	Key to send: {0}
+选择要绑定的程序	Choose the program to bind
+程序 (*.exe)|*.exe|所有文件 (*.*)|*.*	Programs (*.exe)|*.exe|All files (*.*)|*.*
+已绑定应用：{0}	App bound: {0}
+把基础层的按键全部恢复成默认值？\n	Restore every base-layer key to its default?\n
+· 你在这一层改过的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n	· Bindings you changed in this layer will be overwritten (function, argument, URL, text, program, note);\n
+· 你自己新增的组合键会保留，其它 9 层完全不动；\n	· Combos you added yourself are kept, and the other 9 layers are untouched;\n
+· 这一步不能撤销。	· This cannot be undone.
+恢复默认按键	Restore default keys
+按键映射已恢复默认	Key mapping restored to defaults
+已保存要输入的文字：「{0}」	Text to type saved: "{0}"
+备注已清空，键帽改显示文字开头	Note cleared; the keycap now shows the start of the text
+备注已保存：「{0}」—— 键帽上会显示这个名字	Note saved: "{0}" — this name shows on the key cap
+未识别	Not recognised
+网址、文件夹、文件都能填在这里，类型会自动识别，不用自己选。	A URL, folder or file all go here; the type is detected for you.
+识别为网址 —— 按这个键用默认浏览器打开（会打开 {0}）	Recognised as a URL — this key opens it in the default browser (opens {0})
+识别为网址 —— 按这个键用默认浏览器打开	Detected a URL — the key opens it in your default browser
+识别为文件夹，路径存在 —— 按这个键在资源管理器里打开它	Detected a folder that exists — the key opens it in Explorer
+识别为文件，文件存在 —— 按这个键用系统默认程序打开（和双击一样）	Detected a file that exists — the key opens it in its default app (like double-clicking)
+识别为文件夹，但路径现在不存在 —— 按下去会提示「文件夹不存在」	Detected a folder, but the path is missing — pressing the key reports "folder not found"
+识别为文件，但文件现在不存在 —— 按下去会提示「文件不存在」	Detected a file, but it is missing — pressing the key reports "file not found"
+看不出这是网址还是路径 —— 网址可以直接粘（github.com 也行）；	Cannot tell whether this is a URL or a path — a URL can be pasted directly (github.com works too);
+本地路径用 D:\\ 开头，或点「浏览…」挑一个	Start a local path with "D:", or click "Browse…" to pick one
+正在获取网页标题…	Fetching the page title…
+没能取到标题（网站在线吗？），可以直接手写备注。	Could not fetch the title (is the site up?); you can type the note yourself.
+取到标题「{0}」，但你已有备注，保留你的。	Got the title "{0}", but you already have a note — keeping yours.
+已取到标题：{0}（可以改）	Title captured: {0} (editable)
+先填一个网址，再取标题。	Fill in a URL first, then fetch the title.
+按这个键：程序没开就自动启动；已开着就切过去；	Pressing the key launches the app if needed, switches to it if it is open,
+已经在前台时再按一次会最小化。	and minimises it when it is already in front.
+{0}（文件不存在）	{0} (file not found)
+这个程序已经不在了，重新选一个吧。	That program is gone; pick another one.
+点下面任一按钮选择要绑定的程序	Use any button below to pick the app to bind
+显示名称已保存：「{0}」—— 键帽上会显示这个名字	Display name saved: "{0}" — this name shows on the key cap
+{0} 已绑定「{1}」—— 按一次切过去，再按一次最小化	{0} is bound to "{1}" — press once to switch to it, again to minimise
+程序 (*.exe)|*.exe|所有文件|*.*	Programs (*.exe)|*.exe|All files|*.*
+取不到这个窗口的程序路径，改用「选择程序文件」试试	Cannot read this window's program path; try "Choose program file" instead
+音量	Volume
+亮度	Brightness
+留空 = 用设置里的 {0}%：按一次{1}变 {2}%	Empty = use {0}% from settings: one press {1} to {2}%
+（系统每档 2%，会按次数平均凑成 {0}%）	(the system moves 2% per step; presses are averaged to reach {0}%)
+按一次{0}变 {1}%{2}；按住不放仍按 1% 细调	One press {0} to {1}%{2}; hold to fine-tune in 1% steps
+{0} 已清除绑定	{0} unbound
+这个按键还没有绑定功能	This key has no action bound yet
+直接按	Press directly
+触发键 {0}（键盘上已高亮）	Trigger key {0} (highlighted on the keyboard)
+（没有触发键指向这一层）	(no trigger key points at this layer)
+　·　点上方的「直接按」回到普通键	  ·  click "Press directly" above to go back to a normal key
+当前：第 {0} 层「{1}」{2}（{3} 个绑定）	Current: layer {0} "{1}"{2} ({3} bindings)
+短按触发键：{0}　·　点键盘上任意键即可修改它的功能，修改立刻生效。	Tap trigger key: {0} · Click any key above to change its action; changes apply immediately.
+这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。	Bindings in this layer are independent of the other layers. To change the tap action, go to "Trigger keys & layers".
+没有触发键	No trigger key
+这一层还没分配触发键，去「触发键与层」页设置	This layer has no trigger key yet; set one on "Trigger keys and layers"
+按住 	Hold 
+　← 长按 {0}	 ← hold {0}
+　（未分配触发键）	  (no trigger key assigned)
+★ {0} = 本层触发键\n长按它进入这一层；短按执行短按动作	★ {0} = trigger key for this layer\nHold it to enter this layer; tap it for the tap action
+{0}（未绑定）	{0} (unbound)
+进入层后直接按的键	The key pressed inside the layer
+进入层后再按住 {0} 按的键	Keys pressed after entering this layer and holding {0}
+「{0}」现有 {1} 个子层	"{0}" now has {1} sublayers
+程序路径或命令	Program path or command
+起始符号	Opening symbol
+音量步进（%）	Volume step (%)
+亮度步进（%）	Brightness step (%)
+次数 / 参数	Count / argument
+例如 https://github.com	e.g. https://github.com
+例如 notepad.exe	e.g. notepad.exe
+例如 ( 会把选中文字变成 (文字)	e.g. ( turns the selected text into (text)
+按一次调多少音量：留空 = 用设置里的 {0}%。	How much to change the volume per press: leave empty to use {0}% from settings.
+按住不放时会自动切成 1% 细调，一路平滑地加上去	Holding switches to 1% fine steps and keeps climbing smoothly
+按一次调多少亮度：留空 = 用设置里的 {0}%。	How much to change the brightness per press: leave empty to use {0}% from settings.
+不填默认 1，填 5 表示一次移动 5 个字符	Empty means 1; 5 moves five characters at a time
+微信	WeChat
+切换窗口（未选程序）	Switch window (no app selected)
+播放宏：	Play macro: 
+选定一个程序后：按一下切过去，再按一次最小化；程序没开就自动启动。	With an app selected: press once to switch to it, again to minimise it; launches it if it is not running.
+选「直达网址」就用默认浏览器打开网址；选「直达文件夹」就在资源管理器里打开那个目录；选「直达文件」就用系统默认程序打开它。备注会显示在键帽上。	Choose "Direct URL" to open the URL in the default browser; "Direct folder" to open that directory in Explorer; "Direct file" to open it in its default app. The note shows on the keycap.
+填一段文字：按这个键就把它直接输入到当前光标处。	Enter some text: the key types it at the current caret.
+先把要发送的键和应用绑好。按这个键时会先看应用在不在运行：	Bind the key to send and the app first. Pressing the key checks whether the app is running:
+在运行就直接把键发过去，没运行就先把它拉起来再发。	if so the key goes straight to it, otherwise the app is started and the key is sent after that.
+选择要直达的文件夹	Choose the folder to open
+文件夹已设置：{0}	Folder set: {0}
+选择要直达的文件	Choose the file to open
+所有文件|*.*	All files|*.*
+文件已设置：{0}	File set: {0}
+正常	normal
+未启动	Not started
+按住中	Held
+▼ 触发键按下	▼ trigger key down
+▲ 触发键松开	▲ trigger key up
+进层中	In layer
+回基础层	Back to base layer
+等待长按 / 组合键	Waiting for hold / combo
+层已退出	Layer exited
+（未识别的键）	(unrecognised key)
+这一层没有绑定表	This layer has no binding table
+（带修饰键）	(with modifiers)
+（未绑定）	(unbound)
+已清空	Cleared
+  （没有 —— 按住任何键都不会进层）	  (none — holding any key will not enter a layer)
+最近按键：	Recent keys: 
+诊断信息已复制到剪贴板	Diagnostics copied to the clipboard
+复制失败：	Copy failed: 
+触发键 {0}（长按 {1}ms 进层）　·　{2} 个绑定	Trigger key {0} (hold {1}ms to enter) · {2} bindings
+未分配触发键　·　{0} 个绑定	No trigger key · {0} bindings
+（无）	(none)
+触发键不能带修饰键，请直接按一个键	A trigger key cannot include modifiers; press a single key
+这个键已经是触发键了	That key is already a trigger key
+已添加触发键 {0} → 第 {1} 层	Trigger key {0} → layer {1} added
+至少保留一个触发键	Keep at least one trigger key
+已删除触发键 {0}	Trigger key {0} deleted
+未初始化	Not initialised
+选一个宏，或新建一个	Pick a macro, or create one
+{0} 步 · 时长约 {1}	{0} steps · about {1}
+共 {0} 步 · 约 {1}	{0} steps · about {1}
+还没有步骤，先录制或插入	No steps yet\nClick "Start recording" above, or insert steps with the buttons below
+共 {0} 步	{0} steps
+按下 {0}	press {0}
+抬起 {0}	release {0}
+等待 {0} ms	wait {0} ms
+等待 {0}~{1} ms（随机）	wait {0}~{1} ms (random)
+输入「{0}」	type "{0}"
+这次没有录到按键，没有生成宏	No keys were recorded, so no macro was created
+新宏 	Macro 
+已生成「{0}」· {1} 步 · {2}	Created "{0}" · {1} steps · {2}
+宏已录制：{0} 步	Macro recorded: {0} steps
+已取消这次录制	Recording cancelled
+已取消录制	Recording cancelled
+录制中… {0} · {1} 个事件	Recording… {0} · {1} events
+{0} 个事件 · {1} · 停止后约 {2} 步	{0} events · {1} · about {2} steps after stopping
+■ 停止并保存	■ Stop and save
+正在录制	Recording
+照常操作键盘即可，每按一个键会立刻出现在下面；停止后自动生成可编辑的步骤。	Just use the keyboard as usual — each key appears below immediately, and stopping turns them into editable steps.
+已删除宏「{0}」	Macro "{0}" deleted
+先选一个宏	Select a macro first
+这个宏还没有步骤	This macro has no steps yet
+播放中…按 Esc 或点「停止」可中断	Playing… press Esc or click "Stop" to interrupt
+播放中… 第 {0} / {1} 步（Esc 停止）	Playing… step {0} / {1} (Esc to stop)
+播放结束	Playback finished
+插入（插到第 {0} 步之后）	Insert (after step {0})
+第 {0} 步	Step {0}
+要输入什么文本？	What text should be typed?
+插入文本步骤	Insert a text step
+12 个事件 · 0:01.4 · 停止后约 22 步	12 events · 0:01.4 · about 22 steps when stopped
+录制中… 0:01.4 · 12 个事件	Recording… 0:01.4 · 12 events
+按下	down
+抬起	up
+匹配 {0} / {1}	Matched {0} / {1}
+共 {0} 项	{0} items
+用 {q} 代表关键词。例如 https://www.bing.com/search?q={q}。关键字填 default 表示默认搜索。	Use {q} for the keyword, e.g. https://www.bing.com/search?q={q}. Setting the keyword to default makes it the default search.
+填程序路径或命令，例如 C:\\Windows\\notepad.exe 或 notepad.exe。	Enter a program path or command, e.g. C:\\Windows\\notepad.exe or notepad.exe.
+填完整网址，例如 https://github.com。	Enter a full URL, e.g. https://github.com.
+在任意地方输入关键字后按 Caps+Tab，会被替换成这里的内容。	Type the keyword anywhere and press Caps+Tab; it is replaced with this content.
+搜索链接	Search URL
+程序路径	Program path
+替换成	Replaced with
+Qbar 里输入「关键字 内容」即可用对应引擎搜索	Type "keyword content" in Qbar to search with that engine
+Qbar 里输入关键字回车即可启动	Type the keyword in Qbar and press Enter to launch
+Qbar 里输入关键字回车即可打开	Type the keyword in Qbar and press Enter to open
+输入关键字后按 Caps+Tab 展开	Type the keyword and press Caps+Tab to expand
+新条目	New entry
+正在编辑：{0}	Editing: {0}
+选择图标（图片或程序）	Choose an icon (image or program)
+图标或程序|*.png;*.ico;*.jpg;*.jpeg;*.exe;*.dll|所有文件|*.*	Icon or program|*.png;*.ico;*.jpg;*.jpeg;*.exe;*.dll|All files|*.*
+默认搜索不能删除，只能修改	The default search cannot be deleted, only edited
+已删除	Deleted
+Qbar 外观已恢复默认	Qbar appearance restored to defaults
+{0}（Caps+LAlt+滚轮 可快速调整）	{0} (Caps+LAlt+wheel to adjust quickly)
+设置文件：{0}	Settings file: {0}
+日志：{0}	Log: {0}
+已设置开机自启	Start with Windows enabled
+已取消开机自启	Start with Windows disabled
+管理员权限	Administrator
+普通	Standard
+当前：{0}运行　·　设置：下次启动以{1}权限运行	Now: running as {0} · Setting: next launch as {1}
+\n开机自启时会弹一次 UAC 确认 —— 关掉「开机自动启动」就不会弹。	\nStarting with Windows shows one UAC prompt — turn off "Start with Windows" and it disappears.
+立即重启（回到普通权限）	Restart now (back to standard privileges)
+以管理员身份启动后，「选中文字 → 直接搜索」会失效。\n\n	Running as administrator breaks "select text → direct search".\n\n
+原因：Windows 禁止管理员进程向普通权限的浏览器 / 编辑器\n	Why: Windows forbids an elevated process from injecting input into normal-privilege\n
+注入输入（UIPI 安全限制），取词通道会全部被拦掉。\n\n	browsers and editors (the UIPI security boundary), so every selection channel is blocked.\n\n
+好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n	Benefit: hotkeys finally work in apps that run as administrator.\n
+（锁屏状态下任何用户态程序都无法使用快捷键，\n	(On the lock screen no user-mode app can use hotkeys at all,\n
+ 这与是否管理员无关。）\n\n	 regardless of elevation.)\n\n
+确定要开启吗？	Turn it on?
+开启管理员模式	Enable administrator mode
+开启	Enable
+已保存。下次启动会以管理员身份运行（会弹一次 UAC 确认）。\n\n现在就重启吗？	Saved. The next launch runs as administrator (one UAC prompt).\n\nRestart now?
+已保存。下次启动会以普通权限运行。\n\n现在就重启吗？	Saved. The next launch runs with normal privileges.\n\nRestart now?
+需要重启才生效	A restart is needed
+现在重启	Restart now
+提权失败：	Elevation failed: 
+未知原因	unknown reason
+\n\n（多半是在 UAC 对话框里点了「否」）	\n\n(most likely "No" was clicked in the UAC dialog)
+没能以管理员身份重启	Could not restart as administrator
+已开启：下次启动软件时先要输入密码。忘记密码可删除数据目录里的 startup.json 解除保护（其他设置不受影响）。	On: the next launch asks for a password first. If you forget it, delete startup.json in the data folder to remove protection (other settings are unaffected).
+未开启：启动软件不需要密码。	Off: launching needs no password.
+已设置启动密码，下次启动软件时生效	Startup password set; it takes effect on the next launch
+关闭启动密码	Turn off the startup password
+请输入当前的启动密码。验证通过后才能关闭保护。	Enter the current startup password; protection can only be turned off after it verifies.
+关闭保护	Turn off protection
+已关闭启动密码	Startup password turned off
+修改启动密码	Change startup password
+请输入当前的启动密码。	Enter the current startup password.
+设个好记的新密码。下次启动就要用它了。	Set a new password you will remember; the next launch will ask for it.
+已修改启动密码	Startup password changed
+已开启按键反馈：按 Caps+S 试试，角落会显示「左移」	Key feedback on: press Caps+S — "Caret left" appears in the corner
+{0}%（按住时按系统 {1}% 细调）	{0}% (hold to fine-tune by the system's {1}%)
+{0}%（系统步进 {1}%，按整数倍补偿，长期平均正好 {2}%）	{0}% (the system moves {1}% per step; presses are averaged to land on {2}%)
+ · 单个键可在「按键映射 → 编辑绑定」里单独设步进	 · a single key can override the step under "Key mapping → Edit binding"
+{0}%（按住时按 1% 细调）	{0}% (hold to fine-tune in 1% steps)
+选择旧版 CapsLock+settings.ini	Choose the old CapsLock+settings.ini
+CapsLock+ 设置文件|*.ini|所有文件|*.*	CapsLock+ settings|*.ini|All files|*.*
+导入完成：\n· 按键 {0} 项\n· 搜索指令 {1} 条\n· 程序 {2} 个\n	Import finished:\n· {0} keys\n· {1} search engines\n· {2} programs\n
+· 网址 {0} 个\n· 文字替换 {1} 条	· {0} URLs\n· {1} text replacements
+\n\n以下项目需要手动确认：\n	\n\nThese items need manual confirmation:\n
+导入旧版设置	Import legacy settings
+打开失败：	Open failed: 
+打开日志失败：	Opening the log failed: 
+把全部设置恢复成默认值？\n（按键映射、Qbar 条目、窗口绑定、外观都会被重置）\n\n	Restore every setting to its default?\n(key mapping, Qbar entries, window bindings and appearance are all reset)\n\n
+启动密码不受影响 —— 要关掉它请用上面的开关（需要验证当前密码）。	The startup password is unaffected — turn it off with the switch above (it verifies the current password).
+已恢复默认设置	Settings restored to defaults
+知道了	Got it
+输入关键字筛选	Filter by keyword
+共 {0} 条	{0} items
+已复制到系统剪贴板	Copied to the system clipboard
+无法安装键盘钩子	Could not install the keyboard hook
+请检查是否有安全软件拦截全局钩子。	Check whether security software is blocking global hooks.
+单独绑定这个修饰键　·　按「确定绑定」生效	Bind this modifier on its own  ·  click "Confirm binding" to apply
+触发键只作组合前缀，不会占用它　·　再按一个键	A trigger key only acts as a prefix and is not consumed  ·  press one more key
+单独绑定这个触发键　·　按「确定绑定」生效	Bind this trigger key on its own  ·  click "Confirm binding" to apply
+单键 {0}　·　按「确定绑定」生效	Single key {0} · click "Bind this" to apply
+组合键 {0}　·　按「确定绑定」生效	Combination {0} · click "Bind this" to apply
+未收录的键（VK 0x{0:X2}），按 {1} 记录　·　按「确定绑定」生效	Unknown key (VK 0x{0:X2}), recorded as {1} · click "Bind this" to apply
+先按一个组合键	Press a combo first
+3 分钟学会	Learn it in 3 minutes
+可视化编辑	Visual editing
+搜索 · 启动 · 计算	Search · launch · math
+独立剪贴板	Separate clipboards
+录制并绑定	Record and bind
+多触发键 · 10 层	Many trigger keys · 10 layers
+WebDAV · 导入导出	WebDAV · import/export
+全局选项	Global options
+按键 · 切层 · 诊断	Keys · layers · diagnostics
+随时查看	Always at hand
+版本与更新	Version and updates
+键盘钩子未生效	Keyboard hook inactive
+恢复	Resume
+已切换到浅色主题	Switched to the light theme
+已切换到深色主题	Switched to the dark theme
+已跟随系统主题	Now following the system theme
+已复制到剪贴板	Copied to the clipboard
+两次输入的密码不一致	The two passwords do not match
+欢迎使用 CapsLock+	Welcome to Keyboard Enhance
+启动方式	Startup
+让它在你需要的时候一定在。	Make sure it is there when you need it.
+可以开始用了	You are ready to go
+试试这几个组合，感受一下差别。	Try these combos to feel the difference.
+开始使用	Start using it
+设置完成，按住 CapsLock 试试吧	Setup complete — hold CapsLock and try it
+备份文件是用生成它时的密码加密的，密码丢了就打不开 —— 只能换一份更早的备份。	A backup is encrypted with the password in force when it was made; lose that password and it cannot be opened — pick an older backup instead.
+继续	Continue
+这个密码解不开这份备份 —— 换一个再试。	That password does not unlock this backup — try another.
+密码不对 —— 换一个再试，或者关掉窗口后从备份恢复配置。	Wrong password — try another, or close this window and restore from a backup instead.
+Enter 搜索	Enter searches
+Enter 打开	Enter opens
+Enter 启动	Enter launches
+Enter 复制结果	Enter copies the result
+Enter 粘贴	Enter pastes
+Enter 切换窗口	Enter switches window
+Enter 打开搜索	Enter opens the search
+Enter 打开网址	Enter opens the URL
+执行失败：	Action failed: 
+启动失败：	Launch failed: 
+{0} 个事件	{0} events
+最后 {0}	Last {0}
+没有可用的配置宿主，无法读取备份。	No settings host is available, so backups cannot be read.
+正在读取云端备份…	Reading cloud backups…
+读取云端失败：	Reading the cloud failed: 
+云端还没有备份。	There are no cloud backups yet.
+云端共 {0} 份备份（保留策略：最近 {1} 份	{0} backups in the cloud (retention: latest {1}
+ / {0} 天）。	 / {0} days).
+本地还没有备份。备份目录：{0}	No local backups yet. Backup folder: {0}
+本地共 {0} 份备份，目录：{1}	{0} local backups, folder: {1}
+从云端删除这份备份？\n\n　{0}\n\n删了就找不回来了。	Delete this backup from the cloud?\n\n  {0}\n\nThis cannot be undone.
+删除云端备份	Delete cloud backup
+正在删除…	Deleting…
+删除这份本地备份？\n\n　{0}\n　{1}\n\n删了就找不回来了。	Delete this local backup?\n\n  {0}\n  {1}\n\nThis cannot be undone.
+删除本地备份	Delete local backup
+✓ 已删除 	✓ Deleted 
+✗ 删除失败：	✗ Delete failed: 
+先在上面选一份备份。	Select a backup above first.
+覆盖恢复会把当前配置整份换成备份里的内容。\n	Overwrite replaces the whole current configuration with the backup contents.\n
+恢复之前会自动把当前配置另存一份到本地备份目录，恢复错了还能退回去。\n\n	A copy of the current configuration is saved to the local backup folder first, so a wrong restore can be undone.\n\n
+确定用「{0}」覆盖吗？	Overwrite with "{0}"?
+正在下载备份…	Downloading the backup…
+正在读取备份…	Reading the backup…
+✗ 这份备份读不出来。	✗ This backup cannot be read.
+这份备份用的是旧密码	This backup uses an older password
+当前备份密码解不开它 —— 请填生成这份备份时用的密码。	The current backup password does not unlock it — enter the password that was in force when it was made.
+用这个密码恢复	Restore with this password
+已取消恢复。	Restore cancelled.
+正在合并…	Merging…
+正在恢复…	Restoring…
+\n\n恢复前的配置已另存：{0}	\n\nThe configuration from before the restore was saved as {0}
+恢复完成	Restore complete
+✗ 解不开这份备份：	✗ Could not unlock this backup: 
+✗ 恢复失败：	✗ Restore failed: 
+校验出错，请重试（若一直失败，可删除数据目录里的 startup.json 解除保护）	Verification failed; try again (if it keeps failing, delete startup.json in the data folder to remove protection)
+密码不正确 —— 换一个再试。	Wrong password — try another.
+点击设置…	Click to set…
+「{0}」的层内子层	Sublayers of "{0}"
+{0} / {1} 个子层	{0} / {1} sublayers
+按下要作为子层触发键的按键	Press the key to use as a sub-layer trigger
+最多 {0} 个子层。	Up to {0} sublayers.
+已达到上限	Limit reached
+最多 {0} 个子层，请先删掉一些。	Up to {0} sublayers — remove some first.
+子层太多	Too many sublayers
+当前 {0}	Current {0}
+（该版本没有填写更新说明）	(this version has no release notes)
+没能自动打开浏览器。\n\n请手动访问：\n	Could not open the browser automatically.\n\nPlease visit:\n
+打开下载页失败	Opening the download page failed
+已跳过 {0}，下次有新版本还会提醒	Skipped {0}; you will be reminded again when a newer version appears
+正在下载…	Downloading…
+正在下载… {0:0}%	Downloading… {0:0}%
+正在替换并重启…	Replacing and restarting…
+替换失败，请到 Releases 手动下载	Replacement failed; download manually from Releases
+Esc 仍可用（轮询兜底），但会同时传到底下的程序	Esc still works (polling fallback) but also reaches the program underneath
+这里没认出窗口，换个位置再点一次	No window recognised here; click somewhere else
+（任务栏、桌面这类系统窗口不能绑）　·　Esc / 右键取消	(system windows such as the taskbar and desktop cannot be bound)  ·  Esc / right click cancels
+(无标题)	(untitled)
+{0}　·　{1}×{2}　·　左键选中 / 右键取消	{0} · {1}×{2} · Left click to select / right click to cancel
+简体中文	
+、	, 

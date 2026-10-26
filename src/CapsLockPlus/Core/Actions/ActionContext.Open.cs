@@ -94,7 +94,7 @@ public sealed partial class ActionContext
         {
             if (!Directory.Exists(target))
             {
-                Notify($"文件夹不存在：{target}");
+                Notify(Loc.F("文件夹不存在：{0}", target));
                 return;
             }
             CapsLockPlus.Core.Windows.WindowService.OpenFolderInForeground(target);
@@ -129,7 +129,7 @@ public sealed partial class ActionContext
         {
             if (!File.Exists(target))
             {
-                Notify($"文件不存在：{target}");
+                Notify(Loc.F("文件不存在：{0}", target));
                 return;
             }
 

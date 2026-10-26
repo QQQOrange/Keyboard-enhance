@@ -95,7 +95,7 @@ public partial class KeysView : UserControl
         if (!string.IsNullOrEmpty(b.Arg))
         {
             string preview = b.Arg.Length > 12 ? b.Arg[..12] + "…" : b.Arg;
-            ShowBindStatus($"已保存要输入的文字：「{preview.Replace("\r", " ").Replace("\n", " ")}」");
+            ShowBindStatus(Loc.F("已保存要输入的文字：「{0}」", preview.Replace("\r", " ").Replace("\n", " ")));
         }
     }
 
@@ -120,7 +120,7 @@ public partial class KeysView : UserControl
 
         ShowBindStatus(string.IsNullOrEmpty(note)
             ? Loc.T("备注已清空，键帽改显示文字开头")
-            : $"备注已保存：「{note}」—— 键帽上会显示这个名字");
+            : Loc.F("备注已保存：「{0}」—— 键帽上会显示这个名字", note));
     }
 
     /// <summary>
@@ -247,7 +247,7 @@ public partial class KeysView : UserControl
         return hit.Kind switch
         {
             SmartKind.Url => hit.Target.Length > 0 && hit.Target != input.Trim()
-                ? $"识别为网址 —— 按这个键用默认浏览器打开（会打开 {hit.Target}）"
+                ? Loc.F("识别为网址 —— 按这个键用默认浏览器打开（会打开 {0}）", hit.Target)
                 : Loc.T("识别为网址 —— 按这个键用默认浏览器打开"),
 
             SmartKind.Folder => Loc.T("识别为文件夹，路径存在 —— 按这个键在资源管理器里打开它"),
@@ -321,7 +321,7 @@ public partial class KeysView : UserControl
 
                     if (!overwrite && !string.IsNullOrWhiteSpace(cur.Note))
                     {
-                        WebFetchStatus.Text = $"取到标题「{title}」，但你已有备注，保留你的。";
+                        WebFetchStatus.Text = Loc.F("取到标题「{0}」，但你已有备注，保留你的。", title);
                         return;
                     }
 
@@ -331,7 +331,7 @@ public partial class KeysView : UserControl
                     WebNoteBox.Text = title;
                     _suppressEvents = false;
 
-                    WebFetchStatus.Text = $"已取到标题：{title}（可以改）";
+                    WebFetchStatus.Text = Loc.F("已取到标题：{0}（可以改）", title);
                     BuildKeyboard();
                 });
             });
@@ -360,7 +360,7 @@ public partial class KeysView : UserControl
 
         // 有备注了就给个确认（用户反馈"没有提示"）
         if (!string.IsNullOrWhiteSpace(b.Note))
-            ShowBindStatus($"备注已保存：「{b.Note}」—— 键帽上会显示这个名字");
+            ShowBindStatus(Loc.F("备注已保存：「{0}」—— 键帽上会显示这个名字", b.Note));
     }
 
     /// <summary>当前按键已绑定的程序路径（取自绑定的 Arg）。</summary>
@@ -390,20 +390,21 @@ public partial class KeysView : UserControl
                 : cur!.Note!.Trim();
             WinBindPath.Text = exe;
             WinBindClearButton.Visibility = Visibility.Visible;
-            WinBindHint.Text = Loc.T("按这个键：程序没开就自动启动；已开着就切过去；")
-                             + Loc.T("已经在前台时再按一次会最小化。");
+            WinBindHint.Text = Loc.Cat(
+                Loc.T("按这个键：程序没开就自动启动；已开着就切过去；"),
+                Loc.T("已经在前台时再按一次会最小化。"));
         }
         else if (!string.IsNullOrWhiteSpace(exe))
         {
             WinBindName.Text = Path.GetFileNameWithoutExtension(exe);
-            WinBindPath.Text = exe + "（文件不存在）";
+            WinBindPath.Text = Loc.F("{0}（文件不存在）", exe);
             WinBindClearButton.Visibility = Visibility.Visible;
             WinBindHint.Text = Loc.T("这个程序已经不在了，重新选一个吧。");
         }
         else
         {
             WinBindName.Text = Loc.T("还没选择");
-            WinBindPath.Text = "点下面任一按钮选择要绑定的程序";
+            WinBindPath.Text = Loc.T("点下面任一按钮选择要绑定的程序");
             WinBindClearButton.Visibility = Visibility.Collapsed;
             WinBindHint.Text = "";
         }
@@ -425,7 +426,7 @@ public partial class KeysView : UserControl
         BuildKeyboard();
 
         if (!string.IsNullOrWhiteSpace(note))
-            ShowBindStatus($"显示名称已保存：「{note}」—— 键帽上会显示这个名字");
+            ShowBindStatus(Loc.F("显示名称已保存：「{0}」—— 键帽上会显示这个名字", note));
     }
 
     /// <summary>把选好的程序写进当前按键的绑定。</summary>
@@ -456,7 +457,7 @@ public partial class KeysView : UserControl
             ? Path.GetFileNameWithoutExtension(exePath)
             : binding.Note!.Trim();
         string keyLabel = KeyName.Display(_selectedKey);
-        ShowBindStatus($"{keyLabel} 已绑定「{name}」—— 按一次切过去，再按一次最小化");
+        ShowBindStatus(Loc.F("{0} 已绑定「{1}」—— 按一次切过去，再按一次最小化", keyLabel, name));
         _host.Notify($"{keyLabel} → {name}");
     }
 
@@ -644,7 +645,7 @@ public partial class KeysView : UserControl
 
         if (string.IsNullOrEmpty(text))
         {
-            ArgHint.Text = $"留空 = 用设置里的 {def}%：按一次{unit}变 {def}%";
+            ArgHint.Text = Loc.F("留空 = 用设置里的 {0}%：按一次{1}变 {2}%", def, unit, def);
             return;
         }
 
@@ -659,10 +660,10 @@ public partial class KeysView : UserControl
              * 会在界面线程上把音频端点建起来，而动作队列是另一条 STA 线程 ——
              * 跨单元拿同一个接口指针会出问题。所以只做算术提示。 */
             if (v % 2 != 0)
-                extra = $"（系统每档 2%，会按次数平均凑成 {v}%）";
+                extra = Loc.F("（系统每档 2%，会按次数平均凑成 {0}%）", v);
         }
 
-        ArgHint.Text = $"按一次{unit}变 {v}%{extra}；按住不放仍按 1% 细调";
+        ArgHint.Text = Loc.F("按一次{0}变 {1}%{2}；按住不放仍按 1% 细调", unit, v, extra);
     }
 
     private void OnClearClick(object sender, RoutedEventArgs e)
@@ -676,7 +677,7 @@ public partial class KeysView : UserControl
             _host.SaveSettings();
         }
         SelectKey(_selectedKey);
-        _host.Notify($"{KeyName.Display(_selectedKey)} 已清除绑定");
+        _host.Notify(Loc.F("{0} 已清除绑定", KeyName.Display(_selectedKey)));
     }
 
     private void OnTestClick(object sender, RoutedEventArgs e)

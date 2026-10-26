@@ -13,6 +13,25 @@ dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self
 dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeDiagnostics=false -o dist-lean
 ```
 
+### 一次出齐四个发布形态
+
+发版用的就是这四条（Win10/11 框架依赖、Win7 自包含，各 x64/x86）。
+**每个形态之间要先清掉 `obj` 与 `bin`** —— 不同 RID 的中间产物混在一个目录里会互相干扰：
+
+```powershell
+$p = "src\CapsLockPlus\CapsLockPlus.csproj"
+$out = "dist"
+foreach ($v in @(
+  @{ n="win10-x64"; f="net10.0-windows"; r="win-x64"; sc="false" },
+  @{ n="win10-x86"; f="net10.0-windows"; r="win-x86"; sc="false" },
+  @{ n="win7-x64";  f="net7.0-windows";  r="win-x64"; sc="true"  },
+  @{ n="win7-x86";  f="net7.0-windows";  r="win-x86"; sc="true"  }
+)) {
+  Remove-Item -Recurse -Force src\CapsLockPlus\obj, src\CapsLockPlus\bin, src\CapsLockPlus.Localization\obj, src\CapsLockPlus.Localization\bin -ErrorAction SilentlyContinue
+  dotnet publish $p -c Release -f $v.f -r $v.r --self-contained $v.sc -o "$out\$($v.n)"
+}
+```
+
 > **只有一个 exe**。曾经拆成"启动器 + 主程序"两个文件来解决
 > "没装 .NET 点了没反应"，但那让用户不知道该双击哪个；
 > 也试过把运行时整个打进去，体积从 5 MB 涨到 75 MB。

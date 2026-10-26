@@ -1,7 +1,7 @@
 ﻿<Window x:Class="CapsLockPlus.UI.Windows.KeyCaptureWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
         Title="{loc:T '自定义按键'}" Width="470" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True"

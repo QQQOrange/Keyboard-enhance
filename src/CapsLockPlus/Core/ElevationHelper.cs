@@ -110,8 +110,14 @@ public static class ElevationHelper
 
     /// <summary>说明当前权限状态下哪些功能受限（给界面显示用）。</summary>
     public static string PermissionSummary() => IsElevated
-        ? "管理员权限：可以操作管理员程序的窗口，键盘钩子能收到所有普通窗口的输入。" +
-          "但锁屏状态下快捷键无法使用 —— 那是 Windows 的安全桌面限制，管理员权限也绕不过。"
-        : "普通权限：对着「以管理员身份运行」的程序按快捷键不会有反应，建议以管理员身份运行。" +
-          "另外锁屏状态下快捷键同样无法使用（Windows 安全限制）。";
+        /* 两段各自走一次翻译再用 Loc.Cat 拼：语言包是按"一句一条"组织的，
+         * 直接写成相邻字面量拼接的话，编译器会把两段合成一条**新**字符串，
+         * 那条字符串在语言包里根本不存在 → 英文界面会原样显示中文。
+         * 而用 `+` 拼两句译文又会缺空格（`recommended.Hotkeys`），所以走 Loc.Cat。 */
+        ? Localization.Loc.Cat(
+            Localization.Loc.T("管理员权限：可以操作管理员程序的窗口，键盘钩子能收到所有普通窗口的输入。"),
+            Localization.Loc.T("但锁屏状态下快捷键无法使用 —— 那是 Windows 的安全桌面限制，管理员权限也绕不过。"))
+        : Localization.Loc.Cat(
+            Localization.Loc.T("普通权限：对着「以管理员身份运行」的程序按快捷键不会有反应，建议以管理员身份运行。"),
+            Localization.Loc.T("另外锁屏状态下快捷键同样无法使用（Windows 安全限制）。"));
 }

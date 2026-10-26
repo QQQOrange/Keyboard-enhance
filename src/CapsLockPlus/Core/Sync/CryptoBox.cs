@@ -122,7 +122,7 @@ public static class CryptoBox
         }
         catch (Exception e)
         {
-            throw new InvalidOperationException($"备份不是有效 JSON：{e.Message}");
+            throw new InvalidOperationException(Loc.F("备份不是有效 JSON：{0}", e.Message));
         }
         if (node?[Magic]?.GetValue<int>() != 1)
             throw new InvalidOperationException("不认识的加密格式");
@@ -143,7 +143,7 @@ public static class CryptoBox
 
         string kdf = node["kdf"]?.GetValue<string>() ?? KdfName;
         if (!kdf.Equals(KdfName, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"不支持的密钥派生算法：{kdf}");
+            throw new InvalidOperationException(Loc.F("不支持的密钥派生算法：{0}", kdf));
 
         byte[] key = Derive(password, salt, iterations);
         try

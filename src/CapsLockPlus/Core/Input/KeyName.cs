@@ -241,7 +241,7 @@ public static class KeyName
     }
 
     /// <summary>用于界面显示的好看名字。</summary>
-    public static string Display(string name) => name switch
+    public static string Display(string name) => Loc.T(name switch
     {
         "backquote" => "`",
         "minus" => "-",
@@ -303,7 +303,10 @@ public static class KeyName
         "volumeDown" => "音量-",
         "volumeMute" => "静音",
         _ => name.Length <= 2 ? name.ToUpperInvariant() : char.ToUpperInvariant(name[0]) + name[1..],
-    };
+    });
+    /* 这里套一层 Loc.T：键帽上印的字母、符号（` - = [ ] Esc PgUp）查不到就原样返回，
+     * 真正会被翻的只有"左 Ctrl""小键盘 1""上一首"这类中文说明。
+     * 出口只有一个 —— 全程序显示键名都走 Display()，在这儿翻一次就够。 */
 
     /// <summary>
     /// 把设置里的组合键名解析成 (修饰键, 按键名)。

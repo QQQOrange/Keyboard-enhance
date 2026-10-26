@@ -239,8 +239,8 @@ public sealed class ActionCatalog
             string key = e.Key;
             string name = string.IsNullOrWhiteSpace(e.Comment) ? key : e.Comment;
             c.Add("qbar:" + key, "Qbar 搜索",
-                $"Qbar：{name}",
-                $"打开 Qbar 并直接用「{name}」搜索",
+                Loc.F("Qbar：{0}", name),
+                Loc.F("打开 Qbar 并直接用「{0}」搜索", name),
                 _ => { ctx.RequestQbar(key); return true; });
         }
         c.Add("mathBoard", "面板", "计算器", "打开带历史记录的计算器", _ => { ctx.RequestMathBoard(); return true; });
@@ -268,8 +268,8 @@ public sealed class ActionCatalog
             string key = e.Key;
             string name = string.IsNullOrWhiteSpace(e.Comment) ? key : e.Comment;
             c.Add("search:" + key, "直接搜索",
-                $"搜索：{name}",
-                $"在默认浏览器里用「{name}」搜索当前选中的文字",
+                Loc.F("搜索：{0}", name),
+                Loc.F("在默认浏览器里用「{0}」搜索当前选中的文字", name),
                 a => ctx.SearchSelection(key, a),
                 needsArg: false, argHint: "",
                 shortTitle: name.Length <= 4 ? name : name[..4]);
@@ -475,8 +475,8 @@ public sealed class ActionCatalog
             string id = macro.Id;
             string name = macro.DisplayName;
             int estMs = macro.EstimatedMs;
-            c.Add("macro:" + id, "宏", $"播放宏：{name}",
-                $"共 {macro.Steps.Count} 步，约 {estMs}ms", a =>
+            c.Add("macro:" + id, "宏", Loc.F("播放宏：{0}", name),
+                Loc.F("共 {0} 步，约 {1}ms", macro.Steps.Count, estMs), a =>
                 {
                     ctx.PlayMacro(id, a);
                     return true;

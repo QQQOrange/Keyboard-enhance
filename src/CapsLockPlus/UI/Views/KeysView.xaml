@@ -1,7 +1,7 @@
 ﻿<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
              FontFamily="{StaticResource Font.Ui}">
     <Grid Margin="24,4,20,20">
         <Grid.RowDefinitions>
@@ -642,7 +642,7 @@
                                     <TextBox x:Name="CustomAppBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="36" VerticalContentAlignment="Center"
                                              TextChanged="OnCustomAppChanged"
-                                             ToolTip="{loc:T '要接收这个键的程序，例如 C://Program Files\Tencent\Weixin\Weixin.exe'}" />
+                                             ToolTip="{loc:T '要接收这个键的程序，例如 C:\\Program Files\\Tencent\\Weixin\\Weixin.exe'}" />
                                 </StackPanel>
                                 <Button HorizontalAlignment="Left" Grid.Column="1" Content="{loc:T '浏览…'}" Style="{StaticResource Button.Base}"
                                         Padding="12,6" MinHeight="36" VerticalAlignment="Bottom"

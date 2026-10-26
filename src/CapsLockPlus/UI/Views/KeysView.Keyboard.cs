@@ -124,10 +124,10 @@ public partial class KeysView : UserControl
         var tap = FindInCurrentLayer("press_caps");
         string tapTitle = tap != null ? _host.Actions.Get(tap.Action)?.Title ?? tap.Action : Loc.T("无");
         var layerObj = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
-        string layerName = layerObj?.Name ?? $"第 {_layerId} 层";
+        string layerName = LayerName.Display(_layerId, layerObj?.Name);
         var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == _layerId);
         string triggerText = trigger != null
-            ? $"触发键 {KeyName.Display(trigger.Key)}（键盘上已高亮）"
+            ? Loc.F("触发键 {0}（键盘上已高亮）", KeyName.Display(trigger.Key))
             : Loc.T("（没有触发键指向这一层）");
 
         /* 修饰子层的提示必须能显示**组合**修饰键。
@@ -147,7 +147,7 @@ public partial class KeysView : UserControl
          * 以前整句（含触发键、回到上层的提示）挤在一行，窗口一窄就被截断，
          * 而且这条信息每切一次层都变长变短，旁边的「键盘大小」跟着左右跳。
          * 现在主句固定为"第几层 + 有没有子层 + 几个绑定"，长度稳定。 */
-        LayerHint.Text = $"当前：第 {_layerId} 层「{layerName}」{modText}（{bound} 个绑定）";
+        LayerHint.Text = Loc.F("当前：第 {0} 层「{1}」{2}（{3} 个绑定）", _layerId, layerName, modText, bound);
         LayerHint.ToolTip = $"{triggerText}{backHint}";
 
         /* 顶部提示里的触发键必须**跟着当前层变**。
@@ -157,8 +157,8 @@ public partial class KeysView : UserControl
         UpdateTriggerBadge(trigger);
 
         CountText.Text = _layerId == 1
-            ? $"短按触发键：{tapTitle}　·　点键盘上任意键即可修改它的功能，修改立刻生效。"
-            : $"这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。";
+            ? Loc.F("短按触发键：{0}　·　点键盘上任意键即可修改它的功能，修改立刻生效。", tapTitle)
+            : Loc.T("这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。");
         UpdateLayerButtons();
     }
 

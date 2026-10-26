@@ -1,7 +1,7 @@
 ﻿<Window x:Class="CapsLockPlus.UI.Windows.WindowPickerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
         Title="{loc:T '选择窗口'}" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
         Cursor="Cross" FontFamily="{StaticResource Font.Ui}">

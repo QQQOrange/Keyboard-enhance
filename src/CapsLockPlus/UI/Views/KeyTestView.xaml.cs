@@ -72,7 +72,7 @@ public partial class KeyTestView : UserControl
             _host.Engine.IsTriggerHeld ? "Brush.Accent" : "Brush.TextSecondary");
 
         int layer = _host.Engine.ActiveLayer;
-        LayerText.Text = layer > 0 ? $"第 {layer} 层" : Loc.T("未进层");
+        LayerText.Text = layer > 0 ? Loc.F("第 {0} 层", layer) : Loc.T("未进层");
         LayerText.Foreground = (System.Windows.Media.Brush)FindResource(
             layer > 0 ? "Brush.Accent" : "Brush.TextSecondary");
     }
@@ -109,7 +109,7 @@ public partial class KeyTestView : UserControl
             string? name = KeyName.NameOf(vk);
             string display = name != null ? KeyName.Display(name) : $"VK 0x{vk:X2}";
 
-            string layerText = layer > 0 ? $"第 {layer} 层" : Loc.T("基础层");
+            string layerText = layer > 0 ? Loc.F("第 {0} 层", layer) : Loc.T("基础层");
             string action = name != null ? DescribeBinding(layer, name) : Loc.T("（未识别的键）");
 
             _rows.Insert(0, new EventRow
@@ -122,7 +122,7 @@ public partial class KeyTestView : UserControl
             TrimRows();
 
             LastKeyText.Text = display;
-            LastKeyDetail.Text = $"{layerText}　·　{action}";
+            LastKeyDetail.Text = Loc.F("{0}　·　{1}", layerText, action);
             RefreshStatus();
         }));
     }
@@ -164,11 +164,11 @@ public partial class KeyTestView : UserControl
         if (info == null) return binding.Action;
 
         // 备注/参数比动作名有用："输入文本"看不出输入的是什么
-        if (!string.IsNullOrWhiteSpace(binding.Note)) return $"{info.Title}：{binding.Note}";
+        if (!string.IsNullOrWhiteSpace(binding.Note)) return Loc.F("{0}：{1}", info.Title, binding.Note);
         if (binding.Action == "typeText" && !string.IsNullOrWhiteSpace(binding.Arg))
         {
             string preview = binding.Arg.Length > 10 ? binding.Arg[..10] + "…" : binding.Arg;
-            return $"{info.Title}：{preview.Replace("\n", " ")}";
+            return Loc.F("{0}：{1}", info.Title, preview.Replace("\n", " "));
         }
         return info.Title;
     }

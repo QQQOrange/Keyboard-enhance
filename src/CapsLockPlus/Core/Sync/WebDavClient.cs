@@ -232,8 +232,8 @@ public sealed class WebDavClient
         {
             var (files, created) = await ListEnsuringDirectoryAsync(ct).ConfigureAwait(false);
             return created
-                ? $"连接成功，已自动创建目录 {DefaultSubdir}/，云端有 {files.Count} 份备份"
-                : $"连接成功，云端有 {files.Count} 份备份";
+                ? Loc.F("连接成功，已自动创建目录 {0}/，云端有 {1} 份备份", DefaultSubdir, files.Count)
+                : Loc.F("连接成功，云端有 {0} 份备份", files.Count);
         }
         catch (Exception e)
         {
@@ -505,16 +505,16 @@ public sealed class WebDavClient
         HttpRequestException h when h.StatusCode == HttpStatusCode.NotFound =>
             "地址不存在 —— 检查 WebDAV 地址是否写对",
         HttpRequestException h =>
-            $"网络请求失败：{h.Message}",
+            Loc.F("网络请求失败：{0}", h.Message),
         _ => e.Message,
     };
 
     private static string DescribeStatus(HttpStatusCode code, string action) => code switch
     {
-        HttpStatusCode.Unauthorized => $"{action}失败：认证不通过（用户名或密码不对）",
-        HttpStatusCode.Forbidden => $"{action}失败：没有权限",
-        HttpStatusCode.NotFound => $"{action}失败：地址或目录不存在",
-        HttpStatusCode.InsufficientStorage => $"{action}失败：网盘空间不足",
-        _ => $"{action}失败：服务器返回 {(int)code} {code}",
+        HttpStatusCode.Unauthorized => Loc.F("{0}失败：认证不通过（用户名或密码不对）", action),
+        HttpStatusCode.Forbidden => Loc.F("{0}失败：没有权限", action),
+        HttpStatusCode.NotFound => Loc.F("{0}失败：地址或目录不存在", action),
+        HttpStatusCode.InsufficientStorage => Loc.F("{0}失败：网盘空间不足", action),
+        _ => Loc.F("{0}失败：服务器返回 {1} {2}", action, (int)code, code),
     };
 }

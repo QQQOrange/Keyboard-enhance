@@ -31,7 +31,7 @@ public partial class ClipboardHistoryWindow : Window
             : _all.Where(i => i.Text.Contains(f, StringComparison.OrdinalIgnoreCase)).ToList();
         Items.ItemsSource = filtered;
         if (filtered.Count > 0) Items.SelectedIndex = 0;
-        StatusText.Text = $"共 {filtered.Count} 条";
+        StatusText.Text = Loc.F("共 {0} 条", filtered.Count);
     }
 
     private void OnFilterChanged(object sender, TextChangedEventArgs e) => ApplyFilter();

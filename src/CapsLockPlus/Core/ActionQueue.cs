@@ -84,8 +84,8 @@ public static class AppPaths
 
     /// <summary>数据位置的一句话说明（界面直接显示）。</summary>
     public static string DataDirNote => DataDirIsFallback
-        ? "软件目录不可写，数据改放在这里（换位置请先给软件目录写权限）"
-        : "数据就在软件旁边的「" + DataFolderName + "」文件夹里";
+        ? Localization.Loc.T("软件目录不可写，数据改放在这里（换位置请先给软件目录写权限）")
+        : Localization.Loc.F("数据就在软件旁边的「{0}」文件夹里", DataFolderName);
 
     private static string ResolveDataDir()
     {

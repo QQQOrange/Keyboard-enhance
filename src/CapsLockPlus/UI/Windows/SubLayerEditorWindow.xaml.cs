@@ -63,7 +63,7 @@ public partial class SubLayerEditorWindow : Window
 
         TitleText.Text = string.IsNullOrWhiteSpace(layerName)
             ? Loc.T("层内子层设置")
-            : $"「{layerName}」的层内子层";
+            : Loc.F("「{0}」的层内子层", layerName);
 
         foreach (var s in current)
             _rows.Add(new Row { Key = s.Key, Name = s.Name });
@@ -111,7 +111,7 @@ public partial class SubLayerEditorWindow : Window
     private void UpdateCount()
     {
         int max = LayerOptions.MaxSubLayers;
-        CountText.Text = $"{_rows.Count} / {max} 个子层";
+        CountText.Text = Loc.F("{0} / {1} 个子层", _rows.Count, max);
         CountText.Foreground = _rows.Count > max
             ? (System.Windows.Media.Brush)FindResource("Brush.Accent")
             : (System.Windows.Media.Brush)FindResource("Brush.TextTertiary");
@@ -162,7 +162,7 @@ public partial class SubLayerEditorWindow : Window
     {
         if (_rows.Count >= LayerOptions.MaxSubLayers)
         {
-            AppDialog.Info(this, $"最多 {LayerOptions.MaxSubLayers} 个子层。", "已达到上限");
+            AppDialog.Info(this, Loc.F("最多 {0} 个子层。", LayerOptions.MaxSubLayers), "已达到上限");
             return;
         }
         _rows.Add(new Row());
@@ -188,7 +188,7 @@ public partial class SubLayerEditorWindow : Window
         if (_rows.Count > LayerOptions.MaxSubLayers)
         {
             AppDialog.Warn(this,
-                $"最多 {LayerOptions.MaxSubLayers} 个子层，请先删掉一些。", "子层太多");
+                Loc.F("最多 {0} 个子层，请先删掉一些。", LayerOptions.MaxSubLayers), "子层太多");
             return;
         }
         DialogResult = true;
@@ -317,6 +317,7 @@ public partial class SubLayerEditorWindow : Window
 
             double need = ft.Height + padV;
             if (need > fe.ActualHeight + 0.5)
+                // 布局诊断，只进日志：不进语言包
                 bad.Add($"{fe.GetType().Name}「{text}」需 {need:F1} 实 {fe.ActualHeight:F1}");
         }
     }

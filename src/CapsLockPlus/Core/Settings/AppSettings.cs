@@ -385,7 +385,7 @@ public sealed class TriggerKey
         : Input.KeyName.Display(Key);
 
     /// <summary>主标题：这一项绑到第几层。</summary>
-    public string Summary => LayerId <= 0 ? "未绑定层" : $"第 {LayerId} 层";
+    public string Summary => LayerId <= 0 ? Loc.T("未绑定层") : Loc.F("第 {0} 层", LayerId);
 
     /// <summary>副标题：阈值 + 短按动作，一眼看清这个触发键怎么用。</summary>
     public string Detail
@@ -399,15 +399,15 @@ public sealed class TriggerKey
              * 列表上显示的是动作 ID 甚至"无"，看起来像设置没生效。 */
             string tap;
             if (TapAction == "doNothing")
-                tap = "无";
+                tap = Loc.T("无");
             else if (string.IsNullOrEmpty(TapAction))
                 // 空值在引擎里的语义就是"补发原键"，等价于 keepKey
-                tap = "保留原功能";
+                tap = Loc.T("保留原功能");
             else
                 tap = Actions.ActionCatalog.TitleOf(TapAction) ?? TapAction;
 
-            string hold = HoldOnOtherKey ? "一按别的键就进层" : $"长按 {HoldMs}ms 进层";
-            return $"{hold}　·　短按：{tap}";
+            string hold = HoldOnOtherKey ? Loc.T("一按别的键就进层") : Loc.F("长按 {0}ms 进层", HoldMs);
+            return Loc.F("{0}　·　短按：{1}", hold, tap);
         }
     }
 
@@ -647,8 +647,8 @@ public sealed class Macro
     {
         get
         {
-            string repeat = Repeat <= 0 ? "循环播放" : Repeat == 1 ? "播放一次" : $"播放 {Repeat} 次";
-            return $"{Steps.Count} 步　·　{repeat}";
+            string repeat = Repeat <= 0 ? Loc.T("循环播放") : Repeat == 1 ? Loc.T("播放一次") : Loc.F("播放 {0} 次", Repeat);
+            return Loc.F("{0} 步　·　{1}", Steps.Count, repeat);
         }
     }
 

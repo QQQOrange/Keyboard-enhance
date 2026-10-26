@@ -301,7 +301,7 @@ public partial class KeysView : UserControl
                 {
                     Content = preset.Label(NaturalWidth),
                     Tag = preset.Id,
-                    ToolTip = preset.Hint,
+                    ToolTip = preset.DisplayHint,
                 });
             }
             foreach (ComboBoxItem item in SizeBox.Items)
@@ -905,7 +905,7 @@ public partial class KeysView : UserControl
         if (string.IsNullOrWhiteSpace(folder)) return;
 
         WebUrlBox.Text = folder;               // TextChanged 会负责落盘
-        ShowBindStatus($"文件夹已设置：{folder}");
+        ShowBindStatus(Loc.F("文件夹已设置：{0}", folder));
     }
 
     /// <summary>
@@ -939,7 +939,7 @@ public partial class KeysView : UserControl
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.FileName)) return;
 
         WebUrlBox.Text = dlg.FileName;            // TextChanged 会负责落盘
-        ShowBindStatus($"文件已设置：{dlg.SafeFileName}");
+        ShowBindStatus(Loc.F("文件已设置：{0}", dlg.SafeFileName));
     }
 
     /// <summary>

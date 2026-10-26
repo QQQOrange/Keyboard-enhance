@@ -1,7 +1,7 @@
 ﻿<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
              FontFamily="{StaticResource Font.Ui}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,4,20,24">
         <StackPanel MaxWidth="880" HorizontalAlignment="Left">

@@ -266,7 +266,7 @@ public sealed class UpdateService
             }
 
             if (!resp.IsSuccessStatusCode)
-                return UpdateCheckResult.Fail($"无法访问 GitHub（HTTP {(int)resp.StatusCode}）");
+                return UpdateCheckResult.Fail(Loc.F("无法访问 GitHub（HTTP {0}）", (int)resp.StatusCode));
 
             var release = await resp.Content.ReadFromJsonAsync<GitHubRelease>(cancellationToken: ct)
                 .ConfigureAwait(false);
@@ -274,7 +274,7 @@ public sealed class UpdateService
 
             string tag = (release.TagName ?? "").TrimStart('v', 'V');
             if (!Version.TryParse(tag, out var remote))
-                return UpdateCheckResult.Fail($"无法识别版本号：{release.TagName}");
+                return UpdateCheckResult.Fail(Loc.F("无法识别版本号：{0}", release.TagName));
             var current = Version.Parse(CurrentVersion);
             bool newer = remote > current;
 
@@ -282,7 +282,7 @@ public sealed class UpdateService
                 a.Name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
             if (asset == null)
                 return new UpdateCheckResult(true, null,
-                    newer ? $"发现新版本 {tag}，但该版本没有附带 exe 安装包" : "已是最新版本", newer);
+                    newer ? Loc.F("发现新版本 {0}，但该版本没有附带 exe 安装包", tag) : "已是最新版本", newer);
 
             var info = new UpdateInfo(
                 tag,
@@ -293,7 +293,7 @@ public sealed class UpdateService
                 NormalizeDigest(asset.Digest));
 
             return new UpdateCheckResult(true, info,
-                newer ? $"发现新版本 {tag}" : "已是最新版本", newer);
+                newer ? Loc.F("发现新版本 {0}", tag) : "已是最新版本", newer);
         }
         catch (TaskCanceledException)
         {
@@ -407,7 +407,7 @@ public sealed class UpdateService
             if (info.Size > 0 && read != info.Size)
             {
                 TryDelete(temp);
-                return (false, "", $"下载不完整（{read}/{info.Size} 字节）");
+                return (false, "", Loc.F("下载不完整（{0}/{1} 字节）", read, info.Size));
             }
 
             // GitHub 的资产摘要是 "sha256:xxxx" 这种带算法前缀的格式，
@@ -420,8 +420,8 @@ public sealed class UpdateService
                 {
                     TryDelete(temp);
                     return (false, "",
-                        $"校验失败，文件可能已损坏（期望 {expected[..Math.Min(12, expected.Length)]}…，" +
-                        $"实际 {actual[..12]}…）");
+                        Loc.F("校验失败，文件可能已损坏（期望 {0}…，", expected[..Math.Min(12, expected.Length)]) +
+                        Loc.F("实际 {0}…）", actual[..12]));
                 }
             }
             return (true, temp, "");
@@ -631,14 +631,14 @@ public sealed class UpdateService
                         : "令牌被拒绝（HTTP 403）—— fine-grained 令牌需要至少 Public repositories 的读权限");
 
             if (!resp.IsSuccessStatusCode)
-                return new TokenCheckResult(false, "", $"GitHub 返回 HTTP {(int)resp.StatusCode}");
+                return new TokenCheckResult(false, "", Loc.F("GitHub 返回 HTTP {0}", (int)resp.StatusCode));
 
             var user = await resp.Content.ReadFromJsonAsync<GitHubUser>(cancellationToken: ct)
                 .ConfigureAwait(false);
 
             string who = string.IsNullOrWhiteSpace(user?.Login) ? "（仓库只读，账号名不可见）" : "@" + user!.Login;
             return new TokenCheckResult(true, user?.Login ?? "",
-                $"令牌有效：{who}　·　配额 {limit}/小时，当前剩余 {remain}", limit, remain);
+                Loc.F("令牌有效：{0}　·　配额 {1}/小时，当前剩余 {2}", who, limit, remain), limit, remain);
         }
         catch (TaskCanceledException)
         {

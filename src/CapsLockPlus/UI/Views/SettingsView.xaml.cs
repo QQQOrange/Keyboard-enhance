@@ -38,7 +38,7 @@ public partial class SettingsView : UserControl
         DoubleTapBox.IsChecked = g.DoubleTapCaps;
         RepeatBox.IsChecked = g.RepeatWhenHeld;
         MouseSpeedSlider.Value = g.MouseSpeed;
-        MouseSpeedText.Text = $"{g.MouseSpeed}（Caps+LAlt+滚轮 可快速调整）";
+        MouseSpeedText.Text = Loc.F("{0}（Caps+LAlt+滚轮 可快速调整）", g.MouseSpeed);
         /* 音量下限跟系统步进走：系统一步就是 2%，设 1% 也只能走 2%，
          * 与其让用户设一个"永远达不到"的值，不如把下限抬到 2%。 */
         int sysStep = Math.Max(1, Core.Windows.VolumeService.StepPercent());
@@ -66,7 +66,8 @@ public partial class SettingsView : UserControl
             _ => 0,
         };
         BindLanguageBox(g.Language);
-        DataPathText.Text = $"设置文件：{AppPaths.SettingsFile}\n日志：{CoreLog.LogPath}";
+        DataPathText.Text = Loc.F("设置文件：{0}", AppPaths.SettingsFile)
+                          + "\n" + Loc.F("日志：{0}", CoreLog.LogPath);
         RefreshStartupPwState();
         _suppress = false;
     }
@@ -140,8 +141,11 @@ public partial class SettingsView : UserControl
         bool running = Core.ElevationHelper.IsElevated;
         bool wanted = _host?.Settings.Global.RunAsAdmin ?? false;
 
-        AdminStateText.Text = $"当前：{(running ? Loc.T("管理员权限") : Loc.T("普通权限"))}运行　·　" +
-                              $"设置：下次启动以{(wanted ? Loc.T("管理员") : Loc.T("普通"))}权限运行";
+        /* 整行当成一条原文去翻 —— 中文用「　·　」分隔、英文该用「 · 」，
+         * 拆成多段拼接的话分隔符会跟着中文硬编码留在英文界面里。 */
+        string adminNow = running ? Loc.T("管理员权限") : Loc.T("普通权限");
+        string adminNext = wanted ? Loc.T("管理员") : Loc.T("普通");
+        AdminStateText.Text = Loc.F("当前：{0}运行　·　设置：下次启动以{1}权限运行", adminNow, adminNext);
 
         /* 开机自启 + 管理员 = 每次登录都要点一次 UAC。
          * 这是 Windows 的规矩（注册表 Run 项没法声明"要高权限"），
@@ -423,15 +427,15 @@ public partial class SettingsView : UserControl
         if (VolumeStepText == null) return;
         int sys = Core.Windows.VolumeService.StepPercent();
         VolumeStepText.Text = (v % sys == 0
-            ? $"{v}%（按住时按系统 {sys}% 细调）"
-            : $"{v}%（系统步进 {sys}%，按整数倍补偿，长期平均正好 {v}%）")
+            ? Loc.F("{0}%（按住时按系统 {1}% 细调）", v, sys)
+            : Loc.F("{0}%（系统步进 {1}%，按整数倍补偿，长期平均正好 {2}%）", v, sys, v))
             + Loc.T(" · 单个键可在「按键映射 → 编辑绑定」里单独设步进");
     }
 
     private void UpdateBrightnessStepText(int v)
     {
         if (BrightnessStepText == null) return;
-        BrightnessStepText.Text = $"{v}%（按住时按 1% 细调）"
+        BrightnessStepText.Text = Loc.F("{0}%（按住时按 1% 细调）", v)
             + Loc.T(" · 单个键可在「按键映射 → 编辑绑定」里单独设步进");
     }
 
@@ -441,7 +445,7 @@ public partial class SettingsView : UserControl
         int v = (int)MouseSpeedSlider.Value;
         _host.Settings.Global.MouseSpeed = v;
         _host.Context.Mouse.Speed = v;
-        MouseSpeedText.Text = $"{v}（Caps+LAlt+滚轮 可快速调整）";
+        MouseSpeedText.Text = Loc.F("{0}（Caps+LAlt+滚轮 可快速调整）", v);
         Save();
     }
 
@@ -550,8 +554,8 @@ public partial class SettingsView : UserControl
             _host.SaveSettings();
             _host.ReloadAll();
             Refresh();
-            string msg = $"导入完成：\n· 按键 {result.Keys} 项\n· 搜索指令 {result.Search} 条\n· 程序 {result.Run} 个\n" +
-                         $"· 网址 {result.Web} 个\n· 文字替换 {result.HotStrings} 条";
+            string msg = Loc.F("导入完成：\n· 按键 {0} 项\n· 搜索指令 {1} 条\n· 程序 {2} 个\n", result.Keys, result.Search, result.Run) +
+                         Loc.F("· 网址 {0} 个\n· 文字替换 {1} 条", result.Web, result.HotStrings);
             if (result.Warnings.Count > 0)
                 msg += Loc.T("\n\n以下项目需要手动确认：\n") + string.Join("\n", result.Warnings.Take(8));
             AppDialog.Info(Window.GetWindow(this), msg, Loc.T("导入旧版设置"), DialogKind.Success);

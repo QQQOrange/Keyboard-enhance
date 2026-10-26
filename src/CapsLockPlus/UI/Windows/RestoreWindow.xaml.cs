@@ -141,8 +141,8 @@ public partial class RestoreWindow : Window
 
         StatusText.Text = _rows.Count == 0
             ? Loc.T("云端还没有备份。")
-            : $"云端共 {_rows.Count} 份备份（保留策略：最近 {_host!.Settings.Sync.KeepLocalBackups} 份"
-              + $" / {_host!.Settings.Sync.CleanupDays} 天）。";
+            : Loc.F("云端共 {0} 份备份（保留策略：最近 {1} 份", _rows.Count, _host!.Settings.Sync.KeepLocalBackups)
+              + Loc.F(" / {0} 天）。", _host!.Settings.Sync.CleanupDays);
     }
 
     private void LoadLocalRows()
@@ -162,8 +162,8 @@ public partial class RestoreWindow : Window
         }
 
         StatusText.Text = _rows.Count == 0
-            ? $"本地还没有备份。备份目录：{SyncService.BackupDir}"
-            : $"本地共 {_rows.Count} 份备份，目录：{SyncService.BackupDir}";
+            ? Loc.F("本地还没有备份。备份目录：{0}", SyncService.BackupDir)
+            : Loc.F("本地共 {0} 份备份，目录：{1}", _rows.Count, SyncService.BackupDir);
     }
 
     // ---------------- 删除 ----------------
@@ -176,7 +176,7 @@ public partial class RestoreWindow : Window
         if (row.Cloud)
         {
             if (!AppDialog.ConfirmDanger(this,
-                    $"从云端删除这份备份？\n\n　{row.Name}\n\n删了就找不回来了。",
+                    Loc.F("从云端删除这份备份？\n\n　{0}\n\n删了就找不回来了。", row.Name),
                     Loc.T("删除云端备份"), okText: Loc.T("删除"))) return;
 
             StatusText.Text = Loc.T("正在删除…");
@@ -189,7 +189,7 @@ public partial class RestoreWindow : Window
         try
         {
             if (!AppDialog.ConfirmDanger(this,
-                    $"删除这份本地备份？\n\n　{row.Name}\n　{row.Path}\n\n删了就找不回来了。",
+                    Loc.F("删除这份本地备份？\n\n　{0}\n　{1}\n\n删了就找不回来了。", row.Name, row.Path),
                     Loc.T("删除本地备份"), okText: Loc.T("删除"))) return;
             if (!string.IsNullOrEmpty(row.Path)) File.Delete(row.Path);
             StatusText.Text = Loc.T("✓ 已删除 ") + row.Name;
@@ -219,7 +219,7 @@ public partial class RestoreWindow : Window
             if (!AppDialog.Confirm(this,
                     Loc.T("覆盖恢复会把当前配置整份换成备份里的内容。\n") +
                     Loc.T("恢复之前会自动把当前配置另存一份到本地备份目录，恢复错了还能退回去。\n\n") +
-                    $"确定用「{row.Name}」覆盖吗？",
+                    Loc.F("确定用「{0}」覆盖吗？", row.Name),
                     Loc.T("覆盖恢复"), DialogKind.Warn, okText: Loc.T("覆盖恢复"))) return;
         }
 
@@ -274,7 +274,7 @@ public partial class RestoreWindow : Window
             StatusText.Text = "✓ " + outcome.Summary;
 
             var msg = outcome.Summary
-                      + (selfBackup != null ? $"\n\n恢复前的配置已另存：{System.IO.Path.GetFileName(selfBackup)}" : "");
+                      + (selfBackup != null ? Loc.F("\n\n恢复前的配置已另存：{0}", System.IO.Path.GetFileName(selfBackup)) : "");
             AppDialog.Success(this, msg, Loc.T("恢复完成"));
             DialogResult = true;
             Close();

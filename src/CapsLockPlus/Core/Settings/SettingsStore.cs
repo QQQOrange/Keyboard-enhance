@@ -186,7 +186,7 @@ public static class SettingsStore
                 catch (Exception copyEx) { CoreLog.Swallow(copyEx, "备份损坏的设置文件"); }
 
                 LoadFailure = backedUp
-                    ? $"设置文件读不出来，已把原文件另存为 {System.IO.Path.GetFileName(brokenPath)}，\n" +
+                    ? Loc.F("设置文件读不出来，已把原文件另存为 {0}，\n", System.IO.Path.GetFileName(brokenPath)) +
                       "本次先用默认设置启动（原文件没有被删除，可以手工修复后换回去）。"
                     : "设置文件读不出来，本次先用默认设置启动（原文件可能已被占用或权限不足）。";
 
@@ -520,7 +520,7 @@ public static class SettingsStore
         s.BuiltinEnginesVersion = DefaultSettings.BuiltinEnginesVersion;
         if (added > 0 || upgraded > 0 || removedLegacy > 0)
             CoreLog.Info($"搜索引擎表更新：新增 {added} 个，图标升级 {upgraded} 个，" +
-                         $"清理旧条目 {removedLegacy} 个（引擎表版本 → {s.BuiltinEnginesVersion}）");
+                         Loc.F("清理旧条目 {0} 个（引擎表版本 → {1}）", removedLegacy, s.BuiltinEnginesVersion));
         return true;
     }
 
@@ -711,7 +711,7 @@ public static class SettingsStore
                 s.Layers.Add(new LayerOptions
                 {
                     Id = i,
-                    Name = i == 1 ? "基础层" : $"第 {i} 层",
+                    Name = i == 1 ? "基础层" : Loc.F("第 {0} 层", i),
                     Enabled = true,
                     // 老用户的 Keys 就是第 1 层
                     Keys = i == 1 ? s.Keys : new List<KeyBinding>(),
@@ -724,7 +724,7 @@ public static class SettingsStore
             for (int i = 1; i <= DefaultLayerCount; i++)
             {
                 if (!s.Layers.Any(l => l.Id == i))
-                    s.Layers.Add(new LayerOptions { Id = i, Name = $"第 {i} 层" });
+                    s.Layers.Add(new LayerOptions { Id = i, Name = Loc.F("第 {0} 层", i) });
             }
             s.Layers = s.Layers.OrderBy(l => l.Id).ToList();
 
@@ -1122,7 +1122,7 @@ public static class DefaultSettings
             s.Layers.Add(new LayerOptions
             {
                 Id = i,
-                Name = i == 1 ? "基础层" : $"第 {i} 层",
+                Name = i == 1 ? "基础层" : Loc.F("第 {0} 层", i),
                 Enabled = true,
                 Keys = i == 1 ? s.Keys : new List<KeyBinding>(),
             });

@@ -114,8 +114,8 @@ public static class StartupPassword
     {
         if (string.IsNullOrEmpty(password)) return "请先输入密码";
         if (string.IsNullOrWhiteSpace(password)) return "密码不能只有空格";
-        if (password.Length < MinLength) return $"密码至少 {MinLength} 位";
-        if (password.Length > MaxLength) return $"密码最长 {MaxLength} 位";
+        if (password.Length < MinLength) return Loc.F("密码至少 {0} 位", MinLength);
+        if (password.Length > MaxLength) return Loc.F("密码最长 {0} 位", MaxLength);
         return null;
     }
 

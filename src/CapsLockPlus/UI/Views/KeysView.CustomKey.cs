@@ -97,12 +97,12 @@ public partial class KeysView : UserControl
         }
         else if (File.Exists(spec.AppPath))
         {
-            CustomAppStatus.Text = $"已找到：{Path.GetFileName(spec.AppPath)}（进程名 {spec.ProcessName}）";
+            CustomAppStatus.Text = Loc.F("已找到：{0}（进程名 {1}）", Path.GetFileName(spec.AppPath), spec.ProcessName);
         }
         else if (!spec.AppPath.Contains('\\') && !spec.AppPath.Contains('/'))
         {
             // 只填了 exe 名字：靠进程名匹配，也能用
-            CustomAppStatus.Text = $"按进程名「{spec.ProcessName}」匹配（没有填完整路径）";
+            CustomAppStatus.Text = Loc.F("按进程名「{0}」匹配（没有填完整路径）", spec.ProcessName);
         }
         else
         {
@@ -110,7 +110,7 @@ public partial class KeysView : UserControl
         }
 
         CustomKeyHint.Text = spec.IsReady
-            ? $"按这个键时：先看「{spec.ProcessName}」在不在运行 —— "
+            ? Loc.F("按这个键时：先看「{0}」在不在运行 —— ", spec.ProcessName)
               + Loc.T("在运行就直接把键发过去；没运行就先启动它（")
               + (spec.RunAsAdmin ? Loc.T("以管理员身份") : Loc.T("普通权限"))
               + Loc.T("），等窗口出来再发键。")
@@ -137,7 +137,7 @@ public partial class KeysView : UserControl
          * 跟"当前在编辑键盘上的哪个键"是两件事。 */
         spec.Key = dlg.CapturedCombo;
         SaveCustomSpec(spec);
-        ShowBindStatus($"已设置要发送的键：{CustomKeyRunner.ComboDisplay(spec.Key)}");
+        ShowBindStatus(Loc.F("已设置要发送的键：{0}", CustomKeyRunner.ComboDisplay(spec.Key)));
     }
 
     /// <summary>当前配置的触发键（捕获时要告诉捕获窗口，免得把前缀键录成目标键）。</summary>
@@ -177,7 +177,7 @@ public partial class KeysView : UserControl
         var spec = CurrentCustomSpec();
         spec.AppPath = dlg.FileName;
         SaveCustomSpec(spec);
-        ShowBindStatus($"已绑定应用：{Path.GetFileName(dlg.FileName)}");
+        ShowBindStatus(Loc.F("已绑定应用：{0}", Path.GetFileName(dlg.FileName)));
     }
 
     private void OnCustomAdminChanged(object sender, RoutedEventArgs e)

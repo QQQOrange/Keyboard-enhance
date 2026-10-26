@@ -24,7 +24,7 @@ public static class ExpressionEvaluator
             parser.SkipSpaces();
             if (!parser.AtEnd)
             {
-                error = $"无法解析：{parser.Peek()}";
+                error = Loc.F("无法解析：{0}", parser.Peek());
                 return false;
             }
             if (double.IsNaN(value) || double.IsInfinity(value))
@@ -189,7 +189,7 @@ public static class ExpressionEvaluator
                 var num = _text[start.._pos];
                 if (!double.TryParse(num, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out double v))
-                    throw new FormatException($"无法识别的数字：{num}");
+                    throw new FormatException(Loc.F("无法识别的数字：{0}", num));
                 return v;
             }
 
@@ -213,15 +213,15 @@ public static class ExpressionEvaluator
                     }
                     return CallFunction(name, args);
                 }
-                throw new FormatException($"未知标识符：{name}");
+                throw new FormatException(Loc.F("未知标识符：{0}", name));
             }
 
-            throw new FormatException($"无法识别的字符：{c}");
+            throw new FormatException(Loc.F("无法识别的字符：{0}", c));
         }
 
         private static double CallFunction(string name, List<double> args)
         {
-            double A(int i) => i < args.Count ? args[i] : throw new FormatException($"{name} 参数不足");
+            double A(int i) => i < args.Count ? args[i] : throw new FormatException(Loc.F("{0} 参数不足", name));
             return name switch
             {
                 "sqrt" => Math.Sqrt(A(0)),
@@ -245,7 +245,7 @@ public static class ExpressionEvaluator
                 "avg" => args.Average(),
                 "deg" => A(0) * 180 / Math.PI,
                 "rad" => A(0) * Math.PI / 180,
-                _ => throw new FormatException($"未知函数：{name}"),
+                _ => throw new FormatException(Loc.F("未知函数：{0}", name)),
             };
         }
     }
