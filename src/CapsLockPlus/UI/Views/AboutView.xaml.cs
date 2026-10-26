@@ -15,6 +15,9 @@ public partial class AboutView : UserControl
     private AppHost? _host;
     private UpdateInfo? _pending;
     private bool _busy;
+
+    /// <summary>这一次下载的取消源；空闲时为 null。</summary>
+    private CancellationTokenSource? _cts;
     private bool _suppress;
 
     /// <summary>
@@ -408,14 +411,19 @@ public partial class AboutView : UserControl
             string head = Loc.F("发现新版本 {0}", result.Update.Version) +
                           (result.Update.SizeText.Length > 0 ? Loc.F("（{0}）", result.Update.SizeText) : "");
 
-            /* 没填令牌：只提示 + 给下载地址，**程序内不提供下载入口**。
-             * 判断和 UpdatePromptWindow 用同一个 HasToken，两处行为必须一致。 */
-            if (!UpdateService.HasToken(_host?.Settings.Global.GitHubToken))
+            /* 两种情况只提示 + 给下载地址，**程序内不提供下载入口**：
+             * ① 没填令牌（判断和 UpdatePromptWindow 用同一个 HasToken）；
+             * ② 这个 release 里没有与本机系统/架构匹配的包 —— 下错了要么装不上，
+             *    要么白下 60 多兆的 Win7 自包含包。两处逻辑必须保持一致。 */
+            bool noToken = !UpdateService.HasToken(_host?.Settings.Global.GitHubToken);
+            if (noToken || !result.Update.MatchedSystem)
             {
                 ShowManualLink(string.IsNullOrWhiteSpace(result.Update.DownloadUrl)
                     ? result.Update.PageUrl
                     : result.Update.DownloadUrl);
-                SetStatus(head + Loc.T(" —— 没填 GitHub 令牌，不能自动下载，请点下面的地址用浏览器下载"),
+                SetStatus(head + (noToken
+                        ? Loc.T(" —— 没填 GitHub 令牌，不能自动下载，请点下面的地址用浏览器下载")
+                        : Loc.T(" —— 这一版没有与你系统匹配的安装包，请点下面的地址到下载页自己挑一个")),
                     Trim(result.Update.ReleaseNotes, 600));
             }
             else
@@ -455,10 +463,19 @@ public partial class AboutView : UserControl
         if (_manualUrl.Length > 0) OpenUrl(_manualUrl);
     }
 
-    /// <summary>没填令牌时这个按钮是「打开下载页」：只跳浏览器，不动文件系统。</summary>
-    private async void OnDownloadInstall(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 「下载并安装」/「打开下载页」/「取消下载」三种身份共用一个按钮。
+    ///
+    /// 下载期间按钮**不禁用而是变成「取消下载」**：这个页面没有别的入口能中断
+    /// 下载，禁用按钮等于让用户干等（慢网下几分钟都退不出来）。
+    /// </summary>
+    private void OnDownloadInstall(object sender, RoutedEventArgs e)
     {
-        if (_busy) return;
+        if (_busy)
+        {
+            RequestCancelDownload();
+            return;
+        }
 
         /* 没填令牌时这个按钮是「打开下载页」：只跳浏览器，不动文件系统。 */
         if (_manualUrl.Length > 0)
@@ -468,44 +485,86 @@ public partial class AboutView : UserControl
         }
 
         if (_pending == null) return;
+        _ = RunDownloadAsync();
+    }
+
+    private async Task RunDownloadAsync()
+    {
+        UpdateInfo? target = _pending;
+        if (target == null) return;
+
         _busy = true;
-        DownloadButton.IsEnabled = false;
+        _cts = new CancellationTokenSource();
+        CancellationToken ct = _cts.Token;
+
         CheckButton.IsEnabled = false;
+        DownloadButton.Content = Loc.T("取消下载");
+        DownloadButton.IsEnabled = true;
         Progress.Visibility = Visibility.Visible;
         Progress.Value = 0;
-        SetStatus(Loc.F("正在下载 {0}…", _pending.Version), "");
+        SetStatus(Loc.F("正在下载 {0}…", target.Version), "");
 
+        bool switchedToPage = false;
         try
         {
             var progress = new Progress<double>(p => Progress.Value = p * 100);
-            var (ok, path, error) = await _updates.DownloadAsync(_pending, progress);
+            var (ok, path, error, canceled) = await _updates.DownloadAsync(target, progress, ct);
+
+            if (canceled)
+            {
+                SetStatus(Loc.T("已取消下载"), "");
+                return;
+            }
+
             if (!ok)
             {
                 SetStatus(error, "", isError: true);
-                Progress.Visibility = Visibility.Collapsed;
                 return;
             }
 
             Progress.Value = 100;
             SetStatus(Loc.T("下载完成，正在替换并重启…"), "");
-            await Task.Delay(400);
+            await Task.Delay(400, ct);
 
             if (UpdateService.ApplyAndRestart(path))
             {
                 _host?.ExitApp();
                 return;
             }
+
+            switchedToPage = true;
             SetStatus(Loc.T("替换失败，请手动下载安装包"), "", isError: true);
             DownloadButton.Content = Loc.T("打开下载页");
             DownloadButton.Click -= OnDownloadInstall;
             DownloadButton.Click += (_, _) => OpenUrl(UpdateService.ReleasesUrl);
         }
+        catch (OperationCanceledException)
+        {
+            SetStatus(Loc.T("已取消下载"), "");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(Loc.F("下载失败：{0}", ex.Message), "", isError: true);
+        }
         finally
         {
             _busy = false;
-            DownloadButton.IsEnabled = true;
+            _cts?.Dispose();
+            _cts = null;
+            Progress.Visibility = Visibility.Collapsed;
             CheckButton.IsEnabled = true;
+            DownloadButton.IsEnabled = true;
+            if (!switchedToPage) DownloadButton.Content = Loc.T("下载并安装");
         }
+    }
+
+    /// <summary>请求取消下载：只发信号，收尾在 <see cref="RunDownloadAsync"/> 的 finally。</summary>
+    private void RequestCancelDownload()
+    {
+        if (_cts is not { IsCancellationRequested: false }) return;
+        DownloadButton.IsEnabled = false;   // 防连点
+        SetStatus(Loc.T("正在取消…"), "");
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { }   /* 预期内：已在收尾 */
     }
 
     private void SetStatus(string text, string notes, bool isError = false)

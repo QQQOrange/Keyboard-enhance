@@ -455,6 +455,8 @@ Enter 执行	Enter runs
 在浏览器中打开 GitHub 下载地址	Open the GitHub download address in your browser
 跳过此版本	Skip this version
 稍后	Later
+取消下载	Cancel download
+中断这次下载（已下载的部分会被删掉），可以稍后重试	Stop this download (the partial file is deleted). You can try again later.
 选择窗口	Pick a window
 点击要绑定的窗口	Click the window you want to bind
 左键选中　·　右键或 Esc 取消	Left click selects · Right click or Esc cancels
@@ -1311,10 +1313,14 @@ DDC 屏{0}：{1}，量程 0~{2}	DDC display {0}: {1}, range 0~{2}
 正在检查更新…	Checking for updates…
 已是最新版本（{0}）	Already up to date ({0})
  —— 没填 GitHub 令牌，不能自动下载，请点下面的地址用浏览器下载	 — no GitHub token is set, so automatic download is unavailable; use the address below in your browser
+ —— 这一版没有与你系统匹配的安装包，请点下面的地址到下载页自己挑一个	 — this release has no package that matches your system. Pick one yourself from the download page below.
 正在下载 {0}…	Downloading {0}…
+已取消下载	Download canceled.
 下载完成，正在替换并重启…	Download finished; replacing and restarting…
 替换失败，请手动下载安装包	Replacement failed; please download the installer manually
 打开下载页	Open download page
+下载失败：{0}	Download failed: {0}
+正在取消…	Canceling…
 还没同步过	Never synced
 上次同步：{0:yyyy-MM-dd HH:mm}　{1}	Last sync: {0:yyyy-MM-dd HH:mm} {1}
 ⚠ 本地数据还是明文 —— 设一个「备份密码」就会立刻转成密文（AES-256-GCM）。	⚠ Local data is still plaintext — set a backup password and it is converted to ciphertext (AES-256-GCM) immediately.
@@ -1843,11 +1849,13 @@ Enter 打开网址	Enter opens the URL
 子层太多	Too many sublayers
 当前 {0}	Current {0}
 （该版本没有填写更新说明）	(this version has no release notes)
+这一版没有与你系统匹配的安装包，程序里不自动下载。点下面的地址到下载页自己挑一个：	This release has no package that matches your system, so it won't download automatically. Use the address below to pick one from the download page:
+已跳过 {0}，下次有新版本还会提醒	Skipped {0}; you will be reminded again when a newer version appears
 没能自动打开浏览器。\n\n请手动访问：\n	Could not open the browser automatically.\n\nPlease visit:\n
 打开下载页失败	Opening the download page failed
-已跳过 {0}，下次有新版本还会提醒	Skipped {0}; you will be reminded again when a newer version appears
 正在下载…	Downloading…
 正在下载… {0:0}%	Downloading… {0:0}%
+已取消下载，可重新下载	Download canceled. You can try again.
 正在替换并重启…	Replacing and restarting…
 替换失败，请到 Releases 手动下载	Replacement failed; download manually from Releases
 Esc 仍可用（轮询兜底），但会同时传到底下的程序	Esc still works (polling fallback) but also reaches the program underneath
@@ -1857,3 +1865,4 @@ Esc 仍可用（轮询兜底），但会同时传到底下的程序	Esc still wo
 {0}　·　{1}×{2}　·　左键选中 / 右键取消	{0} · {1}×{2} · Left click to select / right click to cancel
 简体中文	
 、	, 
+已取消下载，可以重新点「下载并安装」	Download canceled. You can click "Download and install" again.

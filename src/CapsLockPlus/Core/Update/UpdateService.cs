@@ -15,7 +15,9 @@ public sealed record UpdateInfo(
     string ReleaseNotes,
     string PageUrl,
     long Size,
-    string Sha256)
+    string Sha256,
+    string AssetName = "",
+    bool MatchedSystem = true)
 {
     public string SizeText => Size <= 0 ? "" : $"{Size / 1024.0 / 1024.0:0.0} MB";
 }
@@ -102,6 +104,108 @@ public sealed class UpdateService
             var v = Assembly.GetExecutingAssembly().GetName().Version;
             return v == null ? "1.0.0" : $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}";
         }
+    }
+
+    // ---------------- 系统识别与安装包挑选 ----------------
+
+    /// <summary>
+    /// 当前系统是不是 Win10 之前那一代（Win7 / Win8 / Win8.1）。
+    ///
+    /// 判据是**主版本号 &lt; 10**，不是"等于 6.1"：
+    /// Win7 = 6.1、Win8 = 6.2、Win8.1 = 6.3 都属于"装不上 .NET 10"的一代，
+    /// 只能拿 .NET 7 自包含包（发布资产名里叫 `Win7`，覆盖的是这一整代）。
+    /// 反过来，Win10 2004 之后主版本号可能报成 10.0.x —— 只要 ≥ 10 就走
+    /// Win10/11 那条线。
+    /// </summary>
+    public static bool IsLegacyWindows
+    {
+        get
+        {
+            try { return Environment.OSVersion.Version.Major < 10; }
+            catch { return false; }   /* 预期内：探测型，读不到就按新系统处理 */
+        }
+    }
+
+    /// <summary>
+    /// 当前进程的架构族。只有 x86 / x64 两种发布形态：
+    /// ARM64 上跑的是 x64 模拟进程（<see cref="System.Runtime.InteropServices.Architecture.X64"/>），
+    /// 所以非 x86 一律归到 x64。
+    /// </summary>
+    public static string ProcessArch =>
+        System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+            == System.Runtime.InteropServices.Architecture.X86 ? "x86" : "x64";
+
+    /// <summary>挑包的结果。<see cref="Exact"/> 为 false 表示没有完全匹配的包。</summary>
+    public sealed record AssetPick(string Name, bool FamilyMatched, bool ArchMatched)
+    {
+        public static readonly AssetPick None = new("", false, false);
+        public bool Any => Name.Length > 0;
+        public bool Exact => FamilyMatched && ArchMatched;
+    }
+
+    /// <summary>资产名里读出来的特征（发布命名约定见 BUILD.md）。</summary>
+    private readonly record struct AssetTraits(bool X86, bool Win7Family, bool SelfContained)
+    {
+        /// <summary>
+        /// 没标注的按发布约定理解：不带架构后缀 = x64，不带系统后缀 = Win10/11。
+        /// 主资产 `KeyboardEnhance.exe` 就属于这种"裸名"。
+        /// </summary>
+        public static AssetTraits Parse(string name)
+        {
+            string n = name.ToLowerInvariant();
+            bool win7 = n.Contains("win7");
+            bool x86 = n.Contains("x86") || n.Contains("win32") || n.Contains("-32");
+            bool self = n.Contains("selfcontained") || n.Contains("self-contained");
+            return new AssetTraits(x86, win7, self);
+        }
+    }
+
+    /// <summary>
+    /// 从 release 的资产名里挑出**适合本机**的那一个。
+    ///
+    /// 为什么必须挑：GitHub 返回的 assets 是**按名字排的**，而
+    /// `KeyboardEnhance-4.5.27-x64-Win7-SelfContained.exe` 排在
+    /// `KeyboardEnhance.exe` 前面（`-4` &lt; `.`）。以前的实现只取
+    /// "第一个以 .exe 结尾的资产"，于是在 Win11 上也会被推 67 MB 的
+    /// Win7 自包含包 —— 能装、能跑，但白白多下 60 MB。
+    ///
+    /// 打分制（同分靠名字长度，主包名最短）：
+    /// <list type="bullet">
+    /// <item>系统家族匹配 +1000 / 不匹配 −500；</item>
+    /// <item>架构匹配 +200 / 不匹配 −100；</item>
+    /// <item>体积偏好 +50：Win10+ 选「依赖运行时」的瘦包，Win7 代选自包含包；</item>
+    /// <item>再减去名字长度，让裸名主包优先。</item>
+    /// </list>
+    /// </summary>
+    public static AssetPick PickAsset(IReadOnlyList<string> names, bool legacyWindows, string arch)
+    {
+        AssetPick best = AssetPick.None;
+        int bestScore = int.MinValue;
+        bool wantX86 = string.Equals(arch, "x86", StringComparison.OrdinalIgnoreCase);
+
+        foreach (string name in names)
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var t = AssetTraits.Parse(name);
+            bool familyOk = t.Win7Family == legacyWindows;
+            bool archOk = t.X86 == wantX86;
+
+            int score = familyOk ? 1000 : -500;
+            score += archOk ? 200 : -100;
+            // legacyWindows 与 SelfContained 同真同假才是想要的组合：
+            // Win7 代（true）要自包含（true）；Win10+（false）要瘦包（false）。
+            score += legacyWindows == t.SelfContained ? 50 : 0;
+            score -= name.Length;
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = new AssetPick(name, familyOk, archOk);
+            }
+        }
+        return best;
     }
 
     /// <summary>
@@ -278,11 +382,29 @@ public sealed class UpdateService
             var current = Version.Parse(CurrentVersion);
             bool newer = remote > current;
 
-            var asset = release.Assets?.FirstOrDefault(a =>
-                a.Name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
+            /* 挑包：【必须】按本机系统 + 架构挑，不能取"第一个 exe"。
+             * GitHub 的 assets 按名字排序返回，Win7 自包含包会排在主包前面
+             * （`KeyboardEnhance-4.5.27-x64-Win7-…` < `KeyboardEnhance.exe`），
+             * 于是 Win11 上也会被推 67 MB 的包。详见 PickAsset 的注释。 */
+            var names = (release.Assets ?? new List<GitHubAsset>())
+                .Select(a => a.Name ?? "")
+                .Where(n => n.Length > 0)
+                .ToList();
+            var pick = PickAsset(names, IsLegacyWindows, ProcessArch);
+            var asset = pick.Any
+                ? release.Assets?.FirstOrDefault(a =>
+                    string.Equals(a.Name, pick.Name, StringComparison.Ordinal))
+                : null;
+
             if (asset == null)
                 return new UpdateCheckResult(true, null,
                     newer ? Loc.F("发现新版本 {0}，但该版本没有附带 exe 安装包", tag) : "已是最新版本", newer);
+
+            if (!pick.Exact)
+            {
+                CoreLog.Warn($"更新包没有完全匹配的形态（系统 Win7 代={IsLegacyWindows}、架构 {ProcessArch}），" +
+                             $"退回 {pick.Name}；程序内不提供自动下载");
+            }
 
             var info = new UpdateInfo(
                 tag,
@@ -290,7 +412,9 @@ public sealed class UpdateService
                 release.Body ?? "",
                 release.HtmlUrl ?? ReleasesUrl,
                 asset.Size,
-                NormalizeDigest(asset.Digest));
+                NormalizeDigest(asset.Digest),
+                pick.Name,
+                pick.Exact);
 
             return new UpdateCheckResult(true, info,
                 newer ? Loc.F("发现新版本 {0}", tag) : "已是最新版本", newer);
@@ -329,8 +453,14 @@ public sealed class UpdateService
         }
     }
 
-    /// <summary>下载到临时文件，返回文件路径。</summary>
-    public async Task<(bool Ok, string Path, string Error)> DownloadAsync(
+    /// <summary>
+    /// 下载到临时文件，返回文件路径。
+    ///
+    /// 第四项 <c>Canceled</c> 专门标出"用户主动取消"：它不该走到失败分支去
+    /// 显示一句红色的"下载失败：操作已取消"—— 用户自己按的取消，不是错误。
+    /// 临时文件在这条路上一样会删干净。
+    /// </summary>
+    public async Task<(bool Ok, string Path, string Error, bool Canceled)> DownloadAsync(
         UpdateInfo info, IProgress<double>? progress = null, CancellationToken ct = default)
     {
         string temp;
@@ -341,7 +471,7 @@ public sealed class UpdateService
         }
         catch (Exception ex)
         {
-            return (false, "", "无法创建下载目录：" + ex.Message);
+            return (false, "", "无法创建下载目录：" + ex.Message, false);
         }
         try
         {
@@ -401,13 +531,13 @@ public sealed class UpdateService
             if (last != null)
             {
                 TryDelete(temp);
-                return (false, "", "下载失败：" + last.Message);
+                return (false, "", "下载失败：" + last.Message, false);
             }
 
             if (info.Size > 0 && read != info.Size)
             {
                 TryDelete(temp);
-                return (false, "", Loc.F("下载不完整（{0}/{1} 字节）", read, info.Size));
+                return (false, "", Loc.F("下载不完整（{0}/{1} 字节）", read, info.Size), false);
             }
 
             // GitHub 的资产摘要是 "sha256:xxxx" 这种带算法前缀的格式，
@@ -421,15 +551,25 @@ public sealed class UpdateService
                     TryDelete(temp);
                     return (false, "",
                         Loc.F("校验失败，文件可能已损坏（期望 {0}…，", expected[..Math.Min(12, expected.Length)]) +
-                        Loc.F("实际 {0}…）", actual[..12]));
+                        Loc.F("实际 {0}…）", actual[..12]), false);
                 }
             }
-            return (true, temp, "");
+            return (true, temp, "", false);
+        }
+        /* 取消必须排在通用 catch 前面，否则会被当成普通失败吞掉：
+         * 用户点了「取消」，界面却显示"下载失败：操作已取消"—— 既难看，
+         * 也会让后面的分支错误地进入"重试/打开下载页"的流程。 */
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 刚写完的 exe 常被 Defender 之类即时扫描占住句柄，一次删不掉；
+            // 重试几次，仍不行就留给 CleanupLeftovers 的定期清理。
+            await DeleteWithRetryAsync(temp).ConfigureAwait(false);
+            return (false, "", "", true);
         }
         catch (Exception ex)
         {
             TryDelete(temp);
-            return (false, "", "下载失败：" + ex.Message);
+            return (false, "", "下载失败：" + ex.Message, false);
         }
     }
 
@@ -590,6 +730,29 @@ public sealed class UpdateService
         await using var fs = File.OpenRead(path);
         var hash = await SHA256.HashDataAsync(fs, ct).ConfigureAwait(false);
         return Convert.ToHexString(hash);
+    }
+
+    /// <summary>
+    /// 删下载残留，失败重试。
+    ///
+    /// 取消下载时文件刚写完，杀毒软件（尤其是 Defender 的实时扫描）往往还捏着
+    /// 句柄 —— 直接 <c>File.Delete</c> 会抛 IOException。实测取消后 <c>updates/</c>
+    /// 里会留下半个安装包，所以这里等一小会儿再删。
+    /// </summary>
+    private static async Task DeleteWithRetryAsync(string path)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+                return;
+            }
+            catch (IOException) { }                    /* 预期内：句柄未释放，重试 */
+            catch (UnauthorizedAccessException) { }    /* 同上 */
+            try { await Task.Delay(250).ConfigureAwait(false); } catch { return; }
+        }
+        CoreLog.Warn("下载残留删不掉，留给下次启动清理：" + path);
     }
 
     private static void TryDelete(string path)

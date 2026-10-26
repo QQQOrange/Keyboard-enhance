@@ -4,6 +4,84 @@
 
 ---
 
+## v4.5.28 — 更新功能三处修复：任务栏可见 / 下载可取消 / 选对安装包
+
+> ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**。
+
+### ① 启动时的更新提示框"看不见"，任务栏也没有
+
+**原因**：窗口是 `WindowStyle="None" + AllowsTransparency="True"`，并且
+`ShowInTaskbar="False"`。而启动时的检查是静默跑的，本进程通常**不是前台进程** ——
+`Show()` 内部调的 `SetForegroundWindow` 会被 Windows 的**前台锁定**拒绝。
+窗口其实建出来了，只是压在别的窗口底下，任务栏又一点痕迹都没有，
+用户的感觉就是"更新提示根本没弹"。
+
+**修法**
+- `ShowInTaskbar="True"`（配 `ShowActivated="True"`）：任务栏有正常窗口项，
+  标题就是「发现新版本」；
+- 显示后 `Topmost = true` → `Activate()` →
+  `WindowService.ForceForeground(allowUnlockTimeout: true)`
+  （三步加严：直接抢 / `AttachThreadInput` 挂到前台线程 / 临时解除前台锁定）；
+- 置顶**不是永久的**：用户切走（`Deactivated`）或 1.2 秒后已不是前台，就撤掉 ——
+  它只需要"出现时一定看得见"，不该长期压在别人的窗口上面。
+
+### ② 点了下载就取消不了，也关不掉窗口
+
+**原因**：`OnDownload` 把三个按钮全 `IsEnabled = false`，而 `DownloadAsync`
+**根本没接 `CancellationToken`**；窗口又是无标题栏的（没有 ×），Esc 也没处理 ——
+慢网下只能干等，连接卡住时等于卡死。
+
+**修法**
+- 下载中按钮区换成**只留「取消下载」**（跳过 / 稍后 / 下载都隐藏）；
+- `CancellationTokenSource` 贯穿 `HttpClient.GetAsync`、流读写、重试等待 ——
+  取消**立刻**生效，不用等这一轮缓冲读完；
+- 取消后：删掉半截安装包、收起进度条、恢复按钮，状态显示「已取消下载，可重新下载」。
+  删除带 4 次重试：刚写完的 exe 常被 Defender 之类即时扫描捏着句柄，一次删不掉
+  （实测原来会留下半个安装包）；
+- `Esc` = 下载中取消 / 空闲时关窗；关窗（含 Alt+F4）自动取消下载；
+- 「关于」页的下载入口同样改成"按钮变成「取消下载」"，两处行为一致。
+
+### ③ Win11 上被推 60 多 MB 的更新包
+
+**原因**：`CheckAsync` 只做了 `assets.FirstOrDefault(a => a.Name.EndsWith(".exe"))`
+—— 取**第一个** exe。而 GitHub 的 assets 是**按名字排序**返回的：
+
+```
+0  KeyboardEnhance-4.5.27-x64-Win7-SelfContained.exe   67 MB   ← 被选中
+1  KeyboardEnhance-4.5.27-x86-Win10-Win11.exe         3.2 MB
+2  KeyboardEnhance-4.5.27-x86-Win7-SelfContained.exe  59 MB
+3  KeyboardEnhance.exe                                3.2 MB   ← 本该是这个
+```
+
+`KeyboardEnhance-…` 里的 `-` 排在 `KeyboardEnhance.` 的 `.` 前面，
+所以 Win7 自包含包永远排第一。系统版本、进程架构**完全没参与判断**。
+
+**修法**：新增 `PickAsset(names, legacyWindows, arch)`，按特征打分挑包 ——
+系统家族匹配 +1000 / 不匹配 −500；架构匹配 +200 / 不匹配 −100；
+体积偏好 +50（Win10+ 选瘦包、Win7 代选自包含包）；再减去名字长度让裸名主包优先。
+系统判定用 `OSVersion.Version.Major < 10`（Win7 / 8 / 8.1 都只能拿 .NET 7 自包含包），
+架构取 `RuntimeInformation.ProcessArchitecture`（非 x86 一律按 x64，ARM64 上是 x64 模拟）。
+**没有完全匹配的包时不在程序内下载**（`UpdateInfo.MatchedSystem = false`），
+只给下载页链接 —— 免得把不匹配的包装上去。
+
+### 顺带修的界面问题
+
+状态文字原来和按钮**挤在同一个 Grid 格里**，新文案一变长就压在「跳过此版本」上面
+（英文下会被挤成 `Down…`）。现在状态文字独占一行，进度条在它下面，按钮单独一行。
+
+### 验证
+
+- 自检 **2345 项全过**（新增 17 项）：四种「系统 × 架构」喂真实资产名、期望值写死；
+  取消下载必须返回 `Canceled = true`，且不带错误文案、不留文件路径；
+- **实机（Win11 x64）跑真实接口**：`asset=[KeyboardEnhance.exe] size=3298337 matched=True`
+  —— 3.1 MB，不再是 67 MB；
+- **实机弹窗**：扩展样式 `0xC0000`（含 `WS_EX_APPWINDOW`）、任务栏有按钮、抢到前台；
+- **实机下载 20 MB 假包**（约 210 KB/s）：界面只剩「取消下载」→ 点一下 →
+  状态变「已取消下载，可重新下载」，`updates/` 里的半截文件删干净；
+- 中英文各截一遍：下载中 / 取消后两种状态都正常，文字与按钮不再重叠。
+
+---
+
 ## v4.5.27 — 修：语言下拉显示成 `LocLanguage { Code … }`
 
 > ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**。

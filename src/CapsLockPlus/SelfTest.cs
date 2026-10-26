@@ -282,6 +282,8 @@ public static partial class SelfTest
 
         Section("更新");
         TestUpdateDigest();
+        TestUpdateAssetPick();
+        TestUpdateCancellation();
         TestGitHubToken();
     }
 

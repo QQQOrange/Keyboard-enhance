@@ -4,13 +4,21 @@
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
         Title="{loc:T '发现新版本'}" Width="520" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True" ShowActivated="True"
         FontFamily="{StaticResource Font.Ui}" UseLayoutRounding="True">
 
     <Border CornerRadius="18" Background="{DynamicResource Brush.Surface}" BorderThickness="1"
             BorderBrush="{DynamicResource Brush.BorderStrong}" Margin="18">
         <Grid>
+            <!-- 四行：内容 / 状态文字 / 进度条 / 按钮。
+                 状态文字**独占一行**是必须的：放在按钮同一行时，英文按钮
+                 （Skip this version / Download and install）把剩余宽度挤到
+                 只剩 "Down…"，中文长句也会压到按钮上。空文本的 TextBlock
+                 高度为 0，不显示状态时不占位置。 -->
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -36,12 +44,12 @@
                     </ScrollViewer>
                 </Border>
 
-                <!-- 没填 GitHub 令牌时**不提供程序内下载**：这里只摆一个可点的下载地址，
-                     点它交给浏览器。底部那个「下载并安装」会被整个藏起来。 -->
+                <!-- 没填 GitHub 令牌（或没有与本机匹配的安装包）时**不提供程序内下载**：
+                     这里只摆一个可点的下载地址，点它交给浏览器。底部那个「下载并安装」会被整个藏起来。 -->
                 <Border x:Name="LinkCard" Style="{StaticResource Card.Flat}" Margin="0,10,0,0"
                         Padding="13,10" Visibility="Collapsed">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                        <TextBlock x:Name="LinkHint" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
                                    Text="{loc:T '没有填写 GitHub 个人访问令牌，这一版不能自动下载。点下面的地址用浏览器下载：'}" />
                         <Button x:Name="DownloadLinkButton" Style="{StaticResource Button.Ghost}"
                                 Padding="0" Margin="0,6,0,0" HorizontalAlignment="Left" Cursor="Hand"
@@ -57,13 +65,14 @@
                 </Border>
             </StackPanel>
 
-            <ProgressBar Grid.Row="1" x:Name="Progress" Height="4" Margin="24,16,24,0" Visibility="Collapsed"
+            <TextBlock Grid.Row="1" x:Name="StatusText" Style="{StaticResource Text.Tertiary}"
+                       TextWrapping="Wrap" Margin="24,14,24,0" />
+
+            <ProgressBar Grid.Row="2" x:Name="Progress" Height="4" Margin="24,12,24,0" Visibility="Collapsed"
                          Minimum="0" Maximum="100" Foreground="{DynamicResource Brush.Accent}"
                          Background="{DynamicResource Brush.SurfaceAlt}" BorderThickness="0" />
 
-            <Grid Grid.Row="2" Margin="24,18,24,22">
-                <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" MaxWidth="220" />
+            <Grid Grid.Row="3" Margin="24,16,24,22">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="SkipButton" Content="{loc:T '跳过此版本'}" Style="{StaticResource Button.Ghost}"
                             Click="OnSkip" />
@@ -71,6 +80,12 @@
                             Margin="6,0,0,0" Click="OnLater" />
                     <Button x:Name="DownloadButton" Content="{loc:T '下载并安装'}" Style="{StaticResource Button.Primary}"
                             Margin="8,0,0,0" Click="OnDownload" />
+                    <!-- 下载中才出现：中断下载并回到初始状态（可以重试或直接关窗）。
+                         没有它的时候，一旦点下「下载并安装」，三个按钮全被禁用、
+                         窗口又没有标题栏关闭按钮 —— 只能等，慢网下等于卡死。 -->
+                    <Button x:Name="CancelButton" Content="{loc:T '取消下载'}" Style="{StaticResource Button.Base}"
+                            Margin="8,0,0,0" Visibility="Collapsed" Click="OnCancelDownload"
+                            ToolTip="{loc:T '中断这次下载（已下载的部分会被删掉），可以稍后重试'}" />
                 </StackPanel>
             </Grid>
         </Grid>

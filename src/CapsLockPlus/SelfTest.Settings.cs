@@ -46,6 +46,80 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// 更新包挑选：GitHub 的 assets 是**按名字排序**返回的，第一个 exe 恰好是
+    /// `…-x64-Win7-SelfContained.exe`（67 MB）。旧实现直接取"第一个 exe"，
+    /// 于是在 Win11 上也被推 60 多兆的 Win7 自包含包 —— 这就是用户报的第三条。
+    /// 这里用真实发布里那四个资产名，把四种系统的期望结果钉死。
+    /// </summary>
+    private static void TestUpdateAssetPick()
+    {
+        // 顺序故意保持 GitHub 返回的样子（按名字升序），别"顺手排好"
+        var names = new[]
+        {
+            "KeyboardEnhance-4.5.27-x64-Win7-SelfContained.exe",
+            "KeyboardEnhance-4.5.27-x86-Win10-Win11.exe",
+            "KeyboardEnhance-4.5.27-x86-Win7-SelfContained.exe",
+            "KeyboardEnhance.exe",
+        };
+
+        var win11x64 = UpdateService.PickAsset(names, legacyWindows: false, arch: "x64");
+        CheckEqual("Win11 x64 选主包", win11x64.Name, "KeyboardEnhance.exe");
+        Check("Win11 x64 完全匹配", win11x64.Exact, win11x64.Name);
+        Check("Win11 选出的包不是 Win7 专供", !win11x64.Name.Contains("Win7"), win11x64.Name);
+
+        var win11x86 = UpdateService.PickAsset(names, legacyWindows: false, arch: "x86");
+        CheckEqual("Win11 x86 选 32 位瘦包", win11x86.Name,
+            "KeyboardEnhance-4.5.27-x86-Win10-Win11.exe");
+        Check("Win11 x86 完全匹配", win11x86.Exact, win11x86.Name);
+
+        var win7x64 = UpdateService.PickAsset(names, legacyWindows: true, arch: "x64");
+        CheckEqual("Win7 x64 选自包含包", win7x64.Name,
+            "KeyboardEnhance-4.5.27-x64-Win7-SelfContained.exe");
+        Check("Win7 x64 完全匹配", win7x64.Exact, win7x64.Name);
+
+        var win7x86 = UpdateService.PickAsset(names, legacyWindows: true, arch: "x86");
+        CheckEqual("Win7 x86 选 32 位自包含包", win7x86.Name,
+            "KeyboardEnhance-4.5.27-x86-Win7-SelfContained.exe");
+
+        // 发布缺主包：还能给出候选，但必须标成"不完全匹配"（界面据此关掉自动下载）
+        var onlyLegacy = UpdateService.PickAsset(
+            new[] { "KeyboardEnhance-4.5.27-x64-Win7-SelfContained.exe" },
+            legacyWindows: false, arch: "x64");
+        Check("缺主包时仍能给出候选", onlyLegacy.Any, onlyLegacy.Name);
+        Check("缺主包时标记为不完全匹配", !onlyLegacy.Exact);
+
+        // release 里只有 zip 之类：没有可自动安装的东西
+        Check("没有 exe 资产时返回空", !UpdateService.PickAsset(new[] { "src.zip" }, false, "x64").Any);
+
+        // 本机平台判定：Windows 主版本号 < 10 才算 Win7 代
+        CheckEqual("Win7 代判定与系统主版本号一致",
+            UpdateService.IsLegacyWindows, Environment.OSVersion.Version.Major < 10);
+        Check("进程架构只有 x86 / x64 两种",
+            UpdateService.ProcessArch is "x86" or "x64", UpdateService.ProcessArch);
+    }
+
+    /// <summary>
+    /// 取消下载要能被界面区分出来：用户点了「取消」，不该显示红色的
+    /// "下载失败：操作已取消"，也不该走进"重试 / 打开下载页"的分支。
+    /// 用**已取消**的令牌打真实地址 —— 请求在发包前就被取消，不产生流量。
+    /// </summary>
+    private static void TestUpdateCancellation()
+    {
+        var svc = new UpdateService();
+        var info = new UpdateInfo("9.9.9", "https://example.invalid/none.exe", "", "", 0, "");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var (ok, path, error, canceled) = svc.DownloadAsync(info, null, cts.Token)
+            .GetAwaiter().GetResult();
+
+        Check("取消下载：不算成功", !ok);
+        Check("取消下载：标记为已取消", canceled);
+        CheckEqual("取消下载：不返回错误文案", error, "");
+        CheckEqual("取消下载：不留下文件路径", path, "");
+    }
+
+    /// <summary>
     /// GitHub 个人访问令牌：洗涤、掩码、"填没填"的判定。
     ///
     /// 这几条都不联网，验的是"用户粘进来的那串东西"能不能被正确处理 ——
