@@ -71,6 +71,11 @@
 
 ### 验证
 
+两张实机截图（`docs/screenshots/`）：
+
+- `update-downloading.png` —— 下载中只剩「取消下载」，进度 4%；
+- `update-canceled.png` —— 点过取消之后：状态「已取消下载，可重新下载」，按钮恢复。
+
 - 自检 **2345 项全过**（新增 17 项）：四种「系统 × 架构」喂真实资产名、期望值写死；
   取消下载必须返回 `Canceled = true`，且不带错误文案、不留文件路径；
 - **实机（Win11 x64）跑真实接口**：`asset=[KeyboardEnhance.exe] size=3298337 matched=True`
