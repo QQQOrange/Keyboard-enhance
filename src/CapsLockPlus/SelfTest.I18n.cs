@@ -52,6 +52,18 @@ public static partial class SelfTest
         // 下拉框里显示的是"人话"，不能是 en-US 这种代码
         CheckEqual("英文语言包的显示名", en?.DisplayName, "English");
 
+        /* 下拉框的胶囊显示的是 ComboBox.SelectionBoxItem。那条路一旦没走模板，
+         * 就会直接拿对象的 ToString() 去画 —— record 默认是
+         * `LocLanguage { Code = zh-CN, DisplayName = 简体中文, IsBuiltIn = True }`，
+         * 于是界面上出现一长串类型名（v4.5.26 的真实故障）。
+         * 所以断言 ToString 必须等于显示名，任何一条显示路径都不会再漏出类型名。 */
+        foreach (var lang in avail)
+        {
+            CheckEqual($"语言 {lang.Code} 的 ToString 就是显示名", lang.ToString(), lang.DisplayName);
+            Check($"语言 {lang.Code} 的 ToString 不含类型名",
+                !lang.ToString().Contains("LocLanguage"), lang.ToString());
+        }
+
         // 写法归一：用户配置里可能存 zh-cn / EN / en_US 各种写法
         CheckEqual("Normalize(zh-cn)", Loc.Normalize("zh-cn"), "zh-CN");
         CheckEqual("Normalize(EN-us)", Loc.Normalize("EN-us"), "en-US");

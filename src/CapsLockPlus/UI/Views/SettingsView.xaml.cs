@@ -497,6 +497,31 @@ public partial class SettingsView : UserControl
     }
 
     /// <summary>
+    /// 出图用：滚到「外观」区。
+    ///
+    /// 界面语言这一行在页面下部、默认窗口高度下正好落在折叠线以下 ——
+    /// 不滚过去，截图回归就永远看不到"语言下拉里到底显示了什么"
+    /// （这个下拉曾经显示成 <c>LocLanguage { … }</c>，就是因为没人看见过它）。
+    /// </summary>
+    internal void ScrollToAppearanceForRender()
+    {
+        // 按"语言行在内容里的绝对纵坐标"直接定位，比 BringIntoView 可靠：
+        // BringIntoView 只保证"露出一部分"，可能把卡片标题顶出可视区。
+        if (RootScroll.Content is not System.Windows.FrameworkElement content) return;
+        RootScroll.UpdateLayout();
+        double y = LanguageBox.TransformToAncestor(content).Transform(default).Y;
+        RootScroll.ScrollToVerticalOffset(Math.Max(0, y - 130));
+        RootScroll.UpdateLayout();
+    }
+
+    /// <summary>出图用：滚回顶部，别把滚动位置留给后面的诊断与下一张图。</summary>
+    internal void ResetRenderStateForRender()
+    {
+        RootScroll.ScrollToTop();
+        RootScroll.UpdateLayout();
+    }
+
+    /// <summary>
     /// 把内置语言包填进下拉框。条目直接来自 <see cref="Loc.Available"/> ——
     /// 往 Assets/Lang 丢一个新 json，这里就自动多一项，不用改代码。
     /// </summary>

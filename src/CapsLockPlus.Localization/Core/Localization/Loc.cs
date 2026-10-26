@@ -12,7 +12,18 @@ using System.Text.Json;
 namespace CapsLockPlus.Core.Localization;
 
 /// <summary>一种可用语言。</summary>
-public sealed record LocLanguage(string Code, string DisplayName, bool IsBuiltIn);
+public sealed record LocLanguage(string Code, string DisplayName, bool IsBuiltIn)
+{
+    /// <summary>
+    /// 显示名。**必须重写**：这是给下拉框、日志、断言直接用的对象，
+    /// 而 record 默认的 <c>ToString()</c> 是
+    /// <c>LocLanguage { Code = zh-CN, DisplayName = 简体中文, IsBuiltIn = True }</c> ——
+    /// 只要有一条显示路径没走 DisplayMemberPath，界面上就会原样出现这串东西
+    /// （v4.5.26 的设置页就撞过：语言下拉显示成 `LocLanguage { Code …`）。
+    /// 重写之后，无论 WPF 从哪条路拿到这个对象，都只会显示语言名。
+    /// </summary>
+    public override string ToString() => DisplayName;
+}
 
 /// <summary>
 /// 界面语言的唯一入口。

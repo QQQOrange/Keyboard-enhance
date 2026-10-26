@@ -262,6 +262,27 @@ public static class RenderTools
                 }
             }
 
+            /* 设置页的「外观」区：主题、键盘尺寸、界面语言都在这一区，
+             * 而它默认正好在折叠线以下 —— 不滚过去截一张，
+             * "语言下拉里到底显示了什么"就没人看得见
+             * （这个下拉曾经渲染成 `LocLanguage { … }`，全靠这一张才发现）。 */
+            if (page == "settings" &&
+                main.GetPage("settings") is CapsLockPlus.UI.Views.SettingsView sv)
+            {
+                try
+                {
+                    sv.ScrollToAppearanceForRender();
+                    Pump(240);
+                    Save(main, Path.Combine(outDir, "settings-appearance.png"));
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染设置页外观区失败：" + ex.Message);
+                }
+                sv.ResetRenderStateForRender();
+                Pump(120);
+            }
+
             // 诊断文件只在显式要求时输出（--render-diag <目录>），
             // 免得把一堆中间产物混进 docs/screenshots。
             if (DiagnosticsRequested)

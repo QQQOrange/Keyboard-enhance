@@ -4,6 +4,43 @@
 
 ---
 
+## v4.5.27 — 修：语言下拉显示成 `LocLanguage { Code … }`
+
+> ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**。
+
+设置 → 外观 → **界面语言** 那个胶囊里显示的不是「简体中文 / English」，
+而是一长串 `LocLanguage { Code = zh-CN, DisplayName = 简体中文, IsBuiltIn = True }`
+（窄胶囊里只露出前几个词）。中英文界面都这样。v4.5.26 引入的 bug，只有这一处受影响。
+
+### 为什么会这样
+
+三个因素叠在一起：
+
+1. `LocLanguage` 是 **record**，默认 `ToString()` 就是
+   `LocLanguage { Code = …, DisplayName = …, IsBuiltIn = … }`；
+2. 下拉框的胶囊部分显示的是 `ComboBox.SelectionBoxItem`（不是列表项），
+   而这条路径在自定义 `ControlTemplate` 里**不保证**用 `DisplayMemberPath` 取值 ——
+   取不到就把对象本身丢给 `ContentPresenter`，于是画出来的是 ToString；
+3. 下拉框的下拉**列表**走的是另一条路，看起来是正常的，
+   所以只瞄一眼列表会以为没问题。
+
+### 怎么修的
+
+- 下拉框改用 **`ItemTemplate`**（`<TextBlock Text="{Binding DisplayName}" />`）——
+  胶囊和列表两条路都会走模板，不再依赖 `DisplayMemberPath`；
+- 顺带给 `LocLanguage` **重写 `ToString()` → `DisplayName`**：
+  这是给界面、日志、断言直接用的对象，任何一条显示路径都不该漏出类型名；
+- **自检 +4 项**（总 2328）：每个语言的 `ToString()` 必须等于显示名、且不含 `LocLanguage`。
+
+### 为什么直到用户反馈才发现
+
+这一行在设置页**折叠线以下** —— 之前的截图与逐页审计都只截到首屏，
+所以"语言下拉里到底显示成什么样"从没被看到过。现在补了一张
+`--render` 固定产出的 **`settings-appearance.png`**（自动滚到「外观」区），
+语言、主题、键盘尺寸一起进截图回归。
+
+---
+
 ## v4.5.26 — 界面多语言：简体中文 / English 实时切换，不用重启
 
 > ⚠️ **依赖不变：仍要 .NET 10 桌面运行时**。

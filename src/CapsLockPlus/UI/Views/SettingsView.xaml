@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
              FontFamily="{StaticResource Font.Ui}">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,4,20,24">
+    <ScrollViewer x:Name="RootScroll" VerticalScrollBarVisibility="Auto" Padding="24,4,20,24">
         <StackPanel MaxWidth="880" HorizontalAlignment="Left">
 
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
@@ -368,7 +368,18 @@
                                        Margin="0,3,0,0" />
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Name="LanguageBox" Style="{StaticResource ComboBox.Base}"
-                                  DisplayMemberPath="DisplayName" SelectionChanged="OnLanguageChanged" />
+                                  SelectionChanged="OnLanguageChanged">
+                            <!-- 用 ItemTemplate 而不是 DisplayMemberPath：
+                                 胶囊里显示的是 ComboBox 的 SelectionBoxItem，
+                                 这条路径对 DisplayMemberPath 的处理不可靠 ——
+                                 v4.5.26 就在这里显示成 `LocLanguage { Code …`。
+                                 明细模板两条路（胶囊 + 下拉项）都会走，最稳。 -->
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </Grid>
                 </StackPanel>
             </Border>
