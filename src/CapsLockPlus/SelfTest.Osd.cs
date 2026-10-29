@@ -917,6 +917,79 @@ public static partial class SelfTest
         {
             Check("三种输入方式都能跑通（干跑）", false, ex.Message);
         }
+
+        /* ---------- 大写锁定下的 Shift 翻转 ----------
+         *
+         * 真实故障：用「输入文本」填密码框，偶尔报"大小写错误"。
+         * 根因是大写锁定开着时**字母键的 Shift 语义是反的**（Caps + A = a），
+         * 而注入计划只照布局给的 Shift 走，于是整串字母对调：
+         * 想要 "Abc"，打出来是 "aBC" —— 密码自然不对。
+         *
+         * 这里钉住判定规则本身（不发真实按键），四种组合都过一遍。 */
+        Check("大小写：字母受大写锁定影响",
+            InputSender.IsCapsSensitive('A') && InputSender.IsCapsSensitive('z'));
+        Check("大小写：数字与符号不受影响",
+            !InputSender.IsCapsSensitive('1') && !InputSender.IsCapsSensitive('!')
+            && !InputSender.IsCapsSensitive('@'));
+        Check("大小写（Caps 关）：'A' 要 Shift", InputSender.NeedsShift(true, true, false));
+        Check("大小写（Caps 开）：'A' 不要 Shift", !InputSender.NeedsShift(true, true, true));
+        Check("大小写（Caps 关）：'a' 不要 Shift", !InputSender.NeedsShift(false, true, false));
+        Check("大小写（Caps 开）：'a' 要 Shift", InputSender.NeedsShift(false, true, true));
+        Check("大小写（Caps 开）：'!' 仍要 Shift（符号不翻转）",
+            InputSender.NeedsShift(true, false, true));
+        Check("大小写（Caps 开）：'@' 仍要 Shift（Shift+2 也不翻转）",
+            InputSender.NeedsShift(true, false, true));
+        Check("大小写（Caps 开）：'1' 仍不要 Shift", !InputSender.NeedsShift(false, false, true));
+
+        var shiftOff = InputSender.ShiftPlanForTest("AbcZ1!", capsOn: false);
+        var shiftOn = InputSender.ShiftPlanForTest("AbcZ1!", capsOn: true);
+        Check("大小写：英文布局能算出按键计划", shiftOff != null && shiftOn != null);
+        if (shiftOff != null && shiftOn != null)
+        {
+            Check("Caps 关：大写字母要 Shift、小写不要（符号照旧）",
+                shiftOff[0] && !shiftOff[1] && !shiftOff[2] && shiftOff[3]
+                && !shiftOff[4] && shiftOff[5],
+                string.Join(",", shiftOff));
+            Check("Caps 开：字母的 Shift 全部翻转、符号与数字不动",
+                !shiftOn[0] && shiftOn[1] && shiftOn[2] && !shiftOn[3]
+                && !shiftOn[4] && shiftOn[5],
+                string.Join(",", shiftOn));
+        }
+
+        /* ---------- 注入的按键必须带扫描码 ----------
+         *
+         * 真实故障：RustDesk 的固定密码框里，14 位密码只落 11 位。
+         * 根因是 `SendInput` 只填了虚拟键、`wScan` 留 0 —— 而靠扫描码认键的
+         * 程序（远程桌面客户端是最典型的一类）拿到 wScan=0 会漏键：
+         * 实测丢掉的正好是"要 Shift 的那几个"（大写字母与符号）。
+         *
+         * 这里钉住的是**发出的 INPUT 本身**，不依赖任何目标程序：
+         * 扫描码非 0、且与键盘布局里这个物理键的扫描码一致。 */
+        Check("扫描码：Shift 键带扫描码 0x2A", InputSender.ScanForTest(VK.Shift) == 0x2A,
+            $"0x{InputSender.ScanForTest(VK.Shift):X2}");
+        Check("扫描码：字母 A 带扫描码 0x1E", InputSender.ScanForTest(0x41) == 0x1E,
+            $"0x{InputSender.ScanForTest(0x41):X2}");
+        Check("扫描码：字母 Z 带扫描码 0x2C", InputSender.ScanForTest(0x5A) == 0x2C,
+            $"0x{InputSender.ScanForTest(0x5A):X2}");
+        Check("扫描码：数字 1 带扫描码 0x02", InputSender.ScanForTest(0x31) == 0x02,
+            $"0x{InputSender.ScanForTest(0x31):X2}");
+        Check("扫描码：符号键（Shift+1 = '!' 用的 1 键）不为 0",
+            InputSender.ScanForTest(0x31) != 0 && InputSender.ScanForTest(0x32) != 0);
+
+        // 一整串密码里**每个**字符都要有扫描码，不能只有字母有
+        var scanMissed = new StringBuilder();
+        foreach (char ch in "Ab3!kL9@xY2#zQ")
+        {
+            short scan = InputSender.VkKeyScanForTest(ch);
+            if (scan == -1) { scanMissed.Append(ch).Append(":无映射 "); continue; }
+            if (InputSender.ScanForTest(scan & 0xFF) == 0) scanMissed.Append(ch).Append(' ');
+        }
+        Check("扫描码：密码里每个字符的键都带扫描码", scanMissed.Length == 0,
+            scanMissed.ToString());
+
+        // Unicode 模式用的是字符码，不能被"补扫描码"改掉（改了就打错字）
+        Check("Unicode 模式：wScan 仍是字符码", InputSender.UnicodeScanForTest('中') == '中'
+            && InputSender.UnicodeScanForTest('@') == '@');
     }
 
     /// <summary>

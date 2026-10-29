@@ -75,6 +75,22 @@ public static class InputSender
          * 这正是"邮箱输不全"的根因。 */
         if (!unicode && IsExtendedKey(vk)) flags |= KEYEVENTF_EXTENDEDKEY;
 
+        /* 扫描码：不传就自己查一个。
+         *
+         * 为什么不能留 0：靠**扫描码**认键的程序拿到 wScan=0 的合成按键会直接
+         * 认不出来。RustDesk 这类远程桌面客户端就是典型 —— 它把本地按键的
+         * 扫描码原样转给被控端，扫描码为 0 的按键只有一部分能落地：
+         * 实测 14 个字符的密码，落进去的正好是**不需要 Shift 的那 7 个**，
+         * 大写字母与符号（要 Shift 的）全丢 —— 用户看到的就是
+         * "明明 14 位，只输了 11 位，密码框报大小写/长度不对"。
+         *
+         * 同一个坑在 Ctrl+C 上已经踩过一次（见 CopyChord 的注释），
+         * 那次只修了复制；凡是"要目标程序认出这是一个正常按键"的场合，
+         * 扫描码都不能缺。所以放在这里统一补，而不是每个调用点各写一遍。
+         *
+         * Unicode 模式例外：那时 vk 是字符码，不是虚拟键码，查不了也不该查。 */
+        if (!unicode && scan == 0) scan = ScanOf(vk);
+
         return new INPUT
         {
             type = INPUT_KEYBOARD,
@@ -291,17 +307,70 @@ public static class InputSender
         return true;
     }
 
+    // ---------------- 大写锁定 ----------------
+
+    /// <summary>
+    /// 大写锁定当前是否开启。
+    ///
+    /// 必须用 <c>GetKeyState</c>：它的最低位是真正的 toggle 位。
+    /// <c>GetAsyncKeyState</c> 的最低位是"上次调用之后按过没有"，
+    /// 连读两次第二次就变成 false —— 拿它当开关用会时对时错。
+    /// </summary>
+    internal static bool CapsLockOn => (GetKeyState(VK.CapsLock) & 1) != 0;
+
+    /// <summary>
+    /// 这个字符是不是"大写锁定会翻转 Shift 语义"的键（A–Z / a–z）。
+    ///
+    /// 大写锁定只影响**字母键**：Caps + 1 还是 1，Caps + Shift + 1 还是 !。
+    /// 所以数字与符号一律不参与翻转 —— 这也是判断规则必须按"字符是不是字母"
+    /// 而不是"这个键有没有 Shift 位"的原因（'!' 同样需要 Shift，但不翻转）。
+    ///
+    /// 本类只处理可打印 ASCII（见 <see cref="LooksLikePlainAscii"/>），
+    /// 判断 ASCII 字母就够了，不必操心非拉丁字母布局。
+    /// </summary>
+    internal static bool IsCapsSensitive(char ch)
+        => (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+
+    /// <summary>
+    /// 实际要不要按 Shift = 布局给出的 Shift ⊕ 大写锁定（只对字母生效）。
+    /// </summary>
+    internal static bool NeedsShift(bool shiftFromLayout, bool capsSensitive, bool capsOn)
+        => shiftFromLayout ^ (capsSensitive && capsOn);
+
+    /// <summary>
+    /// 自检用：按英文（美国）布局把一段 ASCII 算成"每个字符要不要按 Shift"。
+    /// 返回 null = 布局取不到或字符映射不了（极少数环境），调用方跳过断言。
+    /// </summary>
+    internal static bool[]? ShiftPlanForTest(string text, bool capsOn)
+    {
+        IntPtr layout = ImeGuard.EnglishLayout;
+        if (layout == IntPtr.Zero) return null;
+
+        var result = new bool[text.Length];
+        for (int i = 0; i < text.Length; i++)
+        {
+            short scan = VkKeyScanEx(text[i], layout);
+            if (scan == -1) return null;
+            bool shiftFromLayout = (((scan >> 8) & 0xFF) & 0x01) != 0;
+            result[i] = NeedsShift(shiftFromLayout, IsCapsSensitive(text[i]), capsOn);
+        }
+        return result;
+    }
+
     /// <summary>
     /// 用真实按键逐字敲一段纯 ASCII。返回 false = 这条路走不通，调用方应改用 Unicode。
     ///
-    /// 四个关键点：
+    /// 五个关键点：
     ///   1. 用**前台窗口所在线程的键盘布局**做映射（<c>VkKeyScanEx</c>），
     ///      否则德语键盘上打 `@` 会出错；
     ///   2. 需要 Ctrl/Alt 才能打出的字符直接放弃（会干扰系统快捷键）；
     ///   3. 输入语言是中文/日文/韩文/越南文时，字母会被输入法拼成候选 ——
     ///      临时把窗口切到英文布局，打完再切回（见 <see cref="ImeGuard"/>）；
     ///      切不动就放弃，让调用方走 Unicode（那条路不经过布局，同样能落字）；
-    ///   4. 老式 IMM32 程序额外摘一次输入法上下文，便宜且更彻底。
+    ///   4. 老式 IMM32 程序额外摘一次输入法上下文，便宜且更彻底；
+    ///   5. **大写锁定开着时字母的 Shift 语义是反的**，每批发送前把
+    ///      「布局给的 Shift」与「CapsLock」异或一次，否则整串字母的大小写
+    ///      会对调（见 <see cref="NeedsShift"/>）。
     /// </summary>
     public static bool TryTextAsKeys(string text)
     {
@@ -336,8 +405,9 @@ public static class InputSender
 
         try
         {
-            // 先把整段文字映射成 (虚拟键, 是否需要 Shift)，有一个映射不了就整体放弃
-            var plan = new List<(int Vk, bool Shift)>(text.Length);
+            /* 先把整段文字映射成 (虚拟键, 布局是否需要 Shift, 是否受大写锁定影响)，
+             * 有一个映射不了就整体放弃。 */
+            var plan = new List<(int Vk, bool Shift, bool CapsSensitive)>(text.Length);
             foreach (char ch in text)
             {
                 short scan = VkKeyScanEx(ch, typing);
@@ -347,7 +417,7 @@ public static class InputSender
                 int state = (scan >> 8) & 0xFF;
                 if (vk == 0) return false;
                 if ((state & 0x06) != 0) return false;      // 需要 Ctrl / Alt
-                plan.Add((vk, (state & 0x01) != 0));
+                plan.Add((vk, (state & 0x01) != 0, IsCapsSensitive(ch)));
             }
 
             IntPtr oldIme = SuppressIme(target);
@@ -359,9 +429,25 @@ public static class InputSender
                     int len = Math.Min(Batch, plan.Count - start);
                     var arr = new List<INPUT>(len * 4);
 
+                    /* 每批读一次大写锁定。
+                     *
+                     * 为什么必须读：布局给的 Shift 是"大写锁定关着"时的答案。
+                     * 大写锁定开着时字母键的语义是**反的** ——
+                     *   Caps + A = a，Caps + Shift + A = A，
+                     * 于是整串字母的大小写照原样翻个面：用户要 "Abc"，
+                     * 打出来是 "aBC"，密码框立刻报"大小写错误"。
+                     * 这在密码场景里最要命：错一次就可能被计一次失败。
+                     *
+                     * 为什么按批读而不是全程读一次：2000 字的文本要发几百毫秒，
+                     * 期间用户真去按了 CapsLock 也能立刻跟上（代价只是一次
+                     * GetKeyState，可以忽略）。 */
+                    bool capsOn = CapsLockOn;
+
                     for (int i = start; i < start + len; i++)
                     {
-                        var (vk, shift) = plan[i];
+                        var (vk, shiftFromLayout, capsSensitive) = plan[i];
+                        bool shift = NeedsShift(shiftFromLayout, capsSensitive, capsOn);
+
                         if (shift) arr.Add(KeyInput(VK.Shift, false));
                         arr.Add(KeyInput(vk, false));
                         arr.Add(KeyInput(vk, true));
@@ -439,6 +525,26 @@ public static class InputSender
         }
         catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
+
+    /// <summary>
+    /// 自检用：这个虚拟键发出去时带的扫描码。
+    ///
+    /// 存在的意义是守住"扫描码不能是 0"这条底线（见 <see cref="KeyInput"/> 里的长注释）：
+    /// 缺扫描码时，靠扫描码认键的程序（远程桌面客户端、部分密码控件）会漏键 ——
+    /// 14 位密码只落 11 位就是这么来的。
+    /// </summary>
+    internal static ushort ScanForTest(int vk) => KeyInput(vk, up: false).U.ki.wScan;
+
+    /// <summary>自检用：按英文布局把字符翻成 (vk|shift 位)，用于核对扫描码。</summary>
+    internal static short VkKeyScanForTest(char ch)
+    {
+        IntPtr layout = ImeGuard.EnglishLayout;
+        return layout == IntPtr.Zero ? (short)-1 : VkKeyScanEx(ch, layout);
+    }
+
+    /// <summary>自检用：Unicode 模式下 wScan/字符码不能被"补扫描码"动过。</summary>
+    internal static ushort UnicodeScanForTest(char ch)
+        => KeyInput(ch, up: false, unicode: true).U.ki.wScan;
 
     /// <summary>输入任意文本（走 Unicode 注入，不经过键盘布局）。</summary>
     private static void TextUnicode(string text)
