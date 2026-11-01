@@ -63,7 +63,9 @@ public sealed class HotkeyEngine : IDisposable
     private TriggerKey? _activeTrigger;
     private int _activeLayer = -1;
     private bool _triggerHeld;
-    private bool _layerActive;             // 已进入层模式（超过 HoldMs）
+    /* 由界面线程的计时器写、钩子线程读，必须 volatile：
+     * 否则切层那一刻钩子可能仍读到旧值，把这个键按"未进层"放行。 */
+    private volatile bool _layerActive;    // 已进入层模式（超过 HoldMs）
     private bool _usedCombo;               // 层内触发过绑定
     private bool _usedOtherKey;            // 层内按过未绑定的键
     private bool _tapHandled;              // 短按动作是否已触发（超时那一刻触发）
@@ -134,6 +136,15 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>按住期间的判定周期（毫秒）。长按阈值精度依赖它。</summary>
     private const int HoldTickActiveMs = 20;
+
+    /// <summary>
+    /// "按下被吞、抬起还没来"的记账上限。
+    ///
+    /// 正常情况下每个 up 到达时就会销账，表里只有极少数同时在按的键。
+    /// 只有 up 事件真的丢了才会堆积 —— 超过这个数说明账本已经不可信，
+    /// 整体清掉比继续记着更安全（否则会把后面无关的 up 也吞掉）。
+    /// </summary>
+    private const int MaxPendingUps = 64;
 
     /// <summary>
     /// 空闲时的判定周期（毫秒）。
@@ -238,7 +249,7 @@ public sealed class HotkeyEngine : IDisposable
         _activeTrigger = null;
         _activeLayer = -1;
         _swallowedDown.Clear();
-        _swallowedUp.Clear();
+        if (_swallowedUp.Count > MaxPendingUps) _swallowedUp.Clear();
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
         _lastTriggerDownTick = 0;
         _lastKeyActivity = DateTime.Now;
@@ -305,6 +316,9 @@ public sealed class HotkeyEngine : IDisposable
         _invoke = invoke;
         _hook.KeyEvent += OnKeyEvent;
         _hook.WheelEvent += OnWheel;
+        /* 回调异常时的兜底决策：处于层语义就吞掉，别把按键漏给前台。
+         * 见 KeyboardHook.SwallowOnError 的注释。 */
+        _hook.SwallowOnError = ShouldSwallowOnError;
     }
 
     public void Start()
@@ -774,6 +788,29 @@ public sealed class HotkeyEngine : IDisposable
     public bool SimulateShortPressForTest { get; set; }
 
     /// <summary>
+    /// 迄今为止"补发原键（短按回放）"执行过多少次。仅供自检观察：
+    /// 长按绝不该产生补发，否则就是"松手后又跳一次焦点"。
+    /// </summary>
+    public int TapReplayCountForTest { get; private set; }
+
+    /// <summary>
+    /// 钩子回调抛异常时的兜底决策（fail-closed）。
+    ///
+    /// 语义必须与正常路径一致，否则会凭空造出"层里按什么都没反应"：
+    ///   · 层已激活   → 这个键本来就归本层接管 → 吞；
+    ///   · 触发键按住 → 只吞触发键自己（其余键还没进层，放行不影响日常输入）；
+    ///   · 其余情况   → 放行，与异常发生前的行为保持一致。
+    /// </summary>
+    internal bool ShouldSwallowOnError(int vk)
+    {
+        if (!Enabled) return false;
+        if (_layerActive) return true;
+        if (!_triggerHeld) return false;
+        try { return IsTrigger(_settings(), vk); }
+        catch { return true; }   // 连判定都抛了：按触发键处理，宁可吞掉
+    }
+
+    /// <summary>
     /// 钩子回调。返回值 = 是否吞掉该按键。
     /// 这里只做状态判断与入队，绝不做耗时操作（否则系统会摘钩）。
     ///
@@ -863,6 +900,23 @@ public sealed class HotkeyEngine : IDisposable
         if (!(_triggerHeld && vk == _activeTriggerVk))
             UpdateModifierState(vk, down);
 
+        /* ---- 0.9 阈值即时判定：不依赖界面线程的计时器 ----
+         *
+         * 长按判定原本只由界面线程的 DispatcherTimer 驱动，而它是
+         * Background 优先级：界面一忙就顺延，200ms 的阈值实际可能
+         * 300~400ms 才生效。这段"已按住、还没进层"的窗口是漏洞来源 ——
+         * 子层键会漏给前台（Tab 连续跳焦点），松手还会被判成短按。
+         *
+         * 钩子每收到一个按键就先自己比一次时间戳：只要用户还在动键盘，
+         * 切层就发生在下一个事件上，与界面线程调度无关。
+         * 计时器仍然保留 —— 它负责"按住之后一个键都不按"的纯等待场景。 */
+        if (down && _triggerHeld && !_layerActive)
+        {
+            int holdNow = _activeTrigger?.HoldMs ?? 200;
+            if ((DateTime.Now - _triggerDownTime).TotalMilliseconds >= holdNow)
+                OnHoldThresholdReached();
+        }
+
         // ---- 1. 这个键是不是触发键？ ----
         if (IsTrigger(settings, vk))
         {
@@ -909,8 +963,21 @@ public sealed class HotkeyEngine : IDisposable
             }
         }
 
-        // ---- 3. 不在层模式：全部放行 ----
-        if (!_triggerHeld || !_layerActive) return false;
+        // ---- 3. 不在层模式：放行，但先把"欠着的抬起"结清 ----
+        if (!_triggerHeld || !_layerActive)
+        {
+            /* 按下被我们吞过、抬起还没结账的键，这里必须补吞。
+             *
+             * 典型路径：用户先松开触发键、再松开层内键（Tab）。
+             * OnTriggerUp 已经把层状态清掉，于是这个 up 落到这里 ——
+             * 直接放行的话，前台会收到一个"从未按下过的抬起"。
+             * 记事本这类程序无感，但游戏 / 远程桌面 / WebView2 会判定
+             * 输入异常，个别实现甚至认为该键一直按着、反复自重复。
+             *
+             * 只在 up 上查表；Down 走原来的放行逻辑。 */
+            if (!down) return _swallowedUp.TryRemove(vk, out _);
+            return false;
+        }
 
         // ---- 4. 层模式内的按键 ----
         return down ? OnKeyDownInLayer(vk) : OnKeyUpInLayer(vk);
@@ -1206,8 +1273,11 @@ public sealed class HotkeyEngine : IDisposable
          * 而 Shift 的 down 早就放行给了系统，用户以为自己在按 Shift。 */
         ClearModifierFlag(vk);
 
-        _swallowedDown.Clear();
-        _swallowedUp.Clear();
+        _swallowedDown.Clear();          // 上一次会话的"重复判定"作废
+        /* _swallowedUp 不能整体清：它是"按下被吞、抬起还没来"的欠账。
+         * 清掉之后，这些键的 up 会漏给前台（见 OnKeyEvent 第 3 步）。
+         * 只在异常堆积（up 真的丢了）时兜底。 */
+        if (_swallowedUp.Count > MaxPendingUps) _swallowedUp.Clear();
 
         _activeTriggerVk = vk;
         _activeTrigger = trigger;
@@ -1232,10 +1302,19 @@ public sealed class HotkeyEngine : IDisposable
         if (!_triggerHeld || !SameKey(vk, _activeTriggerVk)) return;
         _triggerHeld = false;
 
-        // 层内触发过绑定 / 进过层 → 这一按不算短按
-        bool cleanTap = !_usedCombo && !_usedOtherKey && !_layerActive;
-
         var trigger = _activeTrigger;
+
+        /* 是否算"干净短按"。
+         *
+         * 多了按住时长这条硬判据：阈值判定原本只靠界面线程的计时器，
+         * 界面一忙就晚到 100~200ms，于是"明明按了 300ms"在这一刻
+         * 仍然 _layerActive == false，被当成短按 → 松手时补发原键
+         * → 用户看到"切完层松手，焦点又跳一下"。
+         * 以按下时长为准，不再单信状态标志。 */
+        double heldMs = (DateTime.Now - _triggerDownTime).TotalMilliseconds;
+        int holdLimit = trigger?.HoldMs ?? 200;
+        bool cleanTap = !_usedCombo && !_usedOtherKey && !_layerActive
+                        && heldMs < holdLimit;
 
         // 未超时的干净抬起 = 短按
         if (cleanTap && !_tapHandled && trigger != null)
@@ -1287,7 +1366,15 @@ public sealed class HotkeyEngine : IDisposable
                     /* 补发原键：对 CapsLock 是翻转大写，对 F5 是打开刷新，
                      * 对问号是正常输入 "?" —— 系统状态是真实产生的。 */
                     int vkToSend = vk;
-                    _queue.Post(() => InputSender.Tap(vkToSend));
+                    _queue.Post(() =>
+                    {
+                        /* 投递到动作队列时可能又过去几十毫秒：期间若已经进层
+                         * （计时器晚到、或用户又按住），这次补发就不成立了 ——
+                         * 否则会在"层已生效"之后凭空往前台发一个原键。 */
+                        if (_triggerHeld || _layerActive) return;
+                        TapReplayCountForTest++;
+                        InputSender.Tap(vkToSend);
+                    });
                 }
                 else
                 {
@@ -1301,8 +1388,11 @@ public sealed class HotkeyEngine : IDisposable
         _activeTriggerVk = -1;
         _activeTrigger = null;
         _activeLayer = -1;
-        _swallowedUp.Clear();
+        /* 只清"重复判定"表。欠着的抬起继续留在 _swallowedUp 里，
+         * 等它自己的 up 到达时由 OnKeyEvent 第 3 步吞掉 ——
+         * 否则"先松触发键、后松层内键"就会漏一个孤儿 keyup 给前台。 */
         _swallowedDown.Clear();
+        if (_swallowedUp.Count > MaxPendingUps) _swallowedUp.Clear();
         /* 子层状态跟着触发键一起退出：否则松开触发键后 ActiveSubLayer
          * 还停在 "tab"，界面会显示一个不存在的子层。 */
         if (!string.IsNullOrEmpty(_subLayerKeyDown))

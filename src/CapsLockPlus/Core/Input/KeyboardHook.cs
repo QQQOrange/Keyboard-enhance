@@ -18,11 +18,32 @@ public sealed class KeyboardHook : IDisposable
     private uint _threadId;
     private volatile bool _running;
 
+    private System.Threading.Timer? _watchdog;
+
+    /// <summary>看门狗投递给钩子线程的自定义消息（重装钩子）。</summary>
+    private const int WM_APP_REARM = 0x8001;
+
+    /// <summary>首次巡检延迟：覆盖"装钩失败"这种一开始就不工作的情况。</summary>
+    private const int WatchdogFirstDelayMs = 5_000;
+
+    /// <summary>巡检周期。重装只有几微秒，但没必要太频繁。</summary>
+    private const int WatchdogIntervalMs = 180_000;
+
     /// <summary>
     /// 按键事件回调：vk、是否按下、是否注入事件；返回 true 表示吞掉这个按键
     /// （不再传给前台程序）。回调必须极快，不能阻塞。
     /// </summary>
     public event Func<int, bool, bool, bool>? KeyEvent;
+
+    /// <summary>
+    /// 回调抛异常时的兜底：由引擎判断这个键是否仍要吞掉（fail-closed）。
+    ///
+    /// 默认行为是"异常即放行"（fail-open）—— 对普通按键无害，但对触发键
+    /// 与层内按键是灾难：层明明已经生效，Tab 却连每一次自动重复都被漏给
+    /// 前台，用户看到的就是"切完层焦点还在跳"。
+    /// 这里把决定权交回引擎，由它按"当前是否处于层语义"给答案。
+    /// </summary>
+    public Func<int, bool>? SwallowOnError { get; set; }
 
     /// <summary>鼠标滚轮回调：滚动格数（上正下负）、是否按住 Caps。</summary>
     public event Action<int, bool, bool>? WheelEvent;
@@ -88,6 +109,11 @@ public sealed class KeyboardHook : IDisposable
             MSG msg;
             while (_running && GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
             {
+                /* 看门狗的重装请求必须在本线程处理：SetWindowsHookEx 装出来的
+                 * 钩子绑定的是"调用它的线程"，换线程装会得到一个没有消息循环
+                 * 的钩子，等于装了个不会回调的空壳。 */
+                if (msg.message == WM_APP_REARM) { RearmHooks(); continue; }
+
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
             }
@@ -102,6 +128,7 @@ public sealed class KeyboardHook : IDisposable
         // 等钩子装好，避免界面已经显示但按键还不生效
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < 1500 && _hook == IntPtr.Zero && _running) Thread.Sleep(10);
+        StartWatchdog();
     }
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -134,7 +161,18 @@ public sealed class KeyboardHook : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    CoreLog.Error("按键处理回调异常", ex);
+                    /* 异常绝不能等于"放行"。
+                     *
+                     * 早先是 swallow=false 直接落到 CallNextHookEx：只要引擎在
+                     * 层内分支上抛一次（空引用、绑定数据异常、P/Invoke 失败），
+                     * 这个键的**每一次自动重复**都会被漏给前台 ——
+                     * 表现正是"层已经切好，Tab 还在别的程序里跳焦点"。
+                     *
+                     * 现在把决定权交回引擎：处于层语义就吞，宁可这次按键
+                     * 没反应，也不要把按键漏出去。 */
+                    CoreLog.Error($"按键处理回调异常 vk=0x{data.vkCode:X2} down={isDown}", ex);
+                    try { swallow = SwallowOnError?.Invoke((int)data.vkCode) ?? false; }
+                    catch { swallow = false; }
                 }
                 // 返回 1（非零）且不调用 CallNextHookEx 即可吞掉该按键
                 if (swallow) return new IntPtr(1);
@@ -209,11 +247,60 @@ public sealed class KeyboardHook : IDisposable
         _mouseHook = IntPtr.Zero;
     }
 
+    /// <summary>
+    /// 让钩子线程在"下一次空闲"时把钩子重装一遍，全程没有空窗。
+    ///
+    /// 为什么需要：低级钩子被系统静默摘掉（回调超过 LowLevelHooksTimeout）
+    /// 之后，SetWindowsHookEx 返回的句柄**仍然非零**，没有任何 API 能查出来。
+    /// 唯一可靠的兜底就是定期重装 —— 否则一旦被摘，整个程序直到重启
+    /// 都不再拦截任何按键，而界面上一切正常。
+    /// </summary>
+    private void StartWatchdog()
+    {
+        _watchdog ??= new System.Threading.Timer(_ =>
+        {
+            if (!_running || _threadId == 0) return;
+            PostThreadMessage(_threadId, WM_APP_REARM, IntPtr.Zero, IntPtr.Zero);
+        }, null, WatchdogFirstDelayMs, WatchdogIntervalMs);
+    }
+
+    /// <summary>
+    /// 重装钩子：**先装新的，再卸旧的**。
+    ///
+    /// Stop() + Start() 的写法中间有 80ms 全放行窗口，若恰好落在切层瞬间，
+    /// 就会表现为"层已经切好，Tab 还是漏出去了"。原子替换没有这个缺口。
+    /// </summary>
+    private void RearmHooks()
+    {
+        var fresh = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
+        if (fresh != IntPtr.Zero)
+        {
+            var old = _hook;
+            _hook = fresh;
+            if (old != IntPtr.Zero) UnhookWindowsHookEx(old);
+        }
+        else
+        {
+            LastErrorTime = DateTime.Now;
+            CoreLog.Error($"键盘钩子重装失败，错误码 {Marshal.GetLastWin32Error()}");
+        }
+
+        var freshMouse = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc!, GetModuleHandle(null), 0);
+        if (freshMouse != IntPtr.Zero)
+        {
+            var oldMouse = _mouseHook;
+            _mouseHook = freshMouse;
+            if (oldMouse != IntPtr.Zero) UnhookWindowsHookEx(oldMouse);
+        }
+    }
+
     /// <summary>卸载钩子（可再次 Start 重装，用于自愈）。</summary>
     public void Stop()
     {
         if (!_running) return;
         _running = false;
+        _watchdog?.Dispose();
+        _watchdog = null;
         if (_threadId != 0) PostThreadMessage(_threadId, 0x0012 /*WM_QUIT*/, IntPtr.Zero, IntPtr.Zero);
         _thread?.Join(1500);
         _thread = null;

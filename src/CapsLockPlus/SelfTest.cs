@@ -173,6 +173,10 @@ public static partial class SelfTest
         TestSubLayerCombos();
         TestSubLayerRepeatAndState();
         TestSubLayerKeyEntersLayerBeforeHold();
+        TestHoldThresholdWithoutUiTimer();
+        TestOrphanKeyUpIsSwallowed();
+        TestHoldNotMistakenAsTap();
+        TestErrorFailClosedPolicy();
         TestDirectSearch();
         TestTypeTextAction();
         TestImeGuard();

@@ -1511,4 +1511,149 @@ public static partial class SelfTest
         engine.Dispose();
         queue.Dispose();
     }
+
+    /// <summary>
+    /// 阈值判定不能只依赖界面线程的计时器。
+    ///
+    /// 现场表现：切层偶尔"慢半拍"—— 已经按住 300ms 了，层还没进，
+    /// 这段时间里 Tab 一直是原生功能（连续跳焦点）。
+    /// 根因是 DispatcherTimer 跑在 Background 优先级，界面一忙就顺延。
+    ///
+    /// 修复后：钩子每收到一个按键就自己比一次时间戳，
+    /// 只要用户还在动键盘，切层必然发生在下一个事件上。
+    /// 这里**故意不启计时器**，验证这条路径独立可用。
+    /// </summary>
+    private static void TestHoldThresholdWithoutUiTimer()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock", LayerId = 1, HoldMs = 60, Enabled = true,
+        });
+
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) => true);
+        // 不调用 StartHoldTimer()：模拟界面线程没来得及跑 tick
+
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("无计时器：刚按下不进层", engine.ActiveLayer, -1);
+
+        System.Threading.Thread.Sleep(90);          // 已超过 60ms 阈值
+        engine.SimulateKey(VK.CapsLock, true);      // 系统自动重复 down
+        CheckEqual("无计时器：重复 down 直接触发进层", engine.ActiveLayer, 1);
+        Check("无计时器：仍视为按住", engine.IsTriggerHeld);
+
+        engine.SimulateKey(VK.CapsLock, false);
+        CheckEqual("无计时器：松开后退出层", engine.ActiveLayer, -1);
+
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
+    /// 抬起事件必须与按下的吞键"成对结账"。
+    ///
+    /// 现场表现：先松开触发键、再松开层内键（最自然的松手顺序），
+    /// 层内键的 up 会漏给前台 —— 前台收到一个"从未按下过的抬起"。
+    /// 游戏 / 远程桌面 / WebView2 会因此判定输入异常，
+    /// 个别实现甚至认为该键一直按着，表现为"残留按键重复上报"。
+    /// </summary>
+    private static void TestOrphanKeyUpIsSwallowed()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock", LayerId = 1, HoldMs = 60, Enabled = true,
+        });
+        var layer = s.Layers.First(l => l.Id == 1);
+        layer.Keys.RemoveAll(b =>
+            string.Equals(b.Combo, "caps_tab", StringComparison.OrdinalIgnoreCase));
+
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) => true);
+        engine.EnterLayerImmediatelyForTest = true;
+
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("孤儿 up 场景：已进第 1 层", engine.ActiveLayer, 1);
+        Check("孤儿 up 场景：层内 Tab 按下被吞", engine.SimulateKey(VK.Tab, true));
+
+        engine.SimulateKey(VK.CapsLock, false);        // 先松触发键
+        CheckEqual("孤儿 up 场景：层已退出", engine.ActiveLayer, -1);
+
+        Check("层退出后 Tab 的抬起仍被吞（成对结账）",
+            engine.SimulateKey(VK.Tab, false));
+
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
+    /// 长按不能被误判成短按，否则松手会补发一次原键。
+    ///
+    /// 现场表现：切层完成后松手，焦点又跳了一下 —— 因为阈值判定
+    /// 被界面线程拖慢，松手那一刻 _layerActive 仍是 false。
+    /// 修复后以"按下时长"为准，不再单信状态标志。
+    /// </summary>
+    private static void TestHoldNotMistakenAsTap()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock", LayerId = 1, HoldMs = 60, Enabled = true,
+            TapAction = "toggleCapsLock", DoubleTapAction = "",
+        });
+
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) => true);
+
+        engine.SimulateKey(VK.CapsLock, true);
+        System.Threading.Thread.Sleep(90);             // 超过阈值
+        engine.SimulateKey(VK.CapsLock, false);
+        DoEvents(80);
+        CheckEqual("长按松手不补发原键", engine.TapReplayCountForTest, 0);
+
+        engine.SimulateKey(VK.CapsLock, true);
+        engine.SimulateKey(VK.CapsLock, false);
+        DoEvents(80);
+        CheckEqual("短按仍补发一次原键", engine.TapReplayCountForTest, 1);
+
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
+    /// 回调异常时的兜底策略：处于层语义就吞，其余情况放行。
+    ///
+    /// 这条策略是"异常＝放行"改为"异常＝按层语义决定"的唯一判据，
+    /// 单独测一遍，避免以后重构时被悄悄改回 fail-open。
+    /// </summary>
+    private static void TestErrorFailClosedPolicy()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock", LayerId = 1, HoldMs = 60, Enabled = true,
+        });
+
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) => true);
+
+        engine.SimulateKey(VK.CapsLock, true);         // 未到阈值，只按住触发键
+        Check("异常兜底：按住触发键时吞触发键", engine.ShouldSwallowOnError(VK.CapsLock));
+        Check("异常兜底：按住触发键时不吞无关键", !engine.ShouldSwallowOnError(0x41));
+        engine.SimulateKey(VK.CapsLock, false);
+
+        engine.EnterLayerImmediatelyForTest = true;
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("异常兜底：已进层", engine.ActiveLayer, 1);
+        Check("异常兜底：层内吞任意键", engine.ShouldSwallowOnError(0x41));
+
+        engine.SimulateKey(VK.CapsLock, false);
+        engine.Dispose();
+        queue.Dispose();
+    }
 }
