@@ -105,6 +105,9 @@ public static partial class SelfTest
         Section("使用统计");
         TestUsageStats();
 
+        Section("按应用层");
+        TestAppLayerOverlay();
+
         Section("启动密码");
         TestStartupPassword();
 

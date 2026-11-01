@@ -101,6 +101,16 @@ public sealed class AppHost : IDisposable
         Engine = new HotkeyEngine(_queue, () => Settings, InvokeAction);
         // 让引擎知道宏播放器：播放中按 Esc 需要能取消
         Engine.MacroPlayer = Context.MacroPlayer;
+
+        /* 按应用自动启用层：监听前台窗口，命中规则就把对应层设为叠加层。
+         * 只记进程名（隐私），命中失败不影响任何既有功能。 */
+        _foreground = new ForegroundWatcher();
+        _foreground.Changed += OnForegroundChanged;
+        if (!_foreground.Start())
+        {
+            _foreground.Dispose();
+            _foreground = null;
+        }
         Engine.CapsHeldChanged += held => _dispatcher.BeginInvoke(() => CapsHeldChanged?.Invoke(held));
         // 反馈模式：每次组合键触发都在屏幕上闪一下动作名，
         // 便于确认“按键到底有没有被识别”。
@@ -245,6 +255,23 @@ public sealed class AppHost : IDisposable
         if (SettingsStore.LoadFailure is { } loadFailure)
             Notify(loadFailure);
     }
+
+    private ForegroundWatcher? _foreground;
+
+    /// <summary>前台变化：更新引擎的叠加层。</summary>
+    private void OnForegroundChanged(string process)
+    {
+        int layer = AppLayerRules.Match(Settings.Global.AppLayers, process);
+        if (layer == Engine.AppLayerId) return;
+
+        Engine.AppLayerId = layer;
+        CoreLog.Info(layer > 0
+            ? $"按应用启用叠加层：{process} → 第 {layer} 层（只接管该层绑过的组合）"
+            : $"离开按应用叠加层：{process}");
+    }
+
+    /// <summary>设置里改了规则后立刻重算，不用等下次切窗口。</summary>
+    public void RefreshAppLayer() => _foreground?.Refresh();
 
     private void ApplyStartupSetting()
     {
@@ -856,6 +883,7 @@ public sealed class AppHost : IDisposable
 
     public void Dispose()
     {
+        try { _foreground?.Dispose(); _foreground = null; } catch { }
         if (_disposed) return;
         _disposed = true;
         _watchdog.Dispose();

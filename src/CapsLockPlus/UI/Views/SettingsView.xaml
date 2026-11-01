@@ -109,6 +109,30 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 按应用自动启用层：只叠加，不接管 -->
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '按应用自动启用层'}" Style="{StaticResource Text.Body}" />
+                        <TextBlock Text="{loc:T '切到这些程序时自动叠加它绑定的层：只接管该层绑过的组合，其余按键照常输入。'}"
+                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="AppLayerProcessBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
+                                     ToolTip="{loc:T '进程名，如 Code.exe（大小写不敏感）'}" />
+                            <ComboBox x:Name="AppLayerLayerBox" Grid.Column="1" Width="130" Margin="8,0,0,0"
+                                      Style="{StaticResource ComboBox.Base}" />
+                            <Button x:Name="AppLayerAddButton" Grid.Column="2" Content="{loc:T '添加'}"
+                                    Margin="8,0,0,0" Padding="14,6"
+                                    Style="{StaticResource Button.Base}" Click="OnAddAppLayerClick" />
+                        </Grid>
+                        <ItemsControl x:Name="AppLayerList" Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
                     <StackPanel>
                         <Grid>

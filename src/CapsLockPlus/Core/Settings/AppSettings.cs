@@ -44,6 +44,21 @@ public sealed class KeyRemap
     public string Comment { get; set; } = "";
 }
 
+/// <summary>
+/// 「按应用自动启用层」的一条规则：前台是这个进程时，把它绑定的层当成**叠加层**。
+///
+/// 与触发键的层不同：叠加层**不吞未绑定的键** —— 只有真正绑过的组合才执行动作，
+/// 其余按键原样放行。否则在 IDE 里打字会被吞掉，这个功能就没法用了。
+/// </summary>
+public sealed class AppLayerRule
+{
+    /// <summary>进程名（如 Code.exe）。存文件名即可，匹配时大小写不敏感。</summary>
+    public string Process { get; set; } = "";
+
+    /// <summary>要叠加的层 id。</summary>
+    public int LayerId { get; set; }
+}
+
 public sealed class QEntry
 {
     /// <summary>
@@ -201,6 +216,12 @@ public sealed class GlobalOptions
 
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
+
+    /// <summary>
+    /// 按应用自动启用层：前台窗口的进程命中规则时，把对应层当作叠加层。
+    /// 默认空，不影响任何现有行为。
+    /// </summary>
+    public List<AppLayerRule> AppLayers { get; set; } = new();
 
     /// <summary>
     /// 基础改键表：不按住触发键也生效的全局重映射。

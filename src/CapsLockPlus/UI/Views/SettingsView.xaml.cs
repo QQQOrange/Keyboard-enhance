@@ -33,6 +33,7 @@ public partial class SettingsView : UserControl
         RefreshPermission();
         RefreshRemapState();
         RefreshUsage();
+        RefreshAppLayerEditor();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -79,6 +80,89 @@ public partial class SettingsView : UserControl
     private void Save()
     {
         _host?.SaveSettings();
+    }
+
+    // ---------------- 按应用自动启用层 ----------------
+
+    /// <summary>刷新"层"下拉框与已有规则列表。</summary>
+    private void RefreshAppLayerEditor()
+    {
+        if (AppLayerLayerBox == null || _host == null) return;
+
+        var layers = _host.Settings.Layers.Where(l => l.Enabled).ToList();
+        AppLayerLayerBox.Items.Clear();
+        foreach (var l in layers)
+        {
+            string text = string.IsNullOrWhiteSpace(l.Name)
+                ? Loc.F("第 {0} 层", l.Id)
+                : Loc.F("第 {0} 层 · {1}", l.Id, l.Name);
+            AppLayerLayerBox.Items.Add(new ComboBoxItem { Content = text, Tag = l.Id });
+        }
+        if (AppLayerLayerBox.Items.Count > 0) AppLayerLayerBox.SelectedIndex = 0;
+
+        AppLayerList.Items.Clear();
+        foreach (var rule in _host.Settings.Global.AppLayers.ToList())
+        {
+            var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
+
+            var del = new Button
+            {
+                Content = Loc.T("移除"),
+                Padding = new Thickness(10, 3, 10, 3),
+                Style = (Style)FindResource("Button.Base"),
+            };
+            var captured = rule;
+            del.Click += (_, _) =>
+            {
+                _host?.Settings.Global.AppLayers.Remove(captured);
+                Save();
+                RefreshAppLayerEditor();
+                _host?.RefreshAppLayer();
+            };
+            DockPanel.SetDock(del, Dock.Right);
+            row.Children.Add(del);
+
+            row.Children.Add(new TextBlock
+            {
+                Text = Loc.F("{0} → 第 {1} 层", rule.Process, rule.LayerId),
+                VerticalAlignment = VerticalAlignment.Center,
+                Style = (Style)FindResource("Text.Tertiary"),
+            });
+            AppLayerList.Items.Add(row);
+        }
+    }
+
+    private void OnAddAppLayerClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+
+        string process = (AppLayerProcessBox.Text ?? "").Trim();
+        if (AppLayerLayerBox.SelectedItem is not ComboBoxItem item || item.Tag is not int layerId)
+            return;
+
+        string normalized = AppLayerRules.Normalize(process);
+        if (normalized.Length == 0)
+        {
+            _host.Notify(Loc.T("请先填进程名，例如 Code.exe"));
+            return;
+        }
+
+        var list = _host.Settings.Global.AppLayers;
+        var existing = list.FirstOrDefault(r => AppLayerRules.Normalize(r.Process) == normalized);
+        if (existing != null)
+        {
+            existing.LayerId = layerId;        // 同一个程序重复添加 = 改绑定
+        }
+        else
+        {
+            list.Add(new AppLayerRule { Process = normalized, LayerId = layerId });
+        }
+
+        AppLayerProcessBox.Text = "";
+        Save();
+        RefreshAppLayerEditor();
+        _host.RefreshAppLayer();
+        _host.Notify(Loc.F("已设置：{0} 使用第 {1} 层", normalized, layerId));
     }
 
     // ---------------- 使用统计 ----------------

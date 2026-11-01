@@ -267,4 +267,57 @@ public static partial class SelfTest
             try { Directory.Delete(dir, true); } catch { }   /* 清理失败无害 */
         }
     }
+    /// <summary>
+    /// 按应用自动启用层（叠加层）。
+    ///
+    /// 两条硬要求：
+    ///   ① 命中规则时，**只接管该层绑过的组合**；
+    ///   ② 没绑过的键必须原样放行 —— 否则在 IDE 里打字会被吞掉。
+    /// </summary>
+    private static void TestAppLayerOverlay()
+    {
+        CheckEqual("按应用层：规范化完整路径",
+            AppLayerRules.Normalize(@"C://Program Files//X//Code.EXE"), "code.exe");
+        CheckEqual("按应用层：自动补 exe", AppLayerRules.Normalize("Code"), "code.exe");
+        CheckEqual("按应用层：空值", AppLayerRules.Normalize("  "), "");
+
+        var rules = new[] { new AppLayerRule { Process = "code.exe", LayerId = 2 } };
+        CheckEqual("按应用层：命中返回层", AppLayerRules.Match(rules, "Code.exe"), 2);
+        CheckEqual("按应用层：不命中返回 0", AppLayerRules.Match(rules, "notepad.exe"), 0);
+        CheckEqual("按应用层：空规则返回 0", AppLayerRules.Match(null, "code.exe"), 0);
+
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+
+        var layer = s.Layers.First();
+        /* 清空默认绑定：出厂配置里有 WASD 之类的现成绑定，
+         * 不清掉的话"未绑定的键"其实是有绑定的，测不出真实行为。 */
+        layer.Keys.Clear();
+        // 组合键 id 的存储约定是 caps_ 前缀（历史原因），不要手写 "q"
+        layer.Keys.Add(new KeyBinding { Combo = KeyName.BuildComboEx(KeyModifiers.None, "q"), Action = "qbar" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+
+        engine.AppLayerId = 0;
+        Check("按应用层：未启用时 Q 放行", !engine.SimulateKey(0x51, true));
+        engine.SimulateKey(0x51, false);
+
+        engine.AppLayerId = layer.Id;
+        Check("按应用层：命中绑定被吞", engine.SimulateKey(0x51, true));
+        engine.SimulateKey(0x51, false);
+        DoEvents(60);
+        lock (fired) Check("按应用层：绑定的动作被执行", fired.Contains("qbar"), string.Join(",", fired));
+
+        Check("按应用层：未绑定的键照常放行", !engine.SimulateKey(0x57, true));
+        engine.SimulateKey(0x57, false);
+
+        engine.Dispose();
+        queue.Dispose();
+    }
 }

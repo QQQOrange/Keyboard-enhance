@@ -53,6 +53,9 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>当前按住的"源键 → 目标键"，用于成对松开（否则会粘键）。</summary>
     private readonly Dictionary<int, int> _remappedDown = new();
 
+    /// <summary>叠加层 id，由前台窗口监听写入（钩子线程读，必须 volatile）。</summary>
+    private volatile int _appLayerId;
+
     /// <summary>
     /// 物理按键状态：钩子看到的每个 down 加入、每个 up 移除（**包括被吞掉的触发键**）。
     ///
@@ -284,6 +287,18 @@ public sealed class HotkeyEngine : IDisposable
     /// 现在对外开放，并配合 <see cref="SubLayerChanged"/> 通知。
     /// </summary>
     public string ActiveSubLayer => _subLayerKeyDown;
+
+    /// <summary>
+    /// 「按应用自动启用」的叠加层 id（0 = 没有）。
+    ///
+    /// 由外部（前台窗口监听）设置；只做一件事：在基础状态下，
+    /// 如果某个组合在叠加层里绑过，就执行它并吞掉按键；没绑过则原样放行。
+    /// </summary>
+    public int AppLayerId
+    {
+        get => _appLayerId;
+        set => _appLayerId = value;
+    }
 
     /// <summary>进入 / 离开子层时触发；参数是子层键名，离开时是空串。</summary>
     public event Action<string>? SubLayerChanged;
@@ -1038,6 +1053,9 @@ public sealed class HotkeyEngine : IDisposable
         // ---- 3. 不在层模式：放行，但先把"欠着的抬起"结清 ----
         if (!_triggerHeld || !_layerActive)
         {
+            /* 按应用的叠加层：只接管**绑过**的组合，未绑定的键原样放行。 */
+            if (down && TryRunAppLayerBinding(settings, vk)) return true;
+
             /* 基础改键：只要不在层里就生效。
              * 放在"放行"之前 —— 命中就吞掉原键并改成目标键。 */
             if (TryApplyRemap(settings, vk, down)) return true;
@@ -1529,6 +1547,51 @@ public sealed class HotkeyEngine : IDisposable
     }
 
     /// <summary>层模式下按下某个键。返回 true 表示吞掉。</summary>
+    /// <summary>
+    /// 叠加层：前台命中"按应用启用"的规则时，先查这一层有没有绑定。
+    ///
+    /// 与触发键的层的**根本区别**：这里不接管未绑定的键。
+    /// 触发层的语义是"键盘交给这一层"，而叠加层是"在原有键盘上多几个快捷键"——
+    /// 否则在 IDE 里打字会被整片吞掉。
+    /// </summary>
+    private bool TryRunAppLayerBinding(AppSettings s, int vk)
+    {
+        int layer = _appLayerId;
+        if (layer <= 0) return false;
+
+        // 系统自动重复：已经执行过，吞掉但不再触发
+        if (_swallowedDown.ContainsKey(vk)) return true;
+
+        string? keyName = KeyName.NameOf(vk);
+        if (keyName == null) return false;
+
+        var mods = KeyModifiers.None;
+        if (_laltDown) mods |= KeyModifiers.Alt;
+        if (_lwinDown || _rwinDown) mods |= KeyModifiers.Win;
+        if (_ctrlDown) mods |= KeyModifiers.Ctrl;
+        if (_shiftDown) mods |= KeyModifiers.Shift;
+
+        var binding = FindInLayer(s, layer, KeyName.BuildComboEx(mods, keyName));
+        if (binding == null || !binding.IsBound) return false;   // 没绑 → 直通
+
+        string action = binding.Action;
+        string arg = binding.Arg;
+
+        _swallowedDown.TryAdd(vk, 0);
+        _swallowedUp.TryAdd(vk, 0);
+
+        _queue.Post(() =>
+        {
+            try
+            {
+                _invoke(action, arg);
+                ActionTriggered?.Invoke(action);
+            }
+            catch (Exception ex) { CoreLog.Error($"动作 {action} 执行失败", ex); }
+        });
+        return true;
+    }
+
     private bool OnKeyDownInLayer(int vk)
     {
         /* 修饰键：记录状态并吞掉（否则会触发系统级 Alt / Win 菜单）。
