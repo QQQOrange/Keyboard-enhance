@@ -1960,5 +1960,19 @@
   "已复制体检结果": "Rule-check result copied",
   "复制失败：剪贴板被其它程序占用": "Copy failed: the clipboard is held by another app",
   "按键增强 v{0} 规则体检 · {1}": "Keyboard Enhance v{0} rule check · {1}",
-  "　（新增 {0} 条冲突，可在「规则体检」查看）": "  ({0} new conflict(s), see \"Rule check\")"
+  "　（新增 {0} 条冲突，可在「规则体检」查看）": "  ({0} new conflict(s), see \"Rule check\")",
+  "键盘设备": "Keyboards",
+  "只列出系统认到的键盘，不改任何按键行为。复合键盘常被系统拆成多条，这里已按物理设备归并。": "Lists the keyboards Windows sees; changes no key behavior. Composite keyboards are often split into several entries and are merged per physical device here.",
+  "没有枚举到键盘设备。": "No keyboards found.",
+  "没有枚举到键盘设备": "No keyboards found",
+  "系统认到 {0} 个键盘": "{0} keyboard(s) detected",
+  "{0}　·　{1}": "{0} · {1}",
+  "{0}　·　{1}　·　{2} 条系统条目": "{0} · {1} · {2} system entries",
+  "远程桌面虚拟键盘": "Remote Desktop virtual keyboard",
+  "内置键盘（ACPI）": "Built-in keyboard (ACPI)",
+  "虚拟键盘（ROOT）": "Virtual keyboard (ROOT)",
+  "外接键盘（HID）": "External keyboard (HID)",
+  "外接键盘（USB）": "External keyboard (USB)",
+  "其它": "Other",
+  "系统虚拟键盘（RID）": "System virtual keyboard (RID)"
 }

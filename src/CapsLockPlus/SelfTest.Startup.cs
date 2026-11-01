@@ -1082,4 +1082,61 @@ public static partial class SelfTest
         s9.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "j", Action = "qbar" });
         Check("体检：组合键两键相同", RuleConflicts.Analyze(s9).Any(c => c.Message.Contains("永远不会触发")));
     }
+    /// <summary>
+    /// 键盘设备枚举（多键盘的第一步：只读，不影响任何按键行为）。
+    ///
+    /// 两条底线：
+    ///   ① 枚举失败绝不能抛 —— 它是展示功能，不能拖累启动；
+    ///   ② 路径解析要稳 —— 注册表路径拼错就查不到设备名，界面上全是"其它"。
+    /// </summary>
+    private static void TestKeyboardDevices()
+    {
+        // ---- 纯函数：路径解析 ----
+        const string hid = @"\\?\HID#VID_046D&PID_C31C&MI_00#8&2f1a2b3c&0&0000#{884b96c3-56ef-11d1-bc8c-00a0c91405dd}";
+        CheckEqual("设备：注册表路径",
+            KeyboardDevices.RegistryPathOf(hid),
+            @"SYSTEM\CurrentControlSet\Enum\HID\VID_046D&PID_C31C&MI_00\8&2f1a2b3c&0&0000");
+
+        Check("设备：ACPI 是内置", KeyboardDevices.IsBuiltIn(@"\\?\ACPI#PNP0303#4&2b3c#0"));
+        Check("设备：HID 不是内置", !KeyboardDevices.IsBuiltIn(hid));
+
+        CheckEqual("设备：HID 类别", KeyboardDevices.KindOf(hid), Loc.T("外接键盘（HID）"));
+        CheckEqual("设备：ACPI 类别", KeyboardDevices.KindOf(@"\\?\ACPI#PNP0303#4&2b3c#0"),
+            Loc.T("内置键盘（ACPI）"));
+        CheckEqual("设备：RDP 类别", KeyboardDevices.KindOf(@"\\?\Root#RDP_KBD#0000"),
+            Loc.T("远程桌面虚拟键盘"));
+
+        CheckEqual("设备：抠出 VID/PID", KeyboardDevices.VidPidOf(hid), "VID_046D&PID_C31C");
+        CheckEqual("设备：没有 VID/PID 时为空", KeyboardDevices.VidPidOf(@"\\?\ACPI#PNP0303#0"), "");
+        CheckEqual("设备：空路径不给注册表路径", KeyboardDevices.RegistryPathOf(""), "");
+
+        // ---- 归并：复合键盘不能显示成好几只 ----
+        var raw = new List<KeyboardDevice>
+        {
+            new(@"\\?\HID#VID_0483&PID_2031&MI_00#8&1&0&0000#{g}", "VID_0483&PID_2031",
+                Loc.T("外接键盘（HID）"), false),
+            new(@"\\?\HID#VID_0483&PID_2031&MI_01&Col01#8&2&0&0000#{g}", "VID_0483&PID_2031",
+                Loc.T("外接键盘（HID）"), false),
+            new(@"\\?\ACPI#PNP0303#4&2b3c#0", Loc.T("内置键盘（ACPI）"),
+                Loc.T("内置键盘（ACPI）"), true),
+        };
+
+        var groups = KeyboardDevices.Group(raw);
+        CheckEqual("设备：复合键盘归并成一条", groups.Count, 2);
+        CheckEqual("设备：归并后计入条目数", groups.First(g => g.Count > 1).Count, 2);
+        Check("设备：内置键盘单独一条",
+            groups.Any(g => g.Kind == Loc.T("内置键盘（ACPI）")), string.Join(" | ", groups.Select(g => g.Kind)));
+        CheckEqual("设备：空输入返回空", KeyboardDevices.Group(null).Count, 0);
+
+        // ---- 真实枚举：能跑通即可 ----
+        var devices = KeyboardDevices.List();
+        Check("设备：枚举不抛异常", devices != null);
+        Check("设备：路径都非空", devices.All(d => d.Path.Length > 0),
+            string.Join(" | ", devices.Select(d => d.Path)));
+
+        /* 数量不做硬断言：CI/虚拟机/远程桌面下差异很大。
+         * 但把结果打进日志 —— 排查"为什么第二个键盘没生效"时这是第一手资料。 */
+        CoreLog.Info($"键盘设备枚举：共 {devices.Count} 个 —— " +
+            string.Join("\n  ", devices.Select(d => $"{d.Kind} / {d.Name}\n    {d.Path}")));
+    }
 }

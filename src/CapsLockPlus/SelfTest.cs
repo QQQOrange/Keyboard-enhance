@@ -141,6 +141,9 @@ public static partial class SelfTest
         Section("规则体检");
         TestRuleConflicts();
 
+        Section("键盘设备");
+        TestKeyboardDevices();
+
         Section("启动密码");
         TestStartupPassword();
 

@@ -35,6 +35,11 @@ public partial class SettingsView : UserControl
         RefreshRemapState();
         RefreshUsage();
         RefreshConflicts();
+
+        /* 设备枚举是 P/Invoke：Refresh 会在每次保存时被调用（用户打字时每个键都保存），
+         * 所以只在第一次进来时枚举，之后靠「刷新」按钮显式更新。 */
+        if (KeyboardList != null && KeyboardList.Items.Count == 0)
+            RefreshKeyboards();
         RefreshAppLayerEditor();
         RefreshGestureEditor();
         RefreshSnippetEditor();
@@ -276,6 +281,49 @@ public partial class SettingsView : UserControl
         _host.Notify(n == 0
             ? Loc.T("规则体检：没有发现问题")
             : Loc.F("规则体检：发现 {0} 条提示", n));
+    }
+
+    // ---------------- 键盘设备 ----------------
+
+    /// <summary>
+    /// 只读展示：系统认到几只键盘。
+    ///
+    /// 存在的意义是把"为什么另一只键盘不生效"从猜测变成可核对的事实 ——
+    /// 目前改键对所有键盘一视同仁，所以这里只列设备，不做任何开关。
+    /// </summary>
+    private void RefreshKeyboards()
+    {
+        if (KeyboardList == null) return;
+
+        KeyboardList.Items.Clear();
+        var groups = KeyboardDevices.Group(KeyboardDevices.List());
+
+        KeyboardEmptyText.Visibility = groups.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        foreach (var g in groups)
+        {
+            var row = new TextBlock
+            {
+                Text = g.Count > 1
+                    ? Loc.F("{0}　·　{1}　·　{2} 条系统条目", g.Name, g.Kind, g.Count)
+                    : Loc.F("{0}　·　{1}", g.Name, g.Kind),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 4),
+                FontSize = 12,
+                ToolTip = g.Sample,
+                Style = (Style)FindResource("Text.Tertiary"),
+            };
+            KeyboardList.Items.Add(row);
+        }
+    }
+
+    private void OnRefreshKeyboardsClick(object sender, RoutedEventArgs e)
+    {
+        RefreshKeyboards();
+        int n = KeyboardDevices.Group(KeyboardDevices.List()).Count;
+        _host?.Notify(n == 0
+            ? Loc.T("没有枚举到键盘设备")
+            : Loc.F("系统认到 {0} 个键盘", n));
     }
 
     // ---------------- 场景模板 ----------------

@@ -272,6 +272,29 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 键盘设备：只读，用于排查"为什么另一只键盘不生效" -->
+                    <StackPanel x:Name="KeyboardSection">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{loc:T '键盘设备'}" Style="{StaticResource Text.Body}" />
+                                <TextBlock Text="{loc:T '只列出系统认到的键盘，不改任何按键行为。复合键盘常被系统拆成多条，这里已按物理设备归并。'}"
+                                           Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="{loc:T '刷新'}" Padding="12,5" VerticalAlignment="Top"
+                                    Style="{StaticResource Button.Base}" Click="OnRefreshKeyboardsClick" />
+                        </Grid>
+                        <TextBlock x:Name="KeyboardEmptyText" Style="{StaticResource Text.Tertiary}"
+                                   Margin="0,8,0,0" Visibility="Collapsed"
+                                   Text="{loc:T '没有枚举到键盘设备。'}" />
+                        <ItemsControl x:Name="KeyboardList" Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
                     <StackPanel>
                         <Grid>
