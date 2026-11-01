@@ -85,6 +85,35 @@ public partial class SettingsView : UserControl
         _host?.SaveSettings();
     }
 
+    // ---------------- 规则分享 ----------------
+
+    private void OnExportRulesClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        ShareBox.Text = RuleShare.Export(_host.Settings);
+        _host.Notify(Loc.T("已生成分享码，复制上面的文本即可"));
+    }
+
+    private void OnImportRulesClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var (added, skipped) = RuleShare.Import(_host.Settings, ShareBox.Text, out string? error);
+        if (error != null)
+        {
+            _host.Notify(error);
+            return;
+        }
+
+        Save();
+        Refresh();      // 各卡片跟着刷新，用户能立刻看到导入结果
+
+        _host.Notify(added > 0
+            ? Loc.F("已导入 {0} 项（跳过 {1} 项）", added, skipped)
+            : Loc.F("没有新增内容：这 {0} 项都已存在", skipped));
+    }
+
     // ---------------- 场景模板 ----------------
 
     /// <summary>

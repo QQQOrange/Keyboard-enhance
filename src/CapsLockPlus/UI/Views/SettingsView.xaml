@@ -219,6 +219,23 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 规则分享 -->
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '规则分享'}" Style="{StaticResource Text.Body}" />
+                        <TextBlock Text="{loc:T '导出基础改键、文本片段、双击动作、组合键、按应用层（不含层内绑定）。把别人的分享码粘进来即可导入，只添加缺失项。'}"
+                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <TextBox x:Name="ShareBox" Margin="0,8,0,0" MinHeight="72" AcceptsReturn="True"
+                                 TextWrapping="Wrap" Style="{StaticResource TextBox.Base}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="{loc:T '导出到框里'}" Padding="14,6" Margin="0,0,8,0"
+                                    Style="{StaticResource Button.Base}" Click="OnExportRulesClick" />
+                            <Button Content="{loc:T '从框里导入'}" Padding="14,6"
+                                    Style="{StaticResource Button.Base}" Click="OnImportRulesClick" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
                     <StackPanel>
                         <Grid>

@@ -509,4 +509,38 @@ public static partial class SelfTest
         Check("模板：基础改键已写入",
             s.Global.BaseRemaps.Any(r => r.From == "capslock" && r.To == "esc"));
     }
+    /// <summary>
+    /// 规则分享：导出 → 导入 → 重复导入。
+    ///
+    /// 关键要求：导入只能"加法"，且重复导入不叠加。
+    /// 分享码是别人给的，不能因为对方多写一条就把我的配置改坏。
+    /// </summary>
+    private static void TestRuleShare()
+    {
+        var src = DefaultSettings.Create();
+        src.Global.BaseRemaps.Add(new KeyRemap { From = "capslock", To = "esc" });
+        src.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
+
+        string code = RuleShare.Export(src);
+        Check("分享：导出含改键", code.Contains("capslock") && code.Contains("\"esc\""), code);
+        Check("分享：导出含片段", code.Contains(";mail"));
+
+        var dst = DefaultSettings.Create();
+        dst.Global.BaseRemaps.Clear();
+        dst.Global.Snippets.Clear();
+
+        var (added1, _) = RuleShare.Import(dst, code, out string? err1);
+        Check("分享：导入无错误", err1 == null, err1 ?? "");
+        CheckEqual("分享：导入条数", added1, 2);
+        Check("分享：改键已落地", dst.Global.BaseRemaps.Any(r => r.From == "capslock" && r.To == "esc"));
+        Check("分享：片段已落地", dst.Global.Snippets.Any(x => x.Trigger == ";mail"));
+
+        var (added2, skipped2) = RuleShare.Import(dst, code, out _);
+        Check("分享：重复导入不叠加", added2 == 0, added2.ToString());
+        Check("分享：重复导入全跳过", skipped2 == 2, skipped2.ToString());
+
+        var (added3, _) = RuleShare.Import(dst, "{ 这不是 json", out string? err3);
+        Check("分享：坏码返回错误", err3 != null);
+        CheckEqual("分享：坏码不改配置", added3, 0);
+    }
 }

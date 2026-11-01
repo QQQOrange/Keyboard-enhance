@@ -123,6 +123,9 @@ public static partial class SelfTest
         Section("场景模板");
         TestScenarioPacks();
 
+        Section("规则分享");
+        TestRuleShare();
+
         Section("启动密码");
         TestStartupPassword();
 
