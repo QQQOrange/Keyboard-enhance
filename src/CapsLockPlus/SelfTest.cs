@@ -102,6 +102,9 @@ public static partial class SelfTest
         Section("基础改键");
         TestBaseRemap();
 
+        Section("使用统计");
+        TestUsageStats();
+
         Section("启动密码");
         TestStartupPassword();
 

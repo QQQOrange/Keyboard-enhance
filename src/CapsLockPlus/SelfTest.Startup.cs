@@ -222,4 +222,49 @@ public static partial class SelfTest
         Check("改键：描述含箭头",
             KeyRemapMap.Describe(new[] { new KeyRemap { From = "capslock", To = "esc" } }).Contains("→"));
     }
+    /// <summary>
+    /// 使用统计：累计、排行、今日、空 id 不计数，以及"写坏文件不影响主流程"。
+    ///
+    /// 用临时目录写，避免污染真实数据目录；结束前恢复覆盖点。
+    /// </summary>
+    private static void TestUsageStats()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ke-usage-" + Guid.NewGuid().ToString("N"));
+        string? saved = UsageStats.PathOverride;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            UsageStats.PathOverride = dir;
+            UsageStats.Reset();
+
+            UsageStats.Record("tab");
+            UsageStats.Record("tab");
+            UsageStats.Record("qbar");
+
+            var sum = UsageStats.Summary();
+            CheckEqual("统计：累计次数", sum.Total, 3);
+            CheckEqual("统计：今日次数", sum.Today, 3);
+            CheckEqual("统计：最常用动作", sum.TopAction, "tab");
+            CheckEqual("统计：最常用次数", sum.TopCount, 2);
+
+            UsageStats.Record("");
+            UsageStats.Record(null);
+            CheckEqual("统计：空动作不计数", UsageStats.Summary().Total, 3);
+
+            UsageStats.Flush();
+            Check("统计：落盘后文件存在",
+                File.Exists(Path.Combine(dir, "usage.json")));
+
+            // 坏文件不能把统计模块带崩
+            File.WriteAllText(Path.Combine(dir, "usage.json"), "{ not json");
+            UsageStats.Reset();
+            UsageStats.Record("x");
+            CheckEqual("统计：坏文件后仍可继续累计", UsageStats.Summary().Total, 1);
+        }
+        finally
+        {
+            UsageStats.PathOverride = saved;
+            try { Directory.Delete(dir, true); } catch { }   /* 清理失败无害 */
+        }
+    }
 }

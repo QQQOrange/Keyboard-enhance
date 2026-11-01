@@ -292,6 +292,7 @@ public sealed class AppHost : IDisposable
 
         if (ok)
         {
+            UsageStats.Record(action);
             CoreLog.Info($"动作：{action}{(string.IsNullOrEmpty(arg) ? "" : " " + arg)}");
             return true;
         }
@@ -775,6 +776,7 @@ public sealed class AppHost : IDisposable
     {
         Exiting = true;
         SaveSettings();
+        UsageStats.Flush();      // 统计攒着落盘，退出时补最后一次
         _tray?.Dispose();
         _tray = null;
         try { _selectionWatcher?.Dispose(); _selectionWatcher = null; } catch { }   /* 预期内：清理动作，失败无副作用 */

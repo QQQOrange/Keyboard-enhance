@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Localization;
 using CapsLockPlus.UI.Windows;
@@ -31,6 +32,7 @@ public partial class SettingsView : UserControl
         var g = _host.Settings.Global;
         RefreshPermission();
         RefreshRemapState();
+        RefreshUsage();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -77,6 +79,36 @@ public partial class SettingsView : UserControl
     private void Save()
     {
         _host?.SaveSettings();
+    }
+
+    // ---------------- 使用统计 ----------------
+
+    private void OnUsageResetClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+
+        UsageStats.Reset();
+        RefreshUsage();
+        _host.Notify(Loc.T("已清空使用统计"));
+    }
+
+    /// <summary>统计行：总数 + 今日 + 最常用动作。没有数据时明说，别显示 0 像个 bug。</summary>
+    private void RefreshUsage()
+    {
+        if (UsageText == null) return;
+
+        var (total, top, topCount, today) = UsageStats.Summary();
+        if (total <= 0)
+        {
+            UsageText.Text = Loc.T("还没有统计数据：执行动作后会自动累计。");
+            UsageResetButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        string topName = string.IsNullOrEmpty(top) ? Loc.T("无") : (ActionCatalog.TitleOf(top) ?? top);
+        UsageText.Text = Loc.F("已执行 {0} 次动作 · 今日 {1} 次 · 最常用：{2}（{3} 次）",
+            total, today, topName, topCount);
+        UsageResetButton.Visibility = Visibility.Visible;
     }
 
     // ---------------- 基础改键 ----------------
