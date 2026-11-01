@@ -66,6 +66,9 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>已经触发过双击、需要吞掉抬起事件的键。</summary>
     private readonly HashSet<int> _gestureSwallowUp = new();
 
+    /* ---- 文本片段：累计纯文本输入，命中触发词就展开 ---- */
+    private readonly System.Text.StringBuilder _snippetBuffer = new();
+
     /// <summary>
     /// 物理按键状态：钩子看到的每个 down 加入、每个 up 移除（**包括被吞掉的触发键**）。
     ///
@@ -1016,6 +1019,7 @@ public sealed class HotkeyEngine : IDisposable
         }
 
         // ---- 1. 这个键是不是触发键？ ----
+        _snippetBuffer.Clear();     // 被吞掉的键不参与片段拼接
         if (IsTrigger(settings, vk))
         {
             // 按下和抬起都吞掉：短按的原功能由 OnTriggerUp 里补发，
@@ -1085,6 +1089,12 @@ public sealed class HotkeyEngine : IDisposable
              *
              * 只在 up 上查表；Down 走原来的放行逻辑。 */
             if (!down) return _swallowedUp.TryRemove(vk, out _);
+
+            /* 文本片段：只有"真的会打出去"的键才计入缓冲区。
+             * 带 Ctrl/Alt/Win 的是命令，不是输入，直接断开。 */
+            if (_ctrlDown || _laltDown || _lwinDown || _rwinDown) _snippetBuffer.Clear();
+            else ObserveSnippet(settings, vk);
+
             return false;
         }
 
@@ -1655,6 +1665,98 @@ public sealed class HotkeyEngine : IDisposable
 
         _gestureLastTick[vk] = now;
         return false;
+    }
+
+    /// <summary>
+    /// 文本片段：把这次按键折算成字符、累计到缓冲区，命中就展开。
+    ///
+    /// **保守实现**的两条底线：
+    ///   · 认不出的键（方向键、功能键、非 US 布局字符）一律**清零**缓冲区，
+    ///     宁可丢掉一次展开，也不要跨键拼出假触发词；
+    ///   · 只在"不按任何修饰键"的纯文本输入时累计。
+    /// </summary>
+    private void ObserveSnippet(AppSettings s, int vk)
+    {
+        var list = s.Global.Snippets;
+        if (list == null || list.Count == 0)
+        {
+            _snippetBuffer.Clear();
+            return;
+        }
+
+        char? ch = AsciiCharOf(vk, _shiftDown);
+        if (ch == null)
+        {
+            _snippetBuffer.Clear();      // 非文本键：断开
+            return;
+        }
+
+        _snippetBuffer.Append(ch.Value);
+        if (_snippetBuffer.Length > SnippetMatcher.MaxBuffer)
+        {
+            string trimmed = SnippetMatcher.Trim(_snippetBuffer.ToString());
+            _snippetBuffer.Clear();
+            _snippetBuffer.Append(trimmed);
+        }
+
+        var hit = SnippetMatcher.Match(list, _snippetBuffer.ToString());
+        if (hit == null) return;
+
+        _snippetBuffer.Clear();
+
+        int deleteCount = hit.Trigger.Length;
+        string text = hit.Text ?? "";
+
+        /* 触发词已经打进前台了，所以要先删掉再输入。
+         * 投递到动作队列：钩子里做 IO/发送会拖慢每一次按键。 */
+        _queue.Post(() =>
+        {
+            try
+            {
+                for (int i = 0; i < deleteCount; i++)
+                {
+                    InputSender.Tap(0x08);          // Backspace
+                    System.Threading.Thread.Sleep(6);
+                }
+                InputSender.Text(text);
+                CoreLog.Info($"片段展开：{hit.Trigger} → {text.Length} 字");
+            }
+            catch (Exception ex) { CoreLog.Warn("片段展开失败：" + ex.Message); }
+        });
+    }
+
+    /// <summary>
+    /// 虚拟键 → 字符（US 布局）。认不出返回 null。
+    ///
+    /// 不走 ToUnicodeEx：那个 API 会改变死键状态，可能干扰输入法。
+    /// 这里只认最基本的 ASCII，认不出就让缓冲区断开 —— 安全优先。
+    /// </summary>
+    private static char? AsciiCharOf(int vk, bool shift)
+    {
+        if (vk >= 0x41 && vk <= 0x5A) return (char)((shift ? 'A' : 'a') + (vk - 0x41));
+        if (vk >= 0x30 && vk <= 0x39)
+        {
+            if (!shift) return (char)vk;
+            const string shiftedDigits = ")!@#$%^&*(";
+            return shiftedDigits[vk - 0x30];
+        }
+
+        return vk switch
+        {
+            0x20 => ' ',
+            0xBA => shift ? ':' : ';',
+            0xBB => shift ? '+' : '=',
+            0xBC => shift ? '<' : ',',
+            0xBD => shift ? '_' : '-',
+            0xBE => shift ? '>' : '.',
+            0xBF => shift ? '?' : '/',
+            0xC0 => shift ? '~' : '`',
+            0xDB => shift ? '{' : '[',
+            0xDC => shift ? '|' : '\\',
+            0xDD => shift ? '}' : ']',
+            0xDE => shift ? '"' : '\'',
+            _ => null,
+        };
     }
 
     private bool OnKeyDownInLayer(int vk)

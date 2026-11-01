@@ -77,6 +77,25 @@ public sealed class KeyGesture
     public string Comment { get; set; } = "";
 }
 
+/// <summary>
+/// 一条「文本片段」：输入触发词后自动展开成一段文字。
+///
+/// 触发规则（保守，防误触）：
+///   · 触发词必须在**词边界**上（前一个字符不是字母/数字）；
+///   · 默认要求触发词以非字母数字开头（如 `;mail`），这类前缀几乎不会
+///     出现在正常打字里。
+/// </summary>
+public sealed class Snippet
+{
+    /// <summary>触发词，如 `;mail`。</summary>
+    public string Trigger { get; set; } = "";
+
+    /// <summary>展开后的内容（支持换行）。</summary>
+    public string Text { get; set; } = "";
+
+    public string Comment { get; set; } = "";
+}
+
 public sealed class QEntry
 {
     /// <summary>
@@ -234,6 +253,11 @@ public sealed class GlobalOptions
 
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
+
+    /// <summary>
+    /// 文本片段：输入触发词自动展开。默认空，不影响任何现有输入。
+    /// </summary>
+    public List<Snippet> Snippets { get; set; } = new();
 
     /// <summary>
     /// 双击动作：任意键连按两次触发一个动作。默认空，不影响任何现有行为。

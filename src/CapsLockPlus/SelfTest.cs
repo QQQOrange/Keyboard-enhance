@@ -111,6 +111,9 @@ public static partial class SelfTest
         Section("双击动作");
         TestDoubleTapGesture();
 
+        Section("文本片段");
+        TestSnippets();
+
         Section("启动密码");
         TestStartupPassword();
 

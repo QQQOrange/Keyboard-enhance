@@ -360,4 +360,35 @@ public static partial class SelfTest
         engine.Dispose();
         queue.Dispose();
     }
+    /// <summary>
+    /// 文本片段的匹配规则。
+    ///
+    /// 这是全仓最容易"误伤正常输入"的功能，所以规则必须能自证：
+    ///   ① 触发词要以非字母数字开头；
+    ///   ② 必须落在词边界（`x;mail` 不能触发 `;mail`）；
+    ///   ③ 多个命中取最长。
+    /// </summary>
+    private static void TestSnippets()
+    {
+        Check("片段：空触发词非法", !SnippetMatcher.IsValidTrigger(""));
+        Check("片段：纯字母触发词非法", !SnippetMatcher.IsValidTrigger("mail"));
+        Check("片段：含空格非法", !SnippetMatcher.IsValidTrigger(";ma il"));
+        Check("片段：符号开头合法", SnippetMatcher.IsValidTrigger(";mail"));
+
+        var list = new List<Snippet>
+        {
+            new() { Trigger = ";mail", Text = "a@b.com" },
+            new() { Trigger = ";m", Text = "short" },
+        };
+
+        CheckEqual("片段：命中较长者", SnippetMatcher.Match(list, ";mail")?.Text, "a@b.com");
+        CheckEqual("片段：短触发词也能命中", SnippetMatcher.Match(list, ";m")?.Text, "short");
+        Check("片段：词中间不触发", SnippetMatcher.Match(list, "x;mail") == null);
+        Check("片段：无匹配返回空", SnippetMatcher.Match(list, "hello") == null);
+        Check("片段：大小写敏感", SnippetMatcher.Match(list, ";Mail") == null);
+
+        string longBuf = new string('a', SnippetMatcher.MaxBuffer + 30);
+        CheckEqual("片段：缓冲区截断到上限",
+            SnippetMatcher.Trim(longBuf).Length, SnippetMatcher.MaxBuffer);
+    }
 }

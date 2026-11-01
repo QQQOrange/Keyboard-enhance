@@ -155,6 +155,30 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 文本片段 -->
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '文本片段'}" Style="{StaticResource Text.Body}" />
+                        <TextBlock Text="{loc:T '输入触发词后自动展开成一段文字。触发词须以 ; / . 等符号开头（不能是字母数字），且必须落在词首。'}"
+                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="SnippetTriggerBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
+                                     ToolTip="{loc:T '例如 ;mail'}" />
+                            <TextBox x:Name="SnippetTextBox" Grid.Column="1" Margin="8,0,0,0" MinHeight="34"
+                                     Style="{StaticResource TextBox.Base}" AcceptsReturn="True"
+                                     ToolTip="{loc:T '展开后的内容，可换行'}" />
+                            <Button Grid.Column="2" Content="{loc:T '添加'}" Margin="8,0,0,0" Padding="14,6"
+                                    Style="{StaticResource Button.Base}" Click="OnAddSnippetClick" />
+                        </Grid>
+                        <ItemsControl x:Name="SnippetList" Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
                     <StackPanel>
                         <Grid>

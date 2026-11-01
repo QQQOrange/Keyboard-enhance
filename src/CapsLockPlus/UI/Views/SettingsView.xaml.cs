@@ -35,6 +35,7 @@ public partial class SettingsView : UserControl
         RefreshUsage();
         RefreshAppLayerEditor();
         RefreshGestureEditor();
+        RefreshSnippetEditor();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -81,6 +82,75 @@ public partial class SettingsView : UserControl
     private void Save()
     {
         _host?.SaveSettings();
+    }
+
+    // ---------------- 文本片段 ----------------
+
+    private void RefreshSnippetEditor()
+    {
+        if (SnippetList == null || _host == null) return;
+
+        SnippetList.Items.Clear();
+        foreach (var sn in _host.Settings.Global.Snippets.ToList())
+        {
+            var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
+
+            var del = new Button
+            {
+                Content = Loc.T("移除"),
+                Padding = new Thickness(10, 3, 10, 3),
+                Style = (Style)FindResource("Button.Base"),
+            };
+            var captured = sn;
+            del.Click += (_, _) =>
+            {
+                _host?.Settings.Global.Snippets.Remove(captured);
+                Save();
+                RefreshSnippetEditor();
+            };
+            DockPanel.SetDock(del, Dock.Right);
+            row.Children.Add(del);
+
+            string preview = (sn.Text ?? "").Replace("\r", " ").Replace("\n", " ");
+            if (preview.Length > 24) preview = preview[..24] + "…";
+            row.Children.Add(new TextBlock
+            {
+                Text = $"{sn.Trigger} → {preview}",
+                VerticalAlignment = VerticalAlignment.Center,
+                Style = (Style)FindResource("Text.Tertiary"),
+            });
+            SnippetList.Items.Add(row);
+        }
+    }
+
+    private void OnAddSnippetClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+
+        string trigger = (SnippetTriggerBox.Text ?? "").Trim();
+        string text = SnippetTextBox.Text ?? "";
+
+        if (!SnippetMatcher.IsValidTrigger(trigger))
+        {
+            _host.Notify(Loc.T("触发词要以 ; / . 这类符号开头，且不能含空格"));
+            return;
+        }
+        if (text.Length == 0)
+        {
+            _host.Notify(Loc.T("展开内容不能为空"));
+            return;
+        }
+
+        var list = _host.Settings.Global.Snippets;
+        var existing = list.FirstOrDefault(x => x.Trigger == trigger);
+        if (existing != null) existing.Text = text;      // 同触发词覆盖
+        else list.Add(new Snippet { Trigger = trigger, Text = text });
+
+        SnippetTriggerBox.Text = "";
+        SnippetTextBox.Text = "";
+        Save();
+        RefreshSnippetEditor();
+        _host.Notify(Loc.F("已添加片段：{0}", trigger));
     }
 
     // ---------------- 双击动作 ----------------
