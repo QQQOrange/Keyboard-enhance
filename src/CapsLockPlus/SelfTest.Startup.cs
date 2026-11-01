@@ -314,7 +314,7 @@ public static partial class SelfTest
         engine.AppLayerId = layer.Id;
         Check("按应用层：命中绑定被吞", engine.SimulateKey(0x51, true));
         engine.SimulateKey(0x51, false);
-        DoEvents(60);
+        WaitUntil(() => { lock (fired) return fired.Contains("qbar"); });
         lock (fired) Check("按应用层：绑定的动作被执行", fired.Contains("qbar"), string.Join(",", fired));
 
         Check("按应用层：未绑定的键照常放行", !engine.SimulateKey(0x57, true));
@@ -350,7 +350,7 @@ public static partial class SelfTest
 
         Check("双击：第二次按下被吞", engine.SimulateKey(0x1B, true));
         Check("双击：第二次抬起也被吞", engine.SimulateKey(0x1B, false));
-        DoEvents(60);
+        WaitUntil(() => { lock (fired) return fired.Contains("qbar"); });
         lock (fired) Check("双击：动作被执行", fired.Contains("qbar"), string.Join(",", fired));
 
         // 超过窗口：回落为普通按键
@@ -422,7 +422,7 @@ public static partial class SelfTest
         Check("组合键：配对的第二个键被吞", engine.SimulateKey(0x4B, true));      // k
         engine.SimulateKey(0x4B, false);
         engine.SimulateKey(0x4A, false);
-        DoEvents(60);
+        WaitUntil(() => { lock (fired) return fired.Contains("qbar"); });
         lock (fired) Check("组合键：动作被执行", fired.Contains("qbar"), string.Join(",", fired));
 
         // ② 不相干的键：先补发扣住的键，再放行
@@ -442,6 +442,7 @@ public static partial class SelfTest
         engine.Dispose();
         queue.Dispose();
     }
+
     /// <summary>
     /// Qbar 搜动作：把动作目录接进检索，并确保回车能真的执行。
     ///
@@ -692,6 +693,131 @@ public static partial class SelfTest
             var broken = new Macro { Steps = new List<MacroStep> { new() { Kind = "loop" } } };
             Check("宏播放：配对错误时拒绝播放", !player.TryPlay(broken));
             Check("宏播放：拒绝时给出原因", !string.IsNullOrEmpty(player.LastError), player.LastError ?? "");
+        }
+    }
+    /// <summary>
+    /// 宏的等待条件与重试块。
+    ///
+    /// 这里必须动**真实的播放线程**：`waitFor` 是唯一会失败的步骤，
+    /// 而"失败 → 重试 → 再失败 → 中止并通知"这条链路只在播放线程里成立。
+    /// 为了不依赖真实的前台窗口，用 <c>ConditionForTest</c> 注入求值结果。
+    /// </summary>
+    private static void TestMacroWaitAndRetry()
+    {
+        static MacroStep S(string kind) => new() { Kind = kind };
+
+        // ---- 配对与归属 ----
+        var nested = MacroFlow.Compile(new List<MacroStep>
+        {
+            S("retry"),                 // 0
+            S("retry"),                 // 1
+            S("waitFor"),               // 2
+            S("endRetry"),              // 3
+            S("endRetry"),              // 4
+            S("text"),                  // 5
+        });
+        Check("宏重试：嵌套配对成立", nested.Ok, nested.Error ?? "");
+        CheckEqual("宏重试：最内层归属", nested.RetryOf(2), 1);
+        CheckEqual("宏重试：外层是更外那层", nested.ParentRetry(1), 0);
+        CheckEqual("宏重试：最外层没有父", nested.ParentRetry(0), -1);
+        CheckEqual("宏重试：块外没有归属", nested.RetryOf(5), -1);
+
+        Check("宏重试：孤立的结束重试报错",
+            !MacroFlow.Compile(new List<MacroStep> { S("endRetry") }).Ok);
+        Check("宏重试：未闭合的重试报错",
+            !MacroFlow.Compile(new List<MacroStep> { S("retry"), S("text") }).Ok);
+
+        // ---- 等待超时 → 失败事件 ----
+        var saved = MacroPlayer.ConditionForTest;
+        try
+        {
+            // ① 没有重试块：直接中止并通知
+            MacroPlayer.ConditionForTest = (_, _) => false;
+
+            var noRetry = new Macro
+            {
+                Name = "自检-等待超时",
+                Steps = new List<MacroStep>
+                {
+                    new() { Kind = "waitFor", Cond = MacroCondition.App, CondValue = "x", TimeoutMs = 100 },
+                },
+            };
+
+            string? reason = null;
+            var done = new System.Threading.ManualResetEventSlim(false);
+            using (var player = new MacroPlayer())
+            {
+                player.Failed += r => { reason = r; };
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                Check("宏等待：能开始播放", player.TryPlay(noRetry, onCompleted: () => done.Set()));
+                Check("宏等待：超时后结束", done.Wait(4000));
+                clock.Stop();
+
+                Check("宏等待：超时不算卡死", clock.ElapsedMilliseconds < 3000, clock.ElapsedMilliseconds.ToString());
+                Check("宏等待：发出了失败通知", reason != null, reason ?? "无");
+                Check("宏等待：失败原因含超时", (reason ?? "").Contains("超时"), reason ?? "");
+                Check("宏等待：LastError 也记下", !string.IsNullOrEmpty(player.LastError));
+            }
+
+            // ② 有重试块：应当整体重来，耗时应明显变长
+            var withRetry = new Macro
+            {
+                Name = "自检-重试",
+                Steps = new List<MacroStep>
+                {
+                    new() { Kind = "retry", Count = 3 },
+                    new() { Kind = "waitFor", Cond = MacroCondition.App, CondValue = "y", TimeoutMs = 100 },
+                    new() { Kind = "endRetry" },
+                },
+            };
+
+            string? retryReason = null;
+            var retryDone = new System.Threading.ManualResetEventSlim(false);
+            using (var player = new MacroPlayer())
+            {
+                player.Failed += r => { retryReason = r; };
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                Check("宏重试：能开始播放", player.TryPlay(withRetry, onCompleted: () => retryDone.Set()));
+                Check("宏重试：最终结束", retryDone.Wait(6000));
+                clock.Stop();
+
+                // 3 次 × 约 100ms：明显长于一次，说明真的重试了
+                Check("宏重试：确实重试了（耗时变长）",
+                    clock.ElapsedMilliseconds >= 200, clock.ElapsedMilliseconds.ToString());
+                Check("宏重试：次数用尽后仍然通知", retryReason != null, retryReason ?? "无");
+            }
+
+            // ③ 条件立刻成立：不失败、不等待
+            MacroPlayer.ConditionForTest = (_, _) => true;
+            var okMacro = new Macro
+            {
+                Name = "自检-条件成立",
+                Steps = new List<MacroStep>
+                {
+                    new() { Kind = "retry", Count = 3 },
+                    new() { Kind = "waitFor", Cond = MacroCondition.App, CondValue = "z", TimeoutMs = 5000 },
+                    new() { Kind = "endRetry" },
+                },
+            };
+
+            string? okReason = null;
+            var okDone = new System.Threading.ManualResetEventSlim(false);
+            using (var player = new MacroPlayer())
+            {
+                player.Failed += r => { okReason = r; };
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                Check("宏等待：条件成立时能播", player.TryPlay(okMacro, onCompleted: () => okDone.Set()));
+                Check("宏等待：条件成立时正常结束", okDone.Wait(4000));
+                clock.Stop();
+
+                Check("宏等待：条件成立时不报失败", okReason == null, okReason ?? "");
+                Check("宏等待：条件成立时几乎不等待",
+                    clock.ElapsedMilliseconds < 1000, clock.ElapsedMilliseconds.ToString());
+            }
+        }
+        finally
+        {
+            MacroPlayer.ConditionForTest = saved;
         }
     }
 }

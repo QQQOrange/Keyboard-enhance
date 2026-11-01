@@ -31,6 +31,14 @@ public sealed class MacroFlow
     private readonly Dictionary<int, int> _loopEnd = new();   // loop → endLoop
     private readonly Dictionary<int, int> _endLoopOf = new(); // endLoop → loop
 
+    private readonly Dictionary<int, int> _retryParent = new(); // retry → 外层 retry（-1 = 最外层）
+
+    /// <summary>
+    /// 每个步骤「最内层的包裹重试块」（-1 = 不在任何重试块里）。
+    /// 某一步失败时靠它找到该由谁兜。
+    /// </summary>
+    private int[] _owner = Array.Empty<int>();
+
     /// <summary>配对是否完整（false 时播放会降级为"忽略控制标记、按顺序执行"）。</summary>
     public bool Ok { get; private init; } = true;
 
@@ -49,10 +57,15 @@ public sealed class MacroFlow
     {
         var flow = new MacroFlow();
         var stack = new Stack<(string Kind, int Index)>();
+        var retryStack = new Stack<int>();
+        flow._owner = Enumerable.Repeat(-1, steps.Count).ToArray();
 
         for (int i = 0; i < steps.Count; i++)
         {
             string kind = steps[i].Kind;
+
+            // 先记归属：重试块自己算外层（跳回由失败处理负责，不是它包着自己）
+            flow._owner[i] = retryStack.Count > 0 ? retryStack.Peek() : -1;
 
             switch (kind)
             {
@@ -109,6 +122,22 @@ public sealed class MacroFlow
                     flow.HasFlow = true;
                     break;
 
+                case "retry":
+                    flow._retryParent[i] = retryStack.Count > 0 ? retryStack.Peek() : -1;
+                    retryStack.Push(i);
+                    flow.HasFlow = true;
+                    break;
+
+                case "endRetry":
+                {
+                    if (retryStack.Count == 0)
+                        return Fail(Loc.F("第 {0} 步的「结束重试」没有对应的「重试」", i + 1));
+
+                    retryStack.Pop();          // 配对关系用 _owner 表达，不需要另存 endRetry
+                    flow.HasFlow = true;
+                    break;
+                }
+
                 case "endLoop":
                 {
                     if (stack.Count == 0 || stack.Peek().Kind != "loop")
@@ -121,6 +150,12 @@ public sealed class MacroFlow
                     break;
                 }
             }
+        }
+
+        if (retryStack.Count > 0)
+        {
+            int mine = retryStack.Min();
+            return Fail(Loc.F("第 {0} 步的「重试」没有闭合", mine + 1));
         }
 
         if (stack.Count > 0)
@@ -146,6 +181,14 @@ public sealed class MacroFlow
 
     /// <summary>if 对应的 endIf 下标（-1 = 配对失败）。</summary>
     public int EndOfIf(int ifIndex) => _ifEnd.TryGetValue(ifIndex, out int v) ? v : -1;
+
+    /// <summary>这个下标最内层的包裹重试块（-1 = 不在任何重试块里）。</summary>
+    public int RetryOf(int index)
+        => index >= 0 && index < _owner.Length ? _owner[index] : -1;
+
+    /// <summary>重试块的外层重试块（-1 = 最外层）。内层用尽后由外层接手。</summary>
+    public int ParentRetry(int retryIndex)
+        => _retryParent.TryGetValue(retryIndex, out int v) ? v : -1;
 
     /// <summary>endLoop 对应的 loop 下标（-1 = 配对失败）。</summary>
     public int LoopOf(int endLoopIndex) => _endLoopOf.TryGetValue(endLoopIndex, out int v) ? v : -1;

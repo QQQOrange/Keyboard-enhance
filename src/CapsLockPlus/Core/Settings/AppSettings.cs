@@ -680,7 +680,7 @@ public sealed class MacroStep
 {
     /// <summary>
     /// 步骤类型：keyDown / keyUp / delay / delayRandom / text，
-    /// 以及流程控制 if / else / endIf / loop / endLoop。
+    /// 以及流程控制 if / else / endIf / loop / endLoop / waitFor / retry / endRetry。
     ///
     /// 流程控制是**成对标记**而不是嵌套结构：宏仍然是一条平铺的列表，
     /// 靠 <c>Core.Macro.MacroFlow</c> 在播放前算出配对关系。
@@ -720,11 +720,18 @@ public sealed class MacroStep
     /// <summary>Kind 为 loop 时的循环次数；0 或负数 = 一直循环（由取消或步数上限终止）。</summary>
     public int Count { get; set; } = 3;
 
+    /// <summary>
+    /// Kind 为 waitFor 时的最长等待毫秒。
+    /// 超过就判定这一步失败 —— 失败会交给外层「重试」块，没有重试块就整段中止。
+    /// </summary>
+    public int TimeoutMs { get; set; } = 5000;
+
     public MacroStep Clone() => new()
     {
         Kind = Kind, Key = Key, Text = Text,
         DelayMs = DelayMs, MinMs = MinMs, MaxMs = MaxMs,
         Cond = Cond, CondValue = CondValue, Not = Not, Count = Count,
+        TimeoutMs = TimeoutMs,
     };
 }
 
@@ -784,10 +791,14 @@ public sealed class Macro
                         }
                         break;
 
-                    // 流程标记本身不耗时，别当成一次按键
+                    /* 流程标记本身不耗时，别当成一次按键。
+                     * waitFor 的时长取决于条件什么时候成立，无法预估，按 0 算。 */
                     case "if":
                     case "else":
                     case "endIf":
+                    case "retry":
+                    case "endRetry":
+                    case "waitFor":
                         break;
 
                     case "delay": total += s.DelayMs; break;

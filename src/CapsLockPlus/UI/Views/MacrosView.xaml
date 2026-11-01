@@ -374,6 +374,32 @@
                                                VerticalAlignment="Center"
                                                Style="{StaticResource Text.Tertiary}" />
                                 </StackPanel>
+
+                                <!-- 等待条件的超时 -->
+                                <StackPanel x:Name="TimeoutEditPanel" Orientation="Horizontal"
+                                            Visibility="Collapsed" Margin="0,8,0,0">
+                                    <TextBlock Text="{loc:T '最多等'}" VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Secondary}" />
+                                    <TextBox x:Name="TimeoutEditBox" Width="90" Margin="8,0,8,0"
+                                             Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                             TextChanged="OnTimeoutChanged" />
+                                    <TextBlock Text="{loc:T 'ms（超时算失败，交给外层重试）'}"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Tertiary}" />
+                                </StackPanel>
+
+                                <!-- 重试块 -->
+                                <StackPanel x:Name="RetryEditPanel" Orientation="Horizontal"
+                                            Visibility="Collapsed">
+                                    <TextBlock Text="{loc:T '最多尝试'}" VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Secondary}" />
+                                    <TextBox x:Name="RetryCountBox" Width="90" Margin="8,0,8,0"
+                                             Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                             TextChanged="OnRetryCountChanged" />
+                                    <TextBlock Text="{loc:T '次（块内步骤失败时整体重来）'}"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Tertiary}" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -410,6 +436,12 @@
                                     Margin="0,0,8,6" Click="OnInsertLoop" />
                             <Button Content="{loc:T '结束循环'}" Style="{StaticResource Button.Base}" Padding="11,5"
                                     Margin="0,0,8,6" Click="OnInsertEndLoop" />
+                            <Button Content="{loc:T '等待条件'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertWaitFor" />
+                            <Button Content="{loc:T '重试'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertRetry" />
+                            <Button Content="{loc:T '结束重试'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertEndRetry" />
                         </WrapPanel>
                     </StackPanel>
                 </Grid>

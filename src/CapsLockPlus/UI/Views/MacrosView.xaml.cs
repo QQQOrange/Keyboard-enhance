@@ -179,6 +179,10 @@ public partial class MacrosView : UserControl
         "endIf" => Loc.T("结束如果"),
         "loop" => s.Count <= 0 ? Loc.T("循环（一直）") : Loc.F("循环 {0} 次", s.Count),
         "endLoop" => Loc.T("结束循环"),
+        "waitFor" => Loc.F("等待 {0}（最多 {1} ms）",
+            MacroCondition.Describe(s.Cond, s.CondValue, s.Not), s.TimeoutMs),
+        "retry" => Loc.F("重试块（最多 {0} 次）", s.Count),
+        "endRetry" => Loc.T("结束重试"),
 
         _ => s.Kind,
     };
@@ -598,8 +602,10 @@ public partial class MacrosView : UserControl
         RandomEditPanel.Visibility = step.Kind == "delayRandom" ? Visibility.Visible : Visibility.Collapsed;
         TextEditPanel.Visibility = step.Kind == "text" ? Visibility.Visible : Visibility.Collapsed;
         KeyEditPanel.Visibility = step.Kind is "keyDown" or "keyUp" ? Visibility.Visible : Visibility.Collapsed;
-        CondEditPanel.Visibility = step.Kind == "if" ? Visibility.Visible : Visibility.Collapsed;
+        CondEditPanel.Visibility = step.Kind is "if" or "waitFor" ? Visibility.Visible : Visibility.Collapsed;
         LoopEditPanel.Visibility = step.Kind == "loop" ? Visibility.Visible : Visibility.Collapsed;
+        TimeoutEditPanel.Visibility = step.Kind == "waitFor" ? Visibility.Visible : Visibility.Collapsed;
+        RetryEditPanel.Visibility = step.Kind == "retry" ? Visibility.Visible : Visibility.Collapsed;
 
         switch (step.Kind)
         {
@@ -629,6 +635,20 @@ public partial class MacrosView : UserControl
 
             case "loop":
                 LoopCountBox.Text = step.Count.ToString();
+                break;
+
+            case "retry":
+                RetryCountBox.Text = step.Count.ToString();
+                break;
+
+            case "waitFor":
+                EnsureCondKinds();
+                int waitIndex = Array.IndexOf(MacroCondition.Kinds, step.Cond);
+                CondKindBox.SelectedIndex = waitIndex >= 0 ? waitIndex : 0;
+                CondValueBox.Text = step.CondValue;
+                CondValueBox.IsEnabled = step.Cond != MacroCondition.ClipboardEmpty;
+                CondNotBox.IsChecked = step.Not;
+                TimeoutEditBox.Text = step.TimeoutMs.ToString();
                 break;
         }
 
@@ -798,7 +818,7 @@ public partial class MacrosView : UserControl
     private void OnCondValueChanged(object sender, TextChangedEventArgs e)
     {
         var step = SelectedStepOrNull();
-        if (step == null || step.Kind != "if") return;
+        if (step == null || step.Kind is not ("if" or "waitFor")) return;
 
         step.CondValue = CondValueBox.Text ?? "";
         _host!.SaveSettings();
@@ -808,7 +828,7 @@ public partial class MacrosView : UserControl
     private void OnCondNotChanged(object sender, RoutedEventArgs e)
     {
         var step = SelectedStepOrNull();
-        if (step == null || step.Kind != "if") return;
+        if (step == null || step.Kind is not ("if" or "waitFor")) return;
 
         step.Not = CondNotBox.IsChecked == true;
         _host!.SaveSettings();
@@ -852,6 +872,37 @@ public partial class MacrosView : UserControl
         FlowHint.Text = Loc.F("配对有误：{0}", flow.Error ?? "");
         FlowHint.Visibility = Visibility.Visible;
     }
+
+    private void OnTimeoutChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "waitFor") return;
+        if (!int.TryParse(TimeoutEditBox.Text, out int ms)) return;
+
+        step.TimeoutMs = Math.Clamp(ms, 0, 600_000);
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnRetryCountChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "retry") return;
+        if (!int.TryParse(RetryCountBox.Text, out int n)) return;
+
+        step.Count = Math.Clamp(n, 1, 100);   // 至少 1 次，否则这个块没有意义
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnInsertWaitFor(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "waitFor", Cond = MacroCondition.App, TimeoutMs = 5000 });
+
+    private void OnInsertRetry(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "retry", Count = 3 });
+
+    private void OnInsertEndRetry(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "endRetry" });
 
     private void OnInsertIf(object sender, RoutedEventArgs e)
         => AddStep(new MacroStep { Kind = "if", Cond = MacroCondition.App });

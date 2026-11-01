@@ -51,6 +51,17 @@ public sealed class MacroPlayer : IDisposable
     public string? LastError { get; private set; }
 
     /// <summary>
+    /// 播放中途失败（`waitFor` 超时且没有重试可兜）。
+    ///
+    /// 为什么要有这个事件：播放是异步的，`PlayMacro` 早就返回 true 了，
+    /// 失败只能事后通知 —— 否则用户看到的是"按了一下，什么都没发生"。
+    /// </summary>
+    public event Action<string>? Failed;
+
+    /// <summary>自检用：替换条件求值，避免依赖真实的前台窗口/剪贴板。</summary>
+    internal static Func<Core.Settings.MacroStep, MacroContext, bool>? ConditionForTest { get; set; }
+
+    /// <summary>
     /// 播放一个宏（兼容旧调用：忽略结果）。
     /// 需要知道"有没有播起来"时用 <see cref="TryPlay"/>。
     /// </summary>
@@ -106,6 +117,10 @@ public sealed class MacroPlayer : IDisposable
              * 早先放在 try 里，播放中途抛异常时 catch 直接跳过收尾，
              * 已按下未抬起的修饰键就永远粘住了。 */
             var held = new HashSet<int>();
+            bool abort = false;
+            string? failReason = null;
+            var retries = new Dictionary<int, int>();   // retry 下标 → 已尝试次数
+
             try
             {
                 for (int round = 0; round < repeat; round++)
@@ -176,7 +191,7 @@ public sealed class MacroPlayer : IDisposable
                              * 而不是整段宏共用一份快照：循环里等待窗口变化是正当用法。 */
                             case "if":
                             {
-                                bool hit = MacroCondition.Evaluate(step, MacroContext.Capture());
+                                bool hit = EvaluateCondition(step);
                                 if (!hit)
                                 {
                                     pc = flow.SkipTo(pc);
@@ -192,6 +207,42 @@ public sealed class MacroPlayer : IDisposable
 
                             case "endIf":
                                 break;
+
+                            /* 等待条件成立：轮询到成立或超时。
+                             * 超时是宏里**唯一会失败**的一步 —— 重试块只兜它。 */
+                            case "waitFor":
+                            {
+                                if (!WaitForCondition(step))
+                                {
+                                    if (_cancelRequested) { abort = true; break; }
+
+                                    int target = ResolveRetry(flow, snapshot.Steps, retries, pc);
+                                    if (target < 0)
+                                    {
+                                        abort = true;
+                                        failReason = Loc.F("「{0}」等待超时（{1} ms）",
+                                            MacroCondition.Describe(step.Cond, step.CondValue, step.Not),
+                                            step.TimeoutMs);
+                                        break;
+                                    }
+
+                                    pc = target;
+                                    continue;
+                                }
+                                break;
+                            }
+
+                            case "retry":
+                                retries[pc] = 1;      // 第 1 次尝试
+                                break;
+
+                            case "endRetry":
+                            {
+                                // 正常走完：清掉计数，免得下次进这个块还带着旧账
+                                int r = flow.RetryOf(pc);
+                                if (r >= 0) retries.Remove(r);
+                                break;
+                            }
 
                             case "loop":
                                 loops[pc] = 1;
@@ -217,10 +268,12 @@ public sealed class MacroPlayer : IDisposable
                             }
                         }
 
+                        if (abort) break;
+
                         pc++;
                     }
 
-                    if (_cancelRequested) break;
+                    if (_cancelRequested || abort) break;
 
                     // 循环之间留一点间隔，避免"无限循环"把 CPU 吃满
                     if (round + 1 < repeat) Wait(120);
@@ -240,6 +293,15 @@ public sealed class MacroPlayer : IDisposable
                 held.Clear();
 
                 CurrentStep = -1;
+
+                if (abort && failReason != null)
+                {
+                    LastError = failReason;
+                    CoreLog.Warn($"宏「{snapshot.Name}」中止：{failReason}");
+                    try { Failed?.Invoke(failReason); }
+                    catch (Exception ex) { CoreLog.Swallow(ex, "宏失败通知"); }
+                }
+
                 try { _callback?.Invoke(); }
                 catch (Exception ex) { CoreLog.Swallow(ex, "宏播放结束回调"); }
             }
@@ -251,6 +313,69 @@ public sealed class MacroPlayer : IDisposable
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
         return true;
+    }
+
+    /// <summary>条件求值。自检可替换（<see cref="ConditionForTest"/>），生产走真实状态。</summary>
+    private static bool EvaluateCondition(Core.Settings.MacroStep step)
+    {
+        var ctx = MacroContext.Capture();
+        var hook = ConditionForTest;
+        return hook != null ? hook(step, ctx) : MacroCondition.Evaluate(step, ctx);
+    }
+
+    /// <summary>
+    /// 轮询等待条件成立。返回 false = 超时或被取消。
+    ///
+    /// 间隔固定 100ms：比这更密没有意义（前台切换本身就有延迟），
+    /// 比这更疏会让"等窗口出现"平均慢半拍才能继续。
+    /// </summary>
+    private bool WaitForCondition(Core.Settings.MacroStep step)
+    {
+        int timeout = Math.Clamp(step.TimeoutMs, 0, 600_000);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        while (true)
+        {
+            if (_cancelRequested) return false;
+
+            // 先判一次再判超时：timeout = 0 时也允许"此刻已经成立"直接通过
+            if (EvaluateCondition(step)) return true;
+
+            if (clock.ElapsedMilliseconds >= timeout) return false;
+
+            Wait(100);
+        }
+    }
+
+    /// <summary>
+    /// 某一步失败时，找该由哪个重试块接手。返回重跑起点（块内第一条），-1 = 没人兜。
+    ///
+    /// 内层用尽后交给外层：这样"内层重试 3 次、外层再整体重试 2 次"能表达出来。
+    /// 重入外层时必须**清掉内层的计数**，否则内层一进块就是"已用尽"状态。
+    /// </summary>
+    private static int ResolveRetry(MacroFlow flow, IReadOnlyList<Core.Settings.MacroStep> steps,
+        Dictionary<int, int> used, int atIndex)
+    {
+        int r = flow.RetryOf(atIndex);
+        while (r >= 0)
+        {
+            int total = steps[r].Count <= 0 ? 1 : steps[r].Count;
+            used.TryGetValue(r, out int tried);
+
+            if (tried < total)
+            {
+                used[r] = tried + 1;
+
+                foreach (int inner in used.Keys.Where(k => k > r).ToList())
+                    used.Remove(inner);
+
+                CoreLog.Info($"宏重试：第 {r + 1} 步的重试块第 {tried} 次失败，开始第 {tried + 1} 次尝试");
+                return r + 1;
+            }
+
+            r = flow.ParentRetry(r);
+        }
+        return -1;
     }
 
     /// <summary>等待一段时间，期间可被取消。</summary>

@@ -1905,5 +1905,18 @@
   "包含即算命中，不区分大小写": "Substring match, case-insensitive",
   "前台进程是": "Foreground app is",
   "窗口标题含": "Window title contains",
-  "剪贴板含": "Clipboard contains"
+  "剪贴板含": "Clipboard contains",
+  "最多等": "Wait up to",
+  "ms（超时算失败，交给外层重试）": "ms (timeout counts as a failure, handled by the enclosing Retry)",
+  "最多尝试": "Max attempts",
+  "次（块内步骤失败时整体重来）": "times (the whole block re-runs when a step fails)",
+  "等待条件": "Wait for",
+  "重试": "Retry",
+  "结束重试": "End Retry",
+  "等待 {0}（最多 {1} ms）": "Wait until {0} (up to {1} ms)",
+  "重试块（最多 {0} 次）": "Retry block (max {0} attempts)",
+  "第 {0} 步的「结束重试」没有对应的「重试」": "Step {0}: \"End Retry\" has no matching \"Retry\"",
+  "第 {0} 步的「重试」没有闭合": "Step {0}: \"Retry\" is not closed",
+  "「{0}」等待超时（{1} ms）": "\"{0}\" timed out after {1} ms",
+  "播放宏": "Play macro"
 }

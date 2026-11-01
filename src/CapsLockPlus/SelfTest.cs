@@ -132,6 +132,9 @@ public static partial class SelfTest
         Section("宏的流程控制");
         TestMacroFlow();
 
+        Section("宏的等待与重试");
+        TestMacroWaitAndRetry();
+
         Section("启动密码");
         TestStartupPassword();
 
@@ -397,6 +400,25 @@ public static partial class SelfTest
     /// 自检跑在界面线程上，Show() 之后必须让消息循环转一会儿，
     /// Loaded 才会触发、窗口样式才真正应用。
     /// </summary>
+    /// <summary>
+    /// 等一个条件成立（边等边抽消息），最多等 <paramref name="timeoutMs"/>。
+    ///
+    /// 为什么需要：动作是投递到队列线程上执行的，**"投递完 60ms 后一定已经跑完"
+    /// 这个假设只在 Debug 下偶然成立** —— Release 里 JIT 更积极、线程调度更紧，
+    /// 同一份代码就会偶发失败。所以凡是"等异步结果"的断言都改用这个，
+    /// 条件成立就立刻返回，整体并不会变慢。
+    /// </summary>
+    private static bool WaitUntil(Func<bool> condition, int timeoutMs = 2000)
+    {
+        var end = DateTime.Now.AddMilliseconds(timeoutMs);
+        while (DateTime.Now < end)
+        {
+            if (condition()) return true;
+            DoEvents(15);
+        }
+        return condition();
+    }
+
     private static void DoEvents(int ms)
     {
         var end = DateTime.Now.AddMilliseconds(ms);

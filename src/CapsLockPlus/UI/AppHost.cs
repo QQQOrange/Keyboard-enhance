@@ -102,6 +102,12 @@ public sealed class AppHost : IDisposable
         // 让引擎知道宏播放器：播放中按 Esc 需要能取消
         Engine.MacroPlayer = Context.MacroPlayer;
 
+        /* 宏播放是异步的：`PlayMacro` 早就返回了，失败只能事后弹。
+         * 复用动作失败那条出口（同一个 Toast、同一个 ✗ 前缀），
+         * 否则用户看到的是"按了快捷键，一点动静都没有"。 */
+        Context.MacroPlayer.Failed += reason =>
+            NotifyTranslated(UiText.FailLine(UiText.FailedAt(Loc.T("播放宏"), reason, DateTime.Now)));
+
         /* 按应用自动启用层：监听前台窗口，命中规则就把对应层设为叠加层。
          * 只记进程名（隐私），命中失败不影响任何既有功能。 */
         _foreground = new ForegroundWatcher();
