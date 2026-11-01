@@ -179,6 +179,29 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 组合键：两键同时按 -->
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '组合键（两键同按）'}" Style="{StaticResource Text.Body}" />
+                        <TextBlock Text="{loc:T '两个键同时按下触发动作。被配置的这两个键会有约 70ms 的按下延迟（否则无法区分连打和同按），未配置的键不受影响。'}"
+                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox x:Name="ChordKey1Box" Style="{StaticResource ComboBox.Base}" />
+                            <ComboBox x:Name="ChordKey2Box" Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource ComboBox.Base}" />
+                            <ComboBox x:Name="ChordActionBox" Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource ComboBox.Base}" />
+                            <Button Grid.Column="3" Content="{loc:T '添加'}" Margin="8,0,0,0" Padding="14,6"
+                                    Style="{StaticResource Button.Base}" Click="OnAddChordClick" />
+                        </Grid>
+                        <ItemsControl x:Name="ChordList" Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
                     <StackPanel>
                         <Grid>

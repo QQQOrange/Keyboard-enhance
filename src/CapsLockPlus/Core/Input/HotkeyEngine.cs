@@ -69,6 +69,18 @@ public sealed class HotkeyEngine : IDisposable
     /* ---- 文本片段：累计纯文本输入，命中触发词就展开 ---- */
     private readonly System.Text.StringBuilder _snippetBuffer = new();
 
+    /* ---- 组合键（chord）：两键同时按 ---- */
+    private const int ChordWindowMs = 70;
+
+    private int _chordPendingVk;              // 正在等"同按"的那个键（0 = 无）
+    private bool _chordPendingReleased;       // 等待期间已经抬手了
+    private long _chordFlushAt;               // 超时时刻
+    private System.Threading.Timer? _chordTimer;
+    private readonly HashSet<int> _chordForwarded = new();   // 已转发的键，抬起要放行
+
+    /// <summary>自检用：替换时钟，避免依赖真实等待。</summary>
+    internal Func<long> ClockForTest { get; set; } = () => Environment.TickCount64;
+
     /// <summary>
     /// 物理按键状态：钩子看到的每个 down 加入、每个 up 移除（**包括被吞掉的触发键**）。
     ///
@@ -1068,6 +1080,9 @@ public sealed class HotkeyEngine : IDisposable
         // ---- 3. 不在层模式：放行，但先把"欠着的抬起"结清 ----
         if (!_triggerHeld || !_layerActive)
         {
+            /* 组合键：命中就把这个键扣住等第二个键，超时再放行。 */
+            if (TryChord(settings, vk, down)) return true;
+
             /* 双击动作：只对配置过的键生效，单击完全保持原样。 */
             if (down && TryRunDoubleTapGesture(settings, vk, wasPhysicallyDown)) return true;
             if (!down && _gestureSwallowUp.Remove(vk)) return true;
@@ -1616,6 +1631,140 @@ public sealed class HotkeyEngine : IDisposable
         });
         return true;
     }
+
+    /// <summary>
+    /// 组合键：两个**都配置过的**键同时按下时执行动作。
+    ///
+    /// ## 为什么必须"扣住"第一个键
+    ///
+    /// 判定"同时按"只能在第二个键到来的那一刻做。如果第一个键先放行，
+    /// 用户会看到"先打出一个字符，再执行动作"——比不生效更糟。
+    /// 所以第一个键要被扣住最多 <see cref="ChordWindowMs"/> 毫秒：
+    ///   · 窗口内来了配对的第二个键 → 执行动作，两个键都不输出；
+    ///   · 窗口内抬手 / 超时 / 来了不相干的键 → 立刻补发第一个键，恢复正常输入。
+    ///
+    /// ## 影响面
+    ///
+    /// 只对**显式配置过**的键扣键，没配的键完全走原路径，延迟为零。
+    /// </summary>
+    private bool TryChord(AppSettings s, int vk, bool down)
+    {
+        var rules = s.Global.Chords;
+        if (rules == null || rules.Count == 0)
+        {
+            if (_chordPendingVk != 0) FlushChordPending();
+            return false;
+        }
+
+        if (down)
+        {
+            if (_chordPendingVk == 0)
+            {
+                if (!IsChordKey(rules, vk)) return false;
+
+                _chordPendingVk = vk;
+                _chordPendingReleased = false;
+                _chordFlushAt = ClockForTest() + ChordWindowMs;
+                ArmChordTimer();
+                return true;                 // 扣住，暂不输出
+            }
+
+            if (vk == _chordPendingVk) return true;      // 自动重复：继续扣着
+
+            if (IsChordPair(rules, _chordPendingVk, vk, out string? action) && action != null)
+            {
+                _chordPendingVk = 0;
+                _chordSwallowUpAdd(vk);
+                _queue.Post(() => RunTapAction(action));
+                return true;
+            }
+
+            // 不配对：先把扣住的键补发出去，再让这个键照常处理
+            FlushChordPending();
+            return false;
+        }
+
+        // 抬起
+        if (_chordPendingVk == vk)
+        {
+            // 扣住期间就抬手了 → 这说明是普通点按，立刻补发（down + up）
+            _chordPendingReleased = true;
+            FlushChordPending();
+            return true;                     // 物理抬起已经被我们接管
+        }
+
+        if (_chordForwarded.Remove(vk)) return false;    // 补发过的键，抬起照常放行
+        return false;
+    }
+
+    private void _chordSwallowUpAdd(int vk) => _swallowedUp.TryAdd(vk, 0);
+
+    private static bool IsChordKey(List<ChordRule> rules, int vk)
+    {
+        string? name = KeyName.NameOf(vk);
+        if (name == null) return false;
+        return rules.Any(r => Eq(r.Key1, name) || Eq(r.Key2, name));
+    }
+
+    private static bool IsChordPair(List<ChordRule> rules, int first, int second, out string? action)
+    {
+        action = null;
+        string? a = KeyName.NameOf(first);
+        string? b = KeyName.NameOf(second);
+        if (a == null || b == null) return false;
+
+        foreach (var r in rules)
+        {
+            if (string.IsNullOrWhiteSpace(r.Action)) continue;
+            if ((Eq(r.Key1, a) && Eq(r.Key2, b)) || (Eq(r.Key1, b) && Eq(r.Key2, a)))
+            {
+                action = r.Action;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool Eq(string? x, string? y)
+        => !string.IsNullOrEmpty(x) && string.Equals(x, y, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>把扣住的键补发出去（按下；若已抬手再补抬起）。</summary>
+    private void FlushChordPending()
+    {
+        int vk = _chordPendingVk;
+        if (vk == 0) return;
+
+        _chordPendingVk = 0;
+
+        bool released = _chordPendingReleased;
+        _chordPendingReleased = false;
+
+        _queue.Post(() =>
+        {
+            InputSender.KeyDown(vk);
+            if (released) InputSender.KeyUp(vk);
+        });
+
+        if (!released) _chordForwarded.Add(vk);   // 抬起时放行
+    }
+
+    private void ArmChordTimer()
+    {
+        _chordTimer ??= new System.Threading.Timer(_ => ChordTick(), null,
+            System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+        _chordTimer.Change(ChordWindowMs + 5, System.Threading.Timeout.Infinite);
+    }
+
+    /// <summary>窗口到期：还没等到第二个键就补发。</summary>
+    private void ChordTick()
+    {
+        if (_chordPendingVk == 0) return;
+        if (ClockForTest() < _chordFlushAt) return;
+        FlushChordPending();
+    }
+
+    /// <summary>自检用：手动推进一次超时判定。</summary>
+    internal void ChordTickForTest() => FlushChordPending();
 
     /// <summary>
     /// 双击动作：同一个键在 <see cref="DoubleTapWindowMs"/> 内被按两次时执行动作。

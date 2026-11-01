@@ -36,6 +36,7 @@ public partial class SettingsView : UserControl
         RefreshAppLayerEditor();
         RefreshGestureEditor();
         RefreshSnippetEditor();
+        RefreshChordEditor();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -82,6 +83,100 @@ public partial class SettingsView : UserControl
     private void Save()
     {
         _host?.SaveSettings();
+    }
+
+    // ---------------- 组合键 ----------------
+
+    /// <summary>组合键可用的键：字母/数字 + 常用功能键（同按才需要字母）。</summary>
+    private static readonly string[] ChordKeys = BuildChordKeys();
+
+    private static string[] BuildChordKeys()
+    {
+        var list = new List<string>();
+        for (char c = 'a'; c <= 'z'; c++) list.Add(c.ToString());
+        for (char c = '0'; c <= '9'; c++) list.Add(c.ToString());
+        list.AddRange(GestureKeys);
+        list.Add("semicolon");
+        return list.ToArray();
+    }
+
+    private void RefreshChordEditor()
+    {
+        if (ChordKey1Box == null || _host == null) return;
+
+        foreach (var box in new[] { ChordKey1Box, ChordKey2Box })
+        {
+            box.Items.Clear();
+            foreach (string k in ChordKeys)
+            {
+                // "semicolon" 是占位名，KeyName 里对应的规范名是 ";" 的键名，兜底用分号键的 vk 名
+                string name = k == "semicolon" ? ";" : k;
+                if (KeyName.VkOf(name) == null) continue;
+                box.Items.Add(new ComboBoxItem { Content = KeyName.Display(name), Tag = name });
+            }
+            if (box.Items.Count > 0) box.SelectedIndex = 0;
+        }
+
+        ChordActionBox.Items.Clear();
+        foreach (var a in _host.Actions.Items.Where(a => !a.Hidden))
+            ChordActionBox.Items.Add(new ComboBoxItem { Content = a.Title, Tag = a.Id });
+        if (ChordActionBox.Items.Count > 0) ChordActionBox.SelectedIndex = 0;
+
+        ChordList.Items.Clear();
+        foreach (var c in _host.Settings.Global.Chords.ToList())
+        {
+            var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
+
+            var del = new Button
+            {
+                Content = Loc.T("移除"),
+                Padding = new Thickness(10, 3, 10, 3),
+                Style = (Style)FindResource("Button.Base"),
+            };
+            var captured = c;
+            del.Click += (_, _) =>
+            {
+                _host?.Settings.Global.Chords.Remove(captured);
+                Save();
+                RefreshChordEditor();
+            };
+            DockPanel.SetDock(del, Dock.Right);
+            row.Children.Add(del);
+
+            string actionTitle = ActionCatalog.TitleOf(c.Action) ?? c.Action;
+            row.Children.Add(new TextBlock
+            {
+                Text = $"{KeyName.Display(c.Key1)} + {KeyName.Display(c.Key2)} → {actionTitle}",
+                VerticalAlignment = VerticalAlignment.Center,
+                Style = (Style)FindResource("Text.Tertiary"),
+            });
+            ChordList.Items.Add(row);
+        }
+    }
+
+    private void OnAddChordClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        if (ChordKey1Box.SelectedItem is not ComboBoxItem k1 || k1.Tag is not string key1) return;
+        if (ChordKey2Box.SelectedItem is not ComboBoxItem k2 || k2.Tag is not string key2) return;
+        if (ChordActionBox.SelectedItem is not ComboBoxItem a || a.Tag is not string action) return;
+
+        if (string.Equals(key1, key2, StringComparison.OrdinalIgnoreCase))
+        {
+            _host.Notify(Loc.T("两个键不能相同"));
+            return;
+        }
+
+        var list = _host.Settings.Global.Chords;
+        var existing = list.FirstOrDefault(c =>
+            (string.Equals(c.Key1, key1, StringComparison.OrdinalIgnoreCase) && string.Equals(c.Key2, key2, StringComparison.OrdinalIgnoreCase)) ||
+            (string.Equals(c.Key1, key2, StringComparison.OrdinalIgnoreCase) && string.Equals(c.Key2, key1, StringComparison.OrdinalIgnoreCase)));
+        if (existing != null) existing.Action = action;      // 同组合覆盖
+        else list.Add(new ChordRule { Key1 = key1, Key2 = key2, Action = action });
+
+        Save();
+        RefreshChordEditor();
+        _host.Notify(Loc.F("已设置组合键：{0} + {1}", KeyName.Display(key1), KeyName.Display(key2)));
     }
 
     // ---------------- 文本片段 ----------------

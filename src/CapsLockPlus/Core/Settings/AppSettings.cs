@@ -96,6 +96,25 @@ public sealed class Snippet
     public string Comment { get; set; } = "";
 }
 
+/// <summary>
+/// 一条「组合键（chord）」：两个键**同时按下**时执行一个动作。
+///
+/// 与层内组合键的区别：不需要按住触发键，也不用修饰键。
+/// 代价是这两个键会有 <see cref="HotkeyEngine.ChordWindowMs"/> 的按下延迟
+/// （否则无法判断"是连打还是同时按"），所以只对显式配置的键对生效。
+/// </summary>
+public sealed class ChordRule
+{
+    /// <summary>第一个键（先按下的那个）。</summary>
+    public string Key1 { get; set; } = "";
+
+    /// <summary>第二个键（后按下的那个）。</summary>
+    public string Key2 { get; set; } = "";
+
+    /// <summary>同时按下时执行的动作 id。</summary>
+    public string Action { get; set; } = "";
+}
+
 public sealed class QEntry
 {
     /// <summary>
@@ -253,6 +272,11 @@ public sealed class GlobalOptions
 
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
+
+    /// <summary>
+    /// 组合键（chord）：两个键同时按下触发动作。默认空，不影响任何现有按键。
+    /// </summary>
+    public List<ChordRule> Chords { get; set; } = new();
 
     /// <summary>
     /// 文本片段：输入触发词自动展开。默认空，不影响任何现有输入。

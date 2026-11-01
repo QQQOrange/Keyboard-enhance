@@ -391,4 +391,52 @@ public static partial class SelfTest
         CheckEqual("片段：缓冲区截断到上限",
             SnippetMatcher.Trim(longBuf).Length, SnippetMatcher.MaxBuffer);
     }
+    /// <summary>
+    /// 组合键（两键同按）。
+    ///
+    /// 关键是要证明"扣住 → 补发"这条链路不会吞掉用户的正常输入：
+    ///   ① 两个键都配置过时，第一个键被扣住不输出；
+    ///   ② 配对的第二个键到来 → 执行动作，两个键都不输出；
+    ///   ③ 来了不相干的键 → 先补发扣住的键，再放行新键；
+    ///   ④ 单独点按 → 抬起时立刻补发（按下+抬起）。
+    /// </summary>
+    private static void TestChords()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "k", Action = "qbar" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+
+        // ① 配对：j 被扣，k 触发
+        Check("组合键：第一个键被扣住", engine.SimulateKey(0x4A, true));          // j
+        Check("组合键：配对的第二个键被吞", engine.SimulateKey(0x4B, true));      // k
+        engine.SimulateKey(0x4B, false);
+        engine.SimulateKey(0x4A, false);
+        DoEvents(60);
+        lock (fired) Check("组合键：动作被执行", fired.Contains("qbar"), string.Join(",", fired));
+
+        // ② 不相干的键：先补发扣住的键，再放行
+        lock (fired) fired.Clear();
+        Check("组合键：重新扣住第一个键", engine.SimulateKey(0x4A, true));
+        Check("组合键：不相干的键照常放行", !engine.SimulateKey(0x4C, true));    // l
+        engine.SimulateKey(0x4C, false);
+        engine.SimulateKey(0x4A, false);
+        DoEvents(60);
+        lock (fired) Check("组合键：不相干时不触发动作", !fired.Contains("qbar"), string.Join(",", fired));
+
+        // ③ 单独点按：抬起时立刻补发
+        Check("组合键：单击也先扣住", engine.SimulateKey(0x4A, true));
+        Check("组合键：单击的抬起被接管", engine.SimulateKey(0x4A, false));
+        DoEvents(60);
+
+        engine.Dispose();
+        queue.Dispose();
+    }
 }

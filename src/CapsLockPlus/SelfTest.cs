@@ -114,6 +114,9 @@ public static partial class SelfTest
         Section("文本片段");
         TestSnippets();
 
+        Section("组合键");
+        TestChords();
+
         Section("启动密码");
         TestStartupPassword();
 
