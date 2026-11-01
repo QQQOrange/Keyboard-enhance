@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
@@ -33,6 +34,7 @@ public partial class SettingsView : UserControl
         RefreshPermission();
         RefreshRemapState();
         RefreshUsage();
+        RefreshConflicts();
         RefreshAppLayerEditor();
         RefreshGestureEditor();
         RefreshSnippetEditor();
@@ -112,6 +114,54 @@ public partial class SettingsView : UserControl
         _host.Notify(added > 0
             ? Loc.F("已导入 {0} 项（跳过 {1} 项）", added, skipped)
             : Loc.F("没有新增内容：这 {0} 项都已存在", skipped));
+    }
+
+    // ---------------- 规则体检 ----------------
+
+    /// <summary>
+    /// 体检结果渲染。
+    ///
+    /// 设计取舍：**不自动修改任何配置**。自动"修好"冲突意味着替用户猜意图，
+    /// 猜错就是静默改坏键盘。这里只负责说出来，怎么处理由用户决定。
+    /// </summary>
+    private void RefreshConflicts()
+    {
+        if (ConflictList == null || _host == null) return;
+
+        ConflictList.Items.Clear();
+        var findings = RuleConflicts.Analyze(_host.Settings);
+
+        ConflictEmptyText.Visibility = findings.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ConflictRecheckButton.Content = findings.Count == 0
+            ? Loc.T("重新检查")
+            : Loc.F("重新检查（{0} 条）", findings.Count);
+
+        foreach (var f in findings)
+        {
+            bool warn = f.Level == ConflictLevel.Warn;
+
+            var row = new TextBlock
+            {
+                Text = (warn ? "⚠ " : "ⓘ ") + f.Message,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6),
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource(warn ? "Brush.Danger" : "Brush.TextTertiary"),
+            };
+            ConflictList.Items.Add(row);
+        }
+    }
+
+    private void OnRecheckConflictsClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        RefreshConflicts();
+        int n = RuleConflicts.Analyze(_host.Settings).Count;
+        _host.Notify(n == 0
+            ? Loc.T("规则体检：没有发现问题")
+            : Loc.F("规则体检：发现 {0} 条提示", n));
     }
 
     // ---------------- 场景模板 ----------------

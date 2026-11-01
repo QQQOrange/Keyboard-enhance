@@ -138,6 +138,9 @@ public static partial class SelfTest
         Section("宏的动作步骤");
         TestMacroActionStep();
 
+        Section("规则体检");
+        TestRuleConflicts();
+
         Section("启动密码");
         TestStartupPassword();
 

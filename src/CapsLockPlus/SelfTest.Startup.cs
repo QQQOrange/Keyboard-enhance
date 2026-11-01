@@ -934,4 +934,84 @@ public static partial class SelfTest
         }
         Check("宏动作：无执行器不算失败", noReason == null, noReason ?? "");
     }
+    /// <summary>
+    /// 规则体检：必须和引擎里的判定顺序说同一件事。
+    ///
+    /// 这里每条断言都对应一个真实的行为差异（谁先命中谁生效）：
+    /// 组合键 → 双击 → 按应用层 → 基础改键 → 片段；层内重复取最后一条。
+    /// 顺序如果变了，这些结论就会变成误报 —— 所以引擎改顺序时这里要一起改。
+    /// </summary>
+    private static void TestRuleConflicts()
+    {
+        Check("体检：干净配置没有提示", RuleConflicts.Analyze(new AppSettings()).Count == 0);
+
+        // ---- 触发键被其它规则挡住 ----
+        var s1 = new AppSettings();
+        s1.Triggers.Add(new TriggerKey { Key = "tab", Enabled = true, LayerId = 1 });
+        s1.Global.BaseRemaps.Add(new KeyRemap { From = "tab", To = "esc" });
+        var f1 = RuleConflicts.Analyze(s1);
+        Check("体检：触发键被改键挡住", f1.Any(c => c.Message.Contains("触发键优先")), string.Join(" | ", f1.Select(c => c.Message)));
+
+        s1.Global.BaseRemaps.Clear();
+        s1.Global.KeyGestures.Add(new KeyGesture { Key = "tab", DoubleTapAction = "qbar" });
+        Check("体检：触发键上的双击无效", RuleConflicts.Analyze(s1).Any(c => c.Message.Contains("双击动作永远不会触发")));
+
+        s1.Global.KeyGestures.Clear();
+        s1.Global.Chords.Add(new ChordRule { Key1 = "tab", Key2 = "j", Action = "qbar" });
+        Check("体检：触发键参与组合键", RuleConflicts.Analyze(s1).Any(c => c.Message.Contains("组合键组不起来")));
+
+        // ---- 组合键先于双击 ----
+        var s2 = new AppSettings();
+        s2.Global.KeyGestures.Add(new KeyGesture { Key = "j", DoubleTapAction = "qbar" });
+        s2.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "k", Action = "qbar" });
+        Check("体检：同键既双击又组合", RuleConflicts.Analyze(s2).Any(c => c.Message.Contains("组合键先扣住")));
+
+        // ---- 改键 vs 双击 / 组合键 ----
+        var s3 = new AppSettings();
+        s3.Global.BaseRemaps.Add(new KeyRemap { From = "a", To = "b" });
+        s3.Global.KeyGestures.Add(new KeyGesture { Key = "a", DoubleTapAction = "qbar" });
+        Check("体检：同键既改键又双击", RuleConflicts.Analyze(s3).Any(c => c.Message.Contains("第二次按下会被双击吞掉")));
+
+        s3.Global.KeyGestures.Clear();
+        s3.Global.Chords.Add(new ChordRule { Key1 = "a", Key2 = "s", Action = "qbar" });
+        Check("体检：同键既改键又组合", RuleConflicts.Analyze(s3).Any(c => c.Message.Contains("改键基本不会生效")));
+
+        // ---- 改键目标是触发键：Info 而非 Warn ----
+        var s4 = new AppSettings();
+        s4.Triggers.Add(new TriggerKey { Key = "capslock", Enabled = true, LayerId = 1 });
+        s4.Global.BaseRemaps.Add(new KeyRemap { From = "a", To = "capslock" });
+        var f4 = RuleConflicts.Analyze(s4);
+        Check("体检：改键到触发键给提示", f4.Any(c => c.Message.Contains("不会切层")));
+        Check("体检：改键到触发键只是提示级", f4.All(c => c.Message.Contains("不会切层") ? c.Level == ConflictLevel.Info : true));
+
+        // ---- 不可识别的键名 ----
+        var s5 = new AppSettings();
+        s5.Global.BaseRemaps.Add(new KeyRemap { From = "不存在的键", To = "esc" });
+        Check("体检：坏键名被指出", RuleConflicts.Analyze(s5).Any(c => c.Message.Contains("不是可识别的键名")));
+
+        // ---- 层内重复绑定 ----
+        var s6 = new AppSettings();
+        var layer = new LayerOptions { Id = 2, Name = "开发" };
+        string combo = KeyName.BuildComboEx(KeyModifiers.None, "q");
+        layer.Keys.Add(new KeyBinding { Combo = combo, Action = "qbar" });
+        layer.Keys.Add(new KeyBinding { Combo = combo, Action = "tab" });
+        s6.Layers.Add(layer);
+        Check("体检：层内重复绑定", RuleConflicts.Analyze(s6).Any(c => c.Message.Contains("绑了两次")));
+
+        // ---- 按应用层指向不存在的层 ----
+        var s7 = new AppSettings();
+        s7.Global.AppLayers.Add(new AppLayerRule { Process = "code.exe", LayerId = 9 });
+        Check("体检：按应用层指向不存在的层", RuleConflicts.Analyze(s7).Any(c => c.Message.Contains("不存在或已停用")));
+
+        // ---- 片段重复 ----
+        var s8 = new AppSettings();
+        s8.Global.Snippets.Add(new Snippet { Trigger = ";a", Text = "1" });
+        s8.Global.Snippets.Add(new Snippet { Trigger = ";a", Text = "2" });
+        Check("体检：片段触发词重复", RuleConflicts.Analyze(s8).Any(c => c.Message.Contains("只有最后一条")));
+
+        // ---- 组合键两个键相同 ----
+        var s9 = new AppSettings();
+        s9.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "j", Action = "qbar" });
+        Check("体检：组合键两键相同", RuleConflicts.Analyze(s9).Any(c => c.Message.Contains("永远不会触发")));
+    }
 }

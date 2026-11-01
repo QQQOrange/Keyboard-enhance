@@ -113,6 +113,16 @@ public sealed class AppHost : IDisposable
         Context.MacroPlayer.ActionInvoker = (id, arg) => InvokeAction(id, arg);
         Context.MacroPlayer.ActionTitle = id => ActionCatalog.TitleOf(id) ?? id;
 
+        /* 规则体检：启动时记一条日志。
+         * 用户报"某个键时灵时不灵"时，这条日志能立刻把范围缩小到配置冲突。 */
+        try
+        {
+            int findings = Core.Input.RuleConflicts.Analyze(Settings).Count;
+            if (findings > 0)
+                CoreLog.Info($"规则体检：{findings} 条提示（设置页「规则体检」可查看）");
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "规则体检"); }
+
         /* 按应用自动启用层：监听前台窗口，命中规则就把对应层设为叠加层。
          * 只记进程名（隐私），命中失败不影响任何既有功能。 */
         _foreground = new ForegroundWatcher();
