@@ -96,7 +96,7 @@ public sealed class AppHost : IDisposable
         };
         Actions = ActionCatalog.Create(Context);
 
-        Qbar = new QbarService(() => Settings, () => Clipboard.History);
+        Qbar = new QbarService(() => Settings, () => Clipboard.History, () => Actions.Items);
 
         Engine = new HotkeyEngine(_queue, () => Settings, InvokeAction);
         // 让引擎知道宏播放器：播放中按 Esc 需要能取消

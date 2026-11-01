@@ -16,6 +16,9 @@ public enum QbarKind
     Math,
     Clipboard,
     File,
+
+    /// <summary>动作目录里的一条动作（Qbar 直接执行）。</summary>
+    Action,
 }
 
 /// <summary>Qbar 的一条候选结果。</summary>
@@ -45,6 +48,7 @@ public sealed record QbarResult(
         QbarKind.Math => Loc.T("计算"),
         QbarKind.Clipboard => Loc.T("剪贴板"),
         QbarKind.File => Loc.T("文件"),
+        QbarKind.Action => Loc.T("动作"),
         _ => "",
     };
 }
@@ -62,10 +66,15 @@ public sealed class QbarService
     private readonly Func<AppSettings> _settings;
     private readonly Func<IReadOnlyList<string>> _clipboardHistory;
 
-    public QbarService(Func<AppSettings> settings, Func<IReadOnlyList<string>> clipboardHistory)
+    /// <summary>动作目录的来源（可为空：空则 Qbar 不索引动作）。</summary>
+    private readonly Func<IReadOnlyList<Core.Actions.ActionInfo>>? _actions;
+
+    public QbarService(Func<AppSettings> settings, Func<IReadOnlyList<string>> clipboardHistory,
+        Func<IReadOnlyList<Core.Actions.ActionInfo>>? actions = null)
     {
         _settings = settings;
         _clipboardHistory = clipboardHistory;
+        _actions = actions;
     }
 
     public sealed record BuiltinCommand(string Key, string Title, string Description, string Action);
@@ -244,6 +253,25 @@ public sealed class QbarService
 
         // 4) 模糊匹配：程序 / 网址 / 搜索指令 / 内置命令
         results.AddRange(MatchEntries(settings, text));
+
+        /* 4.5) 动作目录：把 124 个动作变成"可搜索、可执行"的能力。
+         *
+         * 排序放在程序之后、剪贴板之前：先给"要打开的东西"，再给"要做的事"，
+         * 剪贴板属于兜底内容，不该压过动作。 */
+        if (_actions != null && text.Length >= 1)
+        {
+            int actionHits = 0;
+            foreach (var a in _actions())
+            {
+                if (a.Hidden) continue;
+                if (!a.Title.Contains(text, StringComparison.OrdinalIgnoreCase) &&
+                    !a.Category.Contains(text, StringComparison.OrdinalIgnoreCase)) continue;
+
+                results.Add(new QbarResult(QbarKind.Action, a.Title, a.Description, a.Category, a.Id)
+                { Score = 40 });
+                if (++actionHits >= 5) break;
+            }
+        }
 
         // 5) 剪贴板历史
         foreach (var item in _clipboardHistory())
@@ -537,6 +565,9 @@ public sealed class QbarService
             case QbarKind.Command:
                 cb.RunCommand(result.Payload);
                 break;
+            case QbarKind.Action:
+                cb.RunAction(result.Payload);
+                break;
         }
     }
 
@@ -546,5 +577,6 @@ public sealed class QbarService
         Action<string> Paste,
         Action<string> OpenTarget,
         Action<string, bool, string> RunTarget,
-        Action<string> RunCommand);
+        Action<string> RunCommand,
+        Action<string> RunAction);
 }

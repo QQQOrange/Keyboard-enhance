@@ -117,6 +117,9 @@ public static partial class SelfTest
         Section("组合键");
         TestChords();
 
+        Section("Qbar 搜动作");
+        TestQbarActionSearch();
+
         Section("启动密码");
         TestStartupPassword();
 

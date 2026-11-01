@@ -901,7 +901,8 @@ public partial class QbarWindow : Window
                     Paste: text => _host.Clipboard.PasteText(text),
                     OpenTarget: OpenTarget,
                     RunTarget: RunTarget,
-                    RunCommand: RunCommand);
+                    RunCommand: RunCommand,
+                    RunAction: action => _host.InvokeAction(action, ""));
                 _host.Qbar.Execute(result, cb);
             }
             catch (Exception ex)

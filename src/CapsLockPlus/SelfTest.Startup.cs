@@ -2,7 +2,9 @@
 using System.Text;
 using System.Xml.Linq;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Qbar;
 using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Text;
@@ -438,5 +440,43 @@ public static partial class SelfTest
 
         engine.Dispose();
         queue.Dispose();
+    }
+    /// <summary>
+    /// Qbar 搜动作：把动作目录接进检索，并确保回车能真的执行。
+    ///
+    /// 这条链路以前是断的 —— 124 个动作只能靠在层里一个一个绑，
+    /// 用户根本不知道有哪些；接进 Qbar 之后"想起来就能用"。
+    /// </summary>
+    private static void TestQbarActionSearch()
+    {
+        var s = DefaultSettings.Create();
+        var actions = new List<ActionInfo>
+        {
+            new("qbar", "面板", "打开 Qbar", "命令面板"),
+            new("tab", "基础", "Tab", "发送 Tab"),
+        };
+
+        var svc = new QbarService(() => s, () => new List<string>(), () => actions);
+
+        var hits = svc.Query("Qbar", null, 12);
+        Check("Qbar：能搜到动作",
+            hits.Any(r => r.Kind == QbarKind.Action && r.Payload == "qbar"),
+            string.Join(",", hits.Select(h => h.Title)));
+
+        var byCategory = svc.Query("面板", null, 12);
+        Check("Qbar：按分类也能搜到", byCategory.Any(r => r.Payload == "qbar"));
+
+        var none = svc.Query("zzzz-不存在", null, 12);
+        Check("Qbar：无匹配时不硬塞动作", none.All(r => r.Kind != QbarKind.Action));
+
+        string? ran = null;
+        var cb = new QbarService.QbarCallbacks(
+            Notify: _ => { }, CopyToClipboard: _ => { }, Paste: _ => { },
+            OpenTarget: _ => { }, RunTarget: (_, _, _) => { }, RunCommand: _ => { },
+            RunAction: a => ran = a);
+
+        var actionHit = hits.First(r => r.Kind == QbarKind.Action);
+        svc.Execute(actionHit, cb);
+        CheckEqual("Qbar：回车执行到动作", ran, "qbar");
     }
 }
