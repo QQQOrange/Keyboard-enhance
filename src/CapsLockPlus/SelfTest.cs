@@ -96,6 +96,9 @@ public static partial class SelfTest
         Section("取词代理");
         TestSelectionProxyArgs();
 
+        Section("失败通知");
+        TestActionFailureText();
+
         Section("启动密码");
         TestStartupPassword();
 

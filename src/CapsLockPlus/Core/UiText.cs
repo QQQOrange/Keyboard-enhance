@@ -43,6 +43,15 @@ public static class UiText
         return Localization.Loc.F("没能{0}：{1}", Localization.Loc.T(what), r);
     }
 
+    /// <summary>
+    /// 失败 + 发生时间：`没能<做什么>：<原因> · 14:37:02`。
+    ///
+    /// 用于"动作执行失败"的通知：错误信息必须带时间，否则用户回头
+    /// 说"刚才弹了个错"时无从对账；而成功提示不需要时间（成功是常态）。
+    /// </summary>
+    public static string FailedAt(string what, string? reason, DateTime at)
+        => Failed(what, reason) + " · " + at.ToString("HH:mm:ss");
+
     /// <summary>状态行：成功（带 ✓）。</summary>
     public static string OkLine(string text) => OkMark + text;
 

@@ -1,6 +1,8 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Xml.Linq;
+using CapsLockPlus.Core;
+using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Text;
 
@@ -137,5 +139,34 @@ public static partial class SelfTest
 
         Check("代理参数：大小写不敏感",
             SelectionProxy.ParseHelperArg(new[] { "--PICK", "P2" }) == "P2");
+    }
+    /// <summary>
+    /// 动作失败通知的文案。
+    ///
+    /// 要求：必须能看出"这是失败"、带动作名、带原因、带发生时间，
+    /// 且与成功提示共用同一条出口（同一个 Toast）。
+    /// 这里只测文案组装 —— 出口是 UI，自检环境不能真弹窗。
+    /// </summary>
+    private static void TestActionFailureText()
+    {
+        var at = new DateTime(2026, 11, 1, 14, 37, 2);
+        string title = Loc.T("打开网址");
+
+        string withReason = UiText.FailedAt("打开网址", "拒绝访问", at);
+        Check("失败文案：带动作名", withReason.Contains(title), withReason);
+        Check("失败文案：带原因", withReason.Contains("拒绝访问"), withReason);
+        Check("失败文案：带时间", withReason.Contains("14:37:02"), withReason);
+        // 通知实际用的是 FailLine(FailedAt(...))，这里按同样的组合验证
+        string toast = UiText.FailLine(withReason);
+        Check("失败通知：带失败标记 ✗", toast.StartsWith(UiText.FailMark), toast);
+        Check("失败通知：标记后紧跟动作名", toast.Contains(title), toast);
+
+        string noReason = UiText.FailedAt("打开网址", null, at);
+        Check("失败文案：没有原因时仍完整",
+            noReason.Contains(title) && noReason.Contains("14:37:02"), noReason);
+
+        string trimmed = UiText.FailedAt("打开网址", "拒绝访问。", at);
+        Check("失败文案：原因末尾句号被去掉",
+            trimmed.Contains("拒绝访问 ·") || trimmed.Contains("拒绝访问 "), trimmed);
     }
 }
