@@ -80,6 +80,9 @@
                         <TextBlock Text="{loc:T '基础改键'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '不用按住任何前缀键，直接把某个键换成另一个键。层内绑定优先于这里。'}"
                                    Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        <ComboBox x:Name="RemapDeviceBox" Margin="0,8,0,0" MinHeight="32"
+                                  Style="{StaticResource ComboBox.Base}"
+                                  ToolTip="{loc:T '选一只键盘：下面的预设只对它生效。选「所有键盘」则全局生效。'}" />
                         <WrapPanel Margin="0,8,0,0">
                             <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
                                     Content="Caps ↔ Esc" Tag="capsEsc" Click="OnRemapPresetClick" />
@@ -290,6 +293,9 @@
                         <TextBlock x:Name="KeyboardEmptyText" Style="{StaticResource Text.Tertiary}"
                                    Margin="0,8,0,0" Visibility="Collapsed"
                                    Text="{loc:T '没有枚举到键盘设备。'}" />
+                        <TextBlock x:Name="DeviceTrackingHint" Style="{StaticResource Text.Tertiary}"
+                                   Margin="0,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                                   Foreground="{DynamicResource Brush.Danger}" />
                         <ItemsControl x:Name="KeyboardList" Margin="0,8,0,0" />
                     </StackPanel>
 

@@ -15,6 +15,13 @@ namespace CapsLockPlus.UI.Windows;
 
 public partial class QbarWindow : Window
 {
+    /// <summary>
+    /// 字号测量的字形样本：全角汉字 + 带上下伸部的拉丁字母，
+    /// 量出来的行高对中英文都够用。
+    /// **刻意不做成可翻译文本** —— 加了译文行高就会跟着变，布局对不上。
+    /// </summary>
+    private const string GlyphSample = "汉字Agqy";
+
     private readonly AppHost _host;
     private List<QbarItem> _items = new();
     private QbarChip? _chip;
@@ -460,7 +467,7 @@ public partial class QbarWindow : Window
             Input.FontSize = q.TextFontSize;
             // 字号变大时必须同步抬高输入框，否则上下缘会被裁掉。
             // 用真实字形高度来算（不是估系数），再留出安全余量。
-            Input.MinHeight = Core.Text.TextMetrics.MinBoxHeight(q.TextFontSize, Loc.T("汉字Agqy"));
+            Input.MinHeight = Core.Text.TextMetrics.MinBoxHeight(q.TextFontSize, GlyphSample);
             Results.MaxHeight = q.LineHeight * q.ListCount + 12;
             SizeToContent = SizeToContent.Height;
         }

@@ -123,6 +123,14 @@ public sealed class AppHost : IDisposable
         }
         catch (Exception ex) { CoreLog.Swallow(ex, "规则体检"); }
 
+        /* 按设备区分改键：Raw Input 只用来回答"这次按键来自哪只键盘"。
+         * 注册失败不影响任何其它功能（DeviceResolver 保持为空 = 不区分设备）。 */
+        _deviceTracker = new KeyboardDeviceTracker();
+        if (_deviceTracker.Start())
+            Engine.DeviceResolver = (vk, down) => _deviceTracker?.ResolveDevice(vk, down);
+        else
+            _deviceTracker.Dispose();
+
         /* 按应用自动启用层：监听前台窗口，命中规则就把对应层设为叠加层。
          * 只记进程名（隐私），命中失败不影响任何既有功能。 */
         _foreground = new ForegroundWatcher();
@@ -278,6 +286,10 @@ public sealed class AppHost : IDisposable
     }
 
     private ForegroundWatcher? _foreground;
+    private KeyboardDeviceTracker? _deviceTracker;
+
+    /// <summary>设备追踪是否可用（Raw Input 注册成功）。界面据此提示"按设备改键不可用"。</summary>
+    public bool DeviceTrackingAvailable => _deviceTracker?.IsRunning == true;
 
     /// <summary>前台变化：更新引擎的叠加层。</summary>
     private void OnForegroundChanged(string process)
@@ -909,6 +921,7 @@ public sealed class AppHost : IDisposable
     public void Dispose()
     {
         try { _foreground?.Dispose(); _foreground = null; } catch { }
+        try { _deviceTracker?.Dispose(); _deviceTracker = null; } catch { }
         if (_disposed) return;
         _disposed = true;
         _watchdog.Dispose();

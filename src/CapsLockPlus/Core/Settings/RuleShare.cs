@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace CapsLockPlus.Core.Settings;
@@ -32,6 +32,11 @@ public static class RuleShare
     {
         WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+
+        /* 默认编码器会把 `&`、`<`、`>` 转成 \u0026 这类转义 —— 分享码是给人看、
+         * 给人贴的，`VID_1532\u0026PID_00A4` 这种写法既难读也难手工核对。
+         * 这里放宽转义；它只是配置文本，不参与 HTML/脚本拼接。 */
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     private sealed class Dto
@@ -44,8 +49,23 @@ public static class RuleShare
         public List<AppLayerDto>? appLayers { get; set; }
     }
 
-    private sealed class RemapDto { public string from { get; set; } = ""; public string to { get; set; } = ""; }
-    private sealed class SnippetDto { public string trigger { get; set; } = ""; public string text { get; set; } = ""; }
+    private sealed class RemapDto
+    {
+        public string from { get; set; } = "";
+        public string to { get; set; } = "";
+
+        /// <summary>只对某只键盘生效（空 = 所有键盘）。</summary>
+        public string device { get; set; } = "";
+    }
+
+    private sealed class SnippetDto
+    {
+        public string trigger { get; set; } = "";
+        public string text { get; set; } = "";
+
+        /// <summary>只在哪些程序里展开（空 = 所有程序）。</summary>
+        public string apps { get; set; } = "";
+    }
     private sealed class GestureDto { public string key { get; set; } = ""; public string action { get; set; } = ""; }
     private sealed class ChordDto { public string k1 { get; set; } = ""; public string k2 { get; set; } = ""; public string action { get; set; } = ""; }
     private sealed class AppLayerDto { public string process { get; set; } = ""; public int layer { get; set; } }
@@ -57,10 +77,10 @@ public static class RuleShare
         {
             remaps = s.Global.BaseRemaps
                 .Where(r => !string.IsNullOrWhiteSpace(r.From) && !string.IsNullOrWhiteSpace(r.To))
-                .Select(r => new RemapDto { from = r.From, to = r.To }).ToList(),
+                .Select(r => new RemapDto { from = r.From, to = r.To, device = r.Device }).ToList(),
             snippets = s.Global.Snippets
                 .Where(x => !string.IsNullOrWhiteSpace(x.Trigger))
-                .Select(x => new SnippetDto { trigger = x.Trigger, text = x.Text }).ToList(),
+                .Select(x => new SnippetDto { trigger = x.Trigger, text = x.Text, apps = x.Apps }).ToList(),
             gestures = s.Global.KeyGestures
                 .Where(g => !string.IsNullOrWhiteSpace(g.Key))
                 .Select(g => new GestureDto { key = g.Key, action = g.DoubleTapAction }).ToList(),
@@ -122,19 +142,33 @@ public static class RuleShare
         foreach (var r in dto.remaps ?? new())
         {
             if (string.IsNullOrWhiteSpace(r.from) || string.IsNullOrWhiteSpace(r.to)) { skipped++; continue; }
-            if (s.Global.BaseRemaps.Any(x => string.Equals(x.From, r.from, StringComparison.OrdinalIgnoreCase)))
+            /* 去重要带上"设备范围"：同一个源键在两只键盘上各有一条规则是正常的，
+             * 只按 From 判重会把第二条当成重复直接丢掉。 */
+            if (s.Global.BaseRemaps.Any(x =>
+                string.Equals(x.From, r.from, StringComparison.OrdinalIgnoreCase) &&
+                Input.KeyRemapMap.NormalizeDevice(x.Device) == Input.KeyRemapMap.NormalizeDevice(r.device)))
             { skipped++; continue; }
 
-            s.Global.BaseRemaps.Add(new KeyRemap { From = r.from, To = r.to, Comment = "import" });
+            s.Global.BaseRemaps.Add(new KeyRemap
+            {
+                From = r.from, To = r.to, Device = r.device ?? "", Comment = "import",
+            });
             added++;
         }
 
         foreach (var x in dto.snippets ?? new())
         {
             if (!Input.SnippetMatcher.IsValidTrigger(x.trigger)) { skipped++; continue; }
-            if (s.Global.Snippets.Any(y => y.Trigger == x.trigger)) { skipped++; continue; }
+            // 同触发词不同适用范围是两条独立片段（v4.5.52 起支持），判重要一起看
+            if (s.Global.Snippets.Any(y => y.Trigger == x.trigger &&
+                                           string.Equals((y.Apps ?? "").Trim(), (x.apps ?? "").Trim(),
+                                               StringComparison.OrdinalIgnoreCase)))
+            { skipped++; continue; }
 
-            s.Global.Snippets.Add(new Snippet { Trigger = x.trigger, Text = x.text ?? "", Comment = "import" });
+            s.Global.Snippets.Add(new Snippet
+            {
+                Trigger = x.trigger, Text = x.text ?? "", Apps = x.apps ?? "", Comment = "import",
+            });
             added++;
         }
 

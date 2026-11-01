@@ -1139,4 +1139,174 @@ public static partial class SelfTest
         CoreLog.Info($"键盘设备枚举：共 {devices.Count} 个 —— " +
             string.Join("\n  ", devices.Select(d => $"{d.Kind} / {d.Name}\n    {d.Path}")));
     }
+    /// <summary>
+    /// 按设备区分改键：表结构、优先级、预设切换、设备关联匹配。
+    ///
+    /// 三条语义必须钉死：
+    ///   ① 设备专属规则**不能漏进全局表**（否则一只键盘的规则会影响所有键盘）；
+    ///   ② 优先级是"这只键盘 → 全局 → 不改"；
+    ///   ③ 关联不上设备时退回全局规则，绝不能猜。
+    /// </summary>
+    private static void TestDeviceRemap()
+    {
+        const string devA = "VID_1532&PID_00A4";
+        const string devB = "VID_0483&PID_2031";
+
+        // ---- 表结构 ----
+        var list = new List<KeyRemap>
+        {
+            new() { From = "capslock", To = "esc" },                    // 所有键盘
+            new() { From = "capslock", To = "lctrl", Device = devA },   // 只对 A
+            new() { From = "a", To = "b", Device = devB },              // 只对 B
+        };
+
+        var table = KeyRemapMap.BuildTable(list);
+        Check("按设备改键：全局表里没有设备规则", table.All.Count == 1, table.All.Count.ToString());
+        Check("按设备改键：A 有自己的表", table.ByDevice.ContainsKey(devA));
+        Check("按设备改键：设备专属键被记下", table.DeviceScopedKeys.Contains(0x14), "");
+
+        Check("按设备改键：A 上优先设备规则",
+            table.TryGet(0x14, devA, out int onA) && onA == 0xA2, "caps");
+        Check("按设备改键：B 上退回全局规则",
+            table.TryGet(0x14, devB, out int onB) && onB == 0x1B, "caps");
+        Check("按设备改键：未知设备也用全局规则",
+            table.TryGet(0x14, null, out int onNull) && onNull == 0x1B, "caps");
+
+        // 只有设备规则、没有全局规则时：别的键盘上这个键"不改"
+        Check("按设备改键：别的键盘上不生效", !table.TryGet(0x41, devA, out _), "a");
+
+        // ---- 值指纹要带设备，否则改了设备不会重建表 ----
+        Check("按设备改键：指纹区分设备",
+            KeyRemapMap.Stamp(new[] { new KeyRemap { From = "a", To = "b", Device = devA } }) !=
+            KeyRemapMap.Stamp(new[] { new KeyRemap { From = "a", To = "b" } }));
+
+        // ---- 预设切换要按设备独立 ----
+        var presets = new List<KeyRemap>();
+        var capsEsc = KeyRemapMap.FindPreset("capsEsc");
+        Check("按设备改键：预设存在", capsEsc != null);
+        if (capsEsc != null)
+        {
+            Check("按设备改键：先在 A 上启用", KeyRemapMap.Toggle(presets, capsEsc, devA));
+            Check("按设备改键：再在所有键盘启用", KeyRemapMap.Toggle(presets, capsEsc, ""));
+            CheckEqual("按设备改键：两组规则并存", presets.Count, 4);
+
+            // 关掉 A 的那组，不能把全局那组一起关掉
+            Check("按设备改键：关掉 A 的预设", !KeyRemapMap.Toggle(presets, capsEsc, devA));
+            CheckEqual("按设备改键：全局那组还在", presets.Count, 2);
+            Check("按设备改键：剩下的都是全局规则",
+                presets.All(r => KeyRemapMap.NormalizeDevice(r.Device).Length == 0));
+        }
+
+        /* 同一只键盘的第二条规则也必须被记入"要问设备"的集合。
+         * 漏记的表现是"配了没用"，而这正是这条断言要盯的地方。 */
+        var twoOnA = KeyRemapMap.BuildTable(new[]
+        {
+            new KeyRemap { From = "capslock", To = "esc", Device = devA },
+            new KeyRemap { From = "a", To = "b", Device = devA },
+        });
+        Check("按设备改键：同一键盘的多条规则都记入集合",
+            twoOnA.DeviceScopedKeys.Contains(0x14) && twoOnA.DeviceScopedKeys.Contains(0x41),
+            string.Join(",", twoOnA.DeviceScopedKeys.Select(v => v.ToString("X2"))));
+
+        // ---- 分享码必须带上设备与片段范围 ----
+        var shareSrc = new AppSettings();
+        shareSrc.Global.BaseRemaps.Add(new KeyRemap { From = "capslock", To = "esc", Device = devA });
+        shareSrc.Global.BaseRemaps.Add(new KeyRemap { From = "capslock", To = "lctrl" });
+        shareSrc.Global.Snippets.Add(new Snippet { Trigger = ";log", Text = "X", Apps = "code.exe" });
+
+        string shareCode = RuleShare.Export(shareSrc);
+        Check("分享码：导出含设备", shareCode.Contains(devA), shareCode);
+        Check("分享码：导出含片段范围", shareCode.Contains("code.exe"), shareCode);
+
+        var shareDst = new AppSettings();
+        var (sharedAdded, _) = RuleShare.Import(shareDst, shareCode, out string? shareErr);
+        Check("分享码：导入无错误", shareErr == null, shareErr ?? "");
+        CheckEqual("分享码：两条改键都导入（同源不同设备）", sharedAdded, 3);
+        Check("分享码：设备字段还原",
+            shareDst.Global.BaseRemaps.Any(r => KeyRemapMap.NormalizeDevice(r.Device) == devA));
+        Check("分享码：片段范围还原",
+            shareDst.Global.Snippets.Any(x => x.Trigger == ";log" && x.Apps == "code.exe"));
+
+        // ---- 设备关联：同键同方向 + 时间窗 ----
+        long now = 10_000;
+        var entries = new List<KeyboardDeviceTracker.Entry>
+        {
+            new(devA, 0x14, true, now - 5),
+            new(devB, 0x14, true, now - 400),      // 太旧，不该匹配
+        };
+        CheckEqual("设备关联：取最近的一条",
+            KeyboardDeviceTracker.MatchRecent(entries, 0x14, true, now), 0);
+        CheckEqual("设备关联：方向不同不匹配",
+            KeyboardDeviceTracker.MatchRecent(entries, 0x14, false, now), -1);
+        CheckEqual("设备关联：键不同不匹配",
+            KeyboardDeviceTracker.MatchRecent(entries, 0x41, true, now), -1);
+
+        var stale = new List<KeyboardDeviceTracker.Entry> { new(devA, 0x14, true, now - 500) };
+        CheckEqual("设备关联：超时不匹配",
+            KeyboardDeviceTracker.MatchRecent(stale, 0x14, true, now), -1);
+
+        /* ---- 改键的按下/抬起必须成对 ----
+         * 用注入钩子拦下来看，否则自检会真的往系统里发键。
+         * 重点验"设备专属规则在抬起时查表会落空"这个坑。 */
+        var sent = new List<string>();
+        var savedSender = InputSender.SenderForTest;
+        InputSender.SenderForTest = (vk, up) => { lock (sent) sent.Add($"{vk:X2}{(!up ? "↓" : "↑")}"); };
+
+        try
+        {
+            var s10 = DefaultSettings.Create();
+            foreach (var t in s10.Triggers) t.Enabled = false;
+            s10.Global.BaseRemaps.Clear();
+            s10.Global.BaseRemaps.Add(new KeyRemap { From = "capslock", To = "esc", Device = devA });
+
+            var queue10 = new ActionQueue();
+            var engine10 = new HotkeyEngine(queue10, () => s10, (_, _) => true)
+            {
+                DeviceResolver = (_, _) => devA,
+            };
+
+            lock (sent) sent.Clear();
+            Check("改键：设备规则按下被接管", engine10.SimulateKey(0x14, true));
+            Check("改键：设备规则抬起也被接管", engine10.SimulateKey(0x14, false));
+            WaitUntil(() => { lock (sent) return sent.Count >= 2; });
+
+            lock (sent)
+            {
+                CheckEqual("改键：按下注入 Esc", sent.FirstOrDefault() ?? "", "1B↓");
+                CheckEqual("改键：抬起注入 Esc 抬起（不卡键）", sent.LastOrDefault() ?? "", "1B↑");
+            }
+
+            // 拿不到设备时不该改键（fail open 到"全局规则"，而这里没有全局规则）
+            engine10.DeviceResolver = (_, _) => null;
+            lock (sent) sent.Clear();
+            Check("改键：设备未知时不改键", !engine10.SimulateKey(0x14, true), "caps");
+            engine10.SimulateKey(0x14, false);
+            WaitUntil(() => { lock (sent) return sent.Count > 0; });
+
+            engine10.Dispose();
+            queue10.Dispose();
+        }
+        finally
+        {
+            InputSender.SenderForTest = savedSender;
+        }
+
+        // ---- 设备标识一致性 ----
+        CheckEqual("设备标识：VID/PID 优先",
+            KeyboardDevices.KeyOf(@"\\?\HID#VID_1532&PID_00A4&MI_01#x#{g}"), devA);
+        CheckEqual("设备标识：没有 VID/PID 用路径",
+            KeyboardDevices.KeyOf(@"\\?\ACPI#PNP0303#0"), @"\\?\ACPI#PNP0303#0");
+
+        // ---- 体检：规则指向的键盘不在线 ----
+        var offline = new AppSettings();
+        offline.Global.BaseRemaps.Add(new KeyRemap { From = "capslock", To = "esc", Device = devA });
+        Check("按设备改键：设备不在线会被指出",
+            RuleConflicts.Analyze(offline, new[] { devB })
+                .Any(c => c.Message.Contains("现在没接上")));
+        Check("按设备改键：设备在线时不报",
+            !RuleConflicts.Analyze(offline, new[] { devA })
+                .Any(c => c.Message.Contains("现在没接上")));
+        Check("按设备改键：不传设备清单就不检查",
+            !RuleConflicts.Analyze(offline).Any(c => c.Message.Contains("现在没接上")));
+    }
 }

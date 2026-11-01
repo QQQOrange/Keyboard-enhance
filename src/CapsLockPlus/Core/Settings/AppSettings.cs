@@ -41,6 +41,15 @@ public sealed class KeyRemap
     /// <summary>目标键名。为空表示不生效。</summary>
     public string To { get; set; } = "";
 
+    /// <summary>
+    /// 只在这只键盘上生效（VID/PID 或完整设备路径）。留空 = 所有键盘。
+    ///
+    /// 判定顺序：先看有没有这只键盘的规则，没有再退回"所有键盘"的规则。
+    /// 拿不到设备标识时按"所有键盘"处理（fail open）——
+    /// 宁可多改一只键盘，也不要在关联失败时让键位规则时灵时不灵。
+    /// </summary>
+    public string Device { get; set; } = "";
+
     public string Comment { get; set; } = "";
 }
 

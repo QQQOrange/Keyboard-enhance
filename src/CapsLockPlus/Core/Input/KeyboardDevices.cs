@@ -17,12 +17,13 @@ public sealed record KeyboardDevice(
 /// <summary>
 /// 枚举系统里的键盘设备。
 ///
-/// ## 这一版只做"看见"，不做"区分"
+/// ## 与"按设备区分改键"的关系
 ///
-/// 按设备区分改键需要把设备标识带进按键热路径（Raw Input + 每个事件附带 hDevice），
-/// 一旦出问题就是"整个键盘失灵"级别的事故。所以先只做**只读枚举**：
-/// 让用户与开发者都能确认"系统到底认几个键盘、分别是什么"，
-/// 再决定要不要继续往下做。这一步不改任何按键行为，随时可以整体删掉。
+/// 这里只负责**枚举与归并**（只读，不接收按键事件）。
+/// 把"这次按键来自哪只键盘"送进热路径的是 <see cref="KeyboardDeviceTracker"/>（Raw Input），
+/// 两者共用同一套设备标识（<see cref="KeyOf"/>），保证界面里选的设备和运行时算出来的一致。
+///
+/// 枚举本身随时可以去掉而不影响按键 —— 它只是展示与配置的入口。
 ///
 /// ## 为什么键盘会"多出来"
 ///
@@ -79,6 +80,19 @@ public static class KeyboardDevices
 
         return list;
     }
+
+    /// <summary>
+    /// 设备标识（用于"只对这只键盘生效"的配置）。
+    /// 优先 VID/PID —— 它与插拔顺序、USB 端口无关；没有 VID/PID 才退回完整路径。
+    /// </summary>
+    public static string KeyOf(string? path)
+    {
+        string vidpid = VidPidOf(path ?? "");
+        return vidpid.Length > 0 ? vidpid : (path ?? "").Trim();
+    }
+
+    /// <summary>设备句柄 → 设备路径（Raw Input 事件里只有句柄）。</summary>
+    public static string PathOf(IntPtr device) => NameOf(device);
 
     private static string NameOf(IntPtr device)
     {

@@ -144,6 +144,9 @@ public static partial class SelfTest
         Section("键盘设备");
         TestKeyboardDevices();
 
+        Section("按设备改键");
+        TestDeviceRemap();
+
         Section("启动密码");
         TestStartupPassword();
 

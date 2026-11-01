@@ -59,7 +59,12 @@ public sealed record Conflict(ConflictLevel Level, string Message,
 public static class RuleConflicts
 {
     /// <summary>体检一遍。返回空列表 = 没发现问题。</summary>
-    public static List<Conflict> Analyze(AppSettings s)
+    /// <param name="deviceKeys">
+    /// 当前接着的键盘标识（可为空 = 不检查"设备是否在线"）。
+    /// 单独传进来而不是在这里枚举：Analyze 会被每次保存调用，
+    /// 而设备枚举是 P/Invoke，不该摊到打字热路径上。
+    /// </param>
+    public static List<Conflict> Analyze(AppSettings s, IReadOnlyCollection<string>? deviceKeys = null)
     {
         var list = new List<Conflict>();
         if (s == null) return list;
@@ -74,6 +79,22 @@ public static class RuleConflicts
             if (!t.Enabled) continue;
             int? vk = KeyName.VkOf(t.Key);
             if (vk != null) triggers.Add(vk.Value);
+        }
+
+        /* ---- 0. 设备专属规则指向一只当前没接的键盘 ----
+         * 这是"配置没错但就是不生效"的典型：用户拔了外接键盘，规则还在。 */
+        if (deviceKeys != null)
+        {
+            foreach (var r in global.BaseRemaps)
+            {
+                string dev = KeyRemapMap.NormalizeDevice(r.Device);
+                if (dev.Length == 0) continue;
+                if (deviceKeys.Any(k => KeyRemapMap.NormalizeDevice(k) == dev)) continue;
+
+                list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
+                    "「{0}」的改键只对 {1} 生效，但这只键盘现在没接上。",
+                    KeyName.Display(r.From), r.Device), ConflictTarget.BaseRemap));
+            }
         }
 
         // ---- 1. 触发键被别的规则挡住 ----

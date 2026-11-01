@@ -1,4 +1,4 @@
-using CapsLockPlus.Core.Settings;
+﻿using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus.Core.Input;
 
@@ -32,18 +32,27 @@ public static class KeyRemapMap
         foreach (var r in list)
         {
             if (string.IsNullOrWhiteSpace(r.From) || string.IsNullOrWhiteSpace(r.To)) continue;
-            sb.Append(r.From).Append('>').Append(r.To).Append('|');
+            sb.Append(r.From).Append('>').Append(r.To).Append('@').Append(NormalizeDevice(r.Device)).Append('|');
         }
         return sb.ToString();
     }
 
     /// <summary>构建 vk → vk 的映射表。解析不出键名的条目直接跳过。</summary>
+    /// <summary>
+    /// 只构建"所有键盘"的映射表（设备专属规则会被忽略）。
+    /// 运行时请用 <see cref="BuildTable"/> —— 这个重载主要给"只关心全局规则"的
+    /// 场景与自检用。
+    /// </summary>
     public static Dictionary<int, int> Build(IEnumerable<KeyRemap> list)
     {
         var map = new Dictionary<int, int>();
         foreach (var r in list)
         {
             if (string.IsNullOrWhiteSpace(r.From) || string.IsNullOrWhiteSpace(r.To)) continue;
+
+            /* 只收"所有键盘"的规则：设备专属规则如果混进这张表，
+             * 就会在每只键盘上都生效 —— 那正是这个功能要避免的事。 */
+            if (NormalizeDevice(r.Device).Length > 0) continue;
 
             int? from = KeyName.VkOf(r.From);
             int? to = KeyName.VkOf(r.To);
@@ -55,6 +64,45 @@ public static class KeyRemapMap
         return map;
     }
 
+    /// <summary>设备标识规范化（去空白、转大写）：VID/PID 与路径都用大写比较。</summary>
+    public static string NormalizeDevice(string? device)
+        => (device ?? "").Trim().ToUpperInvariant();
+
+    /// <summary>按设备分组构建改键表。</summary>
+    public static RemapTable BuildTable(IEnumerable<KeyRemap> list)
+    {
+        var table = new RemapTable();
+        foreach (var r in list)
+        {
+            if (string.IsNullOrWhiteSpace(r.From) || string.IsNullOrWhiteSpace(r.To)) continue;
+
+            int? from = KeyName.VkOf(r.From);
+            int? to = KeyName.VkOf(r.To);
+            if (from == null || to == null) continue;
+            if (from == to) continue;
+
+            string dev = NormalizeDevice(r.Device);
+            if (dev.Length == 0)
+            {
+                table.All[from.Value] = to.Value;
+                continue;
+            }
+
+            if (!table.ByDevice.TryGetValue(dev, out var map))
+            {
+                map = new Dictionary<int, int>();
+                table.ByDevice[dev] = map;
+            }
+
+            /* 必须**每条都记**，而不是只在新建字典时记：
+             * 同一只键盘的第二条规则如果漏记，那个键就永远不会去问设备，
+             * 于是设备规则静默失效（表现为"配了没用"）。 */
+            table.DeviceScopedKeys.Add(from.Value);
+            map[from.Value] = to.Value;
+        }
+        return table;
+    }
+
     /// <summary>解析一条配置的显示文案（用于界面与通知）。</summary>
     public static string Describe(IEnumerable<KeyRemap> list)
     {
@@ -62,7 +110,11 @@ public static class KeyRemapMap
         foreach (var r in list)
         {
             if (string.IsNullOrWhiteSpace(r.From) || string.IsNullOrWhiteSpace(r.To)) continue;
-            parts.Add($"{KeyName.Display(r.From)} → {KeyName.Display(r.To)}");
+            string scope = NormalizeDevice(r.Device);
+            parts.Add(scope.Length == 0
+                ? $"{KeyName.Display(r.From)} → {KeyName.Display(r.To)}"
+                : Loc.F("{0} → {1}（仅 {2}）",
+                    KeyName.Display(r.From), KeyName.Display(r.To), r.Device));
         }
         return string.Join("、", parts);
     }
@@ -107,23 +159,36 @@ public static class KeyRemapMap
     /// 切换一条预设：已全部启用则移除，否则补齐。
     /// 返回 true = 本次是"启用"。
     /// </summary>
-    public static bool Toggle(List<KeyRemap> list, Preset preset)
+    public static bool Toggle(List<KeyRemap> list, Preset preset) => Toggle(list, preset, "");
+
+    /// <summary>
+    /// 切换一条预设（可指定只对某只键盘生效）。
+    ///
+    /// 判定与删除都带上设备：否则"Caps↔Esc 只在键盘 A"和"Caps↔Esc 在所有键盘"
+    /// 会互相把对方toggle 掉，用户看到的是"点一下两处一起消失"。
+    /// </summary>
+    public static bool Toggle(List<KeyRemap> list, Preset preset, string? device)
     {
+        string dev = NormalizeDevice(device);
+
         bool allPresent = preset.Pairs.All(p =>
-            list.Any(r => Same(r.From, p.From) && Same(r.To, p.To)));
+            list.Any(r => Same(r.From, p.From) && Same(r.To, p.To) &&
+                          NormalizeDevice(r.Device) == dev));
 
         if (allPresent)
         {
-            list.RemoveAll(r => preset.Pairs.Any(p => Same(r.From, p.From) && Same(r.To, p.To)));
+            list.RemoveAll(r => preset.Pairs.Any(p =>
+                Same(r.From, p.From) && Same(r.To, p.To) && NormalizeDevice(r.Device) == dev));
             return false;
         }
 
         foreach (var p in preset.Pairs)
         {
-            /* 先把"同一源键"的旧映射删掉，避免 Caps 既映射到 Esc 又映射到 Ctrl
-             * （字典里后者会覆盖前者，界面却显示两条，用户会以为没生效）。 */
-            list.RemoveAll(r => Same(r.From, p.From));
-            list.Add(new KeyRemap { From = p.From, To = p.To, Comment = preset.Id });
+            /* 先把"同一源键 + 同一设备范围"的旧映射删掉，避免 Caps 既映射到 Esc 又映射到 Ctrl
+             * （字典里后者会覆盖前者，界面却显示两条，用户会以为没生效）。
+             * 注意范围要带上设备：不同键盘的同源键是两条独立规则。 */
+            list.RemoveAll(r => Same(r.From, p.From) && NormalizeDevice(r.Device) == dev);
+            list.Add(new KeyRemap { From = p.From, To = p.To, Comment = preset.Id, Device = dev });
         }
         return true;
     }

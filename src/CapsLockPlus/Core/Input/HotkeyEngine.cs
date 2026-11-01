@@ -47,8 +47,15 @@ public sealed class HotkeyEngine : IDisposable
 
     /* ---- 基础改键：不按住触发键也生效的全局重映射 ----
      * 表按内容指纹缓存，避免每次按键都去解析键名。 */
-    private Dictionary<int, int>? _remapTable;
+    private RemapTable? _remapTable;
     private string _remapStamp = "";
+
+    /// <summary>
+    /// "这次按键来自哪只键盘"。由 AppHost 注入（Raw Input 实现）。
+    /// 为空 = 不区分设备，行为与旧版完全一致。
+    /// 只在**有设备专属规则的键**上调用，所以普通按键不会多花时间。
+    /// </summary>
+    public Func<int, bool, string?>? DeviceResolver { get; set; }
 
     /// <summary>当前按住的"源键 → 目标键"，用于成对松开（否则会粘键）。</summary>
     private readonly Dictionary<int, int> _remappedDown = new();
@@ -903,29 +910,46 @@ public sealed class HotkeyEngine : IDisposable
         string stamp = KeyRemapMap.Stamp(list);
         if (_remapTable == null || !string.Equals(stamp, _remapStamp, StringComparison.Ordinal))
         {
-            _remapTable = KeyRemapMap.Build(list);
+            _remapTable = KeyRemapMap.BuildTable(list);
             _remapStamp = stamp;
         }
 
-        if (!_remapTable.TryGetValue(vk, out int target)) return false;
+        /* 只有"配了设备专属规则"的键才去问设备：问设备最多要等十几毫秒
+         * （等 Raw Input 到达），摊到每个按键上打字会发涩。 */
+        string? device = null;
+        if (down && _remapTable.DeviceScopedKeys.Contains(vk))
+            device = DeviceResolver?.Invoke(vk, down);
 
-        if (down)
+        /* 抬起**先看记账**，再查表。
+         *
+         * 顺序反了会卡键：设备专属规则在"抬起"这一刻没有设备标识（只有按下才解析），
+         * 查表会落空 → 直接 return false → 注入的目标键永远不松开。
+         * 表现是"按一下某键，之后那个目标键一直粘着"。
+         */
+        if (!down)
         {
-            _remappedDown[vk] = target;
-            int t = target;
-            _queue.Post(() => InputSender.KeyDown(t));
+            if (_remappedDown.Remove(vk, out int held))
+            {
+                int t = held;
+                _queue.Post(() => InputSender.KeyUp(t));
+                return true;
+            }
+
+            // 记账丢了（进程重启/状态复位）也要把目标键松开，宁可多一次无害的 up
+            if (_remapTable.TryGet(vk, null, out int orphan))
+            {
+                int t = orphan;
+                _queue.Post(() => InputSender.KeyUp(t));
+                return true;
+            }
+            return false;
         }
-        else if (_remappedDown.Remove(vk, out int held))
-        {
-            int t = held;
-            _queue.Post(() => InputSender.KeyUp(t));
-        }
-        else
-        {
-            // 记账丢了也要把目标键松开，宁可多一次无害的 up
-            int t = target;
-            _queue.Post(() => InputSender.KeyUp(t));
-        }
+
+        if (!_remapTable.TryGet(vk, device, out int target)) return false;
+
+        _remappedDown[vk] = target;
+        int pressed = target;
+        _queue.Post(() => InputSender.KeyDown(pressed));
         return true;
     }
 

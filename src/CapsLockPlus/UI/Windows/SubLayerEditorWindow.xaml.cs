@@ -20,6 +20,13 @@ namespace CapsLockPlus.UI.Windows;
 /// </summary>
 public partial class SubLayerEditorWindow : Window
 {
+    /// <summary>
+    /// 字号测量的字形样本：全角汉字 + 带上下伸部的拉丁字母，
+    /// 量出来的行高对中英文都够用。
+    /// **刻意不做成可翻译文本** —— 加了译文行高就会跟着变，布局对不上。
+    /// </summary>
+    private const string GlyphSample = "汉字Agqy";
+
     /// <summary>一行的视图模型。</summary>
     public sealed class Row : INotifyPropertyChanged
     {
@@ -218,7 +225,7 @@ public partial class SubLayerEditorWindow : Window
         var typeface = new System.Windows.Media.Typeface(
             tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
         var ft = new System.Windows.Media.FormattedText(
-            Loc.T("汉字Agqy"), System.Globalization.CultureInfo.CurrentCulture,
+            GlyphSample, System.Globalization.CultureInfo.CurrentCulture,
             System.Windows.FlowDirection.LeftToRight, typeface, tb.FontSize,
             System.Windows.Media.Brushes.Black,
             System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerDip);

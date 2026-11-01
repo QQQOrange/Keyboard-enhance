@@ -39,7 +39,11 @@ public partial class SettingsView : UserControl
         /* 设备枚举是 P/Invoke：Refresh 会在每次保存时被调用（用户打字时每个键都保存），
          * 所以只在第一次进来时枚举，之后靠「刷新」按钮显式更新。 */
         if (KeyboardList != null && KeyboardList.Items.Count == 0)
+        {
             RefreshKeyboards();
+            EnsureRemapDeviceItems();
+            RefreshDeviceTrackingHint();
+        }
         RefreshAppLayerEditor();
         RefreshGestureEditor();
         RefreshSnippetEditor();
@@ -134,7 +138,9 @@ public partial class SettingsView : UserControl
         if (ConflictList == null || _host == null) return;
 
         ConflictList.Items.Clear();
-        var findings = RuleConflicts.Analyze(_host.Settings);
+        /* 用缓存下来的设备清单（RefreshKeyboards 时枚举一次）：
+         * 这里每秒可能被调用好几次（用户打字时每个键都保存），不能每次 P/Invoke。 */
+        var findings = RuleConflicts.Analyze(_host.Settings, _deviceKeys);
 
         ConflictEmptyText.Visibility = findings.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ConflictRecheckButton.Content = findings.Count == 0
@@ -291,12 +297,20 @@ public partial class SettingsView : UserControl
     /// 存在的意义是把"为什么另一只键盘不生效"从猜测变成可核对的事实 ——
     /// 目前改键对所有键盘一视同仁，所以这里只列设备，不做任何开关。
     /// </summary>
+    /// <summary>上次枚举到的设备标识（供体检判断"设备是否在线"，避免重复枚举）。</summary>
+    private List<string>? _deviceKeys;
+
     private void RefreshKeyboards()
     {
         if (KeyboardList == null) return;
 
         KeyboardList.Items.Clear();
         var groups = KeyboardDevices.Group(KeyboardDevices.List());
+
+        _deviceKeys = groups
+            .Select(g => KeyboardDevices.KeyOf(g.Sample))
+            .Where(k => k.Length > 0)
+            .ToList();
 
         KeyboardEmptyText.Visibility = groups.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -317,9 +331,40 @@ public partial class SettingsView : UserControl
         }
     }
 
+    /// <summary>
+    /// 设备追踪不可用时给出明确提示。
+    ///
+    /// 不说的话，用户配了"只对某只键盘生效"却毫无反应 —— 和"这功能是坏的"没区别。
+    /// </summary>
+    private void RefreshDeviceTrackingHint()
+    {
+        if (DeviceTrackingHint == null || _host == null) return;
+
+        bool ok = _host.DeviceTrackingAvailable;
+        DeviceTrackingHint.Visibility = ok ? Visibility.Collapsed : Visibility.Visible;
+        if (!ok)
+            DeviceTrackingHint.Text = Loc.T("设备识别未启用：只对某只键盘生效的改键不会起作用（其它功能不受影响）。");
+    }
+
     private void OnRefreshKeyboardsClick(object sender, RoutedEventArgs e)
     {
         RefreshKeyboards();
+
+        /* 设备可能刚插上：把"生效键盘"下拉也重建一次，
+         * 否则新键盘不会出现在预设的范围内，用户只能重启程序。 */
+        if (RemapDeviceBox != null)
+        {
+            string keep = SelectedRemapDevice();
+            RemapDeviceBox.Items.Clear();
+            EnsureRemapDeviceItems();
+            foreach (ComboBoxItem item in RemapDeviceBox.Items)
+            {
+                if (item.Tag is string tag && tag == keep) { RemapDeviceBox.SelectedItem = item; break; }
+            }
+        }
+
+        RefreshConflicts();
+        RefreshDeviceTrackingHint();
         int n = KeyboardDevices.Group(KeyboardDevices.List()).Count;
         _host?.Notify(n == 0
             ? Loc.T("没有枚举到键盘设备")
@@ -773,12 +818,14 @@ public partial class SettingsView : UserControl
         if (preset == null) return;
 
         int conflictsBefore = ConflictCount();
-        bool on = KeyRemapMap.Toggle(_host.Settings.Global.BaseRemaps, preset);
+        string device = SelectedRemapDevice();
+        bool on = KeyRemapMap.Toggle(_host.Settings.Global.BaseRemaps, preset, device);
         Save();
         RefreshRemapState();
+        string scope = device.Length == 0 ? "" : Loc.F("（仅 {0}）", device);
         _host.Notify(WithConflictHint(on
-            ? Loc.F("已启用改键：{0}", preset.Title)
-            : Loc.F("已取消改键：{0}", preset.Title), conflictsBefore));
+            ? Loc.F("已启用改键：{0}{1}", preset.Title, scope)
+            : Loc.F("已取消改键：{0}{1}", preset.Title, scope), conflictsBefore));
     }
 
     private void OnRemapClearClick(object sender, RoutedEventArgs e)
@@ -793,6 +840,33 @@ public partial class SettingsView : UserControl
     }
 
     /// <summary>状态行：列出当前生效的改键，空则明说"未启用"。</summary>
+    /// <summary>当前选中的"生效键盘"；空串 = 所有键盘。</summary>
+    private string SelectedRemapDevice()
+        => RemapDeviceBox?.SelectedItem is ComboBoxItem item && item.Tag is string s ? s : "";
+
+    /// <summary>
+    /// 填充"生效键盘"下拉。枚举失败时只剩"所有键盘"，功能退化为旧行为。
+    /// </summary>
+    private void EnsureRemapDeviceItems()
+    {
+        if (RemapDeviceBox == null || RemapDeviceBox.Items.Count > 0) return;
+
+        RemapDeviceBox.Items.Add(new ComboBoxItem { Content = Loc.T("所有键盘"), Tag = "" });
+
+        foreach (var g in KeyboardDevices.Group(KeyboardDevices.List()))
+        {
+            string key = KeyboardDevices.KeyOf(g.Sample);
+            if (key.Length == 0) continue;
+            RemapDeviceBox.Items.Add(new ComboBoxItem
+            {
+                Content = Loc.F("{0}（{1}）", g.Name, g.Kind),
+                Tag = key,
+            });
+        }
+
+        RemapDeviceBox.SelectedIndex = 0;
+    }
+
     private void RefreshRemapState()
     {
         if (RemapStateText == null) return;

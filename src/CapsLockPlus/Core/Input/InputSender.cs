@@ -130,8 +130,20 @@ public static class InputSender
     };
 
     /// <summary>按下或抬起一个虚拟键。</summary>
-    public static void KeyDown(int vk) => Send(KeyInput(vk, false));
-    public static void KeyUp(int vk) => Send(KeyInput(vk, true));
+    /// <summary>
+    /// 自检用：替换"真实注入"。默认 null = 正常发键。
+    /// 有了它才能验证改键的按下/抬起是否成对 —— 否则自检会真的往系统里打字。
+    /// </summary>
+    internal static Action<int, bool>? SenderForTest { get; set; }
+
+    public static void KeyDown(int vk) => SendKey(vk, up: false);
+    public static void KeyUp(int vk) => SendKey(vk, up: true);
+
+    private static void SendKey(int vk, bool up)
+    {
+        if (SenderForTest is { } spy) { spy(vk, up); return; }
+        Send(KeyInput(vk, up));
+    }
 
     /// <summary>完整敲击一个虚拟键（按下+抬起）。</summary>
     public static void Tap(int vk)
