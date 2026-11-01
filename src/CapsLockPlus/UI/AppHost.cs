@@ -255,8 +255,13 @@ public sealed class AppHost : IDisposable
          * 这一步必须在"判断是否需要同步自启"之前做。 */
         StartupManager.MigrateLegacyValue();
 
-        if (Settings.Global.StartWithWindows != StartupManager.IsEnabled())
-            StartupManager.SetEnabled(Settings.Global.StartWithWindows);
+        /* 自启有两种载体：注册表（普通权限）与计划任务（管理员模式，登录静默提权）。
+         * 由"是否管理员模式"决定，两者互斥。
+         *
+         * 只在**不一致**时才同步：避免每次启动都重建计划任务；
+         * 但 exe 被挪过位置也算不一致（任务里记的是绝对路径）。 */
+        if (StartupManager.NeedsRepair(Settings.Global.StartWithWindows, Settings.Global.RunAsAdmin))
+            StartupManager.Sync(Settings.Global.StartWithWindows, Settings.Global.RunAsAdmin);
     }
 
     // ---------------- 动作 ----------------

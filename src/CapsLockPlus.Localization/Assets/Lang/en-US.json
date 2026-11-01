@@ -1864,5 +1864,7 @@
   "，顺手清掉 {0} 份旧备份": ", also removed {0} old backups",
   "；GitHub 令牌保留本机的": "; kept this machine's GitHub token",
   "；GitHub 令牌已换成备份里的": "; the GitHub token was replaced with the one from the backup",
-  "；已带上备份里的 GitHub 令牌": "; the GitHub token from the backup was included"
+  "；已带上备份里的 GitHub 令牌": "; the GitHub token from the backup was included",
+  "\n开机自启已改用计划任务：登录时静默提权，不会再弹 UAC。": "\nStartup now uses a scheduled task: it launches elevated at sign-in, no UAC prompt.",
+  "已设置开机自启（管理员模式，不再弹 UAC）": "Startup enabled (admin mode, no UAC prompt)"
 }

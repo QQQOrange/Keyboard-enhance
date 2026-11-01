@@ -88,6 +88,11 @@ public static partial class SelfTest
         TestSettings();
         TestDataLocationAndEncryptedExport();
 
+        Section("开机自启");
+        TestStartupModeDecision();
+        TestStartupTaskXml();
+        TestStartupTaskCommands();
+
         Section("启动密码");
         TestStartupPassword();
 

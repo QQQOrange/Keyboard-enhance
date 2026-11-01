@@ -81,11 +81,17 @@ public partial class SettingsView : UserControl
     {
         if (_host == null || _suppress) return;
         bool enabled = StartupBox.IsChecked == true;
-        StartupManager.SetEnabled(enabled);
         _host.Settings.Global.StartWithWindows = enabled;
         Save();
-        RefreshAdminState();      // 管理员模式下自启会弹 UAC，提示要跟着变
-        _host.Notify(enabled ? Loc.T("已设置开机自启") : Loc.T("已取消开机自启"));
+        /* 自启载体要跟着"是否管理员模式"走：
+         * 管理员模式用计划任务（登录静默提权，不弹 UAC），否则用注册表。 */
+        var mode = StartupManager.Sync(enabled, _host.Settings.Global.RunAsAdmin);
+        RefreshAdminState();      // 自启方式变了，权限提示要跟着变
+        _host.Notify(enabled
+            ? (mode == StartupMode.Task
+                ? Loc.T("已设置开机自启（管理员模式，不再弹 UAC）")
+                : Loc.T("已设置开机自启"))
+            : Loc.T("已取消开机自启"));
     }
 
     private void OnTrayChanged(object sender, RoutedEventArgs e)
@@ -147,11 +153,13 @@ public partial class SettingsView : UserControl
         string adminNext = wanted ? Loc.T("管理员") : Loc.T("普通");
         AdminStateText.Text = Loc.F("当前：{0}运行　·　设置：下次启动以{1}权限运行", adminNow, adminNext);
 
-        /* 开机自启 + 管理员 = 每次登录都要点一次 UAC。
-         * 这是 Windows 的规矩（注册表 Run 项没法声明"要高权限"），
-         * 与其让用户莫名其妙，不如直说。 */
+        /* 开机自启 + 管理员：只有用**注册表 Run 项**时才会每次登录弹 UAC。
+         * 改用计划任务（HighestAvailable）后，登录时由任务计划程序直接提权，
+         * 不再弹 —— 所以提示要看实际载体，不能只看两个开关。 */
         if (wanted && _host?.Settings.Global.StartWithWindows == true)
-            AdminStateText.Text += Loc.T("\n开机自启时会弹一次 UAC 确认 —— 关掉「开机自动启动」就不会弹。");
+            AdminStateText.Text += StartupManager.CurrentMode() == StartupMode.Task
+                ? Loc.T("\n开机自启已改用计划任务：登录时静默提权，不会再弹 UAC。")
+                : Loc.T("\n开机自启时会弹一次 UAC 确认 —— 关掉「开机自动启动」就不会弹。");
 
         RestartElevatedButton.Visibility = running == wanted ? Visibility.Collapsed : Visibility.Visible;
         // 已经是管理员时不能再"提权重启"，按钮只用于"降回普通权限"
@@ -195,6 +203,14 @@ public partial class SettingsView : UserControl
 
         _host.Settings.Global.RunAsAdmin = enable;
         Save();
+
+        /* 提权方式变了，自启载体也要跟着换：
+         *   · 开管理员 → 改成计划任务（登录静默提权，不再每次弹 UAC）；
+         *   · 关管理员 → 改回注册表，并把遗留的计划任务删掉
+         *     （否则下次登录仍会被那个任务以管理员拉起，开关等于没关）。
+         * 此项失败不影响主流程：Sync 内部会退回 Run 键并记日志。 */
+        StartupManager.Sync(_host.Settings.Global.StartWithWindows, enable);
+
         RefreshAdminState();
 
         bool ask = AppDialog.Confirm(Window.GetWindow(this),
