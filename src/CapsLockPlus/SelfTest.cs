@@ -99,6 +99,9 @@ public static partial class SelfTest
         Section("失败通知");
         TestActionFailureText();
 
+        Section("基础改键");
+        TestBaseRemap();
+
         Section("启动密码");
         TestStartupPassword();
 

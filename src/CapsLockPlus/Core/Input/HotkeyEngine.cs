@@ -45,6 +45,14 @@ public sealed class HotkeyEngine : IDisposable
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _swallowedDown = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _swallowedUp = new();
 
+    /* ---- 基础改键：不按住触发键也生效的全局重映射 ----
+     * 表按内容指纹缓存，避免每次按键都去解析键名。 */
+    private Dictionary<int, int>? _remapTable;
+    private string _remapStamp = "";
+
+    /// <summary>当前按住的"源键 → 目标键"，用于成对松开（否则会粘键）。</summary>
+    private readonly Dictionary<int, int> _remappedDown = new();
+
     /// <summary>
     /// 物理按键状态：钩子看到的每个 down 加入、每个 up 移除（**包括被吞掉的触发键**）。
     ///
@@ -259,6 +267,7 @@ public sealed class HotkeyEngine : IDisposable
             SubLayerChanged?.Invoke("");
         }
         ClearContinuousRepeat();
+        ReleaseRemappedKeys();      // 复位时把改键的目标键松开，避免粘键
     }
 
     /// <summary>是否正处于某个触发键的按住状态。</summary>
@@ -826,6 +835,69 @@ public sealed class HotkeyEngine : IDisposable
     ///    而且系统认为 CapsLock 一直按着（因为真实 up 被吞了）。
     ///    现在的做法从根上避免了这两个问题。
     /// </summary>
+    /// <summary>
+    /// 基础改键：命中则把源键换成目标键。返回 true 表示"这个事件已经被接管"。
+    ///
+    /// 为什么按 down/up 成对转发，而不是在 down 时发一次 Tap：
+    ///   · 按住不放时要能连发 —— 系统对物理键产生的重复 down 会被原样转发成
+    ///     目标键的重复 down，效果与真实按住一致；
+    ///   · 只发 Tap 的话，长按只会出一个字符。
+    /// 代价是要记"谁按下了"，否则抬起时找不到目标键，会粘住。
+    /// </summary>
+    private bool TryApplyRemap(AppSettings s, int vk, bool down)
+    {
+        var list = s.Global.BaseRemaps;
+        if (list == null || list.Count == 0)
+        {
+            _remapTable = null;
+            return false;
+        }
+
+        string stamp = KeyRemapMap.Stamp(list);
+        if (_remapTable == null || !string.Equals(stamp, _remapStamp, StringComparison.Ordinal))
+        {
+            _remapTable = KeyRemapMap.Build(list);
+            _remapStamp = stamp;
+        }
+
+        if (!_remapTable.TryGetValue(vk, out int target)) return false;
+
+        if (down)
+        {
+            _remappedDown[vk] = target;
+            int t = target;
+            _queue.Post(() => InputSender.KeyDown(t));
+        }
+        else if (_remappedDown.Remove(vk, out int held))
+        {
+            int t = held;
+            _queue.Post(() => InputSender.KeyUp(t));
+        }
+        else
+        {
+            // 记账丢了也要把目标键松开，宁可多一次无害的 up
+            int t = target;
+            _queue.Post(() => InputSender.KeyUp(t));
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// 松开所有"改键按下"的目标键。
+    /// 引擎被禁用 / 层状态复位时调用，避免目标键粘住（表现为某个键一直按着）。
+    /// </summary>
+    private void ReleaseRemappedKeys()
+    {
+        if (_remappedDown.Count == 0) return;
+
+        foreach (var kv in _remappedDown)
+        {
+            int t = kv.Value;
+            _queue.Post(() => InputSender.KeyUp(t));
+        }
+        _remappedDown.Clear();
+    }
+
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
         if (injected && !AcceptInjectedForTest) return false;   // 自己注入的按键放行
@@ -966,6 +1038,10 @@ public sealed class HotkeyEngine : IDisposable
         // ---- 3. 不在层模式：放行，但先把"欠着的抬起"结清 ----
         if (!_triggerHeld || !_layerActive)
         {
+            /* 基础改键：只要不在层里就生效。
+             * 放在"放行"之前 —— 命中就吞掉原键并改成目标键。 */
+            if (TryApplyRemap(settings, vk, down)) return true;
+
             /* 按下被我们吞过、抬起还没结账的键，这里必须补吞。
              *
              * 典型路径：用户先松开触发键、再松开层内键（Tab）。

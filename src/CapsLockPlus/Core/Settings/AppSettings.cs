@@ -25,6 +25,25 @@ public sealed class KeyBinding
     public bool IsBound => !string.IsNullOrEmpty(Action) && Action != "doNothing";
 }
 
+/// <summary>
+/// 一条「基础改键」：不按住任何前缀键，把 <see cref="From"/> 换成 <see cref="To"/>。
+///
+/// 与「层内绑定」的区别：
+///   · 层内绑定要按住触发键才生效，一条键可以有多套含义；
+///   · 基础改键**始终生效**，语义就是"这个物理键现在等于那个键"。
+/// 两者冲突时层内绑定优先（层是"临时接管键盘"）。
+/// </summary>
+public sealed class KeyRemap
+{
+    /// <summary>源键名（见 KeyName，如 capslock / esc / lctrl）。</summary>
+    public string From { get; set; } = "";
+
+    /// <summary>目标键名。为空表示不生效。</summary>
+    public string To { get; set; } = "";
+
+    public string Comment { get; set; } = "";
+}
+
 public sealed class QEntry
 {
     /// <summary>
@@ -182,6 +201,14 @@ public sealed class GlobalOptions
 
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
+
+    /// <summary>
+    /// 基础改键表：不按住触发键也生效的全局重映射。
+    ///
+    /// 典型用途：Caps→Esc、Ctrl↔Alt、把笔记本上闲置的键变成 Home/End。
+    /// 只在**基础层**生效；层内绑定优先，键盘钩子也不会因此改变触发键判定。
+    /// </summary>
+    public List<KeyRemap> BaseRemaps { get; set; } = new();
 
     /// <summary>主题：system / light / dark。</summary>
     public string Theme { get; set; } = "system";

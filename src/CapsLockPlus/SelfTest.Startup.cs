@@ -2,6 +2,7 @@
 using System.Text;
 using System.Xml.Linq;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Text;
@@ -168,5 +169,57 @@ public static partial class SelfTest
         string trimmed = UiText.FailedAt("打开网址", "拒绝访问。", at);
         Check("失败文案：原因末尾句号被去掉",
             trimmed.Contains("拒绝访问 ·") || trimmed.Contains("拒绝访问 "), trimmed);
+    }
+
+    /// <summary>
+    /// 基础改键（不按住前缀键也生效的重映射）。
+    ///
+    /// 重点验证三件事：
+    ///   ① 预设能成对写入、再点一次能整体取消；
+    ///   ② 同一个源键只保留一条（否则字典里后者覆盖前者，界面却显示两条）；
+    ///   ③ 非法键名与"自己映射自己"必须被忽略，不能让钩子白吞按键。
+    /// </summary>
+    private static void TestBaseRemap()
+    {
+        var list = new List<KeyRemap>();
+        var capsEsc = KeyRemapMap.FindPreset("capsEsc");
+        Check("改键：预设存在", capsEsc != null);
+        if (capsEsc == null) return;
+
+        Check("改键：启用返回 true", KeyRemapMap.Toggle(list, capsEsc));
+        CheckEqual("改键：成对写入两条", list.Count, 2);
+
+        var map = KeyRemapMap.Build(list);
+        Check("改键：Caps 映射到 Esc",
+            map.TryGetValue(0x14, out int toEsc) && toEsc == 0x1B, map.Count.ToString());
+
+        Check("改键：再点一次返回 false", !KeyRemapMap.Toggle(list, capsEsc));
+        CheckEqual("改键：取消后清空", list.Count, 0);
+
+        // 同源键只保留一条
+        list.Add(new KeyRemap { From = "capslock", To = "esc" });
+        var capsCtrl = KeyRemapMap.FindPreset("capsCtrl");
+        if (capsCtrl != null) KeyRemapMap.Toggle(list, capsCtrl);
+        CheckEqual("改键：同源键只保留一条",
+            list.Count(r => string.Equals(r.From, "capslock", StringComparison.OrdinalIgnoreCase)), 1);
+        Check("改键：保留后写入的目标",
+            KeyRemapMap.Build(list).TryGetValue(0x14, out int toCtrl) && toCtrl == 0xA2);
+
+        // 非法与自映射
+        var bad = KeyRemapMap.Build(new[]
+        {
+            new KeyRemap { From = "", To = "esc" },
+            new KeyRemap { From = "tab", To = "" },
+            new KeyRemap { From = "tab", To = "tab" },
+            new KeyRemap { From = "不存在的键", To = "esc" },
+        });
+        CheckEqual("改键：非法与自映射被忽略", bad.Count, 0);
+
+        Check("改键：指纹随内容变化",
+            KeyRemapMap.Stamp(new[] { new KeyRemap { From = "a", To = "b" } }) !=
+            KeyRemapMap.Stamp(new[] { new KeyRemap { From = "a", To = "c" } }));
+
+        Check("改键：描述含箭头",
+            KeyRemapMap.Describe(new[] { new KeyRemap { From = "capslock", To = "esc" } }).Contains("→"));
     }
 }

@@ -75,6 +75,28 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 基础改键：不按住前缀键也生效 -->
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '基础改键'}" Style="{StaticResource Text.Body}" />
+                        <TextBlock Text="{loc:T '不用按住任何前缀键，直接把某个键换成另一个键。层内绑定优先于这里。'}"
+                                   Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
+                                    Content="Caps ↔ Esc" Tag="capsEsc" Click="OnRemapPresetClick" />
+                            <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
+                                    Content="Ctrl ↔ Alt" Tag="ctrlAlt" Click="OnRemapPresetClick" />
+                            <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
+                                    Content="Caps → Ctrl" Tag="capsCtrl" Click="OnRemapPresetClick" />
+                            <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
+                                    Content="Win ↔ Alt" Tag="winAlt" Click="OnRemapPresetClick" />
+                            <Button x:Name="RemapClearButton" Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
+                                    Content="{loc:T '清除全部'}" Visibility="Collapsed" Click="OnRemapClearClick" />
+                        </WrapPanel>
+                        <TextBlock x:Name="RemapStateText" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
                     <StackPanel>
                         <Grid>

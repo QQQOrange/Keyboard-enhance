@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Localization;
 using CapsLockPlus.UI.Windows;
 using CapsLockPlus.Core.Settings;
@@ -29,6 +30,7 @@ public partial class SettingsView : UserControl
         _suppress = true;
         var g = _host.Settings.Global;
         RefreshPermission();
+        RefreshRemapState();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -75,6 +77,54 @@ public partial class SettingsView : UserControl
     private void Save()
     {
         _host?.SaveSettings();
+    }
+
+    // ---------------- 基础改键 ----------------
+
+    /// <summary>
+    /// 点预设按钮：已启用就取消，否则补齐。
+    /// 只有"成对"的预设（如 Caps↔Esc）才需要这样处理；单向映射也走同一条路。
+    /// </summary>
+    private void OnRemapPresetClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not string id) return;
+
+        var preset = KeyRemapMap.FindPreset(id);
+        if (preset == null) return;
+
+        bool on = KeyRemapMap.Toggle(_host.Settings.Global.BaseRemaps, preset);
+        Save();
+        RefreshRemapState();
+        _host.Notify(on
+            ? Loc.F("已启用改键：{0}", preset.Title)
+            : Loc.F("已取消改键：{0}", preset.Title));
+    }
+
+    private void OnRemapClearClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        if (_host.Settings.Global.BaseRemaps.Count == 0) return;
+
+        _host.Settings.Global.BaseRemaps.Clear();
+        Save();
+        RefreshRemapState();
+        _host.Notify(Loc.T("已清除全部基础改键"));
+    }
+
+    /// <summary>状态行：列出当前生效的改键，空则明说"未启用"。</summary>
+    private void RefreshRemapState()
+    {
+        if (RemapStateText == null) return;
+
+        var list = _host?.Settings.Global.BaseRemaps;
+        string desc = list == null || list.Count == 0 ? "" : KeyRemapMap.Describe(list);
+
+        RemapStateText.Text = string.IsNullOrEmpty(desc)
+            ? Loc.T("当前未启用任何基础改键")
+            : Loc.F("当前生效：{0}", desc);
+        RemapClearButton.Visibility = list == null || list.Count == 0
+            ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OnStartupChanged(object sender, RoutedEventArgs e)
