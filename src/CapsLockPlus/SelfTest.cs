@@ -126,6 +126,9 @@ public static partial class SelfTest
         Section("规则分享");
         TestRuleShare();
 
+        Section("片段可编辑性");
+        TestEditableTargetRule();
+
         Section("启动密码");
         TestStartupPassword();
 

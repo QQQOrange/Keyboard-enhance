@@ -543,4 +543,24 @@ public static partial class SelfTest
         Check("分享：坏码返回错误", err3 != null);
         CheckEqual("分享：坏码不改配置", added3, 0);
     }
+    /// <summary>
+    /// 片段展开前的"可编辑性"判定。
+    ///
+    /// 策略是"只对明确不可编辑的跳过"：拿不到信息时一律允许，
+    /// 否则游戏/自绘界面里的片段会整体失效。
+    /// </summary>
+    private static void TestEditableTargetRule()
+    {
+        // 明确拒绝的
+        Check("可编辑性：按钮上跳过", EditableTarget.ShouldSkip("Button", null, null));
+        Check("可编辑性：菜单项上跳过", EditableTarget.ShouldSkip("MenuItem", null, null));
+        Check("可编辑性：只读值跳过", EditableTarget.ShouldSkip("Edit", true, null));
+        Check("可编辑性：只读文本跳过", EditableTarget.ShouldSkip("Document", null, true));
+
+        // 允许的
+        Check("可编辑性：编辑框允许", !EditableTarget.ShouldSkip("Edit", false, null));
+        Check("可编辑性：文档允许", !EditableTarget.ShouldSkip("Document", null, false));
+        Check("可编辑性：未知类型默认允许", !EditableTarget.ShouldSkip("Pane", null, null));
+        Check("可编辑性：完全取不到信息也允许", !EditableTarget.ShouldSkip(null, null, null));
+    }
 }

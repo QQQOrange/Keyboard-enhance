@@ -1862,6 +1862,11 @@ public sealed class HotkeyEngine : IDisposable
         {
             try
             {
+                /* 焦点不在可编辑控件上就放弃展开：
+                 * 否则 Backspace 会去删别的东西、内容会打到别处。
+                 * 判断放在队列里（STA），不能放钩子里。 */
+                if (!Text.EditableTarget.AllowsTextInput()) return;
+
                 for (int i = 0; i < deleteCount; i++)
                 {
                     InputSender.Tap(0x08);          // Backspace
