@@ -1398,4 +1398,117 @@ public static partial class SelfTest
         Check("两层的触发键不是同一个键", TriggerOf(1) != TriggerOf(2),
             $"{TriggerOf(1)} vs {TriggerOf(2)}");
     }
+
+    /// <summary>
+    /// 子层键的"重复触发"与"可观测性"回归。
+    ///
+    /// 用户报的现象：按住子层键（Tab）时，系统自动重复的 down 会落进
+    /// combo 查找，被拼成 caps_tab_tab；一旦这个组合键恰好有绑定，
+    /// 按住子层键就会反复触发它 —— 表现为"Tab 一直重复触发，层没切换"。
+    ///
+    /// 修复后：
+    ///   ① 子层键的重复 down 直接吞掉，不再做 combo 查找；
+    ///   ② 子层进入/离开通过 ActiveSubLayer + SubLayerChanged 可见。
+    /// </summary>
+    private static void TestSubLayerRepeatAndState()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock", LayerId = 1, HoldMs = 60, Enabled = true,
+        });
+
+        var layer = s.Layers.First(l => l.Id == 1);
+        layer.SubLayers = new List<SubLayerDef> { new() { Key = "tab" } };
+        layer.SubLayerModifiers.Clear();
+        layer.Keys.RemoveAll(b =>
+            string.Equals(b.Combo, "caps_tab_tab", StringComparison.OrdinalIgnoreCase));
+        // 故意绑 caps_tab_tab：重复 down 若落进 combo 查找就会触发它
+        layer.Keys.Add(new KeyBinding { Combo = "caps_tab_tab", Action = "qbar" });
+
+        var fired = new List<string>();
+        var subEvents = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+        engine.SubLayerChanged += v => { lock (subEvents) subEvents.Add(v); };
+        engine.StartHoldTimer();
+        engine.EnterLayerImmediatelyForTest = true;
+
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("子层重复：进第 1 层", engine.ActiveLayer, 1);
+
+        bool firstSwallow = engine.SimulateKey(VK.Tab, true);
+        Check("子层键首次按下被吞掉", firstSwallow);
+        CheckEqual("ActiveSubLayer 记录 tab", engine.ActiveSubLayer, "tab");
+
+        for (int i = 0; i < 5; i++)
+        {
+            bool rep = engine.SimulateKey(VK.Tab, true);
+            Check($"子层键重复 #{i + 1} 被吞掉", rep);
+        }
+        DoEvents(60);
+        lock (fired)
+            Check("子层键重复不会触发 caps_tab_tab", fired.Count == 0,
+                string.Join(",", fired));
+        CheckEqual("重复期间子层仍是 tab", engine.ActiveSubLayer, "tab");
+
+        engine.SimulateKey(VK.Tab, false);
+        CheckEqual("松开后子层清空", engine.ActiveSubLayer, "");
+        lock (subEvents)
+            Check("子层进入/离开各通知一次",
+                subEvents.Count == 2 && subEvents[0] == "tab" && subEvents[1] == "",
+                string.Join("|", subEvents));
+
+        // 触发键按住期间的重复 down（物理上仍按住）不能把层复位
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("触发键重复 down 后层仍在", engine.ActiveLayer, 1);
+        Check("触发键重复 down 后仍视为按住", engine.IsTriggerHeld);
+
+        engine.SimulateKey(VK.CapsLock, false);
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
+    /// 关闭 HoldOnOtherKey 时，子层键在长按阈值之前也必须进层并被吞掉。
+    ///
+    /// 否则这段窗口里子层键（典型是 Tab）会漏给前台，按住就连续触发
+    /// 原生功能，而层始终进不去。这是本次"Tab 反复跳焦点"的另一条路径。
+    /// </summary>
+    private static void TestSubLayerKeyEntersLayerBeforeHold()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "capslock", LayerId = 1, HoldMs = 5000,
+            HoldOnOtherKey = false, Enabled = true,
+        });
+
+        var layer = s.Layers.First(l => l.Id == 1);
+        layer.SubLayers = new List<SubLayerDef> { new() { Key = "tab" } };
+        layer.SubLayerModifiers.Clear();
+
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) => true);
+        engine.StartHoldTimer();     // 不设 EnterLayerImmediatelyForTest，模拟未到阈值
+
+        engine.SimulateKey(VK.CapsLock, true);
+        CheckEqual("长阈值下刚按下还没进层", engine.ActiveLayer, -1);
+
+        bool tabSwallow = engine.SimulateKey(VK.Tab, true);
+        Check("HoldOnOtherKey=false 时子层键仍被吞掉", tabSwallow);
+        CheckEqual("子层键按下后立即进层", engine.ActiveLayer, 1);
+        CheckEqual("子层键被识别", engine.ActiveSubLayer, "tab");
+
+        engine.SimulateKey(VK.Tab, false);
+        engine.SimulateKey(VK.CapsLock, false);
+        engine.Dispose();
+        queue.Dispose();
+    }
 }

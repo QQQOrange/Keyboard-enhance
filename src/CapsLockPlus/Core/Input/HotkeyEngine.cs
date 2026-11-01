@@ -45,6 +45,19 @@ public sealed class HotkeyEngine : IDisposable
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _swallowedDown = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _swallowedUp = new();
 
+    /// <summary>
+    /// 物理按键状态：钩子看到的每个 down 加入、每个 up 移除（**包括被吞掉的触发键**）。
+    ///
+    /// 只用来可靠地区分"系统自动重复"和"用户重新按下"。
+    /// 旧实现看"两次 down 间隔 &lt; 100ms"，把键盘重复速率调慢
+    /// （2~3 次/秒，间隔 300~500ms）的用户会踩到：重复 down 被当成
+    /// 重新按下 → <see cref="ResetTriggerState"/> → 重新进层，
+    /// 表现就是"层被反复踢掉、停不在目标层"。
+    ///
+    /// 这张表由钩子线程写、界面线程读，用并发字典保证原子性。
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _physDown = new();
+
     // 当前被按住的触发键（同一时刻只认定一个，避免冲突）
     private int _activeTriggerVk = -1;
     private TriggerKey? _activeTrigger;
@@ -229,6 +242,11 @@ public sealed class HotkeyEngine : IDisposable
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
         _lastTriggerDownTick = 0;
         _lastKeyActivity = DateTime.Now;
+        if (!string.IsNullOrEmpty(_subLayerKeyDown))
+        {
+            _subLayerKeyDown = "";
+            SubLayerChanged?.Invoke("");
+        }
         ClearContinuousRepeat();
     }
 
@@ -237,6 +255,18 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>当前激活的层（未激活时为 -1）。</summary>
     public int ActiveLayer => _layerActive ? _activeLayer : -1;
+
+    /// <summary>
+    /// 当前按住的非修饰键子层键（空 = 没有子层）。
+    ///
+    /// 以前这个状态只写在私有字段 <c>_subLayerKeyDown</c> 里，界面 / OSD
+    /// 完全看不到"已经切到 Tab 子层"，用户感受就是"层没切换"。
+    /// 现在对外开放，并配合 <see cref="SubLayerChanged"/> 通知。
+    /// </summary>
+    public string ActiveSubLayer => _subLayerKeyDown;
+
+    /// <summary>进入 / 离开子层时触发；参数是子层键名，离开时是空串。</summary>
+    public event Action<string>? SubLayerChanged;
 
     /// <summary>当前激活的触发键名（未激活时为 null）。</summary>
     public string? ActiveTriggerKey => _triggerHeld ? _activeTrigger?.Key : null;
@@ -765,6 +795,18 @@ public sealed class HotkeyEngine : IDisposable
 
         _lastKeyActivity = DateTime.Now;
 
+        /* 先取"本次事件到来之前这个键是否已经处于按下状态"，再把本次事件
+         * 写进物理状态表。顺序不能反 —— 先写后读的话，本次 down 永远
+         * 显示"已按下"，就再也分不出首次按下和自动重复了。
+         *
+         * 钩子对**所有**按键（含被吞掉的触发键/层内键）都会回调到
+         * OnKeyEvent，所以这张表是可靠的物理按下视图；
+         * 也正因为如此，<see cref="OnTriggerDown"/> 可以不再依赖
+         * "两次 down 间隔"这种会被键盘重复速率影响的猜测。 */
+        bool wasPhysicallyDown = _physDown.ContainsKey(vk);
+        if (down) _physDown[vk] = 0;
+        else _physDown.TryRemove(vk, out _);
+
         /* 测试页专用：把真实按键抛出去。
          *
          * 放在最前面（暂停判断、触发键判断之前）——
@@ -826,7 +868,7 @@ public sealed class HotkeyEngine : IDisposable
         {
             // 按下和抬起都吞掉：短按的原功能由 OnTriggerUp 里补发，
             // 长按则彻底不发出。这样不会污染系统的按键状态。
-            if (down) OnTriggerDown(settings, vk);
+            if (down) OnTriggerDown(settings, vk, wasPhysicallyDown);
             else OnTriggerUp(settings, vk);
             return true;
         }
@@ -845,11 +887,25 @@ public sealed class HotkeyEngine : IDisposable
              * 保留切换大小写这类原功能。
              *
              * 这是 QMK / kanata 里 tap-hold 的标准做法（hold-on-other-key-press）。 */
-            if (down && _activeTrigger?.HoldOnOtherKey == true)
+            if (down)
             {
-                _layerActive = true;
-                _tapHandled = true;      // 已经不算"干净短按"了
-                CoreLog.Info($"触发键 {_activeTrigger.Key} 期间按了其它键，立即进入第 {_activeLayer} 层");
+                /* 子层键即使没开 HoldOnOtherKey 也要立刻进层。
+                 *
+                 * 否则在"触发键已按下、还没到长按阈值"这段窗口里，子层键会
+                 * 走到下面第 3 步被放行 —— 按住就触发它的原生功能
+                 * （最典型的就是 Tab 连续跳焦点），而层始终进不去。
+                 * 用户关掉 HoldOnOtherKey 本意是"组合键要等一等"，
+                 * 不是"子层键漏给前台"。 */
+                string? pressedName = KeyName.NameOf(vk);
+                bool isSubLayerKey = pressedName != null && IsSubLayerKey(settings, pressedName);
+
+                if (_activeTrigger?.HoldOnOtherKey == true || isSubLayerKey)
+                {
+                    _layerActive = true;
+                    _tapHandled = true;      // 已经不算"干净短按"了
+                    CoreLog.Info($"触发键 {_activeTrigger?.Key} 期间按了" +
+                                 $"{(isSubLayerKey ? "子层键" : "其它键")}，立即进入第 {_activeLayer} 层");
+                }
             }
         }
 
@@ -1082,7 +1138,7 @@ public sealed class HotkeyEngine : IDisposable
         => s.Triggers.FirstOrDefault(t =>
             t.Enabled && ParseTrigger(t.Key) is { } m && m.Matches(vk));
 
-    private void OnTriggerDown(AppSettings s, int vk)
+    private void OnTriggerDown(AppSettings s, int vk, bool wasPhysicallyDown)
     {
         /* 自动重复：按住触发键时系统会反复发 down。
          *
@@ -1101,15 +1157,20 @@ public sealed class HotkeyEngine : IDisposable
         {
             /* 区分"系统自动重复"和"用户重新按下"。
              *
-             * 这里**不能**看 GetAsyncKeyState：触发键的按下被我们吞掉了，
-             * 系统层面它从未被按下，物理状态读出来永远是 false ——
-             * 那样每一次真实的重新按下都会被误判成"上次抬起丢了"，
-             * 日志里刷一片警告，而且每次都要先复位一遍。
+             * 主判据改为**物理按下状态**：钩子已经看到过这个键的 down、
+             * 还没看到 up（wasPhysicallyDown == true），那它就是按住不放
+             * 产生的重复 down，与键盘重复速率无关。
              *
-             * 改看两次 down 的间隔：系统自动重复大概 30~50ms 一次，
-             * 而人不可能在 100ms 内完成"松开再按下"。 */
-            bool isAutoRepeat = _lastTriggerDownTick != 0
-                                && nowTick - _lastTriggerDownTick < 100;
+             * 旧实现只看"两次 down 间隔 < 100ms"：Windows 的首次重复延迟
+             * 默认 250~500ms 且可调，用户把重复速率调慢后，第二次起的 down
+             * 全部落在 100ms 之外，被误判成"重新按下"→ 复位 → 重新进层，
+             * 表现就是"层反复被踢掉、停不在目标层"。
+             *
+             * 兜底：极少数环境里 up 事件会丢，物理状态还残留；但 100ms 内
+             * 不可能有人真的"松开再按下"，这种情况仍按重复处理。 */
+            bool isAutoRepeat = wasPhysicallyDown
+                                || (_lastTriggerDownTick != 0
+                                    && nowTick - _lastTriggerDownTick < 100);
 
             if (isAutoRepeat)
             {
@@ -1242,6 +1303,13 @@ public sealed class HotkeyEngine : IDisposable
         _activeLayer = -1;
         _swallowedUp.Clear();
         _swallowedDown.Clear();
+        /* 子层状态跟着触发键一起退出：否则松开触发键后 ActiveSubLayer
+         * 还停在 "tab"，界面会显示一个不存在的子层。 */
+        if (!string.IsNullOrEmpty(_subLayerKeyDown))
+        {
+            _subLayerKeyDown = "";
+            SubLayerChanged?.Invoke("");
+        }
         ClearContinuousRepeat();      // 层都没了，连续调节当然要停
         TriggerHeldChanged?.Invoke(false);
     }
@@ -1338,10 +1406,25 @@ public sealed class HotkeyEngine : IDisposable
          *
          * 命中就**吞掉并记住**，接下来的按键会带上这个前缀去查绑定
          * （例如 Tab 子层 + Q → caps_tab_q）。 */
+        /* 已按住的子层键的**系统自动重复**：直接吞掉。
+         *
+         * 不能让它落进下面的 combo 查找 —— 那会把重复 down 拼成
+         * caps_tab_tab 这种不存在的组合键；万一用户真的绑了这个 ID，
+         * 按住子层键就会反复触发它。 */
+        if (!string.IsNullOrEmpty(_subLayerKeyDown) &&
+            string.Equals(keyName, _subLayerKeyDown, StringComparison.OrdinalIgnoreCase))
+        {
+            _swallowedDown.TryAdd(vk, 0);
+            _swallowedUp.TryAdd(vk, 0);
+            return true;
+        }
+
         if (string.IsNullOrEmpty(_subLayerKeyDown) && IsSubLayerKey(settings, keyName))
         {
             _subLayerKeyDown = keyName;
+            _swallowedDown.TryAdd(vk, 0);   // 记下 down：抬起时成对清理、重复时能被识别
             _swallowedUp.TryAdd(vk, 0);
+            SubLayerChanged?.Invoke(keyName);
             return true;
         }
 
@@ -1458,6 +1541,7 @@ public sealed class HotkeyEngine : IDisposable
             string.Equals(KeyName.NameOf(vk), _subLayerKeyDown, StringComparison.OrdinalIgnoreCase))
         {
             _subLayerKeyDown = "";
+            SubLayerChanged?.Invoke("");
         }
 
         /* ⚠ 左右修饰键和通用码都要清。
@@ -1560,5 +1644,6 @@ public sealed class HotkeyEngine : IDisposable
             _holdTimer = null;
         }
         _hook.Dispose();
+        _physDown.Clear();
     }
 }

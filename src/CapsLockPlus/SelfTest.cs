@@ -171,6 +171,8 @@ public static partial class SelfTest
         TestTriggerBadgeFollowsLayer();
         TestSubLayers();
         TestSubLayerCombos();
+        TestSubLayerRepeatAndState();
+        TestSubLayerKeyEntersLayerBeforeHold();
         TestDirectSearch();
         TestTypeTextAction();
         TestImeGuard();
