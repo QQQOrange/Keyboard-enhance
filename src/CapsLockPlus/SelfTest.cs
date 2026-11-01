@@ -120,6 +120,9 @@ public static partial class SelfTest
         Section("Qbar 搜动作");
         TestQbarActionSearch();
 
+        Section("场景模板");
+        TestScenarioPacks();
+
         Section("启动密码");
         TestStartupPassword();
 

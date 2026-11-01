@@ -479,4 +479,34 @@ public static partial class SelfTest
         svc.Execute(actionHit, cb);
         CheckEqual("Qbar：回车执行到动作", ran, "qbar");
     }
+    /// <summary>
+    /// 场景模板：合并语义。
+    ///
+    /// 关键要求是"重复点击不叠加"——否则用户点两次就会多出一堆重复绑定，
+    /// 而重复绑定的表现是"按键行为变得莫名其妙"，极难排查。
+    /// </summary>
+    private static void TestScenarioPacks()
+    {
+        var s = DefaultSettings.Create();
+        var pack = ScenarioPacks.Find("vim");
+        Check("模板：内置包存在", pack != null);
+        if (pack == null) return;
+
+        int layerId = s.Layers.First().Id;
+        // 清空默认绑定：出厂配置自带 WASD 等绑定，不清掉测不出"新增"的真实行为
+        s.Layers.First().Keys.Clear();
+        var (added1, _) = ScenarioPacks.Apply(s, pack, layerId);
+        Check("模板：首次有新增", added1 > 0, added1.ToString());
+
+        var (added2, skipped2) = ScenarioPacks.Apply(s, pack, layerId);
+        Check("模板：二次不重复添加", added2 == 0, added2.ToString());
+        Check("模板：二次全部被跳过", skipped2 > 0, skipped2.ToString());
+
+        var layer = s.Layers.First();
+        string combo = KeyName.BuildComboEx(KeyModifiers.None, "h");
+        Check("模板：层内绑定已写入",
+            layer.Keys.Any(k => k.Combo == combo && k.Action == "moveLeft"));
+        Check("模板：基础改键已写入",
+            s.Global.BaseRemaps.Any(r => r.From == "capslock" && r.To == "esc"));
+    }
 }

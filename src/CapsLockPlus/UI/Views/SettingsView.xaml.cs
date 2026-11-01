@@ -85,6 +85,31 @@ public partial class SettingsView : UserControl
         _host?.SaveSettings();
     }
 
+    // ---------------- 场景模板 ----------------
+
+    /// <summary>
+    /// 应用模板：合并进当前配置（只加缺失项）。
+    /// 重复点同一个模板等于什么都不做，所以不需要二次确认。
+    /// </summary>
+    private void OnApplyPackClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        if (sender is not FrameworkElement fe || fe.Tag is not string id) return;
+
+        var pack = ScenarioPacks.Find(id);
+        if (pack == null) return;
+
+        int layerId = _host.Settings.Layers.FirstOrDefault()?.Id ?? 1;
+        var (added, skipped) = ScenarioPacks.Apply(_host.Settings, pack, layerId);
+
+        Save();
+        Refresh();
+
+        _host.Notify(added > 0
+            ? Loc.F("已添加 {0} 项（跳过已存在的 {1} 项）", added, skipped)
+            : Loc.F("没有新增内容：这 {0} 项都已存在", skipped));
+    }
+
     // ---------------- 组合键 ----------------
 
     /// <summary>组合键可用的键：字母/数字 + 常用功能键（同按才需要字母）。</summary>
