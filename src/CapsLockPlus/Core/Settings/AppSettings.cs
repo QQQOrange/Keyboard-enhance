@@ -93,6 +93,15 @@ public sealed class Snippet
     /// <summary>展开后的内容（支持换行）。</summary>
     public string Text { get; set; } = "";
 
+    /// <summary>
+    /// 只在哪些程序里展开（进程名，逗号分隔，如 `code.exe, notepad.exe`）。
+    ///
+    /// 留空 = 所有程序都展开（旧行为，默认值）。
+    /// 存在的意义：片段误触是不可逆的输入副作用 —— 在聊天窗口里打 `;log`
+    /// 也会展开成一大段代码，是这类功能最容易被卸载的原因。
+    /// </summary>
+    public string Apps { get; set; } = "";
+
     public string Comment { get; set; } = "";
 }
 

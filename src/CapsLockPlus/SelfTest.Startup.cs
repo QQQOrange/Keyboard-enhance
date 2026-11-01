@@ -393,6 +393,30 @@ public static partial class SelfTest
         string longBuf = new string('a', SnippetMatcher.MaxBuffer + 30);
         CheckEqual("片段：缓冲区截断到上限",
             SnippetMatcher.Trim(longBuf).Length, SnippetMatcher.MaxBuffer);
+
+        // ---- 按应用限定 ----
+        CheckEqual("片段：进程名规范化补 .exe", SnippetMatcher.Normalize("Code"), "code.exe");
+        CheckEqual("片段：进程名规范化转小写", SnippetMatcher.Normalize("  Notepad.EXE "), "notepad.exe");
+        CheckEqual("片段：空进程名保持空", SnippetMatcher.Normalize(""), "");
+
+        var scoped = new Snippet { Trigger = ";log", Text = "X", Apps = "code.exe, notepad" };
+        Check("片段：列表内命中（写全名）", SnippetMatcher.AllowedIn(scoped, "code.exe"));
+        Check("片段：列表内命中（不写 .exe）", SnippetMatcher.AllowedIn(scoped, "Notepad"));
+        Check("片段：列表外不命中", !SnippetMatcher.AllowedIn(scoped, "chrome.exe"));
+
+        var global = new Snippet { Trigger = ";g", Text = "Y" };
+        Check("片段：没配限定则到处可用", SnippetMatcher.AllowedIn(global, "chrome.exe"));
+
+        /* fail open：拿不到前台进程时不能拦。
+         * 否则受保护进程（部分安全软件/游戏）里的片段会一起失效，
+         * 而用户完全看不出原因。 */
+        Check("片段：拿不到前台进程时放行", SnippetMatcher.AllowedIn(scoped, ""));
+        Check("片段：前台进程为 null 时放行", SnippetMatcher.AllowedIn(scoped, null));
+
+        var scopedOnly = new List<Snippet> { scoped };
+        CheckEqual("片段：限定的程序里能匹配", SnippetMatcher.Match(scopedOnly, ";log", "code.exe")?.Text, "X");
+        Check("片段：其它程序里匹配不到", SnippetMatcher.Match(scopedOnly, ";log", "chrome.exe") == null);
+        CheckEqual("片段：不传进程时按旧行为匹配", SnippetMatcher.Match(scopedOnly, ";log")?.Text, "X");
     }
     /// <summary>
     /// 组合键（两键同按）。
@@ -1022,6 +1046,21 @@ public static partial class SelfTest
         Check("体检：片段触发词重复", RuleConflicts.Analyze(s8).Any(c => c.Message.Contains("只有最后一条")));
         Check("体检：这条指向片段卡片",
             RuleConflicts.Analyze(s8).Any(c => c.Message.Contains("只有最后一条") && c.Target == ConflictTarget.Snippet));
+
+        /* 同触发词但限定不同程序是正当配置（一个在 IDE 展开、一个在聊天里展开），
+         * 不能报重复 —— 否则用户会去删掉一条本来有用的。 */
+        var s8b = new AppSettings();
+        s8b.Global.Snippets.Add(new Snippet { Trigger = ";log", Text = "1", Apps = "code.exe" });
+        s8b.Global.Snippets.Add(new Snippet { Trigger = ";log", Text = "2", Apps = "notepad.exe" });
+        Check("体检：同触发词不同适用范围不算重复",
+            !RuleConflicts.Analyze(s8b).Any(c => c.Message.Contains("只有最后一条")));
+
+        // 但写法不同、范围相同（顺序/大小写不同）仍应算重复
+        var s8c = new AppSettings();
+        s8c.Global.Snippets.Add(new Snippet { Trigger = ";log", Text = "1", Apps = "code.exe, notepad" });
+        s8c.Global.Snippets.Add(new Snippet { Trigger = ";log", Text = "2", Apps = "Notepad.exe, Code" });
+        Check("体检：范围相同只是写法不同仍算重复",
+            RuleConflicts.Analyze(s8c).Any(c => c.Message.Contains("只有最后一条")));
 
         // ---- 组合键两个键相同 ----
         var s9 = new AppSettings();

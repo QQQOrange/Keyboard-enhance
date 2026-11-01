@@ -1,4 +1,4 @@
-using CapsLockPlus.Core.Settings;
+﻿using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus.Core.Input;
 
@@ -40,6 +40,13 @@ public static class SnippetMatcher
     /// 命中条件是"缓冲区以触发词结尾，且触发词前面不是词字符"。
     /// </summary>
     public static Snippet? Match(IEnumerable<Snippet>? snippets, string buffer)
+        => Match(snippets, buffer, null);
+
+    /// <summary>
+    /// 带前台程序的匹配。<paramref name="process"/> 为空表示"不知道前台是什么"，
+    /// 此时**不做限定**（fail open）：判定不了就别拦，否则片段会在所有程序里一起失效。
+    /// </summary>
+    public static Snippet? Match(IEnumerable<Snippet>? snippets, string buffer, string? process)
     {
         if (snippets == null || string.IsNullOrEmpty(buffer)) return null;
 
@@ -47,6 +54,7 @@ public static class SnippetMatcher
         foreach (var s in snippets)
         {
             if (s == null || !IsValidTrigger(s.Trigger)) continue;
+            if (!AllowedIn(s, process)) continue;
             if (!buffer.EndsWith(s.Trigger, StringComparison.Ordinal)) continue;
 
             int start = buffer.Length - s.Trigger.Length;
@@ -56,6 +64,36 @@ public static class SnippetMatcher
             if (best == null || s.Trigger.Length > best.Trigger.Length) best = s;
         }
         return best;
+    }
+
+    /// <summary>
+    /// 这条片段是否允许在指定程序里展开。
+    ///
+    /// 三种情况：
+    ///   · 没配 Apps → 到处都行（旧行为）；
+    ///   · 配了 Apps 但拿不到前台进程（受保护进程等）→ **放行**（fail open）；
+    ///   · 配了 Apps → 按进程名比较，不区分大小写，允许写 `.exe` 或不写。
+    /// </summary>
+    public static bool AllowedIn(Snippet snippet, string? process)
+    {
+        string apps = (snippet.Apps ?? "").Trim();
+        if (apps.Length == 0) return true;
+        if (string.IsNullOrWhiteSpace(process)) return true;
+
+        string current = Normalize(process);
+        foreach (string raw in apps.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (Normalize(raw) == current) return true;
+        }
+        return false;
+    }
+
+    /// <summary>进程名规范化：去空白、转小写、补 .exe，便于 `code` 与 `Code.exe` 互相匹配。</summary>
+    public static string Normalize(string? process)
+    {
+        string p = (process ?? "").Trim().ToLowerInvariant();
+        if (p.Length == 0) return "";
+        return p.EndsWith(".exe", StringComparison.Ordinal) ? p : p + ".exe";
     }
 
     /// <summary>把缓冲区截到上限，只保留末尾部分。</summary>

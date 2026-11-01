@@ -56,6 +56,12 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>叠加层 id，由前台窗口监听写入（钩子线程读，必须 volatile）。</summary>
     private volatile int _appLayerId;
 
+    /// <summary>
+    /// 当前前台进程名（小写，含 .exe），由前台监听写入，供片段做按应用限定。
+    /// 空串 = 还不知道 → 片段不做限定（fail open）。
+    /// </summary>
+    public string ForegroundProcess { get; set; } = "";
+
     /* ---- 双击动作：任意键连按两次触发一个动作 ---- */
     private Dictionary<int, string>? _gestureMap;
     private string _gestureStamp = "";
@@ -1848,7 +1854,7 @@ public sealed class HotkeyEngine : IDisposable
             _snippetBuffer.Append(trimmed);
         }
 
-        var hit = SnippetMatcher.Match(list, _snippetBuffer.ToString());
+        var hit = SnippetMatcher.Match(list, _snippetBuffer.ToString(), ForegroundProcess);
         if (hit == null) return;
 
         _snippetBuffer.Clear();

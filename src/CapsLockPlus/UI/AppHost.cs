@@ -282,6 +282,10 @@ public sealed class AppHost : IDisposable
     /// <summary>前台变化：更新引擎的叠加层。</summary>
     private void OnForegroundChanged(string process)
     {
+        /* 片段要按应用限定，必须每换一次前台就更新 ——
+         * 所以放在下面的"层没变就返回"之前。 */
+        Engine.ForegroundProcess = process;
+
         int layer = AppLayerRules.Match(Settings.Global.AppLayers, process);
         if (layer == Engine.AppLayerId) return;
 

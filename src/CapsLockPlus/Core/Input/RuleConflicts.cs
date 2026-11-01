@@ -221,15 +221,20 @@ public static class RuleConflicts
             }
         }
 
-        // ---- 7. 片段触发词重复 ----
+        /* ---- 7. 片段触发词重复 ----
+         *
+         * 只在**适用程序范围也重叠**时才算重复：
+         * `;log` 限定了 code.exe、另一条 `;log` 限定了 notepad.exe，是正当配置。 */
         var triggersSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var sn in global.Snippets)
         {
             if (string.IsNullOrWhiteSpace(sn.Trigger)) continue;
-            if (!triggersSeen.Add(sn.Trigger))
+
+            string key = sn.Trigger + "|" + ScopeKey(sn.Apps);
+            if (!triggersSeen.Add(key))
             {
                 list.Add(new Conflict(ConflictLevel.Warn,
-                    Loc.F("文本片段「{0}」定义了多次，只有最后一条会展开。", sn.Trigger),
+                    Loc.F("文本片段「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。", sn.Trigger),
                     ConflictTarget.Snippet));
             }
         }
@@ -252,6 +257,21 @@ public static class RuleConflicts
         if (va != null && vb != null) return va.Value == vb.Value;
 
         return string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>片段适用范围的规范化键：排序 + 去重，忽略书写顺序与大小写。</summary>
+    private static string ScopeKey(string? apps)
+    {
+        if (string.IsNullOrWhiteSpace(apps)) return "";
+
+        var names = apps
+            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(SnippetMatcher.Normalize)
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+
+        return string.Join(",", names);
     }
 
     /// <summary>把内部组合键 id 转成可读文本（caps_lalt_q → Alt+Q）。</summary>

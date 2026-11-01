@@ -394,14 +394,45 @@ public partial class SettingsView : UserControl
 
             string preview = (sn.Text ?? "").Replace("\r", " ").Replace("\n", " ");
             if (preview.Length > 24) preview = preview[..24] + "…";
+
+            // 配了"只在某些程序"时把范围显示出来，否则用户看不出为什么在别处不展开
+            string scope = string.IsNullOrWhiteSpace(sn.Apps)
+                ? ""
+                : $"　·　" + Loc.F("仅 {0}", sn.Apps.Trim());
+
             row.Children.Add(new TextBlock
             {
-                Text = $"{sn.Trigger} → {preview}",
+                Text = $"{sn.Trigger} → {preview}{scope}",
                 VerticalAlignment = VerticalAlignment.Center,
                 Style = (Style)FindResource("Text.Tertiary"),
             });
             SnippetList.Items.Add(row);
         }
+    }
+
+    /// <summary>输入框变化时的即时提示：说明这条片段会不会在当前程序里生效。</summary>
+    private void OnSnippetAppsHint(object sender, TextChangedEventArgs e)
+    {
+        if (SnippetAppsHint == null) return;
+
+        string apps = (SnippetAppsBox.Text ?? "").Trim();
+        if (apps.Length == 0)
+        {
+            SnippetAppsHint.Text = Loc.T("当前：在所有程序里都会展开。");
+            return;
+        }
+
+        string current = _host?.Engine.ForegroundProcess ?? "";
+        if (string.IsNullOrWhiteSpace(current))
+        {
+            SnippetAppsHint.Text = Loc.F("当前：只在 {0} 里展开（拿不到当前前台程序，无法预判）。", apps);
+            return;
+        }
+
+        bool hit = SnippetMatcher.AllowedIn(new Snippet { Apps = apps }, current);
+        SnippetAppsHint.Text = hit
+            ? Loc.F("当前：只在 {0} 里展开 —— 现在的前台「{1}」在列表里。", apps, current)
+            : Loc.F("当前：只在 {0} 里展开 —— 现在的前台「{1}」不在列表里，此处不会展开。", apps, current);
     }
 
     private void OnAddSnippetClick(object sender, RoutedEventArgs e)
@@ -410,6 +441,7 @@ public partial class SettingsView : UserControl
 
         string trigger = (SnippetTriggerBox.Text ?? "").Trim();
         string text = SnippetTextBox.Text ?? "";
+        string apps = (SnippetAppsBox.Text ?? "").Trim();
 
         if (!SnippetMatcher.IsValidTrigger(trigger))
         {
@@ -424,11 +456,19 @@ public partial class SettingsView : UserControl
 
         var list = _host.Settings.Global.Snippets;
         var existing = list.FirstOrDefault(x => x.Trigger == trigger);
-        if (existing != null) existing.Text = text;      // 同触发词覆盖
-        else list.Add(new Snippet { Trigger = trigger, Text = text });
+        if (existing != null)
+        {
+            existing.Text = text;       // 同触发词覆盖
+            existing.Apps = apps;
+        }
+        else
+        {
+            list.Add(new Snippet { Trigger = trigger, Text = text, Apps = apps });
+        }
 
         SnippetTriggerBox.Text = "";
         SnippetTextBox.Text = "";
+        SnippetAppsBox.Text = "";
         Save();
         RefreshSnippetEditor();
         _host.Notify(Loc.F("已添加片段：{0}", trigger));
