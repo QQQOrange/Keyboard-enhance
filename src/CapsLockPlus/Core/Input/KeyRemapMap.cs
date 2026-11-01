@@ -111,10 +111,13 @@ public static class KeyRemapMap
         {
             if (string.IsNullOrWhiteSpace(r.From) || string.IsNullOrWhiteSpace(r.To)) continue;
             string scope = NormalizeDevice(r.Device);
+            /* 设备标识（VID/PID）对用户没有意义，展示时换成设备名；
+             * 配置里存的仍是标识 —— 名字会随系统语言变，标识不会。 */
             parts.Add(scope.Length == 0
                 ? $"{KeyName.Display(r.From)} → {KeyName.Display(r.To)}"
                 : Loc.F("{0} → {1}（仅 {2}）",
-                    KeyName.Display(r.From), KeyName.Display(r.To), r.Device));
+                    KeyName.Display(r.From), KeyName.Display(r.To),
+                    KeyboardDevices.DisplayNameOf(r.Device)));
         }
         return string.Join("、", parts);
     }

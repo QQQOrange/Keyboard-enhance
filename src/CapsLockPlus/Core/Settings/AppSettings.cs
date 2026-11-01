@@ -697,7 +697,7 @@ public sealed class SubLayerDef
 public sealed class MacroStep
 {
     /// <summary>
-    /// 步骤类型：keyDown / keyUp / delay / delayRandom / text，
+    /// 步骤类型：keyDown / keyUp / delay / delayRandom / text / setVar，
     /// 以及流程控制 if / else / endIf / loop / endLoop / waitFor / retry / endRetry，
     /// 和执行内置动作的 action。
     ///
@@ -751,12 +751,30 @@ public sealed class MacroStep
     /// <summary>Kind 为 action 时传给动作的参数（多数动作不需要）。</summary>
     public string ActionArg { get; set; } = "";
 
+    /// <summary>
+    /// 变量名。
+    ///
+    /// 两种用法：
+    ///   · Kind 为 setVar 时 —— 要写入的变量名；
+    ///   · Kind 为 loop 时 —— 把"当前是第几轮"写进这个变量（留空则用 i）。
+    ///
+    /// 循环计数走这条而不是另开一个步骤类型：用户想要的本来就是
+    /// "循环 10 次，每次用当前序号"，多一步只会多一处忘配。
+    /// </summary>
+    public string VarName { get; set; } = "";
+
+    /// <summary>
+    /// Kind 为 setVar 时要写入的值。可以含 `{变量}` 占位符（写入前会展开）。
+    /// </summary>
+    public string VarValue { get; set; } = "";
+
     public MacroStep Clone() => new()
     {
         Kind = Kind, Key = Key, Text = Text,
         DelayMs = DelayMs, MinMs = MinMs, MaxMs = MaxMs,
         Cond = Cond, CondValue = CondValue, Not = Not, Count = Count,
         TimeoutMs = TimeoutMs, ActionId = ActionId, ActionArg = ActionArg,
+        VarName = VarName, VarValue = VarValue,
     };
 }
 

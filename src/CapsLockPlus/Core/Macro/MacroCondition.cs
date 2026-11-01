@@ -63,13 +63,20 @@ public static class MacroCondition
     public const string Clipboard = "clipboard";
     public const string ClipboardEmpty = "clipboardEmpty";
 
-    /// <summary>可选的类型（界面下拉用）。</summary>
-    public static readonly string[] Kinds = { App, Title, Clipboard, ClipboardEmpty };
+    /// <summary>变量比较：比较值形如 `i &gt;= 3`（见 <see cref="MacroVars.TryCompare"/>）。</summary>
+    public const string Var = "var";
 
-    /// <summary>判断这个 if 步骤在当前状态下成立与否。</summary>
-    public static bool Evaluate(Core.Settings.MacroStep step, MacroContext ctx)
+    /// <summary>可选的类型（界面下拉用）。</summary>
+    public static readonly string[] Kinds = { App, Title, Clipboard, ClipboardEmpty, Var };
+
+    /// <summary>
+    /// 判断这个 if 步骤在当前状态下成立与否。
+    /// </summary>
+    /// <param name="vars">宏的变量表；为 null 时 `var` 条件一律不成立。</param>
+    public static bool Evaluate(Core.Settings.MacroStep step, MacroContext ctx,
+        MacroVars? vars = null)
         => Matches(step.Cond, step.CondValue, step.Not,
-                   ctx.Process, ctx.Title, ctx.Clipboard);
+                   ctx.Process, ctx.Title, ctx.Clipboard, vars);
 
     /// <summary>
     /// 纯函数版本（自检直接调这个）。
@@ -79,7 +86,7 @@ public static class MacroCondition
     /// 宏会静默走错分支 —— 空值表现为"不成立"更容易被发现。
     /// </summary>
     public static bool Matches(string? kind, string? value, bool not,
-        string? process, string? title, string? clipboard)
+        string? process, string? title, string? clipboard, MacroVars? vars = null)
     {
         string v = (value ?? "").Trim();
         bool hit = (kind ?? App) switch
@@ -88,6 +95,11 @@ public static class MacroCondition
             Title => v.Length > 0 && Contains(title, v),
             Clipboard => v.Length > 0 && Contains(clipboard, v),
             ClipboardEmpty => string.IsNullOrEmpty(clipboard),
+
+            /* 变量条件：表达式写不出来（空）或没有变量表时一律不成立 ——
+             * 与其它条件"比较值为空恒为假"同一条规则，避免刚建好就命中。 */
+            Var => v.Length > 0 && vars != null && vars.TryCompare(v, out bool r) && r,
+
             _ => false,
         };
         return not ? !hit : hit;
@@ -106,6 +118,7 @@ public static class MacroCondition
             Title => Loc.F("标题含「{0}」", Trim(value)),
             Clipboard => Loc.F("剪贴板含「{0}」", Trim(value)),
             ClipboardEmpty => Loc.T("剪贴板为空"),
+            Var => Loc.F("变量「{0}」", Trim(value)),
             _ => kind ?? "",
         };
         return not ? Loc.F("不满足：{0}", body) : body;

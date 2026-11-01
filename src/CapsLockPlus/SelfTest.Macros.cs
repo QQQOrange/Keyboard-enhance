@@ -364,4 +364,36 @@ public static partial class SelfTest
         foreach (string c in cat.Items.Select(i => i.Category).Distinct())
             Check($"分类「{c}」非空", cat.Items.Any(i => i.Category == c));
     }
+
+    /// <summary>
+    /// 宏的变量编辑界面。
+    ///
+    /// 只断言"控件在、默认收起、下拉里有这一项"：这些是**改名或漏加**最容易打断的地方，
+    /// 而它们一旦出错，用户在界面上根本配不出变量步骤（数据层全绿也没用）。
+    /// </summary>
+    private static void TestMacroVarUi()
+    {
+        var view = new UI.Views.MacrosView();
+
+        Check("宏变量界面：有「设置变量」面板", view.FindName("VarEditPanel") != null);
+        Check("宏变量界面：有变量名输入框", view.FindName("VarNameBox") != null);
+        Check("宏变量界面：有变量值输入框", view.FindName("VarValueBox") != null);
+        Check("宏变量界面：有循环计数变量输入框", view.FindName("LoopVarBox") != null);
+        Check("宏变量界面：文本步骤有变量提示", view.FindName("TextVarHint") != null);
+
+        // 默认必须收起：新建/未选步骤时露出一个空面板会让人以为"这一步是设置变量"
+        var panel = view.FindName("VarEditPanel") as System.Windows.FrameworkElement;
+        Check("宏变量界面：设置变量面板默认收起",
+            panel == null || panel.Visibility == System.Windows.Visibility.Collapsed);
+
+        // 条件下拉里要有「变量满足」（否则数据层支持了，界面也选不到）
+        var ensure = typeof(UI.Views.MacrosView).GetMethod("EnsureCondKinds",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        ensure?.Invoke(view, null);
+
+        var box = view.FindName("CondKindBox") as System.Windows.Controls.ComboBox;
+        bool hasVar = box != null && box.Items.OfType<System.Windows.Controls.ComboBoxItem>()
+            .Any(i => (i.Tag as string) == Core.Macro.MacroCondition.Var);
+        Check("宏变量界面：条件下拉有「变量满足」", hasVar);
+    }
 }

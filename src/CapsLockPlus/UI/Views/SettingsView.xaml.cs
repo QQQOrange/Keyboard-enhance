@@ -34,16 +34,20 @@ public partial class SettingsView : UserControl
         RefreshPermission();
         RefreshRemapState();
         RefreshUsage();
-        RefreshConflicts();
 
         /* 设备枚举是 P/Invoke：Refresh 会在每次保存时被调用（用户打字时每个键都保存），
-         * 所以只在第一次进来时枚举，之后靠「刷新」按钮显式更新。 */
+         * 所以只在第一次进来时枚举，之后靠「刷新」按钮显式更新。
+         *
+         * 必须排在 RefreshConflicts 之前：体检结果和"当前生效"状态行里要把设备标识
+         * （VID/PID）换成设备名，而名字来自这次枚举 —— 顺序反了第一次会显示标识。 */
         if (KeyboardList != null && KeyboardList.Items.Count == 0)
         {
             RefreshKeyboards();
             EnsureRemapDeviceItems();
             RefreshDeviceTrackingHint();
+            RefreshRemapState();
         }
+        RefreshConflicts();
         RefreshAppLayerEditor();
         RefreshGestureEditor();
         RefreshSnippetEditor();

@@ -720,6 +720,178 @@ public static partial class SelfTest
         }
     }
     /// <summary>
+    /// 宏的变量与循环计数。
+    ///
+    /// 分两层验证：
+    ///   · 纯数据层（展开、比较、名字合法性）—— 出错会静默打错字，必须逐条钉住；
+    ///   · 播放层（循环计数真的会走）—— 只测 Expand 证明不了播放器把轮次写进去了。
+    /// </summary>
+    private static void TestMacroVars()
+    {
+        var vars = new MacroVars();
+
+        // ---- 名字合法性 ----
+        Check("宏变量：普通名字合法", MacroVars.IsValidName("i"));
+        Check("宏变量：带下划线与数字合法", MacroVars.IsValidName("n_2"));
+        Check("宏变量：空名字不合法", !MacroVars.IsValidName(""));
+        Check("宏变量：含空格不合法", !MacroVars.IsValidName("a b"));
+        Check("宏变量：含花括号不合法（会和占位符冲突）", !MacroVars.IsValidName("a{b"));
+        Check("宏变量：过长不合法",
+            !MacroVars.IsValidName(new string('x', MacroVars.MaxNameLength + 1)));
+
+        Check("宏变量：写入成功", vars.TrySet("i", "7"));
+        CheckEqual("宏变量：读回", vars.Get("i"), "7");
+        CheckEqual("宏变量：名字不区分大小写", vars.Get("I"), "7");
+        Check("宏变量：非法名字写入被拒", !vars.TrySet("a b", "1"));
+        Check("宏变量：未定义变量读出空串", vars.Get("nope") == "");
+        Check("宏变量：空值也算已定义",
+            vars.TrySet("empty", "") && vars.Has("empty") && !vars.Has("nope"));
+
+        // ---- 展开 ----
+        vars.Set("name", "张三");
+        CheckEqual("宏变量：单个占位符", vars.Expand("你好 {name}"), "你好 张三");
+        CheckEqual("宏变量：多个占位符", vars.Expand("{name}-{i}"), "张三-7");
+        CheckEqual("宏变量：无占位符原样返回", vars.Expand("纯文本"), "纯文本");
+        CheckEqual("宏变量：未知占位符原样保留（拼错要看得见）",
+            vars.Expand("{nmae}"), "{nmae}");
+        CheckEqual("宏变量：未知占位符不影响后面的已知变量",
+            vars.Expand("{nmae}{i}"), "{nmae}7");
+        CheckEqual("宏变量：左花括号没有右括号时保留", vars.Expand("a{b"), "a{b");
+        CheckEqual("宏变量：空模板返回空串", vars.Expand(""), "");
+
+        /* 只展开一层：值里含 `{i}` 时不再展开。
+         * 允许递归的话，"变量值里引用自己"会把播放线程卡死。 */
+        vars.Set("loop", "{i}");
+        CheckEqual("宏变量：值不递归展开", vars.Expand("{loop}"), "{i}");
+
+        // ---- 比较 ----
+        vars.Set("i", "3");
+        Check("宏变量：数值大于",
+            vars.TryCompare("i > 2", out bool gt) && gt);
+        Check("宏变量：数值等于（数字不该按字符串比）",
+            vars.TryCompare("i = 3", out bool eq) && eq);
+        Check("宏变量：两边的变量都能比较（右侧写 {名字}）",
+            vars.TrySet("big", "10") && vars.TrySet("small", "9") &&
+            vars.TryCompare("big > {small}", out bool numCmp) && numCmp);
+        Check("宏变量：大于等于用长运算符",
+            vars.TryCompare("i >= 3", out bool ge) && ge);
+        Check("宏变量：不等于",
+            vars.TryCompare("i != 3", out bool ne) && !ne);
+        Check("宏变量：字符串比较",
+            vars.TrySet("who", "张三") && vars.TryCompare("who = 张三", out bool strEq) && strEq);
+        Check("宏变量：只写名字表示有值",
+            vars.TryCompare("who", out bool has) && has);
+        Check("宏变量：未定义变量只写名字为假",
+            vars.TryCompare("nope", out bool noVal) && !noVal);
+        Check("宏变量：空表达式无法求值", !vars.TryCompare("   ", out _));
+
+        // ---- 条件类型接上变量 ----
+        var ctx = new MacroContext("", "", "");
+        var varStep = new MacroStep { Kind = "if", Cond = MacroCondition.Var, CondValue = "i >= 3" };
+        Check("宏变量：条件类型可用", MacroCondition.Evaluate(varStep, ctx, vars));
+        varStep.CondValue = "i >= 9";
+        Check("宏变量：条件不成立时为假", !MacroCondition.Evaluate(varStep, ctx, vars));
+        Check("宏变量：没有变量表时一律不成立",
+            !MacroCondition.Evaluate(
+                new MacroStep { Kind = "if", Cond = MacroCondition.Var, CondValue = "i >= 0" }, ctx));
+
+        // ---- 静态检查：静默失败要能提前看见 ----
+        CheckEqual("宏变量：正常的宏没有提示",
+            MacroVars.Audit(new List<MacroStep>
+            {
+                new() { Kind = "loop", Count = 2, VarName = "i" },
+                new() { Kind = "text", Text = "第 {i} 次" },
+                new() { Kind = "setVar", VarName = "n", VarValue = "{i}" },
+                new() { Kind = "text", Text = "{n}" },
+                new() { Kind = "endLoop" },
+            }).Count, 0);
+
+        var missingName = MacroVars.Audit(new List<MacroStep>
+            { new() { Kind = "setVar", VarName = "", VarValue = "x" } });
+        Check("宏变量：没填变量名会提示", missingName.Count == 1, string.Join(" | ", missingName));
+
+        var badName = MacroVars.Audit(new List<MacroStep>
+            { new() { Kind = "setVar", VarName = "a b", VarValue = "x" } });
+        Check("宏变量：变量名非法会提示", badName.Count == 1, string.Join(" | ", badName));
+
+        var badRef = MacroVars.Audit(new List<MacroStep>
+            { new() { Kind = "text", Text = "{nmae}" } });
+        Check("宏变量：引用未定义变量会提示", badRef.Count == 1, string.Join(" | ", badRef));
+        Check("宏变量：提示里带第几步", badRef.Count == 1 && badRef[0].Contains("第 1 步"), 
+            badRef.Count == 1 ? badRef[0] : "");
+
+        var okDefault = MacroVars.Audit(new List<MacroStep>
+            { new() { Kind = "text", Text = "第 {i} 次" } });
+        CheckEqual("宏变量：默认计数变量 i 不需要定义", okDefault.Count, 0);
+
+        var varCond = MacroVars.Audit(new List<MacroStep>
+            { new() { Kind = "if", Cond = MacroCondition.Var, CondValue = "nope > 1" } });
+        Check("宏变量：条件里引用未定义变量会提示", varCond.Count == 1, string.Join(" | ", varCond));
+
+        // ---- 克隆要带上新字段 ----
+        var src = new MacroStep { Kind = "setVar", VarName = "n", VarValue = "x{i}" };
+        var copy = src.Clone();
+        Check("宏变量：克隆保留名字与值",
+            copy.VarName == "n" && copy.VarValue == "x{i}");
+
+        // ---- 播放：循环计数真的会逐轮推进 ----
+        var macro = new Macro
+        {
+            Name = "自检-变量",
+            Steps = new List<MacroStep>
+            {
+                new() { Kind = "loop", Count = 3, VarName = "i" },
+                new() { Kind = "setVar", VarName = "last", VarValue = "{i}" },
+                new() { Kind = "endLoop" },
+            },
+        };
+
+        string? seenI = null;
+        string? seenLast = null;
+        var done = new System.Threading.ManualResetEventSlim(false);
+
+        using (var player = new MacroPlayer())
+        {
+            Check("宏变量：能播放",
+                player.TryPlay(macro, onCompleted: () =>
+                {
+                    // 在播放线程上读，避免跨线程可见性问题
+                    seenI = player.LastVars?.Get("i");
+                    seenLast = player.LastVars?.Get("last");
+                    done.Set();
+                }));
+            Check("宏变量：播放结束", done.Wait(4000));
+        }
+
+        CheckEqual("宏变量：循环计数停在最后一轮", seenI, "3");
+        CheckEqual("宏变量：循环体里能引用当前轮次", seenLast, "3");
+
+        // 没填计数变量时退回默认名 i，`{i}` 开箱可用
+        var defaultVar = new Macro
+        {
+            Name = "自检-默认计数变量",
+            Steps = new List<MacroStep>
+            {
+                new() { Kind = "loop", Count = 2 },
+                new() { Kind = "endLoop" },
+            },
+        };
+
+        string? fallback = null;
+        var done2 = new System.Threading.ManualResetEventSlim(false);
+        using (var player = new MacroPlayer())
+        {
+            player.TryPlay(defaultVar, onCompleted: () =>
+            {
+                fallback = player.LastVars?.Get(MacroVars.DefaultLoopVar);
+                done2.Set();
+            });
+            done2.Wait(3000);
+        }
+        CheckEqual("宏变量：没填名字时用默认 i", fallback, "2");
+    }
+
+    /// <summary>
     /// 宏的等待条件与重试块。
     ///
     /// 这里必须动**真实的播放线程**：`waitFor` 是唯一会失败的步骤，

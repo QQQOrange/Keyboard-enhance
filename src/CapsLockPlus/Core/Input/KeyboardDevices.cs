@@ -38,6 +38,24 @@ public static class KeyboardDevices
     private const uint RIM_TYPEKEYBOARD = 1;
 
     /// <summary>
+    /// 设备标识 → 友好名。由 <see cref="Group"/> 顺带填充。
+    ///
+    /// ## 为什么用进程内缓存而不是"需要时再枚举"
+    ///
+    /// 配置里存的是 `VID_046D&amp;PID_C31C` 这种标识 —— 它稳定、可比较，
+    /// 但**用户看不懂**。凡是把设备标识显示给用户的地方（改键状态行、规则体检、
+    /// 冲突提示），都要换成设备名。
+    ///
+    /// 这些地方都在保存/刷新的热路径上，而枚举是 P/Invoke + 注册表读取，
+    /// 不能每次都做；配置本身也不带设备名，只能在进程里记一份。
+    ///
+    /// 缓存只增不删：容量是"接过的键盘型号数"，几十条封顶，不值得做淘汰。
+    /// 查不到就原样返回标识 —— 展示逻辑绝不能因此报错。
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _names =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// 列出键盘设备。失败返回空列表（不抛异常：这是展示功能，绝不能影响启动）。
     /// </summary>
     public static IReadOnlyList<KeyboardDevice> List()
@@ -166,10 +184,39 @@ public static class KeyboardDevices
             }
 
             index[key] = result.Count;
-            result.Add(new KeyboardDeviceGroup(d.Name, d.Kind, 1, d.Path));
+            var group = new KeyboardDeviceGroup(d.Name, d.Kind, 1, d.Path);
+            result.Add(group);
+            Remember(group);
         }
 
         return result;
+    }
+
+    /// <summary>把这一组的标识和路径都记到名字缓存里（供 <see cref="DisplayNameOf"/> 反查）。</summary>
+    private static void Remember(KeyboardDeviceGroup g)
+    {
+        if (g == null || string.IsNullOrWhiteSpace(g.Name)) return;
+
+        try
+        {
+            string key = KeyOf(g.Sample);
+            if (key.Length > 0) _names[key] = g.Name;
+            if (!string.IsNullOrWhiteSpace(g.Sample)) _names[g.Sample] = g.Name;
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "记录键盘设备名"); }
+    }
+
+    /// <summary>
+    /// 设备标识 → 可读名称（查不到就原样返回）。
+    ///
+    /// 只用于**展示**。判定、比对上仍然用标识本身，两者不能混：
+    /// 名字会随系统语言变化，标识不会。
+    /// </summary>
+    public static string DisplayNameOf(string? key)
+    {
+        string k = key ?? "";
+        if (k.Length == 0) return "";
+        return _names.TryGetValue(k, out string? name) && !string.IsNullOrWhiteSpace(name) ? name : k;
     }
 
     /// <summary>是否很可能就是笔记本自带键盘。</summary>

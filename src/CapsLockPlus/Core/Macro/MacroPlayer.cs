@@ -51,6 +51,14 @@ public sealed class MacroPlayer : IDisposable
     public string? LastError { get; private set; }
 
     /// <summary>
+    /// 最近一次播放结束时的变量表。
+    ///
+    /// 只给自检用：变量在播放结束后没有别处能观察，
+    /// 而"循环计数到底走到几"正是最容易写错的一环。
+    /// </summary>
+    internal MacroVars? LastVars { get; private set; }
+
+    /// <summary>
     /// 播放中途失败（`waitFor` 超时且没有重试可兜）。
     ///
     /// 为什么要有这个事件：播放是异步的，`PlayMacro` 早就返回 true 了，
@@ -132,11 +140,16 @@ public sealed class MacroPlayer : IDisposable
             string? failReason = null;
             var retries = new Dictionary<int, int>();   // retry 下标 → 已尝试次数
 
+            /* 变量表在**整次播放**里共享，但每轮（Repeat 的第 N 遍）开头清空：
+             * 上一遍循环计数留在里面，下一遍第一轮就会看到 10 而不是 1。 */
+            var vars = new MacroVars();
+
             try
             {
                 for (int round = 0; round < repeat; round++)
                 {
                     CurrentStep = -1;
+                    vars.Clear();
 
                     /* 程序计数器：没有流程控制标记的宏，走的还是"逐条往下"的老路径，
                      * 只是把 foreach 换成了 pc 自增 —— 行为完全一致。
@@ -182,7 +195,15 @@ public sealed class MacroPlayer : IDisposable
                             }
 
                             case "text":
-                                SendText(step.Text);
+                                // 文本里可以写 `{i}`：循环计数、setVar 写入的值都在这里展开
+                                SendText(vars.Expand(step.Text));
+                                break;
+
+                            /* 写一个变量。值本身也展开，所以 `setVar n = {i}` 这类
+                             * "把当前轮次存起来"的写法能直接用。 */
+                            case "setVar":
+                                if (!vars.TrySet(step.VarName, vars.Expand(step.VarValue)))
+                                    CoreLog.Warn($"宏里的变量名无效，已跳过：{step.VarName}");
                                 break;
 
                             case "delay":
@@ -202,7 +223,7 @@ public sealed class MacroPlayer : IDisposable
                              * 而不是整段宏共用一份快照：循环里等待窗口变化是正当用法。 */
                             case "if":
                             {
-                                bool hit = EvaluateCondition(step);
+                                bool hit = EvaluateCondition(step, vars);
                                 if (!hit)
                                 {
                                     pc = flow.SkipTo(pc);
@@ -223,7 +244,7 @@ public sealed class MacroPlayer : IDisposable
                              * 超时是宏里**唯一会失败**的一步 —— 重试块只兜它。 */
                             case "waitFor":
                             {
-                                if (!WaitForCondition(step))
+                                if (!WaitForCondition(step, vars))
                                 {
                                     if (_cancelRequested) { abort = true; break; }
 
@@ -248,7 +269,7 @@ public sealed class MacroPlayer : IDisposable
                              * 否则"打开窗口没成功"这类情况在宏里就被静默吞掉了。 */
                             case "action":
                             {
-                                if (!RunActionStep(step))
+                                if (!RunActionStep(step, vars))
                                 {
                                     if (_cancelRequested) { abort = true; break; }
 
@@ -281,6 +302,7 @@ public sealed class MacroPlayer : IDisposable
 
                             case "loop":
                                 loops[pc] = 1;
+                                PublishLoopIndex(vars, snapshot.Steps[pc], 1);
                                 break;
 
                             case "endLoop":
@@ -294,6 +316,8 @@ public sealed class MacroPlayer : IDisposable
                                     if (flow.ShouldRepeat(loopAt, done, total))
                                     {
                                         loops[loopAt] = done + 1;
+                                        // 循环计数变量要跟着走，否则循环体里读到的永远是 1
+                                        PublishLoopIndex(vars, snapshot.Steps[loopAt], done + 1);
                                         pc = loopAt + 1;
                                         continue;
                                     }
@@ -328,6 +352,7 @@ public sealed class MacroPlayer : IDisposable
                 held.Clear();
 
                 CurrentStep = -1;
+                LastVars = vars;
 
                 if (abort && failReason != null)
                 {
@@ -358,7 +383,7 @@ public sealed class MacroPlayer : IDisposable
     ///   · 动作 id 为空（用户刚插入还没选）→ 记日志跳过；
     ///   · 动作抛异常 → **算失败**（这是真的执行出错，和返回 false 同类）。
     /// </summary>
-    private bool RunActionStep(Core.Settings.MacroStep step)
+    private bool RunActionStep(Core.Settings.MacroStep step, MacroVars vars)
     {
         var invoke = ActionInvoker;
 
@@ -370,7 +395,9 @@ public sealed class MacroPlayer : IDisposable
 
         try
         {
-            return invoke(step.ActionId, step.ActionArg ?? "");
+            /* 参数也展开：`https://example.com/p/{i}` 这种"循环里逐个打开"
+             * 是变量的主要用途之一，不展开等于参数里写了占位符也没用。 */
+            return invoke(step.ActionId, vars.Expand(step.ActionArg ?? ""));
         }
         catch (Exception ex)
         {
@@ -379,12 +406,25 @@ public sealed class MacroPlayer : IDisposable
         }
     }
 
+    /// <summary>
+    /// 把"当前是第几轮"写进循环计数变量。
+    /// 循环步骤没填变量名时用默认名 <c>i</c>，让 `{i}` 开箱可用。
+    /// </summary>
+    private static void PublishLoopIndex(MacroVars vars, Core.Settings.MacroStep loop, int round)
+    {
+        string name = string.IsNullOrWhiteSpace(loop.VarName)
+            ? MacroVars.DefaultLoopVar
+            : loop.VarName;
+
+        vars.Set(name, round.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     /// <summary>条件求值。自检可替换（<see cref="ConditionForTest"/>），生产走真实状态。</summary>
-    private static bool EvaluateCondition(Core.Settings.MacroStep step)
+    private static bool EvaluateCondition(Core.Settings.MacroStep step, MacroVars vars)
     {
         var ctx = MacroContext.Capture();
         var hook = ConditionForTest;
-        return hook != null ? hook(step, ctx) : MacroCondition.Evaluate(step, ctx);
+        return hook != null ? hook(step, ctx) : MacroCondition.Evaluate(step, ctx, vars);
     }
 
     /// <summary>
@@ -393,7 +433,7 @@ public sealed class MacroPlayer : IDisposable
     /// 间隔固定 100ms：比这更密没有意义（前台切换本身就有延迟），
     /// 比这更疏会让"等窗口出现"平均慢半拍才能继续。
     /// </summary>
-    private bool WaitForCondition(Core.Settings.MacroStep step)
+    private bool WaitForCondition(Core.Settings.MacroStep step, MacroVars vars)
     {
         int timeout = Math.Clamp(step.TimeoutMs, 0, 600_000);
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -403,7 +443,7 @@ public sealed class MacroPlayer : IDisposable
             if (_cancelRequested) return false;
 
             // 先判一次再判超时：timeout = 0 时也允许"此刻已经成立"直接通过
-            if (EvaluateCondition(step)) return true;
+            if (EvaluateCondition(step, vars)) return true;
 
             if (clock.ElapsedMilliseconds >= timeout) return false;
 

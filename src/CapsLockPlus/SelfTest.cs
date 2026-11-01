@@ -135,6 +135,8 @@ public static partial class SelfTest
         Section("宏的等待与重试");
         TestMacroWaitAndRetry();
 
+        Section("宏的变量与循环计数");
+        TestMacroVars();
         Section("宏的动作步骤");
         TestMacroActionStep();
 
@@ -202,6 +204,7 @@ public static partial class SelfTest
 
         Section("宏与速查表展示");
         TestMacroDisplayProps();
+        TestMacroVarUi();
         TestHelpCoversAllLayers();
 
         Section("宏绑定与 keepKey");

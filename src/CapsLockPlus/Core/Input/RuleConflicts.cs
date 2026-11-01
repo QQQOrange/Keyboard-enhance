@@ -93,7 +93,7 @@ public static class RuleConflicts
 
                 list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                     "「{0}」的改键只对 {1} 生效，但这只键盘现在没接上。",
-                    KeyName.Display(r.From), r.Device), ConflictTarget.BaseRemap));
+                    KeyName.Display(r.From), DeviceText(r.Device)), ConflictTarget.BaseRemap));
             }
         }
 
@@ -296,6 +296,25 @@ public static class RuleConflicts
     {
         int? vk = KeyName.VkOf(key);
         return vk != null && set.Contains(vk.Value);
+    }
+
+    /// <summary>
+    /// 设备显示文本：能查到名字就给「名字（VID_PID）」，查不到就用标识本身。
+    ///
+    /// 为什么两者都留：名字是给用户看的，标识是给排查用的
+    /// （报告粘出来时，只有名字无法确定是哪只键盘）。
+    /// </summary>
+    private static string DeviceText(string? device)
+    {
+        string key = (device ?? "").Trim();
+        if (key.Length == 0) return "";
+
+        string name = KeyboardDevices.DisplayNameOf(key);
+        if (string.IsNullOrWhiteSpace(name) ||
+            string.Equals(name, key, StringComparison.OrdinalIgnoreCase))
+            return key;
+
+        return Loc.F("{0}（{1}）", name, key);
     }
 
     private static bool Same(string? a, string? b)

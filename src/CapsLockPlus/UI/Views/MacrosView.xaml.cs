@@ -178,7 +178,7 @@ public partial class MacrosView : UserControl
         "if" => Loc.F("如果 {0}", MacroCondition.Describe(s.Cond, s.CondValue, s.Not)),
         "else" => Loc.T("否则"),
         "endIf" => Loc.T("结束如果"),
-        "loop" => s.Count <= 0 ? Loc.T("循环（一直）") : Loc.F("循环 {0} 次", s.Count),
+        "loop" => LoopText(s),
         "endLoop" => Loc.T("结束循环"),
         "waitFor" => Loc.F("等待 {0}（最多 {1} ms）",
             MacroCondition.Describe(s.Cond, s.CondValue, s.Not), s.TimeoutMs),
@@ -186,10 +186,25 @@ public partial class MacrosView : UserControl
         "action" => string.IsNullOrWhiteSpace(s.ActionId)
             ? Loc.T("执行动作（未选择）")
             : Loc.F("执行 {0}", ActionCatalog.TitleOf(s.ActionId) ?? s.ActionId),
+        "setVar" => string.IsNullOrWhiteSpace(s.VarName)
+            ? Loc.T("设置变量（未命名）")
+            : Loc.F("设置 {0} = 「{1}」", s.VarName, Truncate(s.VarValue, 18)),
         "endRetry" => Loc.T("结束重试"),
 
         _ => s.Kind,
     };
+
+    /// <summary>循环步骤的一行描述：次数 + 计数变量（填了才显示）。</summary>
+    private static string LoopText(MacroStep s)
+    {
+        string body = s.Count <= 0 ? Loc.T("循环（一直）") : Loc.F("循环 {0} 次", s.Count);
+
+        /* 变量名是默认值 i 时不额外写出来：绝大多数宏只有一层循环，
+         * 每行都挂一句 "· 计 i" 只会让列表变吵。 */
+        return string.IsNullOrWhiteSpace(s.VarName) || s.VarName == MacroVars.DefaultLoopVar
+            ? body
+            : Loc.F("{0} · 计数变量 {1}", body, s.VarName);
+    }
 
     private static string Truncate(string s, int n) =>
         string.IsNullOrEmpty(s) ? "" : (s.Length <= n ? s : s[..n] + "…");
@@ -602,6 +617,10 @@ public partial class MacrosView : UserControl
         StepEditorTitle.Text = Loc.F("第 {0} 步", _selectedStep + 1);
         _suppress = true;
 
+        // 文本步骤的变量提示放在代码里：文案本身含花括号，写进 XAML 会被当成标记扩展
+        TextVarHint.Text = Loc.T(
+            "可以写 {变量}：循环里用 {i} 取当前轮次，「设置变量」写入的值也能这样引用。");
+
         DelayEditPanel.Visibility = step.Kind == "delay" ? Visibility.Visible : Visibility.Collapsed;
         RandomEditPanel.Visibility = step.Kind == "delayRandom" ? Visibility.Visible : Visibility.Collapsed;
         TextEditPanel.Visibility = step.Kind == "text" ? Visibility.Visible : Visibility.Collapsed;
@@ -611,6 +630,7 @@ public partial class MacrosView : UserControl
         TimeoutEditPanel.Visibility = step.Kind == "waitFor" ? Visibility.Visible : Visibility.Collapsed;
         RetryEditPanel.Visibility = step.Kind == "retry" ? Visibility.Visible : Visibility.Collapsed;
         ActionEditPanel.Visibility = step.Kind == "action" ? Visibility.Visible : Visibility.Collapsed;
+        VarEditPanel.Visibility = step.Kind == "setVar" ? Visibility.Visible : Visibility.Collapsed;
 
         switch (step.Kind)
         {
@@ -635,11 +655,19 @@ public partial class MacrosView : UserControl
                 CondKindBox.SelectedIndex = kindIndex >= 0 ? kindIndex : 0;
                 CondValueBox.Text = step.CondValue;
                 CondValueBox.IsEnabled = step.Cond != MacroCondition.ClipboardEmpty;
+                CondValueBox.ToolTip = CondValueHint(step.Cond);
                 CondNotBox.IsChecked = step.Not;
                 break;
 
             case "loop":
                 LoopCountBox.Text = step.Count.ToString();
+                LoopVarBox.Text = step.VarName;
+                break;
+
+            case "setVar":
+                VarNameBox.Text = step.VarName;
+                VarValueBox.Text = step.VarValue;
+                VarHint.Text = Loc.T("值里也可以引用别的变量。变量在每次播放开始时清空，循环计数会自动写入。");
                 break;
 
             case "retry":
@@ -666,6 +694,7 @@ public partial class MacrosView : UserControl
                 CondKindBox.SelectedIndex = waitIndex >= 0 ? waitIndex : 0;
                 CondValueBox.Text = step.CondValue;
                 CondValueBox.IsEnabled = step.Cond != MacroCondition.ClipboardEmpty;
+                CondValueBox.ToolTip = CondValueHint(step.Cond);
                 CondNotBox.IsChecked = step.Not;
                 TimeoutEditBox.Text = step.TimeoutMs.ToString();
                 break;
@@ -820,6 +849,7 @@ public partial class MacrosView : UserControl
         MacroCondition.Title => Loc.T("窗口标题含"),
         MacroCondition.Clipboard => Loc.T("剪贴板含"),
         MacroCondition.ClipboardEmpty => Loc.T("剪贴板为空"),
+        MacroCondition.Var => Loc.T("变量满足"),
         _ => kind,
     };
 
@@ -830,9 +860,19 @@ public partial class MacrosView : UserControl
 
         step.Cond = kind;
         CondValueBox.IsEnabled = kind != MacroCondition.ClipboardEmpty;
+        CondValueBox.ToolTip = CondValueHint(kind);
         _host!.SaveSettings();
         RefreshSteps(keepSelection: true);
     }
+
+    /// <summary>
+    /// 比较值输入框的提示。变量条件要写表达式，和"包含某段文字"完全不同 ——
+    /// 不换提示的话用户会照着旧提示填一个词，然后条件永远不成立。
+    /// </summary>
+    private static string CondValueHint(string kind)
+        => kind == MacroCondition.Var
+            ? Loc.T("写法：变量名 运算符 值，例如 i >= 3、name = 张三；只写变量名表示「有值」；值里可以写 {另一个变量}。")
+            : Loc.T("包含即算命中，不区分大小写");
 
     private void OnCondValueChanged(object sender, TextChangedEventArgs e)
     {
@@ -866,6 +906,48 @@ public partial class MacrosView : UserControl
     }
 
     /// <summary>
+    /// 循环计数变量名。
+    ///
+    /// 空串是合法值（= 用默认名 i），所以这里不拦空；
+    /// 只把**格式非法**的名字挡掉，否则循环里 `{i}` 会因为变量名带空格而永远展开不出来。
+    /// </summary>
+    private void OnLoopVarChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "loop") return;
+
+        string name = (LoopVarBox.Text ?? "").Trim();
+        if (name.Length > 0 && !MacroVars.IsValidName(name)) return;   // 非法就先不落盘，等用户改
+
+        step.VarName = name;
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnVarNameChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "setVar") return;
+
+        string name = (VarNameBox.Text ?? "").Trim();
+        if (name.Length > 0 && !MacroVars.IsValidName(name)) return;
+
+        step.VarName = name;
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnVarValueChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "setVar") return;
+
+        step.VarValue = VarValueBox.Text ?? "";
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    /// <summary>
     /// 配对状态提示。
     ///
     /// 配对错误会**阻止播放**（半播出去的按键比不播更糟），
@@ -882,14 +964,26 @@ public partial class MacrosView : UserControl
         }
 
         var flow = MacroFlow.Compile(m.Steps);
-        if (flow.Ok)
+        if (!flow.Ok)
         {
-            FlowHint.Visibility = Visibility.Collapsed;
+            FlowHint.Text = Loc.F("配对有误：{0}", flow.Error ?? "");
+            FlowHint.Visibility = Visibility.Visible;
             return;
         }
 
-        FlowHint.Text = Loc.F("配对有误：{0}", flow.Error ?? "");
-        FlowHint.Visibility = Visibility.Visible;
+        /* 配对没错，再看变量：引用不存在的变量不会让播放失败，
+         * 只会把 `{nmae}` 原样打出去 —— 不在这里说，用户就只能猜。 */
+        var varProblems = MacroVars.Audit(m.Steps);
+        if (varProblems.Count > 0)
+        {
+            FlowHint.Text = varProblems.Count == 1
+                ? varProblems[0]
+                : Loc.F("{0}（另有 {1} 条变量提示）", varProblems[0], varProblems.Count - 1);
+            FlowHint.Visibility = Visibility.Visible;
+            return;
+        }
+
+        FlowHint.Visibility = Visibility.Collapsed;
     }
 
     private void OnTimeoutChanged(object sender, TextChangedEventArgs e)
@@ -957,6 +1051,9 @@ public partial class MacrosView : UserControl
 
     private void OnInsertAction(object sender, RoutedEventArgs e)
         => AddStep(new MacroStep { Kind = "action" });
+
+    private void OnInsertVar(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "setVar", VarName = "n", VarValue = "" });
 
     private void OnInsertWaitFor(object sender, RoutedEventArgs e)
         => AddStep(new MacroStep { Kind = "waitFor", Cond = MacroCondition.App, TimeoutMs = 5000 });

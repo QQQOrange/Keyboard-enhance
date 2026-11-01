@@ -332,6 +332,10 @@
                                     <TextBox x:Name="TextEditBox" Style="{StaticResource TextBox.Base}"
                                              MinHeight="32" VerticalContentAlignment="Center"
                                              TextChanged="OnTextEditChanged" />
+                                    <!-- 提示文字在代码里赋值：里面有 {变量} 字面量，
+                                         直接写进 XAML 会被当成标记扩展解析 -->
+                                    <TextBlock x:Name="TextVarHint" Style="{StaticResource Text.Tertiary}"
+                                               Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <!-- 按键：允许换成别的键 -->
@@ -363,17 +367,24 @@
                                 </StackPanel>
 
                                 <!-- 循环 -->
-                                <StackPanel x:Name="LoopEditPanel" Orientation="Horizontal"
-                                            Visibility="Collapsed">
+                                <WrapPanel x:Name="LoopEditPanel" Visibility="Collapsed">
                                     <TextBlock Text="{loc:T '重复次数'}" VerticalAlignment="Center"
                                                Style="{StaticResource Text.Secondary}" />
                                     <TextBox x:Name="LoopCountBox" Width="90" Margin="8,0,8,0"
                                              Style="{StaticResource TextBox.Base}" MinHeight="30"
                                              TextChanged="OnLoopCountChanged" />
                                     <TextBlock Text="{loc:T '填 0 = 一直重复（Esc 可中断）'}"
-                                               VerticalAlignment="Center"
+                                               VerticalAlignment="Center" Margin="0,0,14,0"
                                                Style="{StaticResource Text.Tertiary}" />
-                                </StackPanel>
+                                    <TextBlock Text="{loc:T '计数变量'}" VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Secondary}" />
+                                    <TextBox x:Name="LoopVarBox" Width="80" Margin="8,0,8,0"
+                                             Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                             TextChanged="OnLoopVarChanged"
+                                             ToolTip="{loc:T '当前轮次会写进这个变量（从 1 开始），循环体里用花括号加变量名引用。嵌套循环要改成不同的名字。'}" />
+                                    <TextBlock Text="{loc:T '留空 = i'}" VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Tertiary}" />
+                                </WrapPanel>
 
                                 <!-- 等待条件的超时 -->
                                 <StackPanel x:Name="TimeoutEditPanel" Orientation="Horizontal"
@@ -401,6 +412,24 @@
                                     </StackPanel>
                                     <TextBlock Text="{loc:T '动作失败会被外层「重试」块接手。'}"
                                                Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0" />
+                                </StackPanel>
+
+                                <!-- 设置变量 -->
+                                <StackPanel x:Name="VarEditPanel" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{loc:T '变量'}" VerticalAlignment="Center"
+                                                   Style="{StaticResource Text.Secondary}" />
+                                        <TextBox x:Name="VarNameBox" Width="120" Margin="8,0,10,0"
+                                                 Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                                 TextChanged="OnVarNameChanged" />
+                                        <TextBlock Text="=" VerticalAlignment="Center" Margin="0,0,10,0"
+                                                   Style="{StaticResource Text.Secondary}" />
+                                        <TextBox x:Name="VarValueBox" MinWidth="180"
+                                                 Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                                 TextChanged="OnVarValueChanged" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="VarHint" Style="{StaticResource Text.Tertiary}"
+                                               Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <!-- 重试块 -->
@@ -459,6 +488,8 @@
                                     Margin="0,0,8,6" Click="OnInsertEndRetry" />
                             <Button Content="{loc:T '执行动作'}" Style="{StaticResource Button.Base}" Padding="11,5"
                                     Margin="0,0,8,6" Click="OnInsertAction" />
+                            <Button Content="{loc:T '设置变量'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertVar" />
                         </WrapPanel>
                     </StackPanel>
                 </Grid>
