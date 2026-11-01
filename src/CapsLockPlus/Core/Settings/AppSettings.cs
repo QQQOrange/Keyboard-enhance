@@ -59,6 +59,24 @@ public sealed class AppLayerRule
     public int LayerId { get; set; }
 }
 
+/// <summary>
+/// 一条「双击动作」：某个键在 <see cref="HotkeyEngine.DoubleTapWindowMs"/> 内被按两次时，
+/// 执行指定动作（第二次按下会被吞掉，不会打出第二个字符）。
+///
+/// 与触发键的 DoubleTapAction 的区别：触发键必须"按住才进层"，会改变这个键的基本行为；
+/// 这里对**任何键**都适用，且单击完全保持原样。
+/// </summary>
+public sealed class KeyGesture
+{
+    /// <summary>键名（见 KeyName，如 capslock / esc / f1）。</summary>
+    public string Key { get; set; } = "";
+
+    /// <summary>双击时执行的动作 id（见 ActionCatalog）。</summary>
+    public string DoubleTapAction { get; set; } = "";
+
+    public string Comment { get; set; } = "";
+}
+
 public sealed class QEntry
 {
     /// <summary>
@@ -216,6 +234,11 @@ public sealed class GlobalOptions
 
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
+
+    /// <summary>
+    /// 双击动作：任意键连按两次触发一个动作。默认空，不影响任何现有行为。
+    /// </summary>
+    public List<KeyGesture> KeyGestures { get; set; } = new();
 
     /// <summary>
     /// 按应用自动启用层：前台窗口的进程命中规则时，把对应层当作叠加层。

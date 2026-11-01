@@ -34,6 +34,7 @@ public partial class SettingsView : UserControl
         RefreshRemapState();
         RefreshUsage();
         RefreshAppLayerEditor();
+        RefreshGestureEditor();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -80,6 +81,78 @@ public partial class SettingsView : UserControl
     private void Save()
     {
         _host?.SaveSettings();
+    }
+
+    // ---------------- 双击动作 ----------------
+
+    /// <summary>可选的键：只列常用键，避免下拉框几百项没法找。</summary>
+    private static readonly string[] GestureKeys =
+    {
+        "capslock", "esc", "tab", "space", "enter", "backspace", "delete",
+        "insert", "home", "end", "f1", "f2", "f3", "f4", "f5", "f6",
+        "f7", "f8", "f9", "f10", "f11", "f12",
+    };
+
+    private void RefreshGestureEditor()
+    {
+        if (GestureKeyBox == null || _host == null) return;
+
+        GestureKeyBox.Items.Clear();
+        foreach (string k in GestureKeys)
+            GestureKeyBox.Items.Add(new ComboBoxItem { Content = KeyName.Display(k), Tag = k });
+        if (GestureKeyBox.Items.Count > 0) GestureKeyBox.SelectedIndex = 0;
+
+        GestureActionBox.Items.Clear();
+        foreach (var a in _host.Actions.Items.Where(a => !a.Hidden))
+            GestureActionBox.Items.Add(new ComboBoxItem { Content = a.Title, Tag = a.Id });
+        if (GestureActionBox.Items.Count > 0) GestureActionBox.SelectedIndex = 0;
+
+        GestureList.Items.Clear();
+        foreach (var g in _host.Settings.Global.KeyGestures.ToList())
+        {
+            var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
+
+            var del = new Button
+            {
+                Content = Loc.T("移除"),
+                Padding = new Thickness(10, 3, 10, 3),
+                Style = (Style)FindResource("Button.Base"),
+            };
+            var captured = g;
+            del.Click += (_, _) =>
+            {
+                _host?.Settings.Global.KeyGestures.Remove(captured);
+                Save();
+                RefreshGestureEditor();
+            };
+            DockPanel.SetDock(del, Dock.Right);
+            row.Children.Add(del);
+
+            string actionTitle = ActionCatalog.TitleOf(g.DoubleTapAction) ?? g.DoubleTapAction;
+            row.Children.Add(new TextBlock
+            {
+                Text = Loc.F("双击 {0} → {1}", KeyName.Display(g.Key), actionTitle),
+                VerticalAlignment = VerticalAlignment.Center,
+                Style = (Style)FindResource("Text.Tertiary"),
+            });
+            GestureList.Items.Add(row);
+        }
+    }
+
+    private void OnAddGestureClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        if (GestureKeyBox.SelectedItem is not ComboBoxItem kItem || kItem.Tag is not string key) return;
+        if (GestureActionBox.SelectedItem is not ComboBoxItem aItem || aItem.Tag is not string action) return;
+
+        var list = _host.Settings.Global.KeyGestures;
+        var existing = list.FirstOrDefault(g => string.Equals(g.Key, key, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) existing.DoubleTapAction = action;     // 同键覆盖
+        else list.Add(new KeyGesture { Key = key, DoubleTapAction = action });
+
+        Save();
+        RefreshGestureEditor();
+        _host.Notify(Loc.F("已设置：双击 {0} 执行 {1}", KeyName.Display(key), ActionCatalog.TitleOf(action) ?? action));
     }
 
     // ---------------- 按应用自动启用层 ----------------

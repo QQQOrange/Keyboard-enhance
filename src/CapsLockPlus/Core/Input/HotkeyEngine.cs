@@ -56,6 +56,16 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>叠加层 id，由前台窗口监听写入（钩子线程读，必须 volatile）。</summary>
     private volatile int _appLayerId;
 
+    /* ---- 双击动作：任意键连按两次触发一个动作 ---- */
+    private Dictionary<int, string>? _gestureMap;
+    private string _gestureStamp = "";
+
+    /// <summary>每个键上一次按下的时刻（TickCount64），用于判定"连按两次"。</summary>
+    private readonly Dictionary<int, long> _gestureLastTick = new();
+
+    /// <summary>已经触发过双击、需要吞掉抬起事件的键。</summary>
+    private readonly HashSet<int> _gestureSwallowUp = new();
+
     /// <summary>
     /// 物理按键状态：钩子看到的每个 down 加入、每个 up 移除（**包括被吞掉的触发键**）。
     ///
@@ -271,6 +281,7 @@ public sealed class HotkeyEngine : IDisposable
         }
         ClearContinuousRepeat();
         ReleaseRemappedKeys();      // 复位时把改键的目标键松开，避免粘键
+        _gestureLastTick.Clear();   // 双击判定作废，避免跨会话误触发
     }
 
     /// <summary>是否正处于某个触发键的按住状态。</summary>
@@ -1053,6 +1064,10 @@ public sealed class HotkeyEngine : IDisposable
         // ---- 3. 不在层模式：放行，但先把"欠着的抬起"结清 ----
         if (!_triggerHeld || !_layerActive)
         {
+            /* 双击动作：只对配置过的键生效，单击完全保持原样。 */
+            if (down && TryRunDoubleTapGesture(settings, vk, wasPhysicallyDown)) return true;
+            if (!down && _gestureSwallowUp.Remove(vk)) return true;
+
             /* 按应用的叠加层：只接管**绑过**的组合，未绑定的键原样放行。 */
             if (down && TryRunAppLayerBinding(settings, vk)) return true;
 
@@ -1590,6 +1605,56 @@ public sealed class HotkeyEngine : IDisposable
             catch (Exception ex) { CoreLog.Error($"动作 {action} 执行失败", ex); }
         });
         return true;
+    }
+
+    /// <summary>
+    /// 双击动作：同一个键在 <see cref="DoubleTapWindowMs"/> 内被按两次时执行动作。
+    ///
+    /// 语义取舍：
+    ///   · **第一次按下照常放行**（该打字就打字），只有"第二次"才被吞掉并改成动作；
+    ///   · 自动重复的 down 不算"第二次按下"，否则按住会疯狂触发；
+    ///   · 触发后连这个键的抬起一起吞掉，避免前台收到"没按下过的抬起"。
+    /// </summary>
+    private bool TryRunDoubleTapGesture(AppSettings s, int vk, bool wasPhysicallyDown)
+    {
+        var list = s.Global.KeyGestures;
+        if (list == null || list.Count == 0)
+        {
+            _gestureMap = null;
+            return false;
+        }
+
+        string stamp = string.Concat(list.Select(g => g.Key + ">" + g.DoubleTapAction + "|"));
+        if (_gestureMap == null || !string.Equals(stamp, _gestureStamp, StringComparison.Ordinal))
+        {
+            var map = new Dictionary<int, string>();
+            foreach (var g in list)
+            {
+                if (string.IsNullOrWhiteSpace(g.Key) || string.IsNullOrWhiteSpace(g.DoubleTapAction)) continue;
+                int? k = KeyName.VkOf(g.Key);
+                if (k == null) continue;
+                map[k.Value] = g.DoubleTapAction;
+            }
+            _gestureMap = map;
+            _gestureStamp = stamp;
+        }
+
+        if (!_gestureMap.TryGetValue(vk, out string? action) || string.IsNullOrWhiteSpace(action))
+            return false;
+
+        if (wasPhysicallyDown) return false;      // 系统自动重复，不算第二次
+
+        long now = Environment.TickCount64;
+        if (_gestureLastTick.TryGetValue(vk, out long last) && now - last <= DoubleTapWindowMs)
+        {
+            _gestureLastTick.Remove(vk);
+            _gestureSwallowUp.Add(vk);
+            _queue.Post(() => RunTapAction(action));
+            return true;
+        }
+
+        _gestureLastTick[vk] = now;
+        return false;
     }
 
     private bool OnKeyDownInLayer(int vk)

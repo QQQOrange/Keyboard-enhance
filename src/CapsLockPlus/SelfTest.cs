@@ -108,6 +108,9 @@ public static partial class SelfTest
         Section("按应用层");
         TestAppLayerOverlay();
 
+        Section("双击动作");
+        TestDoubleTapGesture();
+
         Section("启动密码");
         TestStartupPassword();
 

@@ -133,6 +133,28 @@
 
                     <Border Style="{StaticResource Divider}" />
 
+                    <!-- 双击动作：任意键连按两次 -->
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '双击动作'}" Style="{StaticResource Text.Body}" />
+                        <TextBlock Text="{loc:T '任意键连按两次触发一个动作。单击保持原样，第二次按下不会打出字符。'}"
+                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox x:Name="GestureKeyBox" Width="130" Style="{StaticResource ComboBox.Base}" />
+                            <ComboBox x:Name="GestureActionBox" Grid.Column="1" Margin="8,0,0,0"
+                                      Style="{StaticResource ComboBox.Base}" />
+                            <Button Grid.Column="2" Content="{loc:T '添加'}" Margin="8,0,0,0" Padding="14,6"
+                                    Style="{StaticResource Button.Base}" Click="OnAddGestureClick" />
+                        </Grid>
+                        <ItemsControl x:Name="GestureList" Margin="0,8,0,0" />
+                    </StackPanel>
+
+                    <Border Style="{StaticResource Divider}" />
+
                     <!-- 权限：普通权限下对着管理员程序按快捷键会静默失效，所以要显眼 -->
                     <StackPanel>
                         <Grid>

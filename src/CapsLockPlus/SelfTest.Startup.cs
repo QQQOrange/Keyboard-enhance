@@ -320,4 +320,44 @@ public static partial class SelfTest
         engine.Dispose();
         queue.Dispose();
     }
+    /// <summary>
+    /// 双击动作：任意键连按两次触发动作。
+    ///
+    /// 三条语义：
+    ///   ① 第一次按下必须**放行**（该打字就打字）；
+    ///   ② 窗口内的第二次按下被吞掉，并执行动作；
+    ///   ③ 超过窗口不算双击，回落成普通按键。
+    /// </summary>
+    private static void TestDoubleTapGesture()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Global.KeyGestures.Add(new KeyGesture { Key = "esc", DoubleTapAction = "qbar" });
+
+        var fired = new List<string>();
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
+        {
+            lock (fired) fired.Add(a);
+            return true;
+        });
+
+        Check("双击：第一次按下放行", !engine.SimulateKey(0x1B, true));
+        engine.SimulateKey(0x1B, false);
+
+        Check("双击：第二次按下被吞", engine.SimulateKey(0x1B, true));
+        Check("双击：第二次抬起也被吞", engine.SimulateKey(0x1B, false));
+        DoEvents(60);
+        lock (fired) Check("双击：动作被执行", fired.Contains("qbar"), string.Join(",", fired));
+
+        // 超过窗口：回落为普通按键
+        engine.SimulateKey(0x1B, true);
+        engine.SimulateKey(0x1B, false);
+        System.Threading.Thread.Sleep(HotkeyEngine.DoubleTapWindowMs + 150);
+        Check("双击：超过窗口不算双击", !engine.SimulateKey(0x1B, true));
+        engine.SimulateKey(0x1B, false);
+
+        engine.Dispose();
+        queue.Dispose();
+    }
 }
