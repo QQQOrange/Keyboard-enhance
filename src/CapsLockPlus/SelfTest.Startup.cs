@@ -951,10 +951,14 @@ public static partial class SelfTest
         s1.Global.BaseRemaps.Add(new KeyRemap { From = "tab", To = "esc" });
         var f1 = RuleConflicts.Analyze(s1);
         Check("体检：触发键被改键挡住", f1.Any(c => c.Message.Contains("触发键优先")), string.Join(" | ", f1.Select(c => c.Message)));
+        Check("体检：这条指向基础改键卡片",
+            f1.Any(c => c.Message.Contains("触发键优先") && c.Target == ConflictTarget.BaseRemap));
 
         s1.Global.BaseRemaps.Clear();
         s1.Global.KeyGestures.Add(new KeyGesture { Key = "tab", DoubleTapAction = "qbar" });
         Check("体检：触发键上的双击无效", RuleConflicts.Analyze(s1).Any(c => c.Message.Contains("双击动作永远不会触发")));
+        Check("体检：这条指向双击卡片",
+            RuleConflicts.Analyze(s1).Any(c => c.Message.Contains("双击动作永远不会触发") && c.Target == ConflictTarget.Gesture));
 
         s1.Global.KeyGestures.Clear();
         s1.Global.Chords.Add(new ChordRule { Key1 = "tab", Key2 = "j", Action = "qbar" });
@@ -988,6 +992,8 @@ public static partial class SelfTest
         var s5 = new AppSettings();
         s5.Global.BaseRemaps.Add(new KeyRemap { From = "不存在的键", To = "esc" });
         Check("体检：坏键名被指出", RuleConflicts.Analyze(s5).Any(c => c.Message.Contains("不是可识别的键名")));
+        Check("体检：坏键名也能定位",
+            RuleConflicts.Analyze(s5).Any(c => c.Message.Contains("不是可识别的键名") && c.Target == ConflictTarget.BaseRemap));
 
         // ---- 层内重复绑定 ----
         var s6 = new AppSettings();
@@ -996,18 +1002,26 @@ public static partial class SelfTest
         layer.Keys.Add(new KeyBinding { Combo = combo, Action = "qbar" });
         layer.Keys.Add(new KeyBinding { Combo = combo, Action = "tab" });
         s6.Layers.Add(layer);
-        Check("体检：层内重复绑定", RuleConflicts.Analyze(s6).Any(c => c.Message.Contains("绑了两次")));
+        var f6 = RuleConflicts.Analyze(s6);
+        Check("体检：层内重复绑定", f6.Any(c => c.Message.Contains("绑了两次")));
+        // 层内绑定不在设置页 —— 必须是 Layer，界面对它走换页而不是滚动
+        Check("体检：层内重复指向层页面",
+            f6.Any(c => c.Message.Contains("绑了两次") && c.Target == ConflictTarget.Layer));
 
         // ---- 按应用层指向不存在的层 ----
         var s7 = new AppSettings();
         s7.Global.AppLayers.Add(new AppLayerRule { Process = "code.exe", LayerId = 9 });
         Check("体检：按应用层指向不存在的层", RuleConflicts.Analyze(s7).Any(c => c.Message.Contains("不存在或已停用")));
+        Check("体检：这条指向按应用层卡片",
+            RuleConflicts.Analyze(s7).Any(c => c.Message.Contains("不存在或已停用") && c.Target == ConflictTarget.AppLayer));
 
         // ---- 片段重复 ----
         var s8 = new AppSettings();
         s8.Global.Snippets.Add(new Snippet { Trigger = ";a", Text = "1" });
         s8.Global.Snippets.Add(new Snippet { Trigger = ";a", Text = "2" });
         Check("体检：片段触发词重复", RuleConflicts.Analyze(s8).Any(c => c.Message.Contains("只有最后一条")));
+        Check("体检：这条指向片段卡片",
+            RuleConflicts.Analyze(s8).Any(c => c.Message.Contains("只有最后一条") && c.Target == ConflictTarget.Snippet));
 
         // ---- 组合键两个键相同 ----
         var s9 = new AppSettings();

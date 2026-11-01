@@ -140,17 +140,89 @@ public partial class SettingsView : UserControl
         {
             bool warn = f.Level == ConflictLevel.Warn;
 
-            var row = new TextBlock
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            row.Children.Add(new TextBlock
             {
                 Text = (warn ? "⚠ " : "ⓘ ") + f.Message,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 6),
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = (Brush)FindResource(warn ? "Brush.Danger" : "Brush.TextTertiary"),
-            };
+            });
+
+            /* "去修改"只出现在**能定位到具体卡片**的结论上。
+             * 定位不到的宁可没有按钮，也不要给一个点了没反应的按钮。 */
+            if (f.Target != ConflictTarget.None)
+            {
+                var go = new Button
+                {
+                    Content = Loc.T("去修改"),
+                    Padding = new Thickness(10, 3, 10, 3),
+                    Margin = new Thickness(10, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Style = (Style)FindResource("Button.Base"),
+                    Tag = f.Target,
+                };
+                go.Click += OnConflictGoClick;
+                Grid.SetColumn(go, 1);
+                row.Children.Add(go);
+            }
+
             ConflictList.Items.Add(row);
         }
+    }
+
+    /// <summary>
+    /// 跳到对应的卡片并闪一下底色。
+    ///
+    /// 为什么闪底色而不是"选中那条规则"：改键/双击/组合键的列表项不是可选中控件，
+    /// 硬做选中要改一堆模板；而"滚到那张卡片 + 高亮 1 秒"已经能把范围从
+    /// "翻五张卡片"缩到"看一张卡片"，代价只有不到十行。
+    /// </summary>
+    private void OnConflictGoClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.Tag is not ConflictTarget target) return;
+
+        // 层内绑定不在这一页，交给主窗口换页
+        if (target == ConflictTarget.Layer)
+        {
+            _host?.ShowMainWindow("layers");
+            return;
+        }
+
+        FocusSection(target switch
+        {
+            ConflictTarget.BaseRemap => RemapSection,
+            ConflictTarget.Gesture => GestureSection,
+            ConflictTarget.Chord => ChordSection,
+            ConflictTarget.Snippet => SnippetSection,
+            ConflictTarget.AppLayer => AppLayerSection,
+            _ => null,
+        });
+    }
+
+    private void FocusSection(System.Windows.Controls.Panel? section)
+    {
+        if (section == null) return;
+
+        section.BringIntoView();
+
+        var normal = section.Background;
+        section.Background = (Brush)FindResource("Brush.AccentSoft");
+
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(1100),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            section.Background = normal;
+        };
+        timer.Start();
     }
 
     private void OnRecheckConflictsClick(object sender, RoutedEventArgs e)

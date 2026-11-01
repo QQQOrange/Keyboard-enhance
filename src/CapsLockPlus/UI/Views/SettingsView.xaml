@@ -76,7 +76,7 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 基础改键：不按住前缀键也生效 -->
-                    <StackPanel>
+                    <StackPanel x:Name="RemapSection" Background="Transparent">
                         <TextBlock Text="{loc:T '基础改键'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '不用按住任何前缀键，直接把某个键换成另一个键。层内绑定优先于这里。'}"
                                    Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap" />
@@ -110,7 +110,7 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 按应用自动启用层：只叠加，不接管 -->
-                    <StackPanel>
+                    <StackPanel x:Name="AppLayerSection" Background="Transparent">
                         <TextBlock Text="{loc:T '按应用自动启用层'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '切到这些程序时自动叠加它绑定的层：只接管该层绑过的组合，其余按键照常输入。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
@@ -134,7 +134,7 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 双击动作：任意键连按两次 -->
-                    <StackPanel>
+                    <StackPanel x:Name="GestureSection" Background="Transparent">
                         <TextBlock Text="{loc:T '双击动作'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '任意键连按两次触发一个动作。单击保持原样，第二次按下不会打出字符。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
@@ -156,7 +156,7 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 文本片段 -->
-                    <StackPanel>
+                    <StackPanel x:Name="SnippetSection" Background="Transparent">
                         <TextBlock Text="{loc:T '文本片段'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '输入触发词后自动展开成一段文字。触发词须以 ; / . 等符号开头（不能是字母数字），且必须落在词首。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
@@ -180,7 +180,7 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 组合键：两键同时按 -->
-                    <StackPanel>
+                    <StackPanel x:Name="ChordSection" Background="Transparent">
                         <TextBlock Text="{loc:T '组合键（两键同按）'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '两个键同时按下触发动作。被配置的这两个键会有约 70ms 的按下延迟（否则无法区分连打和同按），未配置的键不受影响。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />

@@ -1946,5 +1946,6 @@
   "{0}里的「{1}」不是可识别的键名，这条规则不会生效。": "\"{1}\" in {0} is not a recognized key name, so that rule never applies.",
   "第 {0} 层里「{1}」绑了两次：第 {2} 条会覆盖第 {3} 条。": "Layer {0} binds \"{1}\" twice: entry {2} overrides entry {3}.",
   "按应用层规则指向第 {0} 层，但这一层不存在或已停用 —— 切到 {1} 时不会有任何效果。": "The per-app rule points at layer {0}, which is missing or disabled — switching to {1} will do nothing.",
-  "文本片段「{0}」定义了多次，只有最后一条会展开。": "Snippet \"{0}\" is defined more than once; only the last one expands."
+  "文本片段「{0}」定义了多次，只有最后一条会展开。": "Snippet \"{0}\" is defined more than once; only the last one expands.",
+  "去修改": "Fix it"
 }

@@ -13,8 +13,25 @@ public enum ConflictLevel
     Info,
 }
 
+/// <summary>结论指向哪张卡片 —— 界面据此提供"去修改"。</summary>
+public enum ConflictTarget
+{
+    /// <summary>无法定位（例如跨页面的情况，界面不给按钮）。</summary>
+    None,
+
+    BaseRemap,
+    Gesture,
+    Chord,
+    Snippet,
+    AppLayer,
+
+    /// <summary>层内绑定：不在设置页，需要跳到「层」页面。</summary>
+    Layer,
+}
+
 /// <summary>一条体检结论。</summary>
-public sealed record Conflict(ConflictLevel Level, string Message);
+public sealed record Conflict(ConflictLevel Level, string Message,
+    ConflictTarget Target = ConflictTarget.None);
 
 /// <summary>
 /// 按键规则体检：找出"用户以为生效、实际不生效"的配置。
@@ -67,7 +84,7 @@ public static class RuleConflicts
             {
                 list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                     "「{0}」是触发键，同时又被改键 —— 触发键优先，这条改键不会生效。",
-                    KeyName.Display(r.From))));
+                    KeyName.Display(r.From)), ConflictTarget.BaseRemap));
             }
 
             // 注入的按键不参与层判定（引擎对 injected 事件直接放行）
@@ -75,7 +92,7 @@ public static class RuleConflicts
             {
                 list.Add(new Conflict(ConflictLevel.Info, Loc.F(
                     "改键目标「{0}」是触发键：改出来的按键不会切层（注入的按键不参与触发键判定）。",
-                    KeyName.Display(r.To))));
+                    KeyName.Display(r.To)), ConflictTarget.BaseRemap));
             }
         }
 
@@ -86,7 +103,7 @@ public static class RuleConflicts
             {
                 list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                     "「{0}」是触发键，双击动作永远不会触发。",
-                    KeyName.Display(g.Key))));
+                    KeyName.Display(g.Key)), ConflictTarget.Gesture));
             }
         }
 
@@ -99,7 +116,7 @@ public static class RuleConflicts
                 {
                     list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                         "组合键里的「{0}」是触发键 —— 按住它会先进层，组合键组不起来。",
-                        KeyName.Display(key))));
+                        KeyName.Display(key)), ConflictTarget.Chord));
                 }
             }
 
@@ -107,7 +124,8 @@ public static class RuleConflicts
                 string.Equals(c.Key1, c.Key2, StringComparison.OrdinalIgnoreCase))
             {
                 list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
-                    "组合键的两个键都是「{0}」，永远不会触发。", KeyName.Display(c.Key1))));
+                    "组合键的两个键都是「{0}」，永远不会触发。", KeyName.Display(c.Key1),
+                    ConflictTarget.Chord)));
             }
         }
 
@@ -121,7 +139,7 @@ public static class RuleConflicts
                 {
                     list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                         "「{0}」同时配了双击和组合键 —— 组合键先扣住这个键，双击不会触发。",
-                        KeyName.Display(g.Key))));
+                        KeyName.Display(g.Key)), ConflictTarget.Chord));
                     break;
                 }
             }
@@ -138,7 +156,7 @@ public static class RuleConflicts
                 {
                     list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                         "「{0}」既改键又配了双击 —— 第二次按下会被双击吞掉，不会输出「{1}」。",
-                        KeyName.Display(r.From), KeyName.Display(r.To))));
+                        KeyName.Display(r.From), KeyName.Display(r.To)), ConflictTarget.Gesture));
                 }
             }
 
@@ -148,7 +166,7 @@ public static class RuleConflicts
                 {
                     list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                         "「{0}」既改键又参与组合键 —— 组合键优先，这条改键基本不会生效。",
-                        KeyName.Display(r.From))));
+                        KeyName.Display(r.From)), ConflictTarget.Chord));
                 }
             }
         }
@@ -156,15 +174,15 @@ public static class RuleConflicts
         // ---- 4. 无法识别的键名（规则会静默不生效） ----
         foreach (var r in global.BaseRemaps)
         {
-            WarnBadKey(list, r.From, Loc.T("基础改键"));
-            WarnBadKey(list, r.To, Loc.T("基础改键"));
+            WarnBadKey(list, r.From, Loc.T("基础改键"), ConflictTarget.BaseRemap);
+            WarnBadKey(list, r.To, Loc.T("基础改键"), ConflictTarget.BaseRemap);
         }
         foreach (var g in global.KeyGestures)
-            WarnBadKey(list, g.Key, Loc.T("双击动作"));
+            WarnBadKey(list, g.Key, Loc.T("双击动作"), ConflictTarget.Gesture);
         foreach (var c in global.Chords)
         {
-            WarnBadKey(list, c.Key1, Loc.T("组合键"));
-            WarnBadKey(list, c.Key2, Loc.T("组合键"));
+            WarnBadKey(list, c.Key1, Loc.T("组合键"), ConflictTarget.Chord);
+            WarnBadKey(list, c.Key2, Loc.T("组合键"), ConflictTarget.Chord);
         }
 
         // ---- 5. 层内重复绑定（同层同组合键，后一条生效） ----
@@ -181,7 +199,7 @@ public static class RuleConflicts
                 {
                     list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                         "第 {0} 层里「{1}」绑了两次：第 {2} 条会覆盖第 {3} 条。",
-                        layer.Id, ComboText(k.Combo), i + 1, firstIndex + 1)));
+                        layer.Id, ComboText(k.Combo), i + 1, firstIndex + 1), ConflictTarget.Layer));
                 }
                 else
                 {
@@ -199,7 +217,7 @@ public static class RuleConflicts
             {
                 list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
                     "按应用层规则指向第 {0} 层，但这一层不存在或已停用 —— 切到 {1} 时不会有任何效果。",
-                    rule.LayerId, rule.Process)));
+                    rule.LayerId, rule.Process), ConflictTarget.AppLayer));
             }
         }
 
@@ -211,7 +229,8 @@ public static class RuleConflicts
             if (!triggersSeen.Add(sn.Trigger))
             {
                 list.Add(new Conflict(ConflictLevel.Warn,
-                    Loc.F("文本片段「{0}」定义了多次，只有最后一条会展开。", sn.Trigger)));
+                    Loc.F("文本片段「{0}」定义了多次，只有最后一条会展开。", sn.Trigger),
+                    ConflictTarget.Snippet));
             }
         }
 
@@ -242,12 +261,13 @@ public static class RuleConflicts
         catch { return combo; }   /* 显示用，失败就原样给 id */
     }
 
-    private static void WarnBadKey(List<Conflict> list, string? key, string where)
+    private static void WarnBadKey(List<Conflict> list, string? key, string where,
+        ConflictTarget target)
     {
         if (string.IsNullOrWhiteSpace(key)) return;
         if (KeyName.VkOf(key) != null) return;
 
         list.Add(new Conflict(ConflictLevel.Warn,
-            Loc.F("{0}里的「{1}」不是可识别的键名，这条规则不会生效。", where, key)));
+            Loc.F("{0}里的「{1}」不是可识别的键名，这条规则不会生效。", where, key), target));
     }
 }
