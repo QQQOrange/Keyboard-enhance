@@ -108,6 +108,11 @@ public sealed class AppHost : IDisposable
         Context.MacroPlayer.Failed += reason =>
             NotifyTranslated(UiText.FailLine(UiText.FailedAt(Loc.T("播放宏"), reason, DateTime.Now)));
 
+        /* 宏里的「执行动作」步骤：转发到同一个 InvokeAction，
+         * 于是失败通知、使用统计、按应用层这些既有语义全部自动生效。 */
+        Context.MacroPlayer.ActionInvoker = (id, arg) => InvokeAction(id, arg);
+        Context.MacroPlayer.ActionTitle = id => ActionCatalog.TitleOf(id) ?? id;
+
         /* 按应用自动启用层：监听前台窗口，命中规则就把对应层设为叠加层。
          * 只记进程名（隐私），命中失败不影响任何既有功能。 */
         _foreground = new ForegroundWatcher();

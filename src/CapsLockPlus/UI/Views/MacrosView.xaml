@@ -388,6 +388,21 @@
                                                Style="{StaticResource Text.Tertiary}" />
                                 </StackPanel>
 
+                                <!-- 执行动作 -->
+                                <StackPanel x:Name="ActionEditPanel" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ComboBox x:Name="ActionStepBox" Width="230"
+                                                  Style="{StaticResource ComboBox.Base}"
+                                                  SelectionChanged="OnActionStepChanged" />
+                                        <TextBox x:Name="ActionArgBox" Margin="8,0,0,0" MinWidth="150"
+                                                 Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                                 TextChanged="OnActionArgChanged"
+                                                 ToolTip="{loc:T '多数动作不需要参数；需要时填（如网址、文件夹）'}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{loc:T '动作失败会被外层「重试」块接手。'}"
+                                               Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0" />
+                                </StackPanel>
+
                                 <!-- 重试块 -->
                                 <StackPanel x:Name="RetryEditPanel" Orientation="Horizontal"
                                             Visibility="Collapsed">
@@ -442,6 +457,8 @@
                                     Margin="0,0,8,6" Click="OnInsertRetry" />
                             <Button Content="{loc:T '结束重试'}" Style="{StaticResource Button.Base}" Padding="11,5"
                                     Margin="0,0,8,6" Click="OnInsertEndRetry" />
+                            <Button Content="{loc:T '执行动作'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertAction" />
                         </WrapPanel>
                     </StackPanel>
                 </Grid>

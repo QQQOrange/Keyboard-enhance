@@ -680,7 +680,8 @@ public sealed class MacroStep
 {
     /// <summary>
     /// 步骤类型：keyDown / keyUp / delay / delayRandom / text，
-    /// 以及流程控制 if / else / endIf / loop / endLoop / waitFor / retry / endRetry。
+    /// 以及流程控制 if / else / endIf / loop / endLoop / waitFor / retry / endRetry，
+    /// 和执行内置动作的 action。
     ///
     /// 流程控制是**成对标记**而不是嵌套结构：宏仍然是一条平铺的列表，
     /// 靠 <c>Core.Macro.MacroFlow</c> 在播放前算出配对关系。
@@ -726,12 +727,18 @@ public sealed class MacroStep
     /// </summary>
     public int TimeoutMs { get; set; } = 5000;
 
+    /// <summary>Kind 为 action 时要执行的动作 id（见 ActionCatalog）。</summary>
+    public string ActionId { get; set; } = "";
+
+    /// <summary>Kind 为 action 时传给动作的参数（多数动作不需要）。</summary>
+    public string ActionArg { get; set; } = "";
+
     public MacroStep Clone() => new()
     {
         Kind = Kind, Key = Key, Text = Text,
         DelayMs = DelayMs, MinMs = MinMs, MaxMs = MaxMs,
         Cond = Cond, CondValue = CondValue, Not = Not, Count = Count,
-        TimeoutMs = TimeoutMs,
+        TimeoutMs = TimeoutMs, ActionId = ActionId, ActionArg = ActionArg,
     };
 }
 

@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Macro;
 using CapsLockPlus.Core.Settings;
@@ -182,6 +183,9 @@ public partial class MacrosView : UserControl
         "waitFor" => Loc.F("等待 {0}（最多 {1} ms）",
             MacroCondition.Describe(s.Cond, s.CondValue, s.Not), s.TimeoutMs),
         "retry" => Loc.F("重试块（最多 {0} 次）", s.Count),
+        "action" => string.IsNullOrWhiteSpace(s.ActionId)
+            ? Loc.T("执行动作（未选择）")
+            : Loc.F("执行 {0}", ActionCatalog.TitleOf(s.ActionId) ?? s.ActionId),
         "endRetry" => Loc.T("结束重试"),
 
         _ => s.Kind,
@@ -606,6 +610,7 @@ public partial class MacrosView : UserControl
         LoopEditPanel.Visibility = step.Kind == "loop" ? Visibility.Visible : Visibility.Collapsed;
         TimeoutEditPanel.Visibility = step.Kind == "waitFor" ? Visibility.Visible : Visibility.Collapsed;
         RetryEditPanel.Visibility = step.Kind == "retry" ? Visibility.Visible : Visibility.Collapsed;
+        ActionEditPanel.Visibility = step.Kind == "action" ? Visibility.Visible : Visibility.Collapsed;
 
         switch (step.Kind)
         {
@@ -640,6 +645,20 @@ public partial class MacrosView : UserControl
             case "retry":
                 RetryCountBox.Text = step.Count.ToString();
                 break;
+
+            case "action":
+            {
+                EnsureActionItems();
+                int at = -1;
+                for (int i = 0; i < ActionStepBox.Items.Count; i++)
+                {
+                    if (ActionStepBox.Items[i] is ComboBoxItem it &&
+                        (it.Tag as string) == step.ActionId) { at = i; break; }
+                }
+                ActionStepBox.SelectedIndex = at;
+                ActionArgBox.Text = step.ActionArg;
+                break;
+            }
 
             case "waitFor":
                 EnsureCondKinds();
@@ -894,6 +913,50 @@ public partial class MacrosView : UserControl
         _host!.SaveSettings();
         RefreshSteps(keepSelection: true);
     }
+
+    // ---------------- 动作步骤 ----------------
+
+    private bool _actionItemsBuilt;
+
+    /// <summary>动作下拉只建一次：124 项，每次 BindStepEditor 重建会明显卡顿。</summary>
+    private void EnsureActionItems()
+    {
+        if (_actionItemsBuilt || _host == null) return;
+
+        ActionStepBox.Items.Clear();
+        foreach (var a in _host.Actions.Items.Where(a => !a.Hidden))
+            ActionStepBox.Items.Add(new ComboBoxItem
+            {
+                Content = string.IsNullOrEmpty(a.Category) ? a.Title : $"{a.Category} · {a.Title}",
+                Tag = a.Id,
+            });
+
+        _actionItemsBuilt = true;
+    }
+
+    private void OnActionStepChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "action") return;
+        if (ActionStepBox.SelectedItem is not ComboBoxItem item || item.Tag is not string id) return;
+
+        step.ActionId = id;
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnActionArgChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "action") return;
+
+        step.ActionArg = ActionArgBox.Text ?? "";
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnInsertAction(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "action" });
 
     private void OnInsertWaitFor(object sender, RoutedEventArgs e)
         => AddStep(new MacroStep { Kind = "waitFor", Cond = MacroCondition.App, TimeoutMs = 5000 });

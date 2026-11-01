@@ -820,4 +820,118 @@ public static partial class SelfTest
             MacroPlayer.ConditionForTest = saved;
         }
     }
+    /// <summary>
+    /// 宏里的「执行动作」步骤。
+    ///
+    /// 重点不是"能不能调到"，而是三条边界：
+    ///   ① 顺序与参数要对得上（否则"先关窗口再输入"会变成乱序）；
+    ///   ② 动作返回 false 就算失败，后续步骤不再执行；
+    ///   ③ 失败能被重试块接住，且重试次数与设置一致。
+    /// </summary>
+    private static void TestMacroActionStep()
+    {
+        // ---- 克隆要带上动作字段 ----
+        var src = new MacroStep { Kind = "action", ActionId = "openUrl", ActionArg = "https://a" };
+        var copy = src.Clone();
+        Check("宏动作：克隆保留 id", copy.ActionId == "openUrl");
+        Check("宏动作：克隆保留参数", copy.ActionArg == "https://a");
+
+        // ---- 顺序与参数 ----
+        var calls = new List<string>();
+        var two = new Macro
+        {
+            Name = "自检-动作顺序",
+            Steps = new List<MacroStep>
+            {
+                new() { Kind = "action", ActionId = "closeWindow" },
+                new() { Kind = "action", ActionId = "openUrl", ActionArg = "https://b" },
+            },
+        };
+
+        var done1 = new System.Threading.ManualResetEventSlim(false);
+        using (var player = new MacroPlayer())
+        {
+            player.ActionInvoker = (id, arg) => { lock (calls) calls.Add($"{id}|{arg}"); return true; };
+            Check("宏动作：能开始播放", player.TryPlay(two, onCompleted: () => done1.Set()));
+            Check("宏动作：正常结束", done1.Wait(4000));
+        }
+
+        lock (calls)
+        {
+            CheckEqual("宏动作：执行了两步", calls.Count, 2);
+            CheckEqual("宏动作：第一步 id", calls.Count > 0 ? calls[0].Split('|')[0] : "", "closeWindow");
+            CheckEqual("宏动作：第二步参数", calls.Count > 1 ? calls[1].Split('|')[1] : "", "https://b");
+        }
+
+        // ---- 返回 false → 失败，后续不执行 ----
+        var order = new List<string>();
+        var failing = new Macro
+        {
+            Name = "自检-动作失败",
+            Steps = new List<MacroStep>
+            {
+                new() { Kind = "action", ActionId = "boom" },
+                new() { Kind = "action", ActionId = "after" },
+            },
+        };
+
+        string? reason = null;
+        var done2 = new System.Threading.ManualResetEventSlim(false);
+        using (var player = new MacroPlayer())
+        {
+            player.ActionInvoker = (id, _) => { lock (order) order.Add(id); return false; };
+            player.ActionTitle = id => id == "boom" ? "会失败的动作" : id;
+            player.Failed += r => reason = r;
+            Check("宏动作：能开始播放（会失败）", player.TryPlay(failing, onCompleted: () => done2.Set()));
+            Check("宏动作：失败后结束", done2.Wait(4000));
+        }
+
+        lock (order)
+        {
+            CheckEqual("宏动作：失败后不再执行后续步骤", order.Count, 1);
+            CheckEqual("宏动作：失败的是第一步", order.Count > 0 ? order[0] : "", "boom");
+        }
+        Check("宏动作：发出失败通知", reason != null, reason ?? "无");
+        Check("宏动作：失败原因用动作名", (reason ?? "").Contains("会失败的动作"), reason ?? "");
+
+        // ---- 重试块接住 ----
+        int attempts = 0;
+        var retried = new Macro
+        {
+            Name = "自检-动作重试",
+            Steps = new List<MacroStep>
+            {
+                new() { Kind = "retry", Count = 3 },
+                new() { Kind = "action", ActionId = "boom" },
+                new() { Kind = "endRetry" },
+            },
+        };
+
+        var done3 = new System.Threading.ManualResetEventSlim(false);
+        using (var player = new MacroPlayer())
+        {
+            player.ActionInvoker = (_, _) => { System.Threading.Interlocked.Increment(ref attempts); return false; };
+            Check("宏动作：重试宏能播放", player.TryPlay(retried, onCompleted: () => done3.Set()));
+            Check("宏动作：重试宏结束", done3.Wait(4000));
+        }
+
+        CheckEqual("宏动作：重试次数与设置一致", attempts, 3);
+
+        // ---- 没有执行器：跳过而不是失败 ----
+        var noInvoker = new Macro
+        {
+            Name = "自检-无执行器",
+            Steps = new List<MacroStep> { new() { Kind = "action", ActionId = "openUrl" } },
+        };
+
+        string? noReason = null;
+        var done4 = new System.Threading.ManualResetEventSlim(false);
+        using (var player = new MacroPlayer())
+        {
+            player.Failed += r => noReason = r;
+            Check("宏动作：无执行器也能播", player.TryPlay(noInvoker, onCompleted: () => done4.Set()));
+            Check("宏动作：无执行器时正常结束", done4.Wait(4000));
+        }
+        Check("宏动作：无执行器不算失败", noReason == null, noReason ?? "");
+    }
 }

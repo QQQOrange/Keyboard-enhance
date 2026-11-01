@@ -135,6 +135,9 @@ public static partial class SelfTest
         Section("宏的等待与重试");
         TestMacroWaitAndRetry();
 
+        Section("宏的动作步骤");
+        TestMacroActionStep();
+
         Section("启动密码");
         TestStartupPassword();
 

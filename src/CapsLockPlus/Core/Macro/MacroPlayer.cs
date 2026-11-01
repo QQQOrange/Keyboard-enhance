@@ -58,6 +58,17 @@ public sealed class MacroPlayer : IDisposable
     /// </summary>
     public event Action<string>? Failed;
 
+    /// <summary>
+    /// 动作执行器（由 AppHost 注入，转发给 <c>InvokeAction</c>）。
+    ///
+    /// 为什么用委托而不是直接引用动作目录：MacroPlayer 在 Core 层，
+    /// 让它依赖 UI 层的 AppHost 会把整条链路绑死，自检也没法替换。
+    /// </summary>
+    public Func<string, string, bool>? ActionInvoker { get; set; }
+
+    /// <summary>动作 id → 可读名称（失败提示用）。没注入就退回显示 id。</summary>
+    public Func<string, string>? ActionTitle { get; set; }
+
     /// <summary>自检用：替换条件求值，避免依赖真实的前台窗口/剪贴板。</summary>
     internal static Func<Core.Settings.MacroStep, MacroContext, bool>? ConditionForTest { get; set; }
 
@@ -232,6 +243,30 @@ public sealed class MacroPlayer : IDisposable
                                 break;
                             }
 
+                            /* 执行一个内置动作：把 124 个动作变成宏里的一步。
+                             * 动作返回 false 也算失败，同样交给重试块 ——
+                             * 否则"打开窗口没成功"这类情况在宏里就被静默吞掉了。 */
+                            case "action":
+                            {
+                                if (!RunActionStep(step))
+                                {
+                                    if (_cancelRequested) { abort = true; break; }
+
+                                    int target = ResolveRetry(flow, snapshot.Steps, retries, pc);
+                                    if (target < 0)
+                                    {
+                                        abort = true;
+                                        string name = ActionTitle?.Invoke(step.ActionId) ?? step.ActionId;
+                                        failReason = Loc.F("动作「{0}」没有完成", name);
+                                        break;
+                                    }
+
+                                    pc = target;
+                                    continue;
+                                }
+                                break;
+                            }
+
                             case "retry":
                                 retries[pc] = 1;      // 第 1 次尝试
                                 break;
@@ -313,6 +348,35 @@ public sealed class MacroPlayer : IDisposable
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
         return true;
+    }
+
+    /// <summary>
+    /// 执行宏里的一个动作步骤。返回 false = 没完成（会被重试块接手）。
+    ///
+    /// 三种"不算失败"的情况要区分清楚，否则宏会因为无关原因中止：
+    ///   · 没注入执行器（自检、或命令面板等不该跑动作的场合）→ 记日志跳过；
+    ///   · 动作 id 为空（用户刚插入还没选）→ 记日志跳过；
+    ///   · 动作抛异常 → **算失败**（这是真的执行出错，和返回 false 同类）。
+    /// </summary>
+    private bool RunActionStep(Core.Settings.MacroStep step)
+    {
+        var invoke = ActionInvoker;
+
+        if (invoke == null || string.IsNullOrWhiteSpace(step.ActionId))
+        {
+            CoreLog.Warn("宏里的动作步骤被跳过：没有执行器或动作 id 为空");
+            return true;
+        }
+
+        try
+        {
+            return invoke(step.ActionId, step.ActionArg ?? "");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn($"宏执行动作 {step.ActionId} 出错：{ex.Message}");
+            return false;
+        }
     }
 
     /// <summary>条件求值。自检可替换（<see cref="ConditionForTest"/>），生产走真实状态。</summary>

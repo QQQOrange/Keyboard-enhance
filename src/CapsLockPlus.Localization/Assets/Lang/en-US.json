@@ -1918,5 +1918,11 @@
   "第 {0} 步的「结束重试」没有对应的「重试」": "Step {0}: \"End Retry\" has no matching \"Retry\"",
   "第 {0} 步的「重试」没有闭合": "Step {0}: \"Retry\" is not closed",
   "「{0}」等待超时（{1} ms）": "\"{0}\" timed out after {1} ms",
-  "播放宏": "Play macro"
+  "播放宏": "Play macro",
+  "执行动作": "Run action",
+  "多数动作不需要参数；需要时填（如网址、文件夹）": "Most actions need no argument; fill it when required (URL, folder, ...)",
+  "动作失败会被外层「重试」块接手。": "If the action fails, the enclosing Retry block takes over.",
+  "执行动作（未选择）": "Run action (nothing selected)",
+  "执行 {0}": "Run {0}",
+  "动作「{0}」没有完成": "Action \"{0}\" did not complete"
 }
