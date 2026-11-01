@@ -28,13 +28,13 @@ public static class TextActions
     ///
     ///   ① **UI Automation**（首选）
     ///      跨进程 COM 调用，直接问程序"你现在选了什么"。
-    ///      不碰剪贴板、不模拟按键 —— 因此**不受 UIPI 限制**。
-    ///      这是"以管理员身份运行时取词全都不工作"的正解：
-    ///      管理员进程用 SendInput 往普通权限的浏览器发按键，会被系统拦掉。
+    ///      不碰剪贴板、不模拟按键 —— 因此不受输入队列的权限限制。
+    ///      ⚠ 但 Chromium 会拒绝向**提权客户端**暴露无障碍树，
+    ///      管理员模式下这一条会失效 —— 由 SelectionProxy 兜底。
     ///      覆盖：Chromium 系浏览器、Electron、Office、现代编辑器。
     ///
     ///   ② **WM_COPY 窗口消息**
-    ///      同样不走输入队列，UIPI 拦不住。用于 UIA 没实现 TextPattern 的程序。
+    ///      同样不走输入队列；高完整性可向低完整性投递。用于 UIA 没实现 TextPattern 的程序。
     ///
     ///   ③ **SendInput 模拟 Ctrl+C**
     ///      老路子，只在同权限（或本程序未提权）时有效。
@@ -43,7 +43,37 @@ public static class TextActions
     /// 每次尝试都用剪贴板序号严格确认"真的复制到了"，
     /// 且结束后恢复用户原有剪贴板。
     /// </summary>
+    /// <summary>
+    /// 取当前选中的文本；没有选区或取不到时返回空串。
+    ///
+    /// **管理员模式下多一层兜底**：本地 5 条通道全失败时，交给一个普通权限的
+    /// 一次性代理再试一次（<see cref="SelectionProxy"/>）。
+    ///
+    /// 原因：Chromium 系会拒绝向"提权客户端"暴露无障碍树并过滤合成输入，
+    /// 于是管理员模式下 UIA / SendInput 全部失效。代理以普通权限运行，
+    /// 客户端完整性与浏览器相同，通道立刻恢复。普通权限模式下这层不会启用，
+    /// 行为与之前完全一致。
+    /// </summary>
     public static string GetSelectedText(int timeoutMs = DefaultTimeoutMs)
+    {
+        string text = GetSelectedTextLocal(timeoutMs);
+        if (!string.IsNullOrWhiteSpace(text)) return text;
+
+        // 代理只为"管理员模式"而存在；代理自己不能再递归调用
+        if (!ElevationHelper.IsElevated || SelectionProxy.InHelper) return text;
+
+        string viaProxy = SelectionProxy.TryGetSelectedText();
+        if (!string.IsNullOrWhiteSpace(viaProxy))
+        {
+            CoreLog.Info($"[取词] 经普通权限代理取到 长度={viaProxy.Length}");
+            return viaProxy;
+        }
+
+        return text;
+    }
+
+    /// <summary>本地取词：UIA → WM_COPY → SendInput → 线程级注入 → Ctrl+Insert。</summary>
+    public static string GetSelectedTextLocal(int timeoutMs = DefaultTimeoutMs)
     {
         /* ===== 分步诊断 =====
          * 每一步都记日志，定位"到底哪一步失败"用。

@@ -184,12 +184,13 @@ public partial class SettingsView : UserControl
         if (enable)
         {
             bool ok = AppDialog.Confirm(Window.GetWindow(this),
-                Loc.T("以管理员身份启动后，「选中文字 → 直接搜索」会失效。\n\n") +
-                Loc.T("原因：Windows 禁止管理员进程向普通权限的浏览器 / 编辑器\n") +
-                Loc.T("注入输入（UIPI 安全限制），取词通道会全部被拦掉。\n\n") +
-                Loc.T("好处：对着「以管理员身份运行」的程序按快捷键才会生效。\n") +
-                Loc.T("（锁屏状态下任何用户态程序都无法使用快捷键，\n") +
-                Loc.T(" 这与是否管理员无关。）\n\n") +
+                Loc.T("以管理员身份运行后，可以对着「以管理员身份运行」的程序按快捷键。\n\n") +
+                Loc.T("取词（选中文字 → 直接搜索）会自动改用普通权限代理执行，\n") +
+                Loc.T("管理员模式下通常仍可正常使用。\n") +
+                Loc.T("例外：目标程序本身也是管理员权限时，仍然取不到它的选区\n") +
+                Loc.T("（这是 Windows 的隔离规则，任何用户态程序都绕不过）。\n\n") +
+                Loc.T("代价：开机自启会改用计划任务（登录不再弹 UAC）；\n") +
+                Loc.T("把文件拖进本程序窗口会失效。\n\n") +
                 Loc.T("确定要开启吗？"),
                 Loc.T("开启管理员模式"), DialogKind.Warn, okText: Loc.T("开启"));
             if (!ok)

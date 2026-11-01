@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Xml.Linq;
 using CapsLockPlus.Core.Settings;
+using CapsLockPlus.Core.Text;
 
 namespace CapsLockPlus;
 
@@ -108,5 +109,33 @@ public static partial class SelfTest
         {
             StartupTask.RunnerForTest = saved;
         }
+    }
+
+    /// <summary>
+    /// 取词代理的命令行解析。
+    ///
+    /// 这个开关决定"当前进程是主程序还是一次性代理"，解析错了会出现
+    /// "代理把自己当主程序启动"或"主程序被当成代理直接退出"，
+    /// 两者都很难看出原因，所以单独测。
+    /// </summary>
+    private static void TestSelectionProxyArgs()
+    {
+        Check("代理参数：普通启动不识别",
+            SelectionProxy.ParseHelperArg(new[] { "--tray", "--trace" }) == null);
+
+        CheckEqual("代理参数：识别 --pick 与管道名",
+            SelectionProxy.ParseHelperArg(new[] { "--pick", "KeyEnhancePick_abc" }),
+            "KeyEnhancePick_abc");
+
+        CheckEqual("代理参数：参数顺序无关",
+            SelectionProxy.ParseHelperArg(new[] { "--trace", "--pick", "P1" }),
+            "P1");
+
+        CheckEqual("代理参数：只给开关不给名字也不启动主程序",
+            SelectionProxy.ParseHelperArg(new[] { "--pick", "--tray" }),
+            "");
+
+        Check("代理参数：大小写不敏感",
+            SelectionProxy.ParseHelperArg(new[] { "--PICK", "P2" }) == "P2");
     }
 }

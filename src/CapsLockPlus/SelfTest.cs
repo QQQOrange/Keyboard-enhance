@@ -93,6 +93,9 @@ public static partial class SelfTest
         TestStartupTaskXml();
         TestStartupTaskCommands();
 
+        Section("取词代理");
+        TestSelectionProxyArgs();
+
         Section("启动密码");
         TestStartupPassword();
 

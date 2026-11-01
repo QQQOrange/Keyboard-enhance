@@ -16,6 +16,43 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        /* ---- 取词代理：一次性、普通权限 ----
+         *
+         * 必须在**单实例检查与提权逻辑之前**处理：
+         *   · 它不该抢主实例，也不该被主实例"激活"；
+         *   · 它本来就是为了"以普通权限运行"，绝不能自我提权。
+         * 干完活立刻退出，不建托盘、不建窗口。 */
+        string? pickPipe = Core.Text.SelectionProxy.ParseHelperArg(e.Args);
+        if (pickPipe != null)
+        {
+            int pickCode = Core.Text.SelectionProxy.RunHelper(pickPipe);
+            Environment.Exit(pickCode);
+            return;
+        }
+
+        /* 诊断：`--pick-test <结果文件>` 走一遍完整链路（拉起代理 → 收结果），
+         * 用来验证"管理员模式取词"这条支路是否真的通。 */
+        int pickTestIdx = Array.FindIndex(e.Args,
+            a => a.Equals("--pick-test", StringComparison.OrdinalIgnoreCase));
+        if (pickTestIdx >= 0)
+        {
+            string outFile = pickTestIdx + 1 < e.Args.Length ? e.Args[pickTestIdx + 1] : "";
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string picked = Core.Text.SelectionProxy.TryGetSelectedText(2500);
+            sw.Stop();
+            try
+            {
+                if (outFile.Length > 0)
+                    System.IO.File.WriteAllText(outFile,
+                        $"elapsedMs={sw.ElapsedMilliseconds}\nlength={picked.Length}\ntext={picked}",
+                        System.Text.Encoding.UTF8);
+            }
+            catch { }
+            Environment.Exit(string.IsNullOrEmpty(picked) ? 2 : 0);
+            return;
+        }
+
         DispatcherUnhandledException += OnUnhandled;
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             CoreLog.Error("未处理异常", args.ExceptionObject as Exception);
