@@ -1,4 +1,5 @@
 ﻿using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus.Core.Macro;
@@ -38,23 +39,61 @@ public sealed class MacroPlayer : IDisposable
     }
 
     /// <summary>
-    /// 播放一个宏。
+    /// 一个宏单次播放最多执行多少步。
+    ///
+    /// 存在的唯一理由是"无限循环 + 极短循环体"：没有上限时，用户配错一个循环
+    /// 就会把 UI 线程之外的一切拖死，而且表现为"程序卡住"，极难归因。
+    /// 20 万步对正常宏远远够用（一次播放通常几十步）。
+    /// </summary>
+    public const int StepBudget = 200_000;
+
+    /// <summary>最近一次播放失败的原因（null = 没有失败）。</summary>
+    public string? LastError { get; private set; }
+
+    /// <summary>
+    /// 播放一个宏（兼容旧调用：忽略结果）。
+    /// 需要知道"有没有播起来"时用 <see cref="TryPlay"/>。
+    /// </summary>
+    public void Play(Core.Settings.Macro macro, int? repeatOverride = null,
+        Action? onCompleted = null)
+        => TryPlay(macro, repeatOverride, onCompleted);
+
+    /// <summary>
+    /// 播放一个宏。返回 false 表示没播（空宏 / 已在播放 / 流程控制配对错误）。
     /// </summary>
     /// <param name="macro">要播放的宏。</param>
     /// <param name="repeatOverride">覆盖宏自身的重复次数（null = 用宏设置）。</param>
     /// <param name="onCompleted">播放结束（正常 / 取消 / 异常皆算）后的回调。</param>
-    public void Play(Core.Settings.Macro macro, int? repeatOverride = null,
+    public bool TryPlay(Core.Settings.Macro macro, int? repeatOverride = null,
         Action? onCompleted = null)
     {
-        if (macro == null || macro.Steps.Count == 0) return;
+        LastError = null;
+
+        if (macro == null || macro.Steps.Count == 0)
+        {
+            LastError = Loc.T("宏里还没有步骤");
+            return false;
+        }
         if (IsPlaying)
         {
             CoreLog.Info("宏播放请求被忽略：已有宏在播放");
-            return;
+            LastError = Loc.T("已有宏在播放");
+            return false;
         }
 
         // 复制一份，避免播放时用户在界面上改步骤导致索引错乱
         var snapshot = macro.Clone();
+        var flow = MacroFlow.Compile(snapshot.Steps);
+
+        /* 配对错误就**不播**：半播出去的按键（已经按下 Ctrl 但没抬起）比不播更糟。
+         * 把原因留在 LastError 上，由调用方决定怎么提示。 */
+        if (!flow.Ok)
+        {
+            LastError = flow.Error ?? Loc.T("宏的流程控制配对有误");
+            CoreLog.Error($"宏「{snapshot.Name}」无法播放：{LastError}");
+            return false;
+        }
+
         int repeat = repeatOverride ?? (snapshot.Repeat <= 0 ? int.MaxValue : snapshot.Repeat);
 
         _cancelRequested = false;
@@ -72,11 +111,27 @@ public sealed class MacroPlayer : IDisposable
                 for (int round = 0; round < repeat; round++)
                 {
                     CurrentStep = -1;
-                    foreach (var step in snapshot.Steps)
+
+                    /* 程序计数器：没有流程控制标记的宏，走的还是"逐条往下"的老路径，
+                     * 只是把 foreach 换成了 pc 自增 —— 行为完全一致。
+                     * 有标记时靠 flow 的配对表跳转。 */
+                    var loops = new Dictionary<int, int>();     // loop 下标 → 已执行轮数
+                    int pc = 0;
+                    int budget = StepBudget;
+
+                    while (pc < snapshot.Steps.Count)
                     {
                         if (_cancelRequested) break;
 
-                        CurrentStep++;
+                        if (--budget <= 0)
+                        {
+                            CoreLog.Warn($"宏「{snapshot.Name}」执行步数超过上限（{StepBudget}），已中止");
+                            break;
+                        }
+
+                        CurrentStep = pc;
+                        var step = snapshot.Steps[pc];
+
                         switch (step.Kind)
                         {
                             case "keyDown":
@@ -115,7 +170,54 @@ public sealed class MacroPlayer : IDisposable
                                 Wait(Random.Shared.Next(lo, hi + 1));
                                 break;
                             }
+
+                            /* ---- 流程控制 ----
+                             * 每次求值都重新读一次外部状态（前台窗口/剪贴板），
+                             * 而不是整段宏共用一份快照：循环里等待窗口变化是正当用法。 */
+                            case "if":
+                            {
+                                bool hit = MacroCondition.Evaluate(step, MacroContext.Capture());
+                                if (!hit)
+                                {
+                                    pc = flow.SkipTo(pc);
+                                    continue;
+                                }
+                                break;
+                            }
+
+                            case "else":
+                                // 走到这里说明 then 分支正常走完了 → 跳过 else 分支
+                                pc = flow.AfterElse(pc);
+                                continue;
+
+                            case "endIf":
+                                break;
+
+                            case "loop":
+                                loops[pc] = 1;
+                                break;
+
+                            case "endLoop":
+                            {
+                                int loopAt = flow.LoopOf(pc);
+                                if (loopAt >= 0)
+                                {
+                                    int total = snapshot.Steps[loopAt].Count;
+                                    loops.TryGetValue(loopAt, out int done);
+
+                                    if (flow.ShouldRepeat(loopAt, done, total))
+                                    {
+                                        loops[loopAt] = done + 1;
+                                        pc = loopAt + 1;
+                                        continue;
+                                    }
+                                    loops.Remove(loopAt);
+                                }
+                                break;
+                            }
                         }
+
+                        pc++;
                     }
 
                     if (_cancelRequested) break;
@@ -148,6 +250,7 @@ public sealed class MacroPlayer : IDisposable
         };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
+        return true;
     }
 
     /// <summary>等待一段时间，期间可被取消。</summary>

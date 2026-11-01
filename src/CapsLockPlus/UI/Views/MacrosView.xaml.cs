@@ -151,6 +151,7 @@ public partial class MacrosView : UserControl
         StepList.ItemsSource = rows;
         StepCount.Text = m.Steps.Count == 0 ? "" : Loc.F("共 {0} 步 · 约 {1}", m.Steps.Count, m.DurationText);
         StepEmpty.Visibility = m.Steps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RefreshFlowHint(m);
         StatusText.Text = m.Steps.Count == 0 ? Loc.T("还没有步骤，先录制或插入") : Loc.F("共 {0} 步", m.Steps.Count);
 
         if (keepSelection && want >= 0 && want < rows.Count)
@@ -171,6 +172,14 @@ public partial class MacrosView : UserControl
         "delay" => Loc.F("等待 {0} ms", s.DelayMs),
         "delayRandom" => Loc.F("等待 {0}~{1} ms（随机）", s.MinMs, s.MaxMs),
         "text" => Loc.F("输入「{0}」", Truncate(s.Text, 24)),
+
+        // 流程控制：标记本身也要有可读的名字，否则列表里显示原始 id
+        "if" => Loc.F("如果 {0}", MacroCondition.Describe(s.Cond, s.CondValue, s.Not)),
+        "else" => Loc.T("否则"),
+        "endIf" => Loc.T("结束如果"),
+        "loop" => s.Count <= 0 ? Loc.T("循环（一直）") : Loc.F("循环 {0} 次", s.Count),
+        "endLoop" => Loc.T("结束循环"),
+
         _ => s.Kind,
     };
 
@@ -450,9 +459,17 @@ public partial class MacrosView : UserControl
             StatusText.Text = Loc.T("这个宏还没有步骤");
             return;
         }
+        if (!_host.Context.MacroPlayer.TryPlay(_editing, onCompleted: () =>
+                Dispatcher.BeginInvoke(OnPlayFinished)))
+        {
+            // 配对错误之类：直接说清楚哪一条不对，别让用户对着不动的界面猜
+            _playing = false;
+            StatusText.Text = Loc.F("没能播放：{0}",
+                _host.Context.MacroPlayer.LastError ?? Loc.T("未知原因"));
+            return;
+        }
+
         _playing = true;
-        _host.Context.MacroPlayer.Play(_editing, onCompleted: () =>
-            Dispatcher.BeginInvoke(OnPlayFinished));
         StatusText.Text = Loc.T("播放中…按 Esc 或点「停止」可中断");
         StopPlayButton.Visibility = Visibility.Visible;
         ClearCurrentMarker();
@@ -581,6 +598,8 @@ public partial class MacrosView : UserControl
         RandomEditPanel.Visibility = step.Kind == "delayRandom" ? Visibility.Visible : Visibility.Collapsed;
         TextEditPanel.Visibility = step.Kind == "text" ? Visibility.Visible : Visibility.Collapsed;
         KeyEditPanel.Visibility = step.Kind is "keyDown" or "keyUp" ? Visibility.Visible : Visibility.Collapsed;
+        CondEditPanel.Visibility = step.Kind == "if" ? Visibility.Visible : Visibility.Collapsed;
+        LoopEditPanel.Visibility = step.Kind == "loop" ? Visibility.Visible : Visibility.Collapsed;
 
         switch (step.Kind)
         {
@@ -597,6 +616,19 @@ public partial class MacrosView : UserControl
             case "keyDown":
             case "keyUp":
                 KeyEditLabel.Text = KeyName.Display(step.Key);
+                break;
+
+            case "if":
+                EnsureCondKinds();
+                int kindIndex = Array.IndexOf(MacroCondition.Kinds, step.Cond);
+                CondKindBox.SelectedIndex = kindIndex >= 0 ? kindIndex : 0;
+                CondValueBox.Text = step.CondValue;
+                CondValueBox.IsEnabled = step.Cond != MacroCondition.ClipboardEmpty;
+                CondNotBox.IsChecked = step.Not;
+                break;
+
+            case "loop":
+                LoopCountBox.Text = step.Count.ToString();
                 break;
         }
 
@@ -721,6 +753,120 @@ public partial class MacrosView : UserControl
         if (string.IsNullOrEmpty(text)) return;
         AddStep(new MacroStep { Kind = "text", Text = text });
     }
+
+    // ---------------- 流程控制：条件与循环 ----------------
+
+    /// <summary>
+    /// 把当前选中的步骤取出来；不满足条件返回 null。
+    /// 每个编辑回调都要这一串守卫，集中一次避免漏判（漏判会写坏别的那一步）。
+    /// </summary>
+    private MacroStep? SelectedStepOrNull()
+    {
+        if (_host == null || _suppress || _editing == null) return null;
+        if (_selectedStep < 0 || _selectedStep >= _editing.Steps.Count) return null;
+        return _editing.Steps[_selectedStep];
+    }
+
+    private void EnsureCondKinds()
+    {
+        if (CondKindBox.Items.Count > 0) return;
+
+        foreach (string kind in MacroCondition.Kinds)
+            CondKindBox.Items.Add(new ComboBoxItem { Content = CondKindLabel(kind), Tag = kind });
+    }
+
+    private static string CondKindLabel(string kind) => kind switch
+    {
+        MacroCondition.App => Loc.T("前台进程是"),
+        MacroCondition.Title => Loc.T("窗口标题含"),
+        MacroCondition.Clipboard => Loc.T("剪贴板含"),
+        MacroCondition.ClipboardEmpty => Loc.T("剪贴板为空"),
+        _ => kind,
+    };
+
+    private void OnCondKindChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || CondKindBox.SelectedItem is not ComboBoxItem item || item.Tag is not string kind) return;
+
+        step.Cond = kind;
+        CondValueBox.IsEnabled = kind != MacroCondition.ClipboardEmpty;
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnCondValueChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "if") return;
+
+        step.CondValue = CondValueBox.Text ?? "";
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnCondNotChanged(object sender, RoutedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "if") return;
+
+        step.Not = CondNotBox.IsChecked == true;
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    private void OnLoopCountChanged(object sender, TextChangedEventArgs e)
+    {
+        var step = SelectedStepOrNull();
+        if (step == null || step.Kind != "loop") return;
+        if (!int.TryParse(LoopCountBox.Text, out int n)) return;
+
+        step.Count = Math.Clamp(n, 0, 100_000);
+        _host!.SaveSettings();
+        RefreshSteps(keepSelection: true);
+    }
+
+    /// <summary>
+    /// 配对状态提示。
+    ///
+    /// 配对错误会**阻止播放**（半播出去的按键比不播更糟），
+    /// 所以必须在编辑时就看得见，而不是等用户按了快捷键才发现没反应。
+    /// </summary>
+    private void RefreshFlowHint(Macro m)
+    {
+        if (FlowHint == null) return;
+
+        if (m.Steps.Count == 0)
+        {
+            FlowHint.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var flow = MacroFlow.Compile(m.Steps);
+        if (flow.Ok)
+        {
+            FlowHint.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        FlowHint.Text = Loc.F("配对有误：{0}", flow.Error ?? "");
+        FlowHint.Visibility = Visibility.Visible;
+    }
+
+    private void OnInsertIf(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "if", Cond = MacroCondition.App });
+
+    private void OnInsertElse(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "else" });
+
+    private void OnInsertEndIf(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "endIf" });
+
+    private void OnInsertLoop(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "loop", Count = 3 });
+
+    private void OnInsertEndLoop(object sender, RoutedEventArgs e)
+        => AddStep(new MacroStep { Kind = "endLoop" });
 
     private void OnInsertKeyDown(object sender, RoutedEventArgs e) => InsertKey("keyDown");
 

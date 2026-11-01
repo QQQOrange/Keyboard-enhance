@@ -4,6 +4,7 @@ using System.Xml.Linq;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Macro;
 using CapsLockPlus.Core.Qbar;
 using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
@@ -562,5 +563,135 @@ public static partial class SelfTest
         Check("可编辑性：文档允许", !EditableTarget.ShouldSkip("Document", null, false));
         Check("可编辑性：未知类型默认允许", !EditableTarget.ShouldSkip("Pane", null, null));
         Check("可编辑性：完全取不到信息也允许", !EditableTarget.ShouldSkip(null, null, null));
+    }
+    /// <summary>
+    /// 宏的流程控制：配对表 + 跳转 + 条件求值。
+    ///
+    /// 这里验的是**播放器实际调用的那几个函数**（SkipTo / AfterElse / LoopOf /
+    /// ShouldRepeat / Matches），而不是另写一套模拟逻辑 —— 否则测过了也不代表播放对。
+    /// </summary>
+    private static void TestMacroFlow()
+    {
+        static MacroStep S(string kind) => new() { Kind = kind };
+
+        // ---- 简单 if / else / endIf ----
+        var steps = new List<MacroStep> { S("if"), S("text"), S("else"), S("text"), S("endIf"), S("delay") };
+        var flow = MacroFlow.Compile(steps);
+        Check("宏流程：简单配对成立", flow.Ok, flow.Error ?? "");
+        CheckEqual("宏流程：else 位置", flow.ElseOf(0), 2);
+        CheckEqual("宏流程：endIf 位置", flow.EndOfIf(0), 4);
+        CheckEqual("宏流程：条件不成立跳到 else 之后", flow.SkipTo(0), 3);
+        CheckEqual("宏流程：then 走完跳到 endIf 之后", flow.AfterElse(2), 5);
+
+        // ---- 没有 else ----
+        var noElse = MacroFlow.Compile(new List<MacroStep> { S("if"), S("text"), S("endIf") });
+        Check("宏流程：无 else 也成立", noElse.Ok, noElse.Error ?? "");
+        CheckEqual("宏流程：无 else 时跳到 endIf 之后", noElse.SkipTo(0), 3);
+
+        // ---- 嵌套：if 里套 loop ----
+        var nested = MacroFlow.Compile(new List<MacroStep>
+        {
+            S("if"), S("loop"), S("text"), S("endLoop"), S("else"), S("endIf"),
+        });
+        Check("宏流程：嵌套配对成立", nested.Ok, nested.Error ?? "");
+        CheckEqual("宏流程：loop 与 endLoop 配对", nested.LoopOf(3), 1);
+        CheckEqual("宏流程：嵌套里的 endIf", nested.EndOfIf(0), 5);
+        CheckEqual("宏流程：嵌套循环不成立时跳到 else 之后", nested.SkipTo(0), 5);
+
+        // ---- 配对错误 ----
+        var loneElse = MacroFlow.Compile(new List<MacroStep> { S("else") });
+        Check("宏流程：孤立的否则报错", !loneElse.Ok);
+        Check("宏流程：报错含步号", (loneElse.Error ?? "").Contains("第 1 步"), loneElse.Error ?? "");
+
+        Check("宏流程：孤立的结束如果报错",
+            !MacroFlow.Compile(new List<MacroStep> { S("endIf") }).Ok);
+        Check("宏流程：未闭合的如果报错",
+            !MacroFlow.Compile(new List<MacroStep> { S("if"), S("text") }).Ok);
+        Check("宏流程：未闭合的循环报错",
+            !MacroFlow.Compile(new List<MacroStep> { S("loop"), S("text") }).Ok);
+        Check("宏流程：结束循环配到如果上要报错",
+            !MacroFlow.Compile(new List<MacroStep> { S("if"), S("endLoop") }).Ok);
+
+        // ---- 循环次数 ----
+        Check("宏流程：次数未到要继续", flow.ShouldRepeat(0, 1, 3));
+        Check("宏流程：次数到了要退出", !flow.ShouldRepeat(0, 3, 3));
+        Check("宏流程：0 表示一直循环", flow.ShouldRepeat(0, 999, 0));
+
+        // ---- 无流程标记的老宏：不能因为编译而改变行为 ----
+        var plain = MacroFlow.Compile(new List<MacroStep> { S("text"), S("delay") });
+        Check("宏流程：老宏没有流程标记", plain.Ok && !plain.HasFlow);
+
+        // ---- 条件求值 ----
+        var ctx = new MacroContext("code.exe", "未保存 - 项目", "hello world");
+        Check("宏条件：进程包含（不区分大小写）",
+            MacroCondition.Matches(MacroCondition.App, "Code", false, ctx.Process, ctx.Title, ctx.Clipboard));
+        Check("宏条件：标题包含",
+            MacroCondition.Matches(MacroCondition.Title, "未保存", false, ctx.Process, ctx.Title, ctx.Clipboard));
+        Check("宏条件：剪贴板包含",
+            MacroCondition.Matches(MacroCondition.Clipboard, "WORLD", false, ctx.Process, ctx.Title, ctx.Clipboard));
+        Check("宏条件：不匹配", 
+            !MacroCondition.Matches(MacroCondition.App, "notepad", false, ctx.Process, ctx.Title, ctx.Clipboard));
+        Check("宏条件：取反",
+            MacroCondition.Matches(MacroCondition.App, "notepad", true, ctx.Process, ctx.Title, ctx.Clipboard));
+
+        Check("宏条件：空值恒不成立（避免刚建就命中）",
+            !MacroCondition.Matches(MacroCondition.App, "", false, ctx.Process, ctx.Title, ctx.Clipboard));
+        Check("宏条件：空值取反则恒成立",
+            MacroCondition.Matches(MacroCondition.App, "   ", true, ctx.Process, ctx.Title, ctx.Clipboard));
+
+        Check("宏条件：剪贴板为空",
+            MacroCondition.Matches(MacroCondition.ClipboardEmpty, "", false, "", "", ""));
+        Check("宏条件：剪贴板非空则不成立",
+            !MacroCondition.Matches(MacroCondition.ClipboardEmpty, "", false, "", "", "x"));
+        Check("宏条件：未知类型当不成立",
+            !MacroCondition.Matches("weird", "x", false, ctx.Process, ctx.Title, ctx.Clipboard));
+
+        // ---- 克隆要带上新字段（漏了会导致改一步影响别处）----
+        var src = new MacroStep
+        {
+            Kind = "if", Cond = MacroCondition.Title, CondValue = "abc", Not = true, Count = 7,
+        };
+        var copy = src.Clone();
+        Check("宏步骤：克隆保留条件",
+            copy.Cond == MacroCondition.Title && copy.CondValue == "abc" && copy.Not);
+        CheckEqual("宏步骤：克隆保留次数", copy.Count, 7);
+
+        // ---- 时长估算要把循环体乘起来 ----
+        var m = new Macro { Steps = new List<MacroStep>
+        {
+            S("loop"), new() { Kind = "delay", DelayMs = 100 }, S("endLoop"),
+        }};
+        m.Steps[0].Count = 5;
+        CheckEqual("宏时长：循环体按次数放大", m.EstimatedMs, 500);
+
+        /* ---- 真实播放一次（宏里只有流程标记，不发送任何按键）----
+         * 单测跳转函数不够：还要证明"播放器真的会沿着配对表走、并且会结束"。
+         * 配错的宏走的是"拒绝播放"分支，一个字都不会打出去。 */
+        using (var player = new MacroPlayer())
+        {
+            var flowMacro = new Macro
+            {
+                Name = "自检-流程",
+                Steps = new List<MacroStep>
+                {
+                    new() { Kind = "loop", Count = 2 },
+                    new() { Kind = "if", Cond = MacroCondition.App, CondValue = "__ke_never__" },
+                    new() { Kind = "delay", DelayMs = 1 },
+                    new() { Kind = "endIf" },
+                    new() { Kind = "endLoop" },
+                },
+            };
+
+            var done = new System.Threading.ManualResetEventSlim(false);
+            Check("宏播放：含流程标记的宏能播", player.TryPlay(flowMacro, onCompleted: () => done.Set()));
+            Check("宏播放：能正常结束（没有死循环）", done.Wait(3000));
+        }
+
+        using (var player = new MacroPlayer())
+        {
+            var broken = new Macro { Steps = new List<MacroStep> { new() { Kind = "loop" } } };
+            Check("宏播放：配对错误时拒绝播放", !player.TryPlay(broken));
+            Check("宏播放：拒绝时给出原因", !string.IsNullOrEmpty(player.LastError), player.LastError ?? "");
+        }
     }
 }

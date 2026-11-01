@@ -678,7 +678,14 @@ public sealed class SubLayerDef
 /// </summary>
 public sealed class MacroStep
 {
-    /// <summary>步骤类型：keyDown / keyUp / delay / delayRandom / text。</summary>
+    /// <summary>
+    /// 步骤类型：keyDown / keyUp / delay / delayRandom / text，
+    /// 以及流程控制 if / else / endIf / loop / endLoop。
+    ///
+    /// 流程控制是**成对标记**而不是嵌套结构：宏仍然是一条平铺的列表，
+    /// 靠 <c>Core.Macro.MacroFlow</c> 在播放前算出配对关系。
+    /// 这样老版本存的宏（没有这些标记）可以原样播放，JSON 也不会变成树。
+    /// </summary>
     public string Kind { get; set; } = "delay";
 
     /// <summary>Kind 为 keyDown/keyUp 时的键名（KeyName 形式，如 "a"、"ctrl"）。</summary>
@@ -698,10 +705,26 @@ public sealed class MacroStep
     /// <summary>Kind 为 delayRandom 时的随机区间上界。</summary>
     public int MaxMs { get; set; }
 
+    /// <summary>
+    /// Kind 为 if 时的条件类型：app（前台进程）/ title（窗口标题）/
+    /// clipboard（剪贴板包含）/ clipboardEmpty（剪贴板为空）。
+    /// </summary>
+    public string Cond { get; set; } = "app";
+
+    /// <summary>条件的比较值（app / title / clipboard 用；clipboardEmpty 忽略）。</summary>
+    public string CondValue { get; set; } = "";
+
+    /// <summary>Kind 为 if 时是否取反。</summary>
+    public bool Not { get; set; }
+
+    /// <summary>Kind 为 loop 时的循环次数；0 或负数 = 一直循环（由取消或步数上限终止）。</summary>
+    public int Count { get; set; } = 3;
+
     public MacroStep Clone() => new()
     {
         Kind = Kind, Key = Key, Text = Text,
         DelayMs = DelayMs, MinMs = MinMs, MaxMs = MaxMs,
+        Cond = Cond, CondValue = CondValue, Not = Not, Count = Count,
     };
 }
 
@@ -728,22 +751,52 @@ public sealed class Macro
         Steps = Steps.Select(s => s.Clone()).ToList(),
     };
 
-    /// <summary>估算总时长（用于界面显示）。</summary>
+    /// <summary>
+    /// 估算总时长（用于界面显示）。
+    ///
+    /// 循环体按次数放大：不算这一项的话，"循环 50 次 + 每次等 200ms"会显示成几百毫秒，
+    /// 与真实感受差两个数量级，用户会以为循环没生效。
+    /// 无限循环按 1 次算 —— 显示成"无限"没有意义，也没法参与加法。
+    /// </summary>
     public int EstimatedMs
     {
         get
         {
             int total = 0;
+            var stack = new Stack<(int Outer, int Count)>();
+
             foreach (var s in Steps)
             {
                 switch (s.Kind)
                 {
+                    case "loop":
+                    {
+                        int count = s.Count <= 0 ? 1 : Math.Min(s.Count, 1000);
+                        stack.Push((total, count));
+                        total = 0;
+                        break;
+                    }
+                    case "endLoop":
+                        if (stack.Count > 0)
+                        {
+                            var (outer, count) = stack.Pop();
+                            total = outer + total * count;
+                        }
+                        break;
+
+                    // 流程标记本身不耗时，别当成一次按键
+                    case "if":
+                    case "else":
+                    case "endIf":
+                        break;
+
                     case "delay": total += s.DelayMs; break;
                     case "delayRandom": total += (s.MinMs + s.MaxMs) / 2; break;
                     case "text": total += s.Text.Length * 12; break;
                     default: total += 8; break;   // 一次按键的按下+抬起
                 }
             }
+
             return total;
         }
     }

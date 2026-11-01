@@ -129,6 +129,9 @@ public static partial class SelfTest
         Section("片段可编辑性");
         TestEditableTargetRule();
 
+        Section("宏的流程控制");
+        TestMacroFlow();
+
         Section("启动密码");
         TestStartupPassword();
 

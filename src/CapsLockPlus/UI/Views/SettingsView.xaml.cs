@@ -141,8 +141,18 @@ public partial class SettingsView : UserControl
 
     // ---------------- 组合键 ----------------
 
-    /// <summary>组合键可用的键：字母/数字 + 常用功能键（同按才需要字母）。</summary>
-    private static readonly string[] ChordKeys = BuildChordKeys();
+    /// <summary>
+    /// 组合键可用的键：字母/数字 + 常用功能键（同按才需要字母）。
+    ///
+    /// **必须是懒加载**：它要读 <see cref="GestureKeys"/>，而那个字段声明在文件更后面。
+    /// 写成 `static readonly ... = BuildChordKeys()` 会在类型初始化阶段就执行，
+    /// 那时 GestureKeys 还是 null，`AddRange(null)` 抛 ArgumentNullException，
+    /// 整个 SettingsView 的静态构造失败 —— 表现就是**设置页直接打不开**。
+    /// （v4.5.42 就这么翻过一次车，靠 `--render` 才抓出来。）
+    /// </summary>
+    private static string[]? _chordKeys;
+
+    private static string[] ChordKeys => _chordKeys ??= BuildChordKeys();
 
     private static string[] BuildChordKeys()
     {

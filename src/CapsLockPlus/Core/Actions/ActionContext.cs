@@ -55,7 +55,14 @@ public sealed partial class ActionContext
             return;
         }
         int? repeat = int.TryParse(arg, out int n) && n > 0 ? n : null;
-        MacroPlayer.Play(macro, repeat);
+
+        /* 用 TryPlay：流程控制配错时不播，并把原因弹出来。
+         * 直接 Play 的话表现是"按了快捷键什么都不发生"，用户只会以为程序坏了。 */
+        if (!MacroPlayer.TryPlay(macro, repeat))
+        {
+            Notify(Loc.F("没能播放宏「{0}」：{1}", macro.Name, MacroPlayer.LastError ?? Loc.T("未知原因")));
+            return;
+        }
         Notify(Loc.F("播放宏：{0}", macro.Name));
     }
 

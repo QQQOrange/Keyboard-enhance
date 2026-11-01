@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -39,6 +39,12 @@ public sealed class ForegroundWatcher : IDisposable
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int max);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -101,6 +107,26 @@ public sealed class ForegroundWatcher : IDisposable
 
         Current = name;
         try { Changed?.Invoke(name); } catch (Exception ex) { CoreLog.Warn("前台变更处理失败：" + ex.Message); }
+    }
+
+    /// <summary>当前前台窗口句柄（宏条件求值用）。</summary>
+    public static IntPtr ForegroundWindow() => GetForegroundWindow();
+
+    /// <summary>取窗口标题（宏条件求值用）。取不到返回空串。</summary>
+    public static string TitleOf(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return "";
+
+        try
+        {
+            int len = GetWindowTextLength(hwnd);
+            if (len <= 0) return "";
+
+            var sb = new System.Text.StringBuilder(len + 2);
+            int got = GetWindowText(hwnd, sb, sb.Capacity);
+            return got > 0 ? sb.ToString(0, got) : "";
+        }
+        catch { return ""; }
     }
 
     /// <summary>取窗口所属进程名（小写，含 .exe）。</summary>

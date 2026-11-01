@@ -183,6 +183,11 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{loc:T '步骤'}" Style="{StaticResource Text.H3}" />
+                        <TextBlock x:Name="FlowHint" Grid.Column="1" Margin="12,0"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   FontSize="11.5"
+                                   Foreground="{DynamicResource Brush.Danger}"
+                                   Visibility="Collapsed" />
                         <TextBlock x:Name="StepCount" Grid.Column="2" Style="{StaticResource Text.Tertiary}"
                                    VerticalAlignment="Center" />
                     </Grid>
@@ -340,6 +345,35 @@
                                     <Button Content="{loc:T '换成别的键…'}" Style="{StaticResource Button.Base}"
                                             Padding="12,5" Margin="10,0,0,0" Click="OnChangeStepKey" />
                                 </StackPanel>
+
+                                <!-- 条件（如果） -->
+                                <StackPanel x:Name="CondEditPanel" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ComboBox x:Name="CondKindBox" Width="150"
+                                                  Style="{StaticResource ComboBox.Base}"
+                                                  SelectionChanged="OnCondKindChanged" />
+                                        <TextBox x:Name="CondValueBox" Margin="8,0,0,0" MinWidth="160"
+                                                 Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                                 TextChanged="OnCondValueChanged"
+                                                 ToolTip="{loc:T '包含即算命中，不区分大小写'}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="CondNotBox" Content="{loc:T '取反（条件不成立时执行）'}"
+                                              Style="{StaticResource CheckBox.Text}" Margin="0,8,0,0"
+                                              Click="OnCondNotChanged" />
+                                </StackPanel>
+
+                                <!-- 循环 -->
+                                <StackPanel x:Name="LoopEditPanel" Orientation="Horizontal"
+                                            Visibility="Collapsed">
+                                    <TextBlock Text="{loc:T '重复次数'}" VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Secondary}" />
+                                    <TextBox x:Name="LoopCountBox" Width="90" Margin="8,0,8,0"
+                                             Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                             TextChanged="OnLoopCountChanged" />
+                                    <TextBlock Text="{loc:T '填 0 = 一直重复（Esc 可中断）'}"
+                                               VerticalAlignment="Center"
+                                               Style="{StaticResource Text.Tertiary}" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -366,6 +400,16 @@
                                     Margin="0,0,8,6" Click="OnInsertKeyDown" />
                             <Button Content="{loc:T '按键 抬起'}" Style="{StaticResource Button.Base}" Padding="11,5"
                                     Margin="0,0,8,6" Click="OnInsertKeyUp" />
+                            <Button Content="{loc:T '如果'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertIf" />
+                            <Button Content="{loc:T '否则'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertElse" />
+                            <Button Content="{loc:T '结束如果'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertEndIf" />
+                            <Button Content="{loc:T '循环'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertLoop" />
+                            <Button Content="{loc:T '结束循环'}" Style="{StaticResource Button.Base}" Padding="11,5"
+                                    Margin="0,0,8,6" Click="OnInsertEndLoop" />
                         </WrapPanel>
                     </StackPanel>
                 </Grid>
