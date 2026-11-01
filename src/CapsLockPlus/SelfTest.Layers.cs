@@ -1625,6 +1625,69 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// 触发键的 tap-hold 语义（以 Tab 为例）。
+    ///
+    /// 要求：短按必须把 Tab 原样发出去；长按成功切层后，本次按住的
+    /// down / 自动重复 / up **一个都不能发**；松手不许补发；
+    /// 同一次操作不许被发两次。
+    ///
+    /// 这里故意不启动计时器：只验证"事件驱动判定"和"松手补判"两条路径，
+    /// 它们是不依赖界面线程调度的那两条。
+    /// </summary>
+    private static void TestTriggerTapHoldSemantics()
+    {
+        var s = DefaultSettings.Create();
+        foreach (var t in s.Triggers) t.Enabled = false;
+        s.Triggers.Add(new TriggerKey
+        {
+            Key = "tab", LayerId = 1, HoldMs = 200, Enabled = true,
+            TapAction = "keepKey", DoubleTapAction = "",
+        });
+
+        var queue = new ActionQueue();
+        var engine = new HotkeyEngine(queue, () => s, (a, arg) => true);
+
+        // ① 短按：按下/抬起都被拦下待判定，抬起后补发一次
+        Check("短按：按下被拦下待判定", engine.SimulateKey(VK.Tab, true));
+        Check("短按：抬起被拦下", engine.SimulateKey(VK.Tab, false));
+        DoEvents(60);
+        CheckEqual("短按：不进层", engine.ActiveLayer, -1);
+        CheckEqual("短按：补发一次 Tab", engine.TapReplayCountForTest, 1);
+
+        // ② 快速连按两下：两次都要补发（第一次不能被第二次吞掉）
+        engine.SimulateKey(VK.Tab, true);
+        engine.SimulateKey(VK.Tab, false);
+        engine.SimulateKey(VK.Tab, true);
+        engine.SimulateKey(VK.Tab, false);
+        DoEvents(80);
+        CheckEqual("连按两次：累计补发三次", engine.TapReplayCountForTest, 3);
+
+        // ③ 长按、中途没有任何按键事件：松手瞬间补判为长按 → 不补发
+        int before = engine.TapReplayCountForTest;
+        engine.SimulateKey(VK.Tab, true);
+        System.Threading.Thread.Sleep(240);
+        Check("长按（无中途事件）：抬起仍被吞", engine.SimulateKey(VK.Tab, false));
+        DoEvents(60);
+        CheckEqual("长按（无中途事件）：一个 Tab 都不发",
+            engine.TapReplayCountForTest, before);
+        CheckEqual("长按（无中途事件）：退出后回到基础层", engine.ActiveLayer, -1);
+
+        // ④ 长按 + 系统自动重复：重复 down 直接进层并被吞
+        before = engine.TapReplayCountForTest;
+        engine.SimulateKey(VK.Tab, true);
+        System.Threading.Thread.Sleep(240);
+        Check("长按（有重复）：重复 down 被吞", engine.SimulateKey(VK.Tab, true));
+        CheckEqual("长按（有重复）：已进入第 1 层", engine.ActiveLayer, 1);
+        engine.SimulateKey(VK.Tab, false);
+        DoEvents(60);
+        CheckEqual("长按（有重复）：松手不补发",
+            engine.TapReplayCountForTest, before);
+
+        engine.Dispose();
+        queue.Dispose();
+    }
+
+    /// <summary>
     /// 回调异常时的兜底策略：处于层语义就吞，其余情况放行。
     ///
     /// 这条策略是"异常＝放行"改为"异常＝按层语义决定"的唯一判据，

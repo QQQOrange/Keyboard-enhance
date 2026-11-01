@@ -1300,23 +1300,39 @@ public sealed class HotkeyEngine : IDisposable
 
         // 允许"按下 0xA5、抬起 0x12"这种混发（见 SameKey）
         if (!_triggerHeld || !SameKey(vk, _activeTriggerVk)) return;
+
+        /* ---- 松手前补做最后一次长按判定 ----
+         *
+         * 长按判定有两路：钩子在每个按键事件上比对时间戳（主判据）、
+         * 界面线程每 20ms 轮询（纯按住时的兜底）。但"按住之后一个键都不按"
+         * 的时候只有计时器在跑，界面一忙它就晚到 —— 于是明明按满了阈值，
+         * 松手这一刻 _layerActive 仍是 false，被当成短按补发一次原键
+         * （用户看到"切完层松手，焦点又跳一下"）。
+         *
+         * 在清掉 _triggerHeld **之前**补判一次：按满阈值就一定算长按，
+         * 该吞的键一个都不会漏出去；也不会出现"长按了却什么都没发生"。
+         */
+        int holdLimit = _activeTrigger?.HoldMs ?? 200;
+        if (!_layerActive &&
+            (DateTime.Now - _triggerDownTime).TotalMilliseconds >= holdLimit)
+        {
+            OnHoldThresholdReached();      // 置 _layerActive / _tapHandled
+        }
+
         _triggerHeld = false;
 
         var trigger = _activeTrigger;
 
-        /* 是否算"干净短按"。
+        /* 这一按算不算"干净短按"。
          *
-         * 多了按住时长这条硬判据：阈值判定原本只靠界面线程的计时器，
-         * 界面一忙就晚到 100~200ms，于是"明明按了 300ms"在这一刻
-         * 仍然 _layerActive == false，被当成短按 → 松手时补发原键
-         * → 用户看到"切完层松手，焦点又跳一下"。
-         * 以按下时长为准，不再单信状态标志。 */
-        double heldMs = (DateTime.Now - _triggerDownTime).TotalMilliseconds;
-        int holdLimit = trigger?.HoldMs ?? 200;
-        bool cleanTap = !_usedCombo && !_usedOtherKey && !_layerActive
-                        && heldMs < holdLimit;
+         * 判据就是"有没有真的进层"：进过层（_layerActive）或已按长按处理过
+         * （_tapHandled）就绝不补发；只有从头到尾没进层，才把原键补发出去。
+         *
+         * 于是"短按发 Tab、长按一个 Tab 都不发"是**同一条判定**推出来的结果，
+         * 不需要再额外拿时长去猜 —— 时长只用来决定"进不进层"。 */
+        bool cleanTap = !_usedCombo && !_usedOtherKey && !_layerActive;
 
-        // 未超时的干净抬起 = 短按
+        // 未进层的干净抬起 = 短按
         if (cleanTap && !_tapHandled && trigger != null)
         {
             /* 短按：**补发一次真实的按下+抬起**，让原功能生效。
@@ -1368,10 +1384,13 @@ public sealed class HotkeyEngine : IDisposable
                     int vkToSend = vk;
                     _queue.Post(() =>
                     {
-                        /* 投递到动作队列时可能又过去几十毫秒：期间若已经进层
-                         * （计时器晚到、或用户又按住），这次补发就不成立了 ——
-                         * 否则会在"层已生效"之后凭空往前台发一个原键。 */
-                        if (_triggerHeld || _layerActive) return;
+                        /* 只挡"层已经生效"这一种情况 —— 那是唯一会让原键
+                         * 从层里漏出去的时刻。
+                         *
+                         * 不能挡 _triggerHeld：用户快速连按两下时，第二次按下
+                         * 会把第一次的补发一起吞掉，表现为"按了没反应"。
+                         * 补发属于**已经结束的那一次**按键，与新的按住无关。 */
+                        if (_layerActive) return;
                         TapReplayCountForTest++;
                         InputSender.Tap(vkToSend);
                     });

@@ -176,6 +176,7 @@ public static partial class SelfTest
         TestHoldThresholdWithoutUiTimer();
         TestOrphanKeyUpIsSwallowed();
         TestHoldNotMistakenAsTap();
+        TestTriggerTapHoldSemantics();
         TestErrorFailClosedPolicy();
         TestDirectSearch();
         TestTypeTextAction();
