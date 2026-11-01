@@ -1062,6 +1062,21 @@ public static partial class SelfTest
         Check("体检：范围相同只是写法不同仍算重复",
             RuleConflicts.Analyze(s8c).Any(c => c.Message.Contains("只有最后一条")));
 
+        // ---- 可复制报告 ----
+        var sample = new List<Conflict>
+        {
+            new(ConflictLevel.Warn, "第一条冲突", ConflictTarget.BaseRemap),
+            new(ConflictLevel.Info, "第二条提示", ConflictTarget.None),
+        };
+        string report = RuleConflicts.BuildReport(sample, "HEADER-XYZ");
+        Check("体检报告：含头部", report.Contains("HEADER-XYZ"), report);
+        Check("体检报告：含总数", report.Contains("共 2 条"), report);
+        Check("体检报告：Warn 前缀", report.Contains("[WARN] 第一条冲突"), report);
+        Check("体检报告：Info 前缀", report.Contains("[INFO] 第二条提示"), report);
+
+        string emptyReport = RuleConflicts.BuildReport(new List<Conflict>(), "H2");
+        Check("体检报告：无冲突时也有结论", emptyReport.Contains("没有发现问题"), emptyReport);
+
         // ---- 组合键两个键相同 ----
         var s9 = new AppSettings();
         s9.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "j", Action = "qbar" });

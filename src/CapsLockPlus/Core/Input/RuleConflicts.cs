@@ -242,6 +242,35 @@ public static class RuleConflicts
         return list;
     }
 
+    /// <summary>
+    /// 生成可复制的纯文本报告。
+    ///
+    /// 为什么要这个：用户报"某个键不灵"时，最费时间的环节是**描述自己的配置**。
+    /// 一段能直接粘贴的报告，把这一步省掉；顺带带上版本与时间，避免"是哪个版本的问题"来回问。
+    /// </summary>
+    public static string BuildReport(IReadOnlyList<Conflict> findings, string header)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(header);
+
+        if (findings == null || findings.Count == 0)
+        {
+            sb.AppendLine(Loc.T("没有发现问题。"));
+            return sb.ToString().TrimEnd();
+        }
+
+        sb.AppendLine(Loc.F("共 {0} 条", findings.Count));
+        sb.AppendLine();
+
+        foreach (var f in findings)
+        {
+            string tag = f.Level == ConflictLevel.Warn ? "[WARN]" : "[INFO]";
+            sb.AppendLine($"{tag} {f.Message}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
     private static bool InSet(HashSet<int> set, string? key)
     {
         int? vk = KeyName.VkOf(key);

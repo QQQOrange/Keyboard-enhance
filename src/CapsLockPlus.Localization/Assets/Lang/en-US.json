@@ -1955,5 +1955,10 @@
   "当前：只在 {0} 里展开 —— 现在的前台「{1}」在列表里。": "Now: expands only in {0} — the foreground app \"{1}\" is in the list.",
   "当前：只在 {0} 里展开 —— 现在的前台「{1}」不在列表里，此处不会展开。": "Now: expands only in {0} — the foreground app \"{1}\" is not in the list, so it will not expand here.",
   "仅 {0}": "only {0}",
-  "文本片段「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。": "Snippet \"{0}\" is defined more than once for the same app scope; only the last one expands."
+  "文本片段「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。": "Snippet \"{0}\" is defined more than once for the same app scope; only the last one expands.",
+  "复制成纯文本，便于求助时直接粘贴": "Copy as plain text, ready to paste when asking for help",
+  "已复制体检结果": "Rule-check result copied",
+  "复制失败：剪贴板被其它程序占用": "Copy failed: the clipboard is held by another app",
+  "按键增强 v{0} 规则体检 · {1}": "Keyboard Enhance v{0} rule check · {1}",
+  "　（新增 {0} 条冲突，可在「规则体检」查看）": "  ({0} new conflict(s), see \"Rule check\")"
 }

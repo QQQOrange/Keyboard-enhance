@@ -255,9 +255,14 @@
                                 <TextBlock Text="{loc:T '只检查、不改配置：列出被更高优先级的规则盖住、或者指向不存在的层这类问题。'}"
                                            Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
                             </StackPanel>
-                            <Button x:Name="ConflictRecheckButton" Grid.Column="1" Content="{loc:T '重新检查'}"
-                                    Padding="12,5" VerticalAlignment="Top"
-                                    Style="{StaticResource Button.Base}" Click="OnRecheckConflictsClick" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                <Button x:Name="ConflictRecheckButton" Content="{loc:T '重新检查'}"
+                                        Padding="12,5" Style="{StaticResource Button.Base}"
+                                        Click="OnRecheckConflictsClick" />
+                                <Button Content="{loc:T '复制结果'}" Padding="12,5" Margin="8,0,0,0"
+                                        Style="{StaticResource Button.Base}" Click="OnCopyConflictsClick"
+                                        ToolTip="{loc:T '复制成纯文本，便于求助时直接粘贴'}" />
+                            </StackPanel>
                         </Grid>
                         <TextBlock x:Name="ConflictEmptyText" Style="{StaticResource Text.Tertiary}"
                                    Margin="0,8,0,0" Visibility="Collapsed"

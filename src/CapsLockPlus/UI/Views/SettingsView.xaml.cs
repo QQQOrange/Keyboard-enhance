@@ -225,6 +225,48 @@ public partial class SettingsView : UserControl
         timer.Start();
     }
 
+    /// <summary>复制成可粘贴的纯文本（含版本与时间，便于对账）。</summary>
+    private void OnCopyConflictsClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        string version = "?";
+        try
+        {
+            var asm = System.Reflection.Assembly.GetExecutingAssembly().GetName();
+            version = $"{asm.Version?.Major}.{asm.Version?.Minor}.{asm.Version?.Build}";
+        }
+        catch { }   /* 版本号取不到不影响复制 */
+
+        string header = Loc.F("按键增强 v{0} 规则体检 · {1}",
+            version, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+
+        string report = RuleConflicts.BuildReport(RuleConflicts.Analyze(_host.Settings), header);
+
+        if (ClipboardPaster.TrySetText(report))
+            _host.Notify(Loc.T("已复制体检结果"));
+        else
+            _host.Notify(Loc.T("复制失败：剪贴板被其它程序占用"));
+    }
+
+    /// <summary>
+    /// 新增规则后，如果这次改动带来了新冲突，就在同一条提示里补一句。
+    ///
+    /// 为什么不单独弹一条：Toast 只显示最新一条，弹两条等于前一条被吃掉。
+    /// 也不做"每次保存都检查"：用户打字时每次按键都会保存，会刷成噪音。
+    /// </summary>
+    private string WithConflictHint(string message, int before)
+    {
+        if (_host == null) return message;
+
+        int added = RuleConflicts.Analyze(_host.Settings).Count - before;
+        return added <= 0
+            ? message
+            : message + Loc.F("　（新增 {0} 条冲突，可在「规则体检」查看）", added);
+    }
+
+    private int ConflictCount() => _host == null ? 0 : RuleConflicts.Analyze(_host.Settings).Count;
+
     private void OnRecheckConflictsClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
@@ -353,6 +395,7 @@ public partial class SettingsView : UserControl
             return;
         }
 
+        int conflictsBefore = ConflictCount();
         var list = _host.Settings.Global.Chords;
         var existing = list.FirstOrDefault(c =>
             (string.Equals(c.Key1, key1, StringComparison.OrdinalIgnoreCase) && string.Equals(c.Key2, key2, StringComparison.OrdinalIgnoreCase)) ||
@@ -362,7 +405,9 @@ public partial class SettingsView : UserControl
 
         Save();
         RefreshChordEditor();
-        _host.Notify(Loc.F("已设置组合键：{0} + {1}", KeyName.Display(key1), KeyName.Display(key2)));
+        _host.Notify(WithConflictHint(
+            Loc.F("已设置组合键：{0} + {1}", KeyName.Display(key1), KeyName.Display(key2)),
+            conflictsBefore));
     }
 
     // ---------------- 文本片段 ----------------
@@ -454,6 +499,7 @@ public partial class SettingsView : UserControl
             return;
         }
 
+        int conflictsBefore = ConflictCount();
         var list = _host.Settings.Global.Snippets;
         var existing = list.FirstOrDefault(x => x.Trigger == trigger);
         if (existing != null)
@@ -471,7 +517,7 @@ public partial class SettingsView : UserControl
         SnippetAppsBox.Text = "";
         Save();
         RefreshSnippetEditor();
-        _host.Notify(Loc.F("已添加片段：{0}", trigger));
+        _host.Notify(WithConflictHint(Loc.F("已添加片段：{0}", trigger), conflictsBefore));
     }
 
     // ---------------- 双击动作 ----------------
@@ -536,6 +582,7 @@ public partial class SettingsView : UserControl
         if (GestureKeyBox.SelectedItem is not ComboBoxItem kItem || kItem.Tag is not string key) return;
         if (GestureActionBox.SelectedItem is not ComboBoxItem aItem || aItem.Tag is not string action) return;
 
+        int conflictsBefore = ConflictCount();
         var list = _host.Settings.Global.KeyGestures;
         var existing = list.FirstOrDefault(g => string.Equals(g.Key, key, StringComparison.OrdinalIgnoreCase));
         if (existing != null) existing.DoubleTapAction = action;     // 同键覆盖
@@ -543,7 +590,9 @@ public partial class SettingsView : UserControl
 
         Save();
         RefreshGestureEditor();
-        _host.Notify(Loc.F("已设置：双击 {0} 执行 {1}", KeyName.Display(key), ActionCatalog.TitleOf(action) ?? action));
+        _host.Notify(WithConflictHint(
+            Loc.F("已设置：双击 {0} 执行 {1}", KeyName.Display(key), ActionCatalog.TitleOf(action) ?? action),
+            conflictsBefore));
     }
 
     // ---------------- 按应用自动启用层 ----------------
@@ -611,6 +660,7 @@ public partial class SettingsView : UserControl
             return;
         }
 
+        int conflictsBefore = ConflictCount();
         var list = _host.Settings.Global.AppLayers;
         var existing = list.FirstOrDefault(r => AppLayerRules.Normalize(r.Process) == normalized);
         if (existing != null)
@@ -626,7 +676,8 @@ public partial class SettingsView : UserControl
         Save();
         RefreshAppLayerEditor();
         _host.RefreshAppLayer();
-        _host.Notify(Loc.F("已设置：{0} 使用第 {1} 层", normalized, layerId));
+        _host.Notify(WithConflictHint(
+            Loc.F("已设置：{0} 使用第 {1} 层", normalized, layerId), conflictsBefore));
     }
 
     // ---------------- 使用统计 ----------------
@@ -673,12 +724,13 @@ public partial class SettingsView : UserControl
         var preset = KeyRemapMap.FindPreset(id);
         if (preset == null) return;
 
+        int conflictsBefore = ConflictCount();
         bool on = KeyRemapMap.Toggle(_host.Settings.Global.BaseRemaps, preset);
         Save();
         RefreshRemapState();
-        _host.Notify(on
+        _host.Notify(WithConflictHint(on
             ? Loc.F("已启用改键：{0}", preset.Title)
-            : Loc.F("已取消改键：{0}", preset.Title));
+            : Loc.F("已取消改键：{0}", preset.Title), conflictsBefore));
     }
 
     private void OnRemapClearClick(object sender, RoutedEventArgs e)

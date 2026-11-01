@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using static CapsLockPlus.Core.Interop.NativeMethods;
 
@@ -288,6 +288,12 @@ internal static class ClipboardPaster
     }
 
     // ---------------- 剪贴板读写 ----------------
+
+    /// <summary>
+    /// 供其它模块写纯文本（沿用同一套"占用重试"）。
+    /// 剪贴板随时可能被别的程序短暂锁住，直接 Clipboard.SetText 会偶发失败。
+    /// </summary>
+    public static bool TrySetText(string text) => SetText(text);
 
     /// <summary>写纯文本，占用重试（剪贴板随时可能被别的程序短暂锁住）。</summary>
     private static bool SetText(string text)
