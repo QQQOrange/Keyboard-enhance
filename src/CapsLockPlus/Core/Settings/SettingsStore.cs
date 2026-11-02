@@ -700,7 +700,7 @@ public static class SettingsStore
     /// 所以这种组合只可能来自外部破坏。单看某一项是不够的：
     /// 用户完全可能把按键全删光（那时层和触发键还在）。
     /// </summary>
-    private static bool IsStructurallyEmpty(AppSettings s) =>
+    internal static bool IsStructurallyEmpty(AppSettings s) =>
         (s.Keys?.Count ?? 0) == 0
         && (s.Layers?.Count ?? 0) == 0
         && (s.Triggers?.Count ?? 0) == 0

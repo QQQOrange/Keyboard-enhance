@@ -345,8 +345,47 @@ public sealed class SyncService
             throw new BackupPasswordException(e.Message, e);
         }
 
+        /* ---- 内容校验：能反序列化 ≠ 这是一份备份 ----
+         *
+         * 任何 JSON 都能"成功"反序列化进 AppSettings，缺的字段会静默变成默认值。
+         * 于是「从备份恢复」选错文件（导出文件、别人的 settings.json、
+         * 手写的 {"Global":{"Theme":"dark"}}）会把用户的按键、层、宏全部冲成默认 ——
+         * 而且界面还会显示"恢复完成 ✓"。这在功能上就是一个数据丢失坑。
+         *
+         * 两道判据：
+         *   ① `kind = clp-config` → 这是「导出配置」的文件，该走「导入配置」；
+         *   ② 结构上什么都没有 → 不是备份（沿用加载路径的同一条判据）。
+         */
+        JsonNode? root = null;
+        try { root = JsonNode.Parse(json); }
+        catch (Exception e)
+        {
+            throw new InvalidOperationException(Loc.F("备份内容不是有效 JSON：{0}", e.Message), e);
+        }
+
+        string? kind = null;
+        if (root is JsonObject obj && obj.TryGetPropertyValue("kind", out var kindNode))
+        {
+            try { kind = kindNode?.GetValue<string>(); } catch { kind = null; }
+        }
+        if (string.Equals(kind, ExportImport.ExportKind, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(Loc.T(
+                "这是一份「导出配置」文件，不是备份 —— 请到「同步与备份 → 导入配置」用它；"
+                + "「从备份恢复」只认 .keyboardenhance 备份文件。"));
+        }
+
         var parsed = JsonSerializer.Deserialize<AppSettings>(json, SettingsStore.JsonOptions)
             ?? throw new InvalidOperationException("备份内容解析失败");
+
+        /* ⚠ 这条判定必须在 Normalize 之前：Normalize 会把缺失的字段补成默认值
+         * （10 个层 + 1 个触发键 + 一整套默认按键），补完就再也不"空"了。 */
+        if (SettingsStore.IsStructurallyEmpty(parsed))
+        {
+            throw new InvalidOperationException(Loc.T(
+                "这不是一份按键增强的备份：里面没有任何按键、层、宏或搜索项。"
+                + "请确认选的是 .keyboardenhance 备份文件。"));
+        }
 
         SettingsStore.Normalize(parsed);
 

@@ -225,6 +225,44 @@ public static partial class SelfTest
         // ③ 换台机器（本机没令牌）整份恢复 → 令牌被带过来
         var fresh = DefaultSettings.Create();
         fresh.Sync.BackupPassword = pass;
+        /* ---- 选错文件不能把配置冲成默认 ----
+         *
+         * 「从备份恢复」以前只要求"能反序列化"。任何 JSON 都能反序列化进
+         * AppSettings，缺的字段静默变默认值 —— 于是选错文件（导出文件 /
+         * 别人机器的 settings.json / 手写的小 JSON）会把按键、层、宏全部冲掉，
+         * 界面还显示"恢复完成 ✓"。 */
+        var wrong1 = new Core.Sync.SyncService(() => DefaultSettings.Create());
+        bool threwExport = false;
+        try
+        {
+            wrong1.RestoreFromText(
+                "{\"kind\":\"clp-config\",\"version\":\"4.5.59\",\"sections\":{}}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            threwExport = ex.Message.Contains("导出配置");
+        }
+        Check("把导出文件当备份恢复 → 拒绝并提示用「导入配置」", threwExport);
+
+        var wrong2 = new Core.Sync.SyncService(() => DefaultSettings.Create());
+        bool threwEmpty = false;
+        try
+        {
+            wrong2.RestoreFromText("{\"Global\":{\"Theme\":\"dark\"}}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            threwEmpty = ex.Message.Contains("不是一份按键增强的备份");
+        }
+        Check("把内容为空的 JSON 当备份恢复 → 拒绝", threwEmpty);
+
+        // 反序列化过的对象不能被改动（拒绝时要"什么都没发生"）
+        var untouched = DefaultSettings.Create();
+        int beforeKeys = untouched.Keys.Count;
+        var wrong3 = new Core.Sync.SyncService(() => untouched);
+        try { wrong3.RestoreFromText("{\"Global\":{\"Theme\":\"dark\"}}"); } catch { }
+        Check("拒绝恢复时本机设置没有被改动", untouched.Keys.Count == beforeKeys);
+
         var outcome = new Core.Sync.SyncService(() => fresh).RestoreFromText(payload);
         CheckEqual("整份恢复能带上令牌", fresh.Global.GitHubToken, token);
         Check("整份恢复会标明令牌来自备份", outcome.TokenAdopted);

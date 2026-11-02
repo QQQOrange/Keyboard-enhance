@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core;
@@ -273,8 +273,12 @@ public partial class RestoreWindow : Window
             Result = outcome;
             StatusText.Text = "✓ " + outcome.Summary;
 
+            /* 恢复前的那份"自保备份"没写成时要**明说**：
+             * 用户以为随时能退回去，结果没有退路 —— 这种沉默比报错更危险。 */
             var msg = outcome.Summary
-                      + (selfBackup != null ? Loc.F("\n\n恢复前的配置已另存：{0}", System.IO.Path.GetFileName(selfBackup)) : "");
+                      + (selfBackup != null
+                          ? Loc.F("\n\n恢复前的配置已另存：{0}", System.IO.Path.GetFileName(selfBackup))
+                          : Loc.T("\n\n⚠ 没能另存恢复前的配置（磁盘写入失败），这次恢复不可撤销。"));
             AppDialog.Success(this, msg, Loc.T("恢复完成"));
             DialogResult = true;
             Close();

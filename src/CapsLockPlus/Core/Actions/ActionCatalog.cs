@@ -476,11 +476,8 @@ public sealed class ActionCatalog
             string name = macro.DisplayName;
             int estMs = macro.EstimatedMs;
             c.Add("macro:" + id, "宏", Loc.F("播放宏：{0}", name),
-                Loc.F("共 {0} 步，约 {1}ms", macro.Steps.Count, estMs), a =>
-                {
-                    ctx.PlayMacro(id, a);
-                    return true;
-                });
+                Loc.F("共 {0} 步，约 {1}ms", macro.Steps.Count, estMs),
+                a => ctx.PlayMacro(id, a));
         }
         c.Add("macroManager", "宏", "打开宏管理", "录制 / 编辑 / 绑定宏", _ => { ctx.RequestOpenMacros(); return true; });
 

@@ -63,14 +63,22 @@ public sealed partial class ActionContext
         return false;
     }
 
-    /// <summary>播放指定 ID 的宏。arg 可覆盖重复次数（空 = 用宏自身设置）。</summary>
-    public void PlayMacro(string macroId, string? arg)
+    /// <summary>
+    /// 播放指定 ID 的宏。arg 可覆盖重复次数（空 = 用宏自身设置）。
+    ///
+    /// 返回 **是否开始播放**（宏不存在 / 已在播放 / 流程控制配对错误都算没开始）。
+    /// 为什么要这个返回值：宏里可以放"执行内置动作"的步骤，其中就有 `macro:xxx`。
+    /// 以前这里返回 void、动作目录那边无条件 `return true`，于是
+    /// "宏 A 调用一个已被删除的宏 B"会**静默继续**，用户只看到 A 少做了一半。
+    /// 现在会如实返回失败，宏在那一格中止并说明原因。
+    /// </summary>
+    public bool PlayMacro(string macroId, string? arg)
     {
         var macro = Settings().Macros.FirstOrDefault(m => m.Id == macroId);
         if (macro == null)
         {
             Notify("宏不存在，可能已被删除");
-            return;
+            return false;
         }
         int? repeat = int.TryParse(arg, out int n) && n > 0 ? n : null;
 
@@ -79,9 +87,10 @@ public sealed partial class ActionContext
         if (!MacroPlayer.TryPlay(macro, repeat))
         {
             Notify(Loc.F("没能播放宏「{0}」：{1}", macro.Name, MacroPlayer.LastError ?? Loc.T("未知原因")));
-            return;
+            return false;
         }
         Notify(Loc.F("播放宏：{0}", macro.Name));
+        return true;
     }
 
     /// <summary>全局宏播放器（一个进程一个就够了）。</summary>

@@ -267,6 +267,36 @@ public static partial class SelfTest
         foreach (var i in after.Items.Where(i => i.Id.StartsWith("macro:"))) invoked = true;
         Check("宏动作可以被绑定（存在可选项）", invoked);
 
+        /* 播放失败要如实返回 false。
+         *
+         * 以前这里无条件 `return true`：宏里放一个"执行内置动作 = 播放宏 B"的步骤，
+         * 而 B 已被删除时，A 会**静默继续**往下做，用户只看到 A 少做了一半。
+         * 现在失败会传上去，宏在那一格中止并说明原因。 */
+        var calls = new List<string>();
+        var probe = new Core.Actions.ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new Core.Actions.ClipboardService(),
+            Windows = new Core.Actions.WindowActions(),
+            WindowBindings = new WindowBindingService(),
+            Mouse = new Core.Actions.MouseService(),
+            Notify = m => calls.Add(m),
+        };
+        /* 注意：`macro:<id>` 这个动作只对**已存在**的宏注册，所以"宏不存在"这条
+         * 得直接测 PlayMacro（真实场景是"动作表建好后宏被删了"这种时间差）。 */
+        Check("PlayMacro：不存在的宏 → 返回失败", !probe.PlayMacro("no_such_macro", ""));
+        Check("并给出「宏不存在」的提示",
+            calls.Any(c => c.Contains("宏不存在")), string.Join(" | ", calls));
+
+        // 空宏（一步都没有）也不能假装播放成功
+        settings.Macros.Add(new Core.Settings.Macro { Id = "empty", Name = "空宏" });
+        calls.Clear();
+        var withEmpty = Core.Actions.ActionCatalog.Create(probe);
+        Check("播放空宏 → 动作返回失败", !withEmpty.Invoke("macro:empty", ""));
+        Check("并说明「宏里还没有步骤」",
+            calls.Any(c => c.Contains("还没有步骤")), string.Join(" | ", calls));
+        settings.Macros.RemoveAll(m => m.Id == "empty");
+
         // 删掉宏之后动作表里就没了
         settings.Macros.Clear();
         var removed = Core.Actions.ActionCatalog.Create(ctx);
