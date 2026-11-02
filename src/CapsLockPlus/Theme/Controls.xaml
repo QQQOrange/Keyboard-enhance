@@ -720,6 +720,62 @@
         <Setter Property="Foreground" Value="{DynamicResource Brush.OverlayAccentText}" />
     </Style>
 
+    <!-- ============ 滑块 ============ -->
+    <!-- 默认是 Aero2 的浅色滑块：深色主题下唯一还"亮着"的控件。
+         这里只做"轨道 + 圆点"，不画已填充的进度段 —— 那需要跟踪 Track 的
+         实际宽度，模板里写不干净；两段式（底轨 + 强调色圆点）已经和整体一致。 -->
+    <Style TargetType="Slider">
+        <Setter Property="Height" Value="24" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Focus.Ring}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid Background="Transparent">
+                        <Border Height="4" VerticalAlignment="Center" CornerRadius="2"
+                                Background="{DynamicResource Brush.SurfaceAlt}"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" />
+                        <Track x:Name="PART_Track" VerticalAlignment="Center">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="Slider.DecreaseLarge" Focusable="False"
+                                              Cursor="Hand">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="Transparent" Height="20" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="Slider.IncreaseLarge" Focusable="False"
+                                              Cursor="Hand">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="Transparent" Height="20" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Width="16" Height="16" Cursor="Hand">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Grid>
+                                                <Ellipse Fill="{DynamicResource Brush.Accent}" />
+                                                <Ellipse Fill="White" Width="6" Height="6" />
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============ 提示气泡 ============ -->
     <!-- 不带 x:Key = 隐式样式，所有 ToolTip 自动套用（连同窗口里没写样式的那些）。
          带 key 的样式只有显式 StaticResource 才会生效 —— 全程序 0 处引用，

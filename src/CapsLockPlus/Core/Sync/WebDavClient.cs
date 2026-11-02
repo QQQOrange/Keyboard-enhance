@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -51,8 +51,25 @@ public sealed class WebDavStatusException : InvalidOperationException
 /// 这样的根地址，软件要自动补上自己的子目录；末尾没斜杠也要补，
 /// 否则会拼出 `...dav/capslock-backup.json` 这种缺分隔符的地址。
 /// </summary>
-public sealed class WebDavClient
+public sealed class WebDavClient : IDisposable
 {
+    /// <summary>
+    /// 释放内部的 HttpClient / Handler。
+    ///
+    /// 只在"这个客户端确实不再用"时调用（例如配置变了、旧的被替换掉），
+    /// **不要**在每次请求后调用：HttpClient.Dispose 会把连接打进 TIME_WAIT，
+    /// 反复 new + Dispose 会耗尽临时端口（正是本类注释里提醒的反模式）。
+    /// </summary>
+    public void Dispose()
+    {
+        try { _client?.Dispose(); } catch { }        /* 预期内：清理动作，失败无副作用 */
+        lock (_clientGate)
+        {
+            try { _quickClient?.Dispose(); } catch { }   /* 预期内：清理动作，失败无副作用 */
+            _quickClient = null;
+        }
+    }
+
     /// <summary>
     /// 软件在网盘下用的子目录名。
     ///

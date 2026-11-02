@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Localization;
@@ -427,7 +427,14 @@ public partial class App : Application
 #if NO_DIAGNOSTICS
         int renderIndex = -1;
 #else
-        int renderIndex = Array.FindIndex(e.Args, a => a.Equals("--render", StringComparison.OrdinalIgnoreCase));
+        /* `--render-diag` 单独写也要能出图（= `--render` + 诊断）。
+         *
+         * 早先它只作为"附加开关"存在：单写 `--render-diag` 时 renderIndex 是 -1，
+         * 程序会当成普通启动 —— 于是它变成一个**常驻托盘实例**、什么都不输出，
+         * 在脚本里看起来就是"渲染卡住了/没反应"。 */
+        int renderIndex = Array.FindIndex(e.Args, a =>
+            a.Equals("--render", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--render-diag", StringComparison.OrdinalIgnoreCase));
 #endif
         if (renderIndex >= 0)
         {
@@ -436,6 +443,7 @@ public partial class App : Application
             RenderTools.DiagnosticsRequested =
                 e.Args.Any(a => a.Equals("--render-diag", StringComparison.OrdinalIgnoreCase));
             string outDir = renderIndex + 1 < e.Args.Length
+                            && !e.Args[renderIndex + 1].StartsWith("--", StringComparison.Ordinal)
                 ? e.Args[renderIndex + 1]
                 : Path.Combine(AppPaths.DataDir, "render");
             int renderCode;

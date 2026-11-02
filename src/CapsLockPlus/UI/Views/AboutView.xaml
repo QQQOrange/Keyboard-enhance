@@ -116,7 +116,7 @@
                                     AutomationProperties.HelpText="{loc:T '在浏览器中打开 GitHub 官方中文文档：管理个人访问令牌'}">
                                 <Button.ToolTip>
                                     <TextBlock MaxWidth="320" TextWrapping="Wrap"
-                                               Text="{loc:T '个人访问令牌（PAT）相当于给程序用的专用密码：填了之后，本程序以你的账号身份调用 GitHub 接口，配额从每小时 60 次提到 5000 次，还能一键自动下载更新。只读公开仓库不需要勾任何权限。&#x0a;&#x0a;点这个问号，在浏览器中打开 GitHub 官方说明（含创建步骤）。'}" />
+                                               Text="{loc:T '个人访问令牌（PAT）相当于给程序用的专用密码：填了之后，本程序以你的账号身份调用 GitHub 接口，配额从每小时 60 次提到 5000 次，还能一键自动下载更新。只读公开仓库不需要勾任何权限。&#x0a;&#x0a;点这个问号，在浏览器里打开 GitHub 官方说明（含创建步骤）。'}" />
                                 </Button.ToolTip>
                             </Button>
                         </StackPanel>

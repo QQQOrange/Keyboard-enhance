@@ -1159,6 +1159,34 @@ public static partial class SelfTest
         CheckEqual("合并不会覆盖本机的备份密码",
             merged.Sync.BackupPassword, "本机备份密码");
 
+        /* ---- 合并恢复：子层定义必须一起搬 ----
+         *
+         * 只搬 Keys 不搬 SubLayers，合并后会留下一堆"永远不触发"的绑定：
+         * 远端第 4 层用 Tab 做子层（caps_tab_q），本地第 4 层只认 ctrl/shift/alt/win——
+         * 组合键搬过来了，但 IsSubLayerKey 认不出 tab，按下去毫无反应，
+         * 而界面上显示的仍是默认的四个子层，用户根本查不出原因。 */
+        var localSub = DefaultSettings.Create();
+        var l4 = localSub.Layers.First(l => l.Id == 4);
+        l4.Keys.Clear();
+        l4.SubLayers.Clear();
+        l4.SubLayers.Add(new Core.Settings.SubLayerDef { Key = "ctrl" });
+
+        var remoteSub = DefaultSettings.Create();
+        var r4 = remoteSub.Layers.First(l => l.Id == 4);
+        r4.Keys.Clear();
+        r4.SubLayers.Clear();
+        r4.SubLayers.Add(new Core.Settings.SubLayerDef { Key = "tab", Name = "文档层" });
+        r4.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_tab_q", Action = "qbar" });
+
+        var (mergedSub, _, _, _) = Core.Sync.BackupMerge.Merge(localSub, remoteSub);
+        var m4 = mergedSub.Layers.First(l => l.Id == 4);
+        Check("合并后远端的子层定义被带过来",
+            m4.SubLayers.Any(s => s.Key == "tab"), string.Join(",", m4.SubLayers.Select(s => s.Key)));
+        Check("合并后本地原有子层不丢",
+            m4.SubLayers.Any(s => s.Key == "ctrl"), string.Join(",", m4.SubLayers.Select(s => s.Key)));
+        Check("子层里那条绑定也跟着来了",
+            m4.Keys.Any(k => k.Combo == "caps_tab_q"));
+
         // ---- 导出脱敏：勾了"同步与备份设置"也不许带密码 ----
         var s = DefaultSettings.Create();
         s.Sync.WebDavUrl = "https://dav.example.com/dav/";

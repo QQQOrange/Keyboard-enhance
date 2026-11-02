@@ -989,6 +989,7 @@ public sealed class AppHost : IDisposable
         try { _foreground?.Dispose(); _foreground = null; } catch { }
         try { _deviceTracker?.Dispose(); _deviceTracker = null; } catch { }
         try { _wakeWindow?.Dispose(); _wakeWindow = null; } catch { }
+        try { Sync?.DisposeClient(); } catch { }
         if (_disposed) return;
         _disposed = true;
         _watchdog.Dispose();

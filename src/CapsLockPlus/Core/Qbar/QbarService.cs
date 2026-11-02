@@ -549,7 +549,13 @@ public sealed class QbarService
                 cb.Paste(result.Payload);
                 break;
             case QbarKind.Window:
-                WindowService.Activate(new IntPtr(long.Parse(result.Payload)));
+                /* 句柄是从本进程的结果里来的，正常一定是十进制；
+                 * 但结果列表可能在下一次刷新前被复用（窗口已经关掉 / 换了条目），
+                 * 这里做一次安全解析，绝不让一条坏数据把整个执行路径打断。 */
+                if (long.TryParse(result.Payload, out long hwnd))
+                    WindowService.Activate(new IntPtr(hwnd));
+                else
+                    cb.Notify(Loc.T("这个窗口已经不在了"));
                 break;
             case QbarKind.Search:
             case QbarKind.Web:

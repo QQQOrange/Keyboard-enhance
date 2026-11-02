@@ -220,16 +220,54 @@ public sealed class SyncService
         }
     }
 
+    /// <summary>
+    /// 取一个 WebDAV 客户端。
+    ///
+    /// **按配置缓存**，不要每次操作都 new 一个：WebDavClient 内部持有
+    /// HttpClient + HttpClientHandler，用完不 Dispose 就是泄漏（每个客户端
+    /// 一条连接池、一堆句柄），自动备份每小时一次、加上列目录 / 上传 / 删除，
+    /// 一次会话就能攒出几十个；而立刻 Dispose 又会踩 TIME_WAIT 耗尽端口。
+    /// 所以：配置没变就复用同一个；地址 / 账号 / 超时变了才换新的。
+    /// </summary>
     private WebDavClient Client(int timeoutSeconds = 20)
     {
         var s = _settings().Sync;
-        return new WebDavClient(new WebDavOptions
+        string stamp = string.Join("\n",
+            s.WebDavUrl ?? "", s.WebDavUser ?? "", s.WebDavPass ?? "", timeoutSeconds.ToString());
+
+        lock (_clientGate)
         {
-            Url = s.WebDavUrl,
-            User = s.WebDavUser,
-            Pass = s.WebDavPass,
-            TimeoutSeconds = timeoutSeconds,
-        });
+            if (_client != null && _clientStamp == stamp) return _client;
+
+            var old = _client;
+            _clientStamp = stamp;
+            _client = new WebDavClient(new WebDavOptions
+            {
+                Url = s.WebDavUrl,
+                User = s.WebDavUser,
+                Pass = s.WebDavPass,
+                TimeoutSeconds = timeoutSeconds,
+            });
+
+            // 旧客户端的连接池一起释放（Handler 的生命周期由 HttpClient 管）
+            try { old?.Dispose(); } catch { }   /* 预期内：清理动作，失败无副作用 */
+            return _client;
+        }
+    }
+
+    private readonly object _clientGate = new();
+    private WebDavClient? _client;
+    private string _clientStamp = "";
+
+    /// <summary>退出 / 释放时把缓存的客户端一起收掉。</summary>
+    public void DisposeClient()
+    {
+        lock (_clientGate)
+        {
+            try { _client?.Dispose(); } catch { }   /* 预期内：清理动作，失败无副作用 */
+            _client = null;
+            _clientStamp = "";
+        }
     }
 
     /// <summary>云端是否配置可用。</summary>
