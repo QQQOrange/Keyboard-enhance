@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CapsLockPlus.Core.Icons;
@@ -49,7 +49,6 @@ public partial class QbarSettingsView : UserControl
             btn.Click += (_, _) =>
             {
                 if (_host == null) return;
-                _host.Settings.Qbar.BorderColor = color;
                 _host.Settings.Qbar.AccentColor = color;
                 _host.SaveSettings();
                 MarkSelectedSwatch();

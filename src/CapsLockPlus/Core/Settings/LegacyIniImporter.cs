@@ -242,7 +242,6 @@ public static class LegacyIniImporter
 
         if (sections.TryGetValue("QStyle", out var qstyle))
         {
-            if (qstyle.TryGetValue("borderBackgroundColor", out var bc)) settings.Qbar.BorderColor = ToHex(bc);
             if (qstyle.TryGetValue("listCount", out var lc) && int.TryParse(lc.Trim(), out int count))
                 settings.Qbar.ListCount = Math.Clamp(count, 3, 12);
             if (qstyle.TryGetValue("textFontSize", out var fs) && double.TryParse(fs.Trim(), out double size))
@@ -253,22 +252,6 @@ public static class LegacyIniImporter
         return new ImportResult(settings, keys, search, run, web, hs, warnings);
     }
 
-    private static string ToHex(string value)
-    {
-        string v = value.Trim();
-        if (v.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) v = v[2..];
-        if (v.Length == 6 && v.All(Uri.IsHexDigit)) return "#" + v.ToUpperInvariant();
-        return value.Trim().ToLowerInvariant() switch
-        {
-            "red" => "#E5484D",
-            "green" => "#30A46C",
-            "blue" => "#2B6CF6",
-            "black" => "#111111",
-            "white" => "#FFFFFF",
-            "yellow" => "#F5D90A",
-            _ => "#2B6CF6",
-        };
-    }
 
     private static string StripComment(string key)
     {

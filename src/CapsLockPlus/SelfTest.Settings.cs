@@ -842,6 +842,59 @@ public static partial class SelfTest
             .Select(k => k.Combo + "=" + k.Action).ToList();
         Check("默认绑定全部可解析", missing.Count == 0, string.Join(", ", missing.Take(6)));
 
+        /* ---- 参数没填时必须"说出来"，不能静默成功 ----
+         *
+         * 这一组动作（直达网址/文件夹/文件、输入文本、运行程序）以前遇到空参数是
+         * `if (empty) return true;`：按下去什么都不发生，AppHost 还记一条成功日志。
+         * 用户只会认为"这个键坏了"，日志里也看不出来。 */
+        var notes = new List<string>();
+        var probe = new ActionContext
+        {
+            Settings = () => settings,
+            Clipboard = new ClipboardService(),
+            Windows = new WindowActions(),
+            WindowBindings = new WindowBindingService(settings),
+            Mouse = new MouseService(),
+            Notify = m => notes.Add(m),
+        };
+        var probeCat = ActionCatalog.Create(probe);
+        foreach (var id in new[] { "webPage", "openFolder", "openFile", "typeText", "runProgram", "openUrl" })
+        {
+            notes.Clear();
+            bool ok = probeCat.Invoke(id, "");
+            bool told = notes.Any(n => n.Contains("还没填", StringComparison.Ordinal));
+            Check($"{id}：空参数要提示并判失败", !ok && told,
+                $"ok={ok} notes={string.Join(" | ", notes)}");
+        }
+
+        /* ---- 有参数时要真的执行（用拦截器验证，不真的开窗口/开程序） ---- */
+        var reached = new List<string>();
+        ActionContext.OpenUrlInterceptForTest = u => reached.Add("url:" + u);
+        ActionContext.OpenFolderInterceptForTest = p => reached.Add("folder:" + p);
+        ActionContext.OpenFileInterceptForTest = f => reached.Add("file:" + f);
+        try
+        {
+            /* 网址会经过规范化（`https://example.com` → 末尾补 `/`），所以只比前缀 */
+            Check("webPage 有参数会真的打开",
+                probeCat.Invoke("webPage", "https://example.com")
+                && reached.Any(r => r.StartsWith("url:https://example.com", StringComparison.Ordinal)),
+                string.Join(" | ", reached));
+            Check("openFolder 有参数会真的打开",
+                probeCat.Invoke("openFolder", @"D:\Work")
+                && reached.Contains(@"folder:D:\Work"),
+                string.Join(" | ", reached));
+            Check("openFile 有参数会真的打开",
+                probeCat.Invoke("openFile", @"D:\Work\a.docx")
+                && reached.Contains(@"file:D:\Work\a.docx"),
+                string.Join(" | ", reached));
+        }
+        finally
+        {
+            ActionContext.OpenUrlInterceptForTest = null;
+            ActionContext.OpenFolderInterceptForTest = null;
+            ActionContext.OpenFileInterceptForTest = null;
+        }
+
         /* 两套内置方案都要逐个动作核对。
          *
          * 只查 DefaultSettings.Create() 是不够的：它只覆盖"当前方案"，

@@ -356,9 +356,6 @@ public sealed class GlobalOptions
     /// <summary>主窗口关闭时最小化到托盘而不是退出。</summary>
     public bool CloseToTray { get; set; } = true;
 
-    /// <summary>Caps+Tab 计算器/热字串开关。</summary>
-    public bool EnableTabScript { get; set; } = true;
-
     /// <summary>按住 Caps 组合键时，动作是否可重复触发（打字流场景更顺手）。</summary>
     public bool RepeatWhenHeld { get; set; }
 
@@ -902,17 +899,10 @@ public sealed class Macro
 
 public sealed class QbarOptions
 {
-    public string BorderColor { get; set; } = "#2B6CF6";
-    public double BorderRadius { get; set; } = 14;
     public string PanelColor { get; set; } = "auto";   // auto = 跟随主题
     public string PanelOpacity { get; set; } = "0.96";
-    public string TextColor { get; set; } = "#F2F5FA";
     public string TextFont { get; set; } = "Microsoft YaHei UI";
     public double TextFontSize { get; set; } = 20;
-    public string ListFont { get; set; } = "Microsoft YaHei UI";
-    public double ListFontSize { get; set; } = 13.5;
-    public string ListBackgroundColor { get; set; } = "#1C1F27";
-    public string ListTextColor { get; set; } = "#C9D1E0";
     public int ListCount { get; set; } = 6;
     public double LineHeight { get; set; } = 38;
     public string AccentColor { get; set; } = "#4C8DFF";

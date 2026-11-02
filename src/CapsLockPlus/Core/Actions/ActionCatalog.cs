@@ -1,4 +1,4 @@
-﻿using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Text;
 using CapsLockPlus.Core.Windows;
 
@@ -368,10 +368,10 @@ public sealed class ActionCatalog
         // 删掉后按键会变成"未知动作"，按下去毫无反应。
         // 所以保留执行能力、标记 Hidden，界面上不再出现。
         c.Add("openUrl", "系统", "打开网址", "打开参数里的网址",
-            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; },
+            a => string.IsNullOrWhiteSpace(a) ? ctx.MissingArg("网址") : Run(() => ctx.OpenUrl(a)),
             hidden: true);
         c.Add("runProgram", "系统", "运行程序", "运行参数里的程序或命令",
-            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.RunProgram(a); return true; },
+            a => string.IsNullOrWhiteSpace(a) ? ctx.MissingArg("要运行的程序") : Run(() => ctx.RunProgram(a)),
             hidden: true);
 
         // ---------------- 智能直达 ----------------
@@ -405,17 +405,17 @@ public sealed class ActionCatalog
         // 选「打开网址」就看不到备注框，也不会出现文件夹/文件那一套。
         c.Add("webPage", "直达链接", "直达网址",
             "用默认浏览器打开这个网址；可以加备注，备注会显示在键帽上",
-            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenUrl(a); return true; },
+            a => string.IsNullOrWhiteSpace(a) ? ctx.MissingArg("网址") : Run(() => ctx.OpenUrl(a)),
             needsArg: true);
 
         c.Add("openFolder", "直达链接", "直达文件夹",
             "在文件资源管理器里打开这个文件夹；可以加备注，备注会显示在键帽上",
-            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenFolder(a); return true; },
+            a => string.IsNullOrWhiteSpace(a) ? ctx.MissingArg("文件夹路径") : Run(() => ctx.OpenFolder(a)),
             needsArg: true);
 
         c.Add("openFile", "直达链接", "直达文件",
             "用系统默认程序打开这个文件（.docx 进 Word、.mp4 进播放器，跟双击一样）；可以加备注，备注会显示在键帽上",
-            a => { if (!string.IsNullOrWhiteSpace(a)) ctx.OpenFile(a); return true; },
+            a => string.IsNullOrWhiteSpace(a) ? ctx.MissingArg("文件路径") : Run(() => ctx.OpenFile(a)),
             needsArg: true);
 
         // ---------------- 自定义按键 ----------------
@@ -451,7 +451,7 @@ public sealed class ActionCatalog
         //   · 走 IME 路径，输入法正常
         c.Add("typeText", "输入文本", "输入一段文字",
             "把这段文字直接输入到当前光标处（支持中文与 emoji）",
-            a => { if (!string.IsNullOrEmpty(a)) ctx.TypeText(a); return true; },
+            a => string.IsNullOrEmpty(a) ? ctx.MissingArg("要输入的文字") : ctx.TypeText(a),
             needsArg: true);
 
         // ---------------- 窗口绑定 ----------------
@@ -485,6 +485,18 @@ public sealed class ActionCatalog
         c.Add("macroManager", "宏", "打开宏管理", "录制 / 编辑 / 绑定宏", _ => { ctx.RequestOpenMacros(); return true; });
 
         return c;
+    }
+
+    /// <summary>
+    /// 执行一个"没有返回值"的动作，并按成功返回。
+    ///
+    /// 这些动作（打开网址 / 文件夹 / 文件 / 运行程序）内部已经处理了
+    /// 自己的失败与提示，这里只负责把它们变成 ActionCatalog 需要的 bool。
+    /// </summary>
+    private static bool Run(Action action)
+    {
+        action();
+        return true;
     }
 
     // ---------------- 小工具 ----------------

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using CapsLockPlus.Core.Input;
@@ -44,6 +44,24 @@ public sealed partial class ActionContext
     public void RequestReload() => ReloadRequested?.Invoke();
     public void RequestToggleEnabled() => ToggleEnabledRequested?.Invoke();
     public void RequestScreenshot() => ScreenshotRequested?.Invoke();
+
+    /// <summary>
+    /// 动作参数没填时的统一出口：提示"缺什么"，并按**失败**返回。
+    ///
+    /// 为什么单独做这一件事：直达网址 / 直达文件夹 / 直达文件 / 输入文本 / 运行程序
+    /// 这些动作以前遇到空参数是 `if (empty) return;` —— 按下去**什么都不发生**，
+    /// 而 <c>AppHost.InvokeAction</c> 还会记一条"动作：openFolder"的成功日志。
+    /// 用户只会认为"这个键坏了"，日志里也看不出原因。
+    ///
+    /// 现在：明确告诉用户缺哪一项、去哪儿填，并且返回 false，
+    /// 于是失败通知（Toast + 日志）会照常走一遍。
+    /// </summary>
+    /// <param name="what">缺的是什么，例如 "网址" / "文件夹路径"</param>
+    public bool MissingArg(string what)
+    {
+        Notify(Loc.F("这个键还没填{0}：到「按键映射」里选中它，在右边把它填上", what));
+        return false;
+    }
 
     /// <summary>播放指定 ID 的宏。arg 可覆盖重复次数（空 = 用宏自身设置）。</summary>
     public void PlayMacro(string macroId, string? arg)

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
 using System.Windows;
 using System.Xml.Linq;
@@ -203,6 +203,21 @@ public static partial class SelfTest
             catch { return false; }
         }
 
+        /* 断言里的"详情"是**立即求值**的，所以这些读操作也必须兜住异常 ——
+         * 剪贴板被别的进程短暂占用时 OpenClipboard 会失败并抛 CLIPBRD_E_CANT_OPEN，
+         * 那会变成一条假的崩溃（不是被测逻辑的错）。 */
+        static string SafeFormats()
+        {
+            try { return string.Join(",", Clipboard.GetDataObject()?.GetFormats() ?? Array.Empty<string>()); }
+            catch { return "(剪贴板被占用)"; }
+        }
+
+        static int SafeFileCount()
+        {
+            try { return Clipboard.GetFileDropList()?.Count ?? -1; }
+            catch { return -1; }
+        }
+
         try
         {
             /* ---- ① 纯文本 ---- */
@@ -237,7 +252,7 @@ public static partial class SelfTest
                 {
                     imageBackup.Restore();
                     Check("图片不会被中转文字顶掉", HasImage(),
-                        string.Join(",", Clipboard.GetDataObject()?.GetFormats() ?? Array.Empty<string>()));
+                        SafeFormats());
                 }
                 else
                 {
@@ -257,9 +272,8 @@ public static partial class SelfTest
                 if (TryOp(() => Clipboard.SetText("中转文字D")))
                 {
                     fileBackup.Restore();
-                    var dropped = Clipboard.GetFileDropList();
-                    Check("文件列表能被还原", dropped != null && dropped.Count == 1,
-                        dropped == null ? "(null)" : dropped.Count.ToString());
+                    int fileCount = SafeFileCount();
+                    Check("文件列表能被还原", fileCount == 1, fileCount.ToString());
                 }
                 else
                 {
