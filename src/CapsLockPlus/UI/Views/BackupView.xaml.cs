@@ -794,8 +794,21 @@ public partial class BackupView : UserControl
             _host.SaveSettings();
             _host.ReloadAll();
 
-            ShowImportResult(Loc.F("导入成功：{0} 个分组\n　{1}", names.Count, Loc.Join(names)), true);
-            _host.Notify(Loc.F("已导入 {0} 个分组的配置", names.Count));
+            /* 只勾「按键映射」而没勾「宏」时，那些 macro: 引用会指向不存在的宏。
+             * 这不算失败（用户可能就想这么导），但必须提示，否则按下去只得到
+             * "宏不存在"，很容易被判成"导入坏了"。 */
+            int dangling = ExportImport.CountDanglingMacroRefs(_host.Settings);
+            string result = Loc.F("导入成功：{0} 个分组\n　{1}", names.Count, Loc.Join(names));
+            if (dangling > 0)
+            {
+                result += "\n\n" + Loc.F(
+                    "⚠ 有 {0} 个按键指向本机没有的宏（大概是没勾「宏」那一组）："
+                    + "按下去会提示「宏不存在」。", dangling);
+            }
+            ShowImportResult(result, true);
+            _host.Notify(dangling > 0
+                ? Loc.F("已导入 {0} 个分组；{1} 个按键指向缺失的宏", names.Count, dangling)
+                : Loc.F("已导入 {0} 个分组的配置", names.Count));
         }
         catch (Exception ex)
         {

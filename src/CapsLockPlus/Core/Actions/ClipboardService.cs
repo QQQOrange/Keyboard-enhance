@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using CapsLockPlus.Core.Input;
 
 namespace CapsLockPlus.Core.Actions;
@@ -128,6 +128,39 @@ public sealed class ClipboardService
     {
         ClipboardFeatureOn = !ClipboardFeatureOn;
         Notified?.Invoke(ClipboardFeatureOn ? "独立剪贴板已开启" : "独立剪贴板已关闭");
+        return true;
+    }
+
+    /// <summary>
+    /// 把槽位内容放进**系统剪贴板**。
+    ///
+    /// 设置页那两个按钮用它，而不是 <see cref="Paste"/>：
+    /// 在设置窗口里点按钮时，前台窗口就是设置窗口自己 —— 走 Paste 等于
+    /// 往设置页发一个 Ctrl+V，页面上没有输入框，用户看到的就是"点了没反应"。
+    /// 复制到系统剪贴板则不受前台窗口影响，关掉设置页再按 Ctrl+V 就行。
+    /// </summary>
+    public bool CopySlotToSystem(int slot)
+    {
+        string? text;
+        lock (_gate) text = _slots[slot];
+        if (string.IsNullOrEmpty(text))
+        {
+            Notified?.Invoke(Loc.F("剪贴板 {0} 是空的", slot));
+            return false;
+        }
+        return CopyTextToSystem(text);
+    }
+
+    /// <summary>把任意文本放进系统剪贴板（历史记录双击也用这个）。</summary>
+    public bool CopyTextToSystem(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        if (!ClipboardPaster.TrySetText(text))
+        {
+            Notified?.Invoke("写系统剪贴板失败，稍后再试");
+            return false;
+        }
+        Notified?.Invoke("已复制到系统剪贴板（Ctrl+V 粘贴）");
         return true;
     }
 

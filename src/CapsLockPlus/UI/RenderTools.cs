@@ -418,7 +418,10 @@ public static class RenderTools
         };
         clip.Show();
         Pump(240);
-        Save(clip, Path.Combine(outDir, "clipboard.png"));
+        /* ⚠ 不能叫 clipboard.png：上面那个循环已经用页面名生成过 clipboard.png（剪贴板设置页），
+         * 同名会把它**覆盖**成这个历史窗口 —— 于是 docs 里的"剪贴板"截图看到的
+         * 其实是这张浮窗，页面本身从来没进过文档。 */
+        Save(clip, Path.Combine(outDir, "clipboard-history.png"));
         if (DiagnosticsRequested)
         {
             DumpTextBoxMetrics(clip, Path.Combine(outDir, "metrics-win-clipboard.txt"), "剪贴板历史");

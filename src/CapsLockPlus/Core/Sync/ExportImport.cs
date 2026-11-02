@@ -129,6 +129,28 @@ public static class ExportImport
          *     想安全就勾上加密（默认就是勾着的）。 */
     };
 
+    /// <summary>
+    /// 数一数"有多少个按键指向本机不存在的宏"。
+    ///
+    /// 为什么需要它：分组是**按项**导出的，「按键映射」里存的是 `macro:&lt;id&gt;` 这样的引用，
+    /// 而宏定义在「宏」那一组。用户只勾前者时，导入后那些键按下去只会得到
+    /// "宏不存在，可能已被删除"。这不算导入失败，但必须**说出来**，
+    /// 否则用户会以为导入坏了。
+    /// </summary>
+    public static int CountDanglingMacroRefs(AppSettings s)
+    {
+        var ids = new HashSet<string>(
+            (s.Macros ?? new List<Core.Settings.Macro>()).Select(m => m.Id), StringComparer.Ordinal);
+        int n = 0;
+        foreach (var k in s.Keys ?? new List<KeyBinding>())
+        {
+            if (!k.IsBound) continue;
+            if (!k.Action.StartsWith("macro:", StringComparison.Ordinal)) continue;
+            if (!ids.Contains(k.Action["macro:".Length..])) n++;
+        }
+        return n;
+    }
+
     /// <summary>把不该出门的字段从**明文**导出数据里摘掉。</summary>
     internal static void Sanitize(JsonObject data)
     {

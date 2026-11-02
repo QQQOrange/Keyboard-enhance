@@ -225,6 +225,23 @@ public static partial class SelfTest
         // ③ 换台机器（本机没令牌）整份恢复 → 令牌被带过来
         var fresh = DefaultSettings.Create();
         fresh.Sync.BackupPassword = pass;
+        /* ---- 只勾「按键映射」就导入时，要能数出"指向缺失宏的按键" ----
+         *
+         * 分组是按项导出的：按键里存的是 macro:<id> 引用，宏定义在「宏」那组。
+         * 只导入前者时，那些键按下去只会得到"宏不存在"，用户很容易判成"导入坏了"。 */
+        var danglingSet = DefaultSettings.Create();
+        danglingSet.Macros.Clear();
+        danglingSet.Macros.Add(new Macro { Id = "m1", Name = "存在的宏" });
+        danglingSet.Keys.Clear();
+        danglingSet.Keys.Add(new KeyBinding { Combo = "Caps+A", Action = "macro:m1" });
+        danglingSet.Keys.Add(new KeyBinding { Combo = "Caps+B", Action = "macro:gone" });
+        danglingSet.Keys.Add(new KeyBinding { Combo = "Caps+C", Action = "winBind" });
+        danglingSet.Keys.Add(new KeyBinding { Combo = "Caps+D", Action = "doNothing" });
+        CheckEqual("只数指向缺失宏的按键", Core.Sync.ExportImport.CountDanglingMacroRefs(danglingSet), 1);
+
+        danglingSet.Macros.Add(new Macro { Id = "gone", Name = "补齐" });
+        CheckEqual("宏补齐后不再算缺失", Core.Sync.ExportImport.CountDanglingMacroRefs(danglingSet), 0);
+
         /* ---- 选错文件不能把配置冲成默认 ----
          *
          * 「从备份恢复」以前只要求"能反序列化"。任何 JSON 都能反序列化进

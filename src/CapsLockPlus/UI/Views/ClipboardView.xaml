@@ -26,6 +26,10 @@
                         <TextBlock Text="{loc:T '两个互不干扰的剪贴板'}" Style="{StaticResource Text.H3}" />
                         <TextBlock Text="{loc:T 'Caps+C / V 用剪贴板 1，Caps+LAlt+C / V 用剪贴板 2，不会覆盖系统剪贴板里的内容。'}"
                                    Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+
+                <TextBlock Text="{loc:T '下面的「复制」是把内容放进系统剪贴板，之后在任意程序里按 Ctrl+V 即可；想在别处直接粘，按 Caps+V。'}"
+                           Style="{StaticResource Text.Secondary}" FontSize="12" Margin="0,6,0,0"
+                           TextWrapping="Wrap" />
                     </StackPanel>
                 </StackPanel>
                 <CheckBox Grid.Column="1" x:Name="EnableBox" Style="{StaticResource ToggleSwitch}"
@@ -49,8 +53,8 @@
                                    TextWrapping="Wrap" />
                     </ScrollViewer>
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Content="{loc:T '粘贴'}" Style="{StaticResource Button.Primary}" Padding="12,5"
-                                Click="OnPaste1" />
+                        <Button Content="{loc:T '复制'}" Style="{StaticResource Button.Primary}" Padding="12,5"
+                                Click="OnCopy1" />
                         <Button Content="{loc:T '清空'}" Style="{StaticResource Button.Ghost}" Padding="12,5"
                                 Margin="6,0,0,0" Click="OnClear1" />
                     </StackPanel>
@@ -64,8 +68,8 @@
                                    TextWrapping="Wrap" />
                     </ScrollViewer>
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Content="{loc:T '粘贴'}" Style="{StaticResource Button.Primary}" Padding="12,5"
-                                Click="OnPaste2" />
+                        <Button Content="{loc:T '复制'}" Style="{StaticResource Button.Primary}" Padding="12,5"
+                                Click="OnCopy2" />
                         <Button Content="{loc:T '清空'}" Style="{StaticResource Button.Ghost}" Padding="12,5"
                                 Margin="6,0,0,0" Click="OnClear2" />
                     </StackPanel>

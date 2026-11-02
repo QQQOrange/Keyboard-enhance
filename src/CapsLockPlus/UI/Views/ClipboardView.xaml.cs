@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -43,19 +43,12 @@ public partial class ClipboardView : UserControl
         _host.Notify(_host.Clipboard.ClipboardFeatureOn ? Loc.T("独立剪贴板已开启") : Loc.T("独立剪贴板已关闭"));
     }
 
-    private void OnPaste1(object sender, RoutedEventArgs e)
-    {
-        if (_host == null) return;
-        if (string.IsNullOrEmpty(_host.Clipboard.SlotText(1))) { _host.Notify(Loc.T("剪贴板 1 是空的")); return; }
-        _host.Clipboard.Paste(1);
-    }
+    /* 这两个按钮以前是「粘贴」—— 但在设置窗口里点它时，前台窗口**就是设置窗口自己**，
+     * 于是 Paste(slot) 只是往设置页发了个 Ctrl+V：页面上没有输入框，
+     * 用户看到的就是"点了没反应"。改成复制到系统剪贴板，结果确定且随时可用。 */
+    private void OnCopy1(object sender, RoutedEventArgs e) => _host?.Clipboard.CopySlotToSystem(1);
 
-    private void OnPaste2(object sender, RoutedEventArgs e)
-    {
-        if (_host == null) return;
-        if (string.IsNullOrEmpty(_host.Clipboard.SlotText(2))) { _host.Notify(Loc.T("剪贴板 2 是空的")); return; }
-        _host.Clipboard.Paste(2);
-    }
+    private void OnCopy2(object sender, RoutedEventArgs e) => _host?.Clipboard.CopySlotToSystem(2);
 
     private void OnClear1(object sender, RoutedEventArgs e)
     {
@@ -78,8 +71,9 @@ public partial class ClipboardView : UserControl
     private void OnHistoryDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (_host == null || HistoryList.SelectedItem is not HistoryVm vm) return;
-        _host.Clipboard.PasteText(vm.Text);
-        _host.Notify(Loc.T("已粘贴"));
+        /* 双击一条历史 = 把它拿走（复制到系统剪贴板）。
+         * 以前这里是 PasteText → 翻成快捷键发往**设置窗口自己**，同样"没反应"。 */
+        _host.Clipboard.CopyTextToSystem(vm.Text);
     }
 
     private sealed class HistoryVm

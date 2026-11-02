@@ -308,6 +308,26 @@ public static partial class SelfTest
         {
             userBackup.Restore();       // 把用户原来的剪贴板还回去
         }
+
+
+        /* 设置页那两个按钮走的是"复制到系统剪贴板"（不是 Paste）：
+         * 在设置窗口里点按钮时前台窗口就是设置窗口自己，Paste 只会往设置页发 Ctrl+V。 */
+        var clip = new Core.Actions.ClipboardService();
+        clip.ClipboardFeatureOn = true;
+        clip.ClearSlot(1);
+        Check("空槽位复制不出东西", !clip.CopySlotToSystem(1));
+        Check("空文本复制直接拒绝", !clip.CopyTextToSystem(""));
+        if (ClipboardPaster.TrySetText(""))
+        {
+            bool copied = clip.CopyTextToSystem("selftest-copy-slot");
+            Check("复制到系统剪贴板返回成功", copied);
+            Check("系统剪贴板里确实是那段文字", Clipboard.GetText() == "selftest-copy-slot",
+                Clipboard.GetText());
+        }
+        else
+        {
+            Check("（环境限制）剪贴板被占用，跳过复制验证", true);
+        }
     }
     /// <summary>
     /// 动作失败通知的文案。
