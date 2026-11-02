@@ -222,10 +222,27 @@
 - 真机冒烟：`--osd 42` 走通 band 16 分层窗口（卡片 384×94px @2x，位置 1704,2014，
   工作区 3840×2160，底边留 14 DIP）；`--selftest` / `--render` 均已在新构建上跑过。
 
+### 补充（第十轮）：把编译警告清零，当一个质量门用
+
+- **编译器警告从 16 条降到 0 条**（两个目标框架都是 0 警告 0 错误）。
+  警告长期挂着就会变成背景噪声，真正的隐患反而看不见 —— 这轮把最后 5 条清掉了：
+  - `SyncService.Client()` 把 `string?` 的 WebDAV 地址 / 账号 / 密码直接赋给非空属性（3 条 CS8601）：
+    现在统一 `?? ""`。空串会让"没配置"这条路径明确失败，而不是在 `HttpClient` 里抛 NRE。
+  - `Load()` 里一句多余的 `s != null`（`?? DefaultSettings.Create()` 之后本来就不可能为空），
+    反而让编译器以为它可能为空（CS8604），删掉。
+  - 自检里对 `KeyboardDevices.List()` 判空：它的契约是"失败返回空列表、绝不返回 null"，
+    判空既多余又掩盖契约（CS8604），改成直接断言路径非空。
+- **`new AesGcm(key)` 已被标记过时（SYSLIB0053，4 处）**：.NET 8 起要求显式写出
+  认证标签长度，否则以后默认值一变，老数据就可能读不回来。新增
+  `Core/Security/AesGcmFactory`，按 16 字节标签创建 —— 正是现有数据用的格式，
+  所以已加密的设置/备份不受影响（`--selftest` 里"加密导出能读回来"通过）。
+  Win7 那条线（net7.0）没有带标签长度的构造函数，用 `#if NET8_0_OR_GREATER`
+  收口，两个目标框架行为一致。
+
 ### 验证
 
-- Debug / Release 编译 0 错误；
-- `--selftest` 2807 项全部通过；
+- Debug / Release 编译 **0 警告 0 错误**（net10.0-windows 与 net7.0-windows 都验过）；
+- `--selftest` 2806 项全部通过；
 - `--render` 全 37 张界面重新出图，浅色 / 深色各跑一遍（`docs/screenshots` 已更新）；
 - `tools/i18n.py check`：缺译文 0 条；
 - 图标渲染前后对比：`dist/svg-compare.png`（上=旧，下=新）。

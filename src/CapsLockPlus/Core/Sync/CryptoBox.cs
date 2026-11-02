@@ -1,8 +1,9 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapsLockPlus.Core;
+using CapsLockPlus.Core.Security;
 
 namespace CapsLockPlus.Core.Sync;
 
@@ -81,7 +82,7 @@ public static class CryptoBox
             byte[] cipher = new byte[plainBytes.Length];
             byte[] tag = new byte[TagLen];
 
-            using var aes = new AesGcm(key.AsSpan());
+            using var aes = AesGcmFactory.Create(key.AsSpan());
             // 把格式版本作为附加认证数据：改了版本号就解不开，防降级
             aes.Encrypt(nonce, plainBytes, cipher, tag, Encoding.UTF8.GetBytes($"{Magic}=1"));
 
@@ -149,7 +150,7 @@ public static class CryptoBox
         try
         {
             byte[] plain = new byte[data.Length];
-            using var aes = new AesGcm(key.AsSpan());
+            using var aes = AesGcmFactory.Create(key.AsSpan());
             aes.Decrypt(nonce, data, tag, plain, Encoding.UTF8.GetBytes($"{Magic}=1"));
             return Encoding.UTF8.GetString(plain);
         }

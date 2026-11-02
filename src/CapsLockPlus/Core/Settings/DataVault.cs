@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using CapsLockPlus.Core.Security;
 
 namespace CapsLockPlus.Core.Settings;
 
@@ -291,7 +292,7 @@ public static class DataVault
             byte[] cipher = new byte[plainBytes.Length];
             byte[] tag = new byte[TagLen];
 
-            using var aes = new AesGcm(_key.AsSpan());
+            using var aes = AesGcmFactory.Create(_key.AsSpan());
             aes.Encrypt(nonce, plainBytes, cipher, tag);
 
             var env = new JsonObject
@@ -326,7 +327,7 @@ public static class DataVault
                 byte[] data = Convert.FromBase64String(node["data"]!.GetValue<string>());
 
                 byte[] plain = new byte[data.Length];
-                using var aes = new AesGcm(_key.AsSpan());
+                using var aes = AesGcmFactory.Create(_key.AsSpan());
                 aes.Decrypt(nonce, data, tag, plain);
                 return Encoding.UTF8.GetString(plain);
             }

@@ -1436,8 +1436,9 @@ public static partial class SelfTest
         CheckEqual("设备：空输入返回空", KeyboardDevices.Group(null).Count, 0);
 
         // ---- 真实枚举：能跑通即可 ----
+        // List() 的契约是"失败返回空列表、绝不返回 null"，所以这里不判空 ——
+        // 判空反而会让编译器以为它可能是 null（CS8604），也掩盖了契约本身。
         var devices = KeyboardDevices.List();
-        Check("设备：枚举不抛异常", devices != null);
         Check("设备：路径都非空", devices.All(d => d.Path.Length > 0),
             string.Join(" | ", devices.Select(d => d.Path)));
 

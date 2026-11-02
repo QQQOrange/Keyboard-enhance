@@ -243,7 +243,7 @@ public static class SettingsStore
                  * 用户看到的是"软件坏了"，日志里却一句解释都没有。
                  * 这种文件不可能是一次正常保存产生的（保存一定会写 Keys/Layers/Triggers），
                  * 多半是被别的工具截断、或者手改时删多了。宁可给默认值并留一条日志。 */
-                if (s != null && IsStructurallyEmpty(s))
+                if (IsStructurallyEmpty(s))
                 {
                     CoreLog.Warn("设置文件里没有任何按键 / 层 / 触发键（可能被截断或手动清空），改用默认设置");
                     s = DefaultSettings.Create();

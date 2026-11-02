@@ -243,9 +243,13 @@ public sealed class SyncService
             _clientStamp = stamp;
             _client = new WebDavClient(new WebDavOptions
             {
-                Url = s.WebDavUrl,
-                User = s.WebDavUser,
-                Pass = s.WebDavPass,
+                /* 三个字段都可能是 null（手改过的配置 / 老版本迁移过来的），
+                 * 而 WebDavClient 内部直接拿它们拼 URI / 做凭据 ——
+                 * 传空串比传 null 安全：空串会让"没配置"这条路径明确失败，
+                 * 而不是在 HttpClient 里抛 NullReferenceException。 */
+                Url = s.WebDavUrl ?? "",
+                User = s.WebDavUser ?? "",
+                Pass = s.WebDavPass ?? "",
                 TimeoutSeconds = timeoutSeconds,
             });
 
