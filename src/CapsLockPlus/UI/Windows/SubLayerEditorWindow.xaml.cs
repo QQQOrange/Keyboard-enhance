@@ -201,7 +201,8 @@ public partial class SubLayerEditorWindow : Window
         DialogResult = true;
     }
 
-    private void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;
+    // DialogResult 由按钮的 IsCancel 设；这里只关窗（再设一次会抛 InvalidOperationException）
+    private void OnCancel(object sender, RoutedEventArgs e) => Close();
 
     /// <summary>
     /// 自检用：量一行输入框的**内容区高度**和一行字的高度。

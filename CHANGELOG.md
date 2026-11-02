@@ -239,10 +239,27 @@
   Win7 那条线（net7.0）没有带标签长度的构造函数，用 `#if NET8_0_OR_GREATER`
   收口，两个目标框架行为一致。
 
+### 补充（第十一轮）：把"Esc 取消 / Enter 确认"补齐到所有对话框
+
+这是个键盘工具，用户手通常不在鼠标上 —— 对话框却不吃 Esc 就会很别扭。
+
+- **六个对话框按 Esc 没反应**：数据解锁（先不解锁）、设置备份密码、启动密码、
+  子层编辑、恢复备份、更新提示。现在它们的"取消 / 稍后"按钮都带上了 `IsCancel`，
+  Esc 等同点它。
+- **顺带修掉一个会炸的隐患**：WPF 的 `IsCancel` 会在点按钮时**自己**设
+  `DialogResult = false`，而原来的取消处理里又写了一遍 `DialogResult = false` ——
+  同一个值设第二次会抛 `InvalidOperationException`（"DialogResult can be set only
+  after Window is created and shown as dialog"，因为第一次已经把关窗流程走完了）。
+  仓库里 `AppDialog` 一直是"只 `Close()`、结果交给 `IsCancel`"的写法，这轮把另外
+  五个处理函数统一成同样的写法。
+- **引导页「下一步」回车不生效**：主按钮补 `IsDefault`。
+- 键盘行为核对（无需改动）：快捷键速查/剪贴板历史/计算器/引导/Qbar 已有 Esc 处理，
+  取键窗口用的是低级键盘钩子直接认 VK_ESC。
+
 ### 验证
 
-- Debug / Release 编译 **0 警告 0 错误**（net10.0-windows 与 net7.0-windows 都验过）；
-- `--selftest` 2806 项全部通过；
+- Debug / Release 编译 **0 警告 0 错误**；
+- `--selftest` 2805 项全部通过；
 - `--render` 全 37 张界面重新出图，浅色 / 深色各跑一遍（`docs/screenshots` 已更新）；
 - `tools/i18n.py check`：缺译文 0 条；
 - 图标渲染前后对比：`dist/svg-compare.png`（上=旧，下=新）。

@@ -82,7 +82,7 @@ public partial class PasswordPromptWindow : Window
     private void OnSkip(object sender, RoutedEventArgs e)
     {
         Password = null;
-        DialogResult = false;
+        // DialogResult 由按钮的 IsCancel 设；这里只关窗（再设一次会抛 InvalidOperationException）
         Close();
     }
 

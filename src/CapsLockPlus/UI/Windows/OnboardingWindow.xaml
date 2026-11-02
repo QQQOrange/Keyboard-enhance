@@ -1,4 +1,4 @@
-﻿<Window x:Class="CapsLockPlus.UI.Windows.OnboardingWindow"
+<Window x:Class="CapsLockPlus.UI.Windows.OnboardingWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -153,8 +153,9 @@
                                     Click="OnSkip" />
                             <Button x:Name="BackButton" Content="{loc:T '上一步'}" Style="{StaticResource Button.Base}"
                                     Margin="8,0,0,0" Click="OnBack" Visibility="Collapsed" />
+                            <!-- 「下一步」是主操作，Enter 应该等同点它（这是键盘工具，用户手不放鼠标） -->
                             <Button x:Name="NextButton" Content="{loc:T '下一步'}" Style="{StaticResource Button.Primary}"
-                                    Margin="8,0,0,0" Click="OnNext" />
+                                    Margin="8,0,0,0" Click="OnNext" IsDefault="True" />
                         </StackPanel>
                     </Grid>
                 </Grid>

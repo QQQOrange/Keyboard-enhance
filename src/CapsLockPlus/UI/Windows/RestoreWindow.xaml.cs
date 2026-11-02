@@ -296,7 +296,7 @@ public partial class RestoreWindow : Window
 
     private void OnCancel(object sender, RoutedEventArgs e)
     {
-        DialogResult = false;
+        // DialogResult 由按钮的 IsCancel 设；这里只关窗（再设一次会抛 InvalidOperationException）
         Close();
     }
 
