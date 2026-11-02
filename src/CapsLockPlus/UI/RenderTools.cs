@@ -681,6 +681,20 @@ public static class RenderTools
          * 都是黑块、标题文字（深色字）完全不可读，看起来像渲染器坏了。
          * 发版截图（docs/screenshots）就是这条路径产出的，所以必须铺底。 */
         var background = window.Background;
+
+        /* 覆盖层（Qbar 面板、取键窗口）的 Background 是 Transparent ——
+         * 它们本来就要"浮在桌面之上"，透明是对的。
+         * 但截图没有"桌面"可叠，透明像素在 PNG 里就是空白：
+         * 深色主题下那块投影会在白底上显成一圈亮边，看着像渲染器坏了。
+         * 所以透明时改用主题的窗口底色当画布，让截图看起来像"面板浮在应用上"。 */
+        if (background == null ||
+            (background is System.Windows.Media.SolidColorBrush scb && scb.Color.A == 0))
+        {
+            background = window.TryFindResource("Brush.WindowGradient") as Brush
+                         ?? window.TryFindResource("Brush.Surface") as Brush
+                         ?? background;
+        }
+
         if (background != null)
         {
             var backdrop = new DrawingVisual();

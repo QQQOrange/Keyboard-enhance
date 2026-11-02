@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -729,6 +729,37 @@ public static class WindowService
                      $"{(expectedName.Length == 0 ? "(未知)" : expectedName)}）");
     }
 
+    /// <summary>
+    /// 校验并规范化 <c>AssocQueryString</c> 的返回值。
+    ///
+    /// 它偶尔会返回**命令模板**而不是程序路径（最典型的是 .exe / .lnk 的 "%1"，
+    /// 或者 `"C:\Program Files\…\app.exe" "%1"` 这种带引号还带参数的写法）。
+    /// 拿这种字符串去做"窗口属于哪个程序"的匹配永远不成立，
+    /// 结果就是白等 3.5 秒、什么也不激活。所以这里只接受"看起来是 exe 路径"的结果。
+    /// </summary>
+    internal static string NormalizeAssocExe(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        string s = raw.Trim();
+
+        // 带引号：只取引号里的那一段
+        if (s.StartsWith('"'))
+        {
+            int end = s.IndexOf('"', 1);
+            if (end <= 1) return "";
+            s = s[1..end].Trim();
+        }
+        else
+        {
+            // 不带引号但后面跟了参数：以 .exe 为界截断
+            int exe = s.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            if (exe > 0 && exe + 4 < s.Length) s = s[..(exe + 4)].Trim();
+        }
+
+        if (!s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return "";
+        return s;
+    }
+
     /// <summary>两个 exe 文件名是否指同一个程序（忽略路径与大小写）。</summary>
     internal static bool SameExeName(string a, string b)
         => a.Length > 0 && b.Length > 0
@@ -796,6 +827,14 @@ public static class WindowService
     /// </summary>
     internal static string AssociatedExe(string path)
     {
+        /* 直接打开的就是一个 .exe（"直达文件"里绑程序可执行文件很常见）：
+         * 关联查询对 .exe 返回的是 `"%1"` 这种**命令模板**，不是程序路径。
+         * 拿去当"要等的窗口属于哪个程序"永远匹配不上 —— 实测日志里就是
+         * `目标程序 %1` → 轮询 3.5 秒、29 次全落空 → "没能置前"。
+         * 这种情况根本不用查：要等的程序就是它自己。 */
+        if (Path.GetExtension(path).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+            return path;
+
         foreach (string assoc in new[] { Path.GetExtension(path), path })
         {
             if (string.IsNullOrWhiteSpace(assoc)) continue;
@@ -813,7 +852,7 @@ public static class WindowService
 
                 if (hr == 0)
                 {
-                    string exe = Environment.ExpandEnvironmentVariables(sb.ToString());
+                    string exe = NormalizeAssocExe(Environment.ExpandEnvironmentVariables(sb.ToString()));
                     if (exe.Length > 0) return exe;
                 }
             }

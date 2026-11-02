@@ -1,4 +1,4 @@
-﻿<Window x:Class="CapsLockPlus.UI.Windows.QbarWindow"
+<Window x:Class="CapsLockPlus.UI.Windows.QbarWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -9,8 +9,13 @@
         FontFamily="{StaticResource Font.Ui}" UseLayoutRounding="True">
 
     <Grid Margin="18">
-        <!-- 投影用一整块圆角实心底衬模拟（比 DropShadowEffect 便宜，也不会露出桌面） -->
-        <Border CornerRadius="20" Background="{DynamicResource Brush.OverlayShadow}" Margin="10,14,10,-2" />
+        <!-- 投影用三层递减的半透明底衬模拟。
+             不用 DropShadowEffect：这个窗口是 AllowsTransparency 的，整窗走软件合成，
+             再加模糊效果的话每敲一个字符都要重算一遍 —— Qbar 是"边打边搜"的面板，卡不得。
+             也不用单层实心块：它和面板错位时右侧/底部会露出一条硬边，看着像两个面板叠在一起。 -->
+        <Border CornerRadius="26" Background="{DynamicResource Brush.OverlayShadow}" Opacity="0.35" Margin="-8,-4,-8,12" />
+        <Border CornerRadius="23" Background="{DynamicResource Brush.OverlayShadow}" Opacity="0.65" Margin="-4,1,-4,7" />
+        <Border CornerRadius="20" Background="{DynamicResource Brush.OverlayShadow}" Margin="-1,5,-1,2" />
 
         <!-- 面板 -->
         <Border x:Name="Panel" CornerRadius="18" BorderThickness="1.5"

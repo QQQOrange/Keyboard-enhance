@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -477,6 +477,30 @@ public static partial class SelfTest
             Core.Windows.WindowService.SameExeName("chrome.exe", @"C:\X\CHROME.EXE"));
         Check("不同程序不会被认成同一个",
             !Core.Windows.WindowService.SameExeName("chrome.exe", "msedge.exe"));
+
+        /* 关联查询会返回"命令模板"而不是程序路径 —— 必须被挡掉。
+         *
+         * 真实故障（用户日志）：打开一个 .exe 文件时
+         *   `AssociatedExe` 对 .exe 返回了字面量 "%1"，
+         * 于是"要等的窗口属于哪个程序"变成 %1，轮询 3.5 秒、29 次全落空，
+         * 日志写"没能置前"，用户看到的是窗口在后台打开。 */
+        CheckEqual("命令模板 %1 不被当成程序路径",
+            Core.Windows.WindowService.NormalizeAssocExe("%1"), "");
+        CheckEqual("带引号带参数的命令只取 exe",
+            Core.Windows.WindowService.NormalizeAssocExe("\"C:\\Program Files\\App\\app.exe\" \"%1\""),
+            @"C:\Program Files\App\app.exe");
+        CheckEqual("不带引号带参数的命令截到 .exe",
+            Core.Windows.WindowService.NormalizeAssocExe(@"C:\Windows\notepad.exe %1"),
+            @"C:\Windows\notepad.exe");
+        CheckEqual("纯路径原样返回",
+            Core.Windows.WindowService.NormalizeAssocExe(@"C:\Windows\notepad.exe"),
+            @"C:\Windows\notepad.exe");
+        CheckEqual("非 exe 结果被丢弃",
+            Core.Windows.WindowService.NormalizeAssocExe("rundll32.exe foo.dll"),
+            "rundll32.exe");
+        CheckEqual("打开 .exe 文件时目标就是它自己",
+            Core.Windows.WindowService.AssociatedExe(@"C:\Windows\notepad.exe"),
+            @"C:\Windows\notepad.exe");
     }
 
     /// <summary>
