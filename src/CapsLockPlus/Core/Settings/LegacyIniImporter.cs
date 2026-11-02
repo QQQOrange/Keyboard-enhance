@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -109,10 +109,39 @@ public static class LegacyIniImporter
         Path.GetExtension(path).Equals(".ini", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>读取旧 ini（UTF-16 / UTF-8 自动识别）并生成新版设置。</summary>
+    /// <exception cref="InvalidOperationException">
+    /// 文件不是 CapsLock+ 的设置文件 / 一个可识别的段都没有 —— 这时**绝不能**
+    /// 返回"默认设置"，因为调用方会拿它整份替换用户当前配置。
+    /// </exception>
     public static ImportResult Import(string iniPath)
     {
+        /* 体积上限：老 ini 撑死几十 KB，2MB 已经极宽松。
+         * 没有这道闸，误选一个大文件会先被 ReadAllBytes 整个读进内存。 */
+        const long MaxBytes = 16L * 1024 * 1024;
+        var info = new FileInfo(iniPath);
+        if (!info.Exists) throw new FileNotFoundException("找不到这个文件", iniPath);
+        if (info.Length > MaxBytes)
+            throw new InvalidOperationException(
+                Loc.F("文件太大了（{0:0.#} MB），不像是 CapsLock+ 的设置文件", info.Length / 1024.0 / 1024.0));
+
         var warnings = new List<string>();
         var sections = ParseIni(iniPath);
+
+        /* 一个认识的段都没有 → 这不是 CapsLock+ 的 ini。
+         *
+         * 必须在这里拦住：调用方拿到 ImportResult 就直接 `Settings = result.Settings`。
+         * 若这里返回"默认设置"（以前的行为），用户误选一个 README / 别的程序的 ini，
+         * 结果就是**整份配置被出厂默认覆盖**，而弹窗还写着"导入完成"。
+         * 选错文件必须报错，不能静默把用户配置清空。 */
+        string[] knownSections =
+        {
+            "Global", "Keys", "QSearch", "QRun", "QWeb", "TabHotString", "QStyle",
+        };
+        if (sections.Count == 0 || !knownSections.Any(sections.ContainsKey))
+            throw new InvalidOperationException(
+                "这个文件里没有任何 CapsLock+ 的设置段（Global / Keys / QSearch …）。"
+                + "请确认选的是旧版 CapsLock+ 目录下的 settings.ini。");
+
         var settings = DefaultSettings.Create();
         int keys = 0, search = 0, run = 0, web = 0, hs = 0;
 

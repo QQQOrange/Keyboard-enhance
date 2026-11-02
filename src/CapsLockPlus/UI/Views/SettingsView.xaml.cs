@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -1400,6 +1400,26 @@ public partial class SettingsView : UserControl
         try
         {
             var result = LegacyIniImporter.Import(dlg.FileName);
+
+            /* 导入 = 整份替换当前配置（按键 / 搜索 / 程序 / 网址 / 热字串）。
+             * 这个动作不可撤销，所以先在确认框里把"要导入多少、会覆盖什么"摆清楚 ——
+             * 以前是直接替换、然后弹一个"导入完成"，用户点错文件就再也回不去了。 */
+            int total = result.Keys + result.Search + result.Run + result.Web + result.HotStrings;
+            if (total == 0)
+            {
+                AppDialog.Info(Window.GetWindow(this),
+                    Loc.T("这个文件里没有可导入的设置（按键 / 搜索 / 程序 / 网址 / 热字串都是 0 项），当前配置没有改动。"),
+                    Loc.T("导入旧版设置"));
+                return;
+            }
+
+            string counts = Loc.F("即将导入：按键 {0} 项 / 搜索 {1} 条 / 程序 {2} 个 / 网址 {3} 个 / 文字替换 {4} 条。",
+                result.Keys, result.Search, result.Run, result.Web, result.HotStrings);
+            string warn = Loc.T("注意：导入会整份替换当前的按键、搜索、程序、网址与热字串（宏、层和触发键不受影响），且不能撤销。确定继续吗？");
+            if (!AppDialog.Confirm(Window.GetWindow(this), counts + warn, Loc.T("导入旧版设置"),
+                    okText: Loc.T("导入")))
+                return;
+
             _host.Settings = result.Settings;
             _host.SaveSettings();
             _host.ReloadAll();

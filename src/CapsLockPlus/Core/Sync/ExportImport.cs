@@ -382,8 +382,22 @@ public static class ExportImport
         }
 
         // 走与读设置文件同一套反序列化：clamp、默认值补齐全部复用，两边行为一致
-        var merged = JsonSerializer.Deserialize<AppSettings>(
-            filtered.ToJsonString(), SettingsStore.JsonOptions);
+        AppSettings? merged;
+        try
+        {
+            merged = JsonSerializer.Deserialize<AppSettings>(
+                filtered.ToJsonString(), SettingsStore.JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            /* 字段类型不对（手改过、别的工具重新序列化过）：
+             * 直接抛 JsonException 的话，导入对话框上会出现
+             * "The JSON value could not be converted to System.Collections.Generic.List…"
+             * 这种天书。转成人话，并保留原始信息在日志里。 */
+            CoreLog.Warn("导入配置时字段类型不对：" + ex.Message);
+            throw new InvalidOperationException(
+                "导入的数据格式不对（有字段的类型和预期不一致），这个文件可能被手工改过。", ex);
+        }
         if (merged == null) throw new InvalidOperationException("导入的数据解析失败");
 
         foreach (string key in allow)

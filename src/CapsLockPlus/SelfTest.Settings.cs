@@ -740,6 +740,46 @@ public static partial class SelfTest
         {
             try { if (File.Exists(path)) File.Delete(path); } catch { }
         }
+
+        /* ---- 选错文件绝不能把用户配置清空 ----
+         *
+         * 导入的实现是 `Settings = result.Settings`（整份替换）。
+         * 早先 Import 对"不是 CapsLock+ 的 ini"照样返回一份**默认设置**，
+         * 于是误选 README / 别的程序的 ini，结果就是配置被出厂默认覆盖，
+         * 弹窗还写着"导入完成：按键 0 项"。这里钉住三条：
+         *   ① 空文件 → 抛异常（而不是返回默认值）；
+         *   ② 无关文本 → 抛异常；
+         *   ③ 极端大文件 → 抛异常（不去整个读进内存）。 */
+        string junk = Path.Combine(AppPaths.DataDir, "selftest_junk.ini");
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDir);
+
+            File.WriteAllText(junk, "");
+            bool emptyThrew = false;
+            try { LegacyIniImporter.Import(junk); }
+            catch (InvalidOperationException) { emptyThrew = true; }
+            Check("空的 ini 会被拒绝，而不是返回默认设置", emptyThrew);
+
+            File.WriteAllText(junk, "[General]\nfoo=bar\nhello=world\n");
+            bool junkThrew = false;
+            try { LegacyIniImporter.Import(junk); }
+            catch (InvalidOperationException) { junkThrew = true; }
+            Check("无关的 ini 会被拒绝", junkThrew);
+
+            File.WriteAllText(junk, "[Keys]\ncaps_q=keyFunc_qbar\n");
+            var minimal = LegacyIniImporter.Import(junk);
+            CheckEqual("只有 [Keys] 的合法 ini 仍能导入", minimal.Keys, 1);
+            CheckEqual("导入后按键动作正确", minimal.Settings.FindBinding("caps_q")?.Action, "qbar");
+        }
+        catch (Exception ex)
+        {
+            Check("旧版 ini 的「选错文件」保护", false, ex.Message);
+        }
+        finally
+        {
+            try { if (File.Exists(junk)) File.Delete(junk); } catch { }
+        }
     }
 
     private static void TestActionCatalog()
@@ -1020,6 +1060,17 @@ public static partial class SelfTest
         try { Core.Sync.ExportImport.Parse("{\"kind\":\"clp-config\",\"items\":{},\"data\":{\"a\":1}}"); }
         catch (InvalidOperationException) { badItems = true; }
         Check("items 不是数组时被拒绝", badItems);
+
+        /* ---- 字段类型不对：要报人话，不能把 JsonException 的英文原文甩给用户 ---- */
+        var (badGroups, badData, _) = Core.Sync.ExportImport.Parse(
+            "{\"kind\":\"clp-config\",\"items\":[\"keys\"],\"data\":{\"Keys\":\"oops\"}}");
+        string badMsg = "";
+        bool badTypeRejected = false;
+        try { Core.Sync.ExportImport.Apply(DefaultSettings.Create(), badGroups, badData); }
+        catch (InvalidOperationException ex) { badTypeRejected = true; badMsg = ex.Message; }
+        Check("字段类型不对时给出可读的错误", badTypeRejected, badMsg);
+        Check("错误信息不是英文 JSON 异常原文",
+            !badMsg.Contains("JSON value could not be converted", StringComparison.OrdinalIgnoreCase), badMsg);
 
         // ---- data 为空要拒 ----
         bool emptyData = false;
