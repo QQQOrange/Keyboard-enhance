@@ -62,8 +62,13 @@ def main():
             h.update(extra)
         body = raw if raw is not None else (json.dumps(data).encode() if data is not None else None)
         req = urllib.request.Request(url, data=body, headers=h, method=method)
+        # 大文件（Win7 自包含形态约 140 MB）180 秒不够：按"至少 400 KB/s"给足时间，
+        # 否则传到一半就 write timeout。上传本身仍是单次 POST。
+        budget = 180
+        if body is not None:
+            budget = max(180, int(len(body) / (400 * 1024)) + 60)
         try:
-            with urllib.request.urlopen(req, timeout=180) as r:
+            with urllib.request.urlopen(req, timeout=budget) as r:
                 content = r.read()
                 return r.status, (json.loads(content or b"{}") if ctype is None else content)
         except urllib.error.HTTPError as e:
