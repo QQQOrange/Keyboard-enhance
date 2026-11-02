@@ -201,6 +201,16 @@ public static partial class SelfTest
             UI.Windows.RecordingHudWindow.ShowHud();
             UI.Windows.RecordingHudWindow.UpdateHud(1400, 12, "A ↓");
             Check("录制悬浮条能显示并刷新", true);
+
+            /* 悬浮条必须**真的**点击穿透。
+             * XAML 的 IsHitTestVisible=False 只挡 WPF 内部的命中测试，
+             * 窗口照样吃鼠标消息 —— 它正好压在浏览器标签栏那一带，
+             * 一录几十秒，用户点标签没反应就会以为程序卡死。 */
+            var hudHandle = UI.Windows.RecordingHudWindow.HandleForTest;
+            Check("录制悬浮条是点击穿透窗口",
+                Core.Windows.OverlayWindowStyle.IsClickThrough(hudHandle),
+                $"hwnd=0x{hudHandle.ToInt64():X}");
+
             UI.Windows.RecordingHudWindow.HideHud();
             DoEvents(60);          // 等窗口真正关掉，别让它以 Topmost 留在屏幕上影响后面的焦点测试
             Check("录制悬浮条能关闭", true);
@@ -208,6 +218,21 @@ public static partial class SelfTest
         catch (Exception ex)
         {
             Check("录制悬浮条能显示", false, ex.Message);
+        }
+
+        // ---- 提示条同样要点击穿透（它 Topmost 压在右下角）----
+        try
+        {
+            UI.Windows.ToastWindow.Show("自检：提示条点击穿透");
+            DoEvents(120);
+            var toastHandle = UI.Windows.ToastWindow.HandleForTest;
+            Check("提示条是点击穿透窗口",
+                Core.Windows.OverlayWindowStyle.IsClickThrough(toastHandle),
+                $"hwnd=0x{toastHandle.ToInt64():X}");
+        }
+        catch (Exception ex)
+        {
+            Check("提示条点击穿透检查", false, ex.Message);
         }
     }
 

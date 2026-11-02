@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Media.Animation;
 using CapsLockPlus.Core;
 
@@ -17,6 +17,21 @@ public partial class RecordingHudWindow : Window
         InitializeComponent();
         Loaded += (_, _) => Position();
     }
+
+    /// <summary>
+    /// 句柄一建好就把窗口设成**真的**点击穿透。
+    /// XAML 里的 IsHitTestVisible 只挡住 WPF 内部的命中测试：
+    /// 悬浮条压在浏览器标签栏上时，用户点标签照样点不动。
+    /// </summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        Core.Windows.OverlayWindowStyle.Apply(this, "录制悬浮条");
+    }
+
+    /// <summary>仅供自检：当前悬浮条窗口句柄（没显示时为 Zero）。</summary>
+    internal static IntPtr HandleForTest =>
+        _win != null ? new System.Windows.Interop.WindowInteropHelper(_win).Handle : IntPtr.Zero;
 
     /// <summary>
     /// 顶部居中。按**前台窗口所在显示器**的工作区算 ——

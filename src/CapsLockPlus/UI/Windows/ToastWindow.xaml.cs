@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -39,6 +39,22 @@ public partial class ToastWindow : Window
         InitializeComponent();
         Loaded += OnLoaded;
     }
+
+    /// <summary>
+    /// 句柄一建好就设成真的点击穿透（XAML 里的 IsHitTestVisible 只管 WPF 内部）。
+    ///
+    /// 提示条是 Topmost 压在右下角的：不设 WS_EX_TRANSPARENT，它在的那一两秒里
+    /// 那个位置就点不动 —— 用户点任务栏/状态栏没反应，只会以为程序卡了。
+    /// </summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        Core.Windows.OverlayWindowStyle.Apply(this, "提示条");
+    }
+
+    /// <summary>仅供自检：当前提示条窗口句柄（没显示时为 Zero）。</summary>
+    internal static IntPtr HandleForTest =>
+        _instance != null ? new System.Windows.Interop.WindowInteropHelper(_instance).Handle : IntPtr.Zero;
 
     public static void Show(string message) => Show(message, "info");
 
