@@ -97,12 +97,37 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (_host.Settings.Global.CloseToTray && !_host.Exiting)
+        if (ShouldExitOnClose(_host.Settings.Global.CloseToTray, _host.Exiting))
+        {
+            /* 用户把「关闭时最小化到托盘」关掉了 —— 这是"点 × 就退出程序"的意思
+             * （设置项注释与界面文案都是这么写的）。
+             *
+             * 以前这里什么都不做：窗口关掉了，但 ShutdownMode 是 OnExplicitShutdown，
+             * 没有任何人调 Shutdown —— 于是**托盘图标和键盘钩子都还在跑**。
+             * 用户以为自己退了程序，结果按住 CapsLock 依旧满屏快捷键。
+             *
+             * 现在交给 ExitApp 统一收尾（落盘、统计、托盘、退出同步都走那一条路），
+             * 并取消这次 Closing，避免窗口先关、退出流程再动它。 */
+            e.Cancel = true;
+            _host.ExitApp();
+            return;
+        }
+
+        if (!_host.Exiting)
         {
             e.Cancel = true;
             Hide();
         }
     }
+
+    /// <summary>
+    /// 点 × 时该不该真的退出。
+    ///
+    /// 拆成纯函数是为了能被自检钉住：这里一旦判错，症状是
+    /// "窗口没了但程序还在后台接管键盘"，用户很难联想到设置项。
+    /// </summary>
+    internal static bool ShouldExitOnClose(bool closeToTray, bool exiting)
+        => !closeToTray && !exiting;
 
     /// <summary>
     /// 侧栏页面的**唯一顺序表**：下标 = NavList 里 ListBoxItem 的位置。

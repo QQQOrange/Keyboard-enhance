@@ -164,6 +164,7 @@ public static partial class SelfTest
         Section("窗口绑定");
         TestWindowBindings();
         TestScreenPlacement();
+        TestCloseBehavior();
 
         Section("打开文件夹");
         TestFolderLeafName();

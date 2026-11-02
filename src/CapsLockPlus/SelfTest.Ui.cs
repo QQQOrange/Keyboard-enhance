@@ -41,6 +41,23 @@ public static partial class SelfTest
     /// 换台混 DPI 的机器/负坐标副屏就可能把提示条摆到屏幕外。
     /// 拆成纯函数后，负坐标、超小工作区、超大窗口都能造出来断言。
     /// </summary>
+    /// <summary>
+    /// 点 × 的行为：关掉「关闭时最小化到托盘」就该**真的退出**。
+    ///
+    /// 以前 OnClosing 只处理了"最小化到托盘"那一支，关掉开关时什么都不做：
+    /// 窗口消失，但 ShutdownMode 是 OnExplicitShutdown、没人调 Shutdown ——
+    /// 托盘图标和键盘钩子继续跑。用户以为退了程序，按住 CapsLock 依旧满屏快捷键。
+    /// </summary>
+    private static void TestCloseBehavior()
+    {
+        Check("开着托盘：点 × 只隐藏不退出",
+            !UI.Windows.MainWindow.ShouldExitOnClose(closeToTray: true, exiting: false));
+        Check("关掉托盘：点 × 真的退出",
+            UI.Windows.MainWindow.ShouldExitOnClose(closeToTray: false, exiting: false));
+        Check("已在退出流程中：不再重复触发",
+            !UI.Windows.MainWindow.ShouldExitOnClose(closeToTray: false, exiting: true));
+    }
+
     private static void TestScreenPlacement()
     {
         static Core.Interop.NativeMethods.RECT R(int l, int t, int r, int b) =>
