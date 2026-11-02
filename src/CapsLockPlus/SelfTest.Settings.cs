@@ -676,6 +676,42 @@ public static partial class SelfTest
             hostileWhy = ex.GetType().Name + ": " + ex.Message;
         }
         Check("坏配置（null 字段）不会让加载链路抛异常", hostileSurvived, hostileWhy);
+
+        /* ---- 合法但"什么都没有"的设置文件 ----
+         *
+         * `{"Global":{"Theme":"dark"}}` 是合法 JSON。以前它会一路走到底：
+         * Normalize 补出 10 个空层 + 1 个 CapsLock 触发键 →
+         * 程序照常启动，但**按任何键都没反应**，日志一句解释都没有。
+         * 现在会回落到默认设置并留一条警告。 */
+        Check("空配置被判为结构为空",
+            SettingsStore.LooksStructurallyEmptyForTest(new AppSettings()));
+        var onlyKeysCleared = DefaultSettings.Create();
+        onlyKeysCleared.Keys.Clear();
+        foreach (var layer in onlyKeysCleared.Layers) layer.Keys.Clear();
+        Check("只把按键删光是合法的，不算结构为空",
+            !SettingsStore.LooksStructurallyEmptyForTest(onlyKeysCleared));
+
+        string settingsFile = AppPaths.SettingsFile;
+        string settingsBackup = File.Exists(settingsFile) ? File.ReadAllText(settingsFile) : "";
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDir);
+            File.WriteAllText(settingsFile, "{\"Global\":{\"Theme\":\"dark\"}}");
+            var rescued = SettingsStore.Load();
+            Check("只有 Global 的设置文件会回落到默认按键",
+                rescued.Keys.Count > 100, rescued.Keys.Count.ToString());
+            Check("回落之后 10 个层都在", rescued.Layers.Count >= 10, rescued.Layers.Count.ToString());
+            Check("回落之后触发键也在", rescued.Triggers.Count >= 1, rescued.Triggers.Count.ToString());
+        }
+        catch (Exception ex)
+        {
+            Check("空设置文件的回落", false, ex.Message);
+        }
+        finally
+        {
+            try { if (settingsBackup.Length > 0) File.WriteAllText(settingsFile, settingsBackup); }
+            catch { /* 自检数据目录，失败不影响结论 */ }
+        }
     }
 
     private static void TestLegacyImport()

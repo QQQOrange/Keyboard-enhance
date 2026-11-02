@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
+<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -295,6 +295,22 @@
                                              MinHeight="34" VerticalContentAlignment="Center"
                                              TextChanged="OnActionSearchChanged"
                                              ToolTip="{loc:T '搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github'}" />
+
+                                    <!-- 占位提示：空框里给个例子，比只写"搜索"两个字更能让人知道能搜什么 -->
+                                    <TextBlock Text="{loc:T '例如 删除 / 宏 / github'}" IsHitTestVisible="False"
+                                               Margin="12,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Brush.TextTertiary}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=ActionSearchBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
 
                                     <!-- 搜索结果浮层：贴在搜索框下方 -->
                                     <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=ActionSearchBox}"

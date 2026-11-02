@@ -75,12 +75,12 @@
                                Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                TextAlignment="Center" Margin="12,0"
-                               Text="{loc:T '还没有宏&#x0a;点「开始录制」，或点下面「＋ 新建」'}" />
+                               Text="{loc:T '还没有宏&#x0a;点「开始录制」，或点下面「+ 新建」'}" />
                 </Grid>
 
                 <StackPanel Grid.Row="2" Margin="0,10,0,0">
                     <WrapPanel x:Name="ListActions">
-                        <Button Content="{loc:T '＋ 新建'}" Style="{StaticResource Button.Primary}" Margin="0,0,8,6"
+                        <Button Content="{loc:T '+ 新建'}" Style="{StaticResource Button.Primary}" Margin="0,0,8,6"
                                 Click="OnNewClick" />
                         <Button Content="{loc:T '删除'}" Style="{StaticResource Button.Danger}" Margin="0,0,8,6"
                                 Click="OnDeleteClick" />

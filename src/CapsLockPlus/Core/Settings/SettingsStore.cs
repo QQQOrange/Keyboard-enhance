@@ -235,6 +235,20 @@ public static class SettingsStore
                 }
 
                 var s = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions) ?? DefaultSettings.Create();
+
+                /* 结构上"什么都没有"的文件 → 当成坏的，用默认设置。
+                 *
+                 * 合法 JSON 但只有 `{"Global":{...}}` 这种：`Normalize` 会给它补上
+                 * 10 个空层和一个 CapsLock 触发键，于是程序**照常启动、但一个快捷键都不响应** ——
+                 * 用户看到的是"软件坏了"，日志里却一句解释都没有。
+                 * 这种文件不可能是一次正常保存产生的（保存一定会写 Keys/Layers/Triggers），
+                 * 多半是被别的工具截断、或者手改时删多了。宁可给默认值并留一条日志。 */
+                if (s != null && IsStructurallyEmpty(s))
+                {
+                    CoreLog.Warn("设置文件里没有任何按键 / 层 / 触发键（可能被截断或手动清空），改用默认设置");
+                    s = DefaultSettings.Create();
+                }
+
                 Normalize(s);
                 bool migrated = MigrateBuiltinEngines(s);
 
@@ -679,6 +693,26 @@ public static class SettingsStore
             return false;
         }
     }
+
+    /// <summary>
+    /// "结构上什么都没有"：没有任何按键、层、触发键、宏、搜索/程序/网址条目。
+    ///
+    /// 用来识别被截断的设置文件 —— 正常保存一定至少写进 10 个层和 1 个触发键，
+    /// 所以这种组合只可能来自外部破坏。单看某一项是不够的：
+    /// 用户完全可能把按键全删光（那时层和触发键还在）。
+    /// </summary>
+    private static bool IsStructurallyEmpty(AppSettings s) =>
+        (s.Keys?.Count ?? 0) == 0
+        && (s.Layers?.Count ?? 0) == 0
+        && (s.Triggers?.Count ?? 0) == 0
+        && (s.Macros?.Count ?? 0) == 0
+        && (s.Search?.Count ?? 0) == 0
+        && (s.Run?.Count ?? 0) == 0
+        && (s.Web?.Count ?? 0) == 0
+        && (s.HotStrings?.Count ?? 0) == 0;
+
+    /// <summary>仅供自检：结构为空的判定规则。</summary>
+    internal static bool LooksStructurallyEmptyForTest(AppSettings s) => IsStructurallyEmpty(s);
 
     /// <summary>补齐缺失字段、修正非法值。</summary>
     public static void Normalize(AppSettings s)
