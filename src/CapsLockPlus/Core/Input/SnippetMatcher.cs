@@ -116,6 +116,32 @@ public static class SnippetMatcher
         return p.EndsWith(".exe", StringComparison.Ordinal) ? p : p + ".exe";
     }
 
+    /// <summary>
+    /// 把 <paramref name="add"/> 合并进"只在哪些程序里展开"的列表（逗号分隔）。
+    ///
+    /// 纯函数是为了能被自检钉住：这段逻辑错了的表现是"选了程序却没生效"，
+    /// 而用户只会觉得按钮坏了。
+    /// </summary>
+    /// <returns>合并后的文本；<paramref name="added"/> 表示是否真的加进去了（false = 已经有了）</returns>
+    public static string MergeAppList(string? existing, string? add, out bool added)
+    {
+        added = false;
+        string name = Normalize(add);
+        if (name.Length == 0) return existing ?? "";
+
+        var parts = (existing ?? "")
+            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .ToList();
+
+        if (parts.Any(x => Normalize(x) == name)) return string.Join(", ", parts);
+
+        parts.Add(name);
+        added = true;
+        return string.Join(", ", parts);
+    }
+
     /// <summary>把缓冲区截到上限，只保留末尾部分。</summary>
     public static string Trim(string buffer)
         => buffer.Length <= MaxBuffer ? buffer : buffer[^MaxBuffer..];

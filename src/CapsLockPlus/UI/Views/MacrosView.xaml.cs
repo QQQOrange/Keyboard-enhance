@@ -47,6 +47,7 @@ public partial class MacrosView : UserControl
         // 这里补上，保证实时列表能收到按键。
         host.MacroRecorder.Recorded -= OnRecorderEvent;
         host.MacroRecorder.Recorded += OnRecorderEvent;
+        LoadFixedDelay();
         Reload();
     }
 
@@ -63,6 +64,7 @@ public partial class MacrosView : UserControl
         rec.Recorded -= OnRecorderEvent;
         rec.Recorded += OnRecorderEvent;
 
+        LoadFixedDelay();
         if (rec.IsRecording) ResumeLive();
         else ApplyIdleUi();
     }
@@ -263,7 +265,7 @@ public partial class MacrosView : UserControl
             }
 
             // 停止录制 -> 生成宏
-            var macro = rec.Stop(Loc.T("新宏 ") + Loc.FormatTime(DateTime.Now));
+            var macro = rec.Stop(Loc.T("新宏 ") + Loc.FormatTime(DateTime.Now), FixedDelayMs);
 
             /* 这条对照日志是给"录不到按键"准备的定位信息：
              *   钩子增加 > 0、录制 0 个 → 事件没进录制器（挂载/实例问题）；
@@ -1203,6 +1205,66 @@ public partial class MacrosView : UserControl
         RecordingHudWindow.HideHud();
         ApplyIdleUi();
         RecordStatus.Text = "";
+    }
+
+    // ---------------- 固定延迟 ----------------
+
+    /// <summary>
+    /// 固定延迟的有效值：勾选了就用输入框里的数字（夹在 20~5000），否则 0（按真实间隔）。
+    /// </summary>
+    internal int FixedDelayMs
+    {
+        get
+        {
+            if (FixedDelayBox?.IsChecked != true) return 0;
+            int ms = 0;
+            int.TryParse((FixedDelayTextBox?.Text ?? "").Trim(), out ms);
+            return Math.Clamp(ms, 20, 5000);
+        }
+    }
+
+    /// <summary>把设置里的值灌进控件（页面载入 / 重载配置时调用）。</summary>
+    private void LoadFixedDelay()
+    {
+        if (FixedDelayBox == null || _host == null) return;
+        int ms = _host.Settings.Global.MacroFixedDelayMs;
+        FixedDelayBox.IsChecked = ms > 0;
+        FixedDelayTextBox.Text = (ms > 0 ? ms : 120).ToString();
+        FixedDelayTextBox.IsEnabled = ms > 0;
+        UpdateFixedDelayHint();
+    }
+
+    /// <summary>保存到设置（勾选与输入都算修改）。</summary>
+    private void SaveFixedDelay()
+    {
+        if (_host == null) return;
+        _host.Settings.Global.MacroFixedDelayMs = FixedDelayMs;
+        _host.SaveSettings();
+    }
+
+    private void OnFixedDelayChanged(object sender, RoutedEventArgs e)
+    {
+        if (FixedDelayTextBox != null) FixedDelayTextBox.IsEnabled = FixedDelayBox.IsChecked == true;
+        UpdateFixedDelayHint();
+        SaveFixedDelay();
+    }
+
+    private void OnFixedDelayTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateFixedDelayHint();
+        if (FixedDelayBox?.IsChecked == true) SaveFixedDelay();
+    }
+
+    private void UpdateFixedDelayHint()
+    {
+        if (FixedDelayHint == null) return;
+        if (FixedDelayBox?.IsChecked != true)
+        {
+            FixedDelayHint.Text = Loc.T("不勾：按你真实按下的间隔录（会带点手抖）。");
+            return;
+        }
+        int ms = FixedDelayMs;
+        FixedDelayHint.Text = Loc.F("勾上：每个键之间都等 {0} 毫秒（回放节奏均匀）。", ms);
     }
 
     /// <summary>

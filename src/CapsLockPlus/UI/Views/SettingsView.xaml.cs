@@ -51,7 +51,6 @@ public partial class SettingsView : UserControl
         RefreshAppLayerEditor();
         RefreshGestureEditor();
         RefreshSnippetEditor();
-        RefreshChordEditor();
         StartupBox.IsChecked = StartupManager.IsEnabled();
         TrayBox.IsChecked = g.CloseToTray;
         OpenOnStartBox.IsChecked = g.OpenWindowOnStartup;
@@ -212,7 +211,6 @@ public partial class SettingsView : UserControl
         {
             ConflictTarget.BaseRemap => RemapSection,
             ConflictTarget.Gesture => GestureSection,
-            ConflictTarget.Chord => ChordSection,
             ConflictTarget.Snippet => SnippetSection,
             ConflictTarget.AppLayer => AppLayerSection,
             _ => null,
@@ -398,113 +396,6 @@ public partial class SettingsView : UserControl
         _host.Notify(added > 0
             ? Loc.F("已添加 {0} 项（跳过已存在的 {1} 项）", added, skipped)
             : Loc.F("没有新增内容：这 {0} 项都已存在", skipped));
-    }
-
-    // ---------------- 组合键 ----------------
-
-    /// <summary>
-    /// 组合键可用的键：字母/数字 + 常用功能键（同按才需要字母）。
-    ///
-    /// **必须是懒加载**：它要读 <see cref="GestureKeys"/>，而那个字段声明在文件更后面。
-    /// 写成 `static readonly ... = BuildChordKeys()` 会在类型初始化阶段就执行，
-    /// 那时 GestureKeys 还是 null，`AddRange(null)` 抛 ArgumentNullException，
-    /// 整个 SettingsView 的静态构造失败 —— 表现就是**设置页直接打不开**。
-    /// （v4.5.42 就这么翻过一次车，靠 `--render` 才抓出来。）
-    /// </summary>
-    private static string[]? _chordKeys;
-
-    private static string[] ChordKeys => _chordKeys ??= BuildChordKeys();
-
-    private static string[] BuildChordKeys()
-    {
-        var list = new List<string>();
-        for (char c = 'a'; c <= 'z'; c++) list.Add(c.ToString());
-        for (char c = '0'; c <= '9'; c++) list.Add(c.ToString());
-        list.AddRange(GestureKeys);
-        list.Add("semicolon");
-        return list.ToArray();
-    }
-
-    private void RefreshChordEditor()
-    {
-        if (ChordKey1Box == null || _host == null) return;
-
-        foreach (var box in new[] { ChordKey1Box, ChordKey2Box })
-        {
-            box.Items.Clear();
-            foreach (string k in ChordKeys)
-            {
-                // "semicolon" 是占位名，KeyName 里对应的规范名是 ";" 的键名，兜底用分号键的 vk 名
-                string name = k == "semicolon" ? ";" : k;
-                if (KeyName.VkOf(name) == null) continue;
-                box.Items.Add(new ComboBoxItem { Content = KeyName.Display(name), Tag = name });
-            }
-            if (box.Items.Count > 0) box.SelectedIndex = 0;
-        }
-
-        ChordActionBox.Items.Clear();
-        foreach (var a in _host.Actions.Items.Where(a => !a.Hidden))
-            ChordActionBox.Items.Add(new ComboBoxItem { Content = a.Title, Tag = a.Id });
-        if (ChordActionBox.Items.Count > 0) ChordActionBox.SelectedIndex = 0;
-
-        ChordList.Items.Clear();
-        foreach (var c in _host.Settings.Global.Chords.ToList())
-        {
-            var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
-
-            var del = new Button
-            {
-                Content = Loc.T("移除"),
-                Padding = new Thickness(10, 3, 10, 3),
-                Style = (Style)FindResource("Button.Base"),
-            };
-            var captured = c;
-            del.Click += (_, _) =>
-            {
-                _host?.Settings.Global.Chords.Remove(captured);
-                Save();
-                RefreshChordEditor();
-            };
-            DockPanel.SetDock(del, Dock.Right);
-            row.Children.Add(del);
-
-            string actionTitle = ActionCatalog.TitleOf(c.Action) ?? c.Action;
-            row.Children.Add(new TextBlock
-            {
-                Text = $"{KeyName.Display(c.Key1)} + {KeyName.Display(c.Key2)} → {actionTitle}",
-                VerticalAlignment = VerticalAlignment.Center,
-                Style = (Style)FindResource("Text.Tertiary"),
-            });
-            ChordList.Items.Add(row);
-        }
-    }
-
-    private void OnAddChordClick(object sender, RoutedEventArgs e)
-    {
-        if (_host == null || _suppress) return;
-        if (ChordKey1Box.SelectedItem is not ComboBoxItem k1 || k1.Tag is not string key1) return;
-        if (ChordKey2Box.SelectedItem is not ComboBoxItem k2 || k2.Tag is not string key2) return;
-        if (ChordActionBox.SelectedItem is not ComboBoxItem a || a.Tag is not string action) return;
-
-        if (string.Equals(key1, key2, StringComparison.OrdinalIgnoreCase))
-        {
-            _host.Notify(Loc.T("两个键不能相同"));
-            return;
-        }
-
-        int conflictsBefore = ConflictCount();
-        var list = _host.Settings.Global.Chords;
-        var existing = list.FirstOrDefault(c =>
-            (string.Equals(c.Key1, key1, StringComparison.OrdinalIgnoreCase) && string.Equals(c.Key2, key2, StringComparison.OrdinalIgnoreCase)) ||
-            (string.Equals(c.Key1, key2, StringComparison.OrdinalIgnoreCase) && string.Equals(c.Key2, key1, StringComparison.OrdinalIgnoreCase)));
-        if (existing != null) existing.Action = action;      // 同组合覆盖
-        else list.Add(new ChordRule { Key1 = key1, Key2 = key2, Action = action });
-
-        Save();
-        RefreshChordEditor();
-        _host.Notify(WithConflictHint(
-            Loc.F("已设置组合键：{0} + {1}", KeyName.Display(key1), KeyName.Display(key2)),
-            conflictsBefore));
     }
 
     // ---------------- 文本片段 ----------------
@@ -739,6 +630,79 @@ public partial class SettingsView : UserControl
         SnippetAppsHint.Text = hit
             ? Loc.F("当前：只在 {0} 里展开 —— 现在的前台「{1}」在列表里。", apps, current)
             : Loc.F("当前：只在 {0} 里展开 —— 现在的前台「{1}」不在列表里，此处不会展开。", apps, current);
+    }
+
+    // ---- 片段的「只在哪些程序里展开」：两条录入途径 ----
+
+    /// <summary>把程序名追加到 Apps 框（去重，保留用户已经填的内容）。</summary>
+    private void AppendSnippetApp(string process)
+    {
+        if (SnippetAppsBox == null) return;
+
+        string merged = SnippetMatcher.MergeAppList(SnippetAppsBox.Text, process, out bool added);
+        if (!added)
+        {
+            _host?.Notify(Loc.F("{0} 已经在列表里了", SnippetMatcher.Normalize(process)));
+            return;
+        }
+
+        SnippetAppsBox.Text = merged;
+        SnippetAppsBox.CaretIndex = SnippetAppsBox.Text.Length;
+        OnSnippetAppsHint(SnippetAppsBox, null!);
+    }
+
+    /// <summary>入口一：从文件管理器里选一个 exe。</summary>
+    private void OnSnippetPickExeClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = Loc.T("选择程序"),
+            Filter = Loc.T("程序 (*.exe)|*.exe|所有文件|*.*"),
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+        AppendSnippetApp(System.IO.Path.GetFileName(dlg.FileName));
+    }
+
+    /// <summary>入口二：十字准星点选一个已打开的窗口，取它的程序名。</summary>
+    private void OnSnippetPickWindowClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var picker = new UI.Windows.WindowPickerWindow();
+        if (Window.GetWindow(this) is { } owner) picker.Owner = owner;
+        picker.ShowDialog();
+
+        var h = picker.PickedWindow;
+        if (h == IntPtr.Zero) return;
+
+        var info = Core.Windows.WindowService.Describe(h);
+        if (info == null || string.IsNullOrEmpty(info.ExePath))
+        {
+            _host.Notify(Loc.T("取不到这个窗口的程序路径，改用「选择程序…」试试"));
+            return;
+        }
+        AppendSnippetApp(System.IO.Path.GetFileName(info.ExePath));
+    }
+
+    /// <summary>
+    /// 填入一条现成的范例。
+    ///
+    /// 片段的规则（符号开头、必须在词首、程序范围）不好用一句话讲清，
+    /// 给一条能直接用的例子比写八行说明管用：用户改两个字就能当自己的用。
+    /// </summary>
+    private void OnSnippetExampleClick(object sender, RoutedEventArgs e)
+    {
+        SnippetTriggerBox.Text = ";mail";
+        SnippetTextBox.Text = "someone@example.com";
+        SnippetCommentBox.Text = Loc.T("示例：常用邮箱");
+        SnippetAppsBox.Text = "";
+        OnSnippetAppsHint(SnippetAppsBox, null!);
+        UpdateSnippetTriggerHint();
+        _host?.Notify(Loc.T("已填入示例：在任何程序里打 ;mail 就会变成邮箱地址"));
+        SnippetTriggerBox.Focus();
+        SnippetTriggerBox.CaretIndex = SnippetTriggerBox.Text.Length;
     }
 
     /// <summary>添加 / 保存修改。</summary>

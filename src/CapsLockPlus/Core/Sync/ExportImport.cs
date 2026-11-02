@@ -453,14 +453,13 @@ public static class ExportImport
                     /* 「外观与行为」这一组承诺的是主题、面板样式、鼠标速度这类设置，
                      * 不是"把整台机器的个性化内容换掉"。
                      *
-                     * Global 里同时塞着文本片段、组合键、双击动作、按应用叠加层、
+                     * Global 里同时塞着文本片段、双击动作、按应用叠加层、
                      * 基础改键和 GitHub 令牌 —— 部分导入时整块替换会**静默删掉**
                      * 本机的这些内容（朋友发来一份"外观"配置，导完你的片段和改键全没了）。
                      * 整份备份恢复则相反：那本来就是"覆盖全部"，必须原样带过来。 */
                     var incoming = merged.Global;
                     if (!fullRestore)
                     {
-                        incoming.Chords = settings.Global.Chords;
                         incoming.Snippets = settings.Global.Snippets;
                         incoming.KeyGestures = settings.Global.KeyGestures;
                         incoming.AppLayers = settings.Global.AppLayers;

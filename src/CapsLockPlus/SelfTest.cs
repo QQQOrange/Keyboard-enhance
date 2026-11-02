@@ -118,7 +118,6 @@ public static partial class SelfTest
         TestSnippets();
 
         Section("组合键");
-        TestChords();
 
         Section("Qbar 搜动作");
         TestQbarActionSearch();

@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="CapsLockPlus.UI.Views.MacrosView"
+<UserControl x:Class="CapsLockPlus.UI.Views.MacrosView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -113,6 +113,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <!-- 标题行：状态点 + 标题/说明 + 状态徽标 -->
@@ -160,6 +161,24 @@
                                 Visibility="Collapsed" Click="OnCancelRecordClick"
                                 ToolTip="{loc:T '丢掉这次录制，不生成宏'}" />
                         <TextBlock x:Name="RecordStatus" Style="{StaticResource Text.Tertiary}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <!-- 固定延迟：录出来的节奏统一，不受人手指抖动影响 -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+                        <CheckBox x:Name="FixedDelayBox" VerticalAlignment="Center"
+                                  Content="{loc:T '固定延迟'}"
+                                  ToolTip="{loc:T '勾上之后，录到的每个按键之间都用同一个延迟，而不是你的真实间隔'}"
+                                  Click="OnFixedDelayChanged" />
+                        <TextBox x:Name="FixedDelayTextBox" Width="76" Margin="10,0,0,0"
+                                 Style="{StaticResource TextBox.Base}" MinHeight="30"
+                                 VerticalContentAlignment="Center"
+                                 ToolTip="{loc:T '毫秒，例如 120'}"
+                                 TextChanged="OnFixedDelayTextChanged" />
+                        <TextBlock Text="{loc:T '毫秒'}" Style="{StaticResource Text.Tertiary}"
+                                   VerticalAlignment="Center" Margin="6,0,0,0" />
+                        <TextBlock x:Name="FixedDelayHint" Style="{StaticResource Text.Tertiary}"
                                    VerticalAlignment="Center" Margin="12,0,0,0"
                                    TextWrapping="Wrap" />
                     </StackPanel>

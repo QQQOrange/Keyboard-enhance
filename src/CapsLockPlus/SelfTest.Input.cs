@@ -1226,6 +1226,23 @@ public static partial class SelfTest
          * 免得哪天顺手把它删了却没人发现。 */
         Check("Qbar 显示图标默认开启", new AppSettings().Qbar.ShowIcons);
 
+        /* ---- 片段「只在哪些程序里展开」：选程序按钮的合并逻辑 ---- */
+        string merged = SnippetMatcher.MergeAppList("", "Code.exe", out bool added1);
+        CheckEqual("片段范围：空列表 + 新程序 → 就是它", merged, "code.exe");
+        Check("片段范围：确实算新增", added1);
+
+        merged = SnippetMatcher.MergeAppList("code.exe", "CODE", out bool added2);
+        Check("片段范围：重复（大小写/无 .exe）不再加", !added2, merged);
+        CheckEqual("片段范围：重复时保持原样", merged, "code.exe");
+
+        merged = SnippetMatcher.MergeAppList("code.exe, notepad.exe", "wechat.exe", out bool added3);
+        Check("片段范围：追加第三个", added3, merged);
+        CheckEqual("片段范围：用逗号分隔、去掉多余空格", merged, "code.exe, notepad.exe, wechat.exe");
+
+        merged = SnippetMatcher.MergeAppList("; ", "  ", out bool added4);
+        Check("片段范围：空程序名不动", !added4, merged);
+        CheckEqual("片段范围：空程序名返回原串", merged, "; ");
+
         /* ---- 文本片段：停用要生效、长触发词不能被短的抢走 ---- */
         var snipList = new List<Snippet>
         {

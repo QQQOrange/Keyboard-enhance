@@ -618,55 +618,6 @@ public static partial class SelfTest
         CheckEqual("片段：不传进程时按旧行为匹配", SnippetMatcher.Match(scopedOnly, ";log")?.Text, "X");
     }
     /// <summary>
-    /// 组合键（两键同按）。
-    ///
-    /// 关键是要证明"扣住 → 补发"这条链路不会吞掉用户的正常输入：
-    ///   ① 两个键都配置过时，第一个键被扣住不输出；
-    ///   ② 配对的第二个键到来 → 执行动作，两个键都不输出；
-    ///   ③ 来了不相干的键 → 先补发扣住的键，再放行新键；
-    ///   ④ 单独点按 → 抬起时立刻补发（按下+抬起）。
-    /// </summary>
-    private static void TestChords()
-    {
-        var s = DefaultSettings.Create();
-        foreach (var t in s.Triggers) t.Enabled = false;
-        s.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "k", Action = "qbar" });
-
-        var fired = new List<string>();
-        var queue = new ActionQueue();
-        var engine = new HotkeyEngine(queue, () => s, (a, arg) =>
-        {
-            lock (fired) fired.Add(a);
-            return true;
-        });
-
-        // ① 配对：j 被扣，k 触发
-        Check("组合键：第一个键被扣住", engine.SimulateKey(0x4A, true));          // j
-        Check("组合键：配对的第二个键被吞", engine.SimulateKey(0x4B, true));      // k
-        engine.SimulateKey(0x4B, false);
-        engine.SimulateKey(0x4A, false);
-        WaitUntil(() => { lock (fired) return fired.Contains("qbar"); });
-        lock (fired) Check("组合键：动作被执行", fired.Contains("qbar"), string.Join(",", fired));
-
-        // ② 不相干的键：先补发扣住的键，再放行
-        lock (fired) fired.Clear();
-        Check("组合键：重新扣住第一个键", engine.SimulateKey(0x4A, true));
-        Check("组合键：不相干的键照常放行", !engine.SimulateKey(0x4C, true));    // l
-        engine.SimulateKey(0x4C, false);
-        engine.SimulateKey(0x4A, false);
-        DoEvents(60);
-        lock (fired) Check("组合键：不相干时不触发动作", !fired.Contains("qbar"), string.Join(",", fired));
-
-        // ③ 单独点按：抬起时立刻补发
-        Check("组合键：单击也先扣住", engine.SimulateKey(0x4A, true));
-        Check("组合键：单击的抬起被接管", engine.SimulateKey(0x4A, false));
-        DoEvents(60);
-
-        engine.Dispose();
-        queue.Dispose();
-    }
-
-    /// <summary>
     /// Qbar 搜动作：把动作目录接进检索，并确保回车能真的执行。
     ///
     /// 这条链路以前是断的 —— 124 个动作只能靠在层里一个一个绑，
@@ -1356,14 +1307,10 @@ public static partial class SelfTest
             RuleConflicts.Analyze(s1).Any(c => c.Message.Contains("双击动作永远不会触发") && c.Target == ConflictTarget.Gesture));
 
         s1.Global.KeyGestures.Clear();
-        s1.Global.Chords.Add(new ChordRule { Key1 = "tab", Key2 = "j", Action = "qbar" });
-        Check("体检：触发键参与组合键", RuleConflicts.Analyze(s1).Any(c => c.Message.Contains("组合键组不起来")));
 
         // ---- 组合键先于双击 ----
         var s2 = new AppSettings();
         s2.Global.KeyGestures.Add(new KeyGesture { Key = "j", DoubleTapAction = "qbar" });
-        s2.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "k", Action = "qbar" });
-        Check("体检：同键既双击又组合", RuleConflicts.Analyze(s2).Any(c => c.Message.Contains("组合键先扣住")));
 
         // ---- 改键 vs 双击 / 组合键 ----
         var s3 = new AppSettings();
@@ -1372,8 +1319,6 @@ public static partial class SelfTest
         Check("体检：同键既改键又双击", RuleConflicts.Analyze(s3).Any(c => c.Message.Contains("第二次按下会被双击吞掉")));
 
         s3.Global.KeyGestures.Clear();
-        s3.Global.Chords.Add(new ChordRule { Key1 = "a", Key2 = "s", Action = "qbar" });
-        Check("体检：同键既改键又组合", RuleConflicts.Analyze(s3).Any(c => c.Message.Contains("改键基本不会生效")));
 
         // ---- 改键目标是触发键：Info 而非 Warn ----
         var s4 = new AppSettings();
@@ -1448,11 +1393,8 @@ public static partial class SelfTest
         string emptyReport = RuleConflicts.BuildReport(new List<Conflict>(), "H2");
         Check("体检报告：无冲突时也有结论", emptyReport.Contains("没有发现问题"), emptyReport);
 
-        // ---- 组合键两个键相同 ----
-        var s9 = new AppSettings();
-        s9.Global.Chords.Add(new ChordRule { Key1 = "j", Key2 = "j", Action = "qbar" });
-        Check("体检：组合键两键相同", RuleConflicts.Analyze(s9).Any(c => c.Message.Contains("永远不会触发")));
     }
+
     /// <summary>
     /// 键盘设备枚举（多键盘的第一步：只读，不影响任何按键行为）。
     ///
@@ -1467,6 +1409,7 @@ public static partial class SelfTest
         CheckEqual("设备：注册表路径",
             KeyboardDevices.RegistryPathOf(hid),
             @"SYSTEM\CurrentControlSet\Enum\HID\VID_046D&PID_C31C&MI_00\8&2f1a2b3c&0&0000");
+
 
         Check("设备：ACPI 是内置", KeyboardDevices.IsBuiltIn(@"\\?\ACPI#PNP0303#4&2b3c#0"));
         Check("设备：HID 不是内置", !KeyboardDevices.IsBuiltIn(hid));

@@ -119,24 +119,6 @@ public sealed class Snippet
     public string Comment { get; set; } = "";
 }
 
-/// <summary>
-/// 一条「组合键（chord）」：两个键**同时按下**时执行一个动作。
-///
-/// 与层内组合键的区别：不需要按住触发键，也不用修饰键。
-/// 代价是这两个键会有 <see cref="HotkeyEngine.ChordWindowMs"/> 的按下延迟
-/// （否则无法判断"是连打还是同时按"），所以只对显式配置的键对生效。
-/// </summary>
-public sealed class ChordRule
-{
-    /// <summary>第一个键（先按下的那个）。</summary>
-    public string Key1 { get; set; } = "";
-
-    /// <summary>第二个键（后按下的那个）。</summary>
-    public string Key2 { get; set; } = "";
-
-    /// <summary>同时按下时执行的动作 id。</summary>
-    public string Action { get; set; } = "";
-}
 
 public sealed class QEntry
 {
@@ -252,6 +234,14 @@ public sealed class GlobalOptions
     public int BrightnessStep { get; set; } = 10;
 
     /// <summary>
+    /// 宏录制的固定延迟（毫秒）。0 = 按真实按键间隔（默认）。
+    ///
+    /// 存在的理由：录"点一串按钮"这类操作时，人手按的真实间隔忽快忽慢，
+    /// 回放出来节奏很脏；固定成 100~300ms 反而稳定，也更好改。
+    /// </summary>
+    public int MacroFixedDelayMs { get; set; }
+
+    /// <summary>
     /// 是否以管理员身份启动。
     ///
     /// **默认 false**，这是刻意的。
@@ -279,10 +269,6 @@ public sealed class GlobalOptions
     /// <summary>关闭托盘图标（不推荐）。</summary>
     public bool ShowTrayIcon { get; set; } = true;
 
-    /// <summary>
-    /// 组合键（chord）：两个键同时按下触发动作。默认空，不影响任何现有按键。
-    /// </summary>
-    public List<ChordRule> Chords { get; set; } = new();
 
     /// <summary>
     /// 文本片段：输入触发词自动展开。默认空，不影响任何现有输入。

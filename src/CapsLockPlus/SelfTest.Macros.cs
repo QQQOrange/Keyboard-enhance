@@ -195,6 +195,34 @@ public static partial class SelfTest
             Check("实时列表能构建", false, ex.Message);
         }
 
+        /* ---- 固定延迟 ----
+         *
+         * 用户要的是"节奏均匀"，而不是"复刻我手抖的间隔"：
+         * 勾上固定延迟后，每个按键之间都应该是同一个数，且不再滤掉"太短"的间隔。 */
+        var fixedRec = new Core.Macro.MacroRecorder();
+        fixedRec.Start();
+        fixedRec.Record(0x41, true);
+        System.Threading.Thread.Sleep(5);
+        fixedRec.Record(0x41, false);
+        System.Threading.Thread.Sleep(5);
+        fixedRec.Record(0x42, true);
+        var fixedMacro = fixedRec.Stop("固定延迟测试", 200);
+        var delays = fixedMacro.Steps.Where(x => x.Kind == "delay").Select(x => x.DelayMs).ToList();
+        Check("固定延迟：确实生成了等待步骤", delays.Count > 0, delays.Count.ToString());
+        Check("固定延迟：每个等待都等于设定值", delays.All(d => d == 200), string.Join(",", delays));
+        Check("固定延迟：键步骤没被吃掉",
+            fixedMacro.Steps.Count(x => x.Kind is "keyDown" or "keyUp") == 3);
+
+        var realRec = new Core.Macro.MacroRecorder();
+        realRec.Start();
+        realRec.Record(0x41, true);
+        System.Threading.Thread.Sleep(60);
+        realRec.Record(0x41, false);
+        var realMacro = realRec.Stop("真实间隔测试");
+        var realDelays = realMacro.Steps.Where(x => x.Kind == "delay").Select(x => x.DelayMs).ToList();
+        Check("不勾固定延迟：按真实间隔（>= 15ms 才记）",
+            realDelays.Count > 0 && realDelays[0] >= 15, string.Join(",", realDelays));
+
         /* ---- 第二路来源（Raw Input）与去重 ----
          *
          * 远程桌面 / 向日葵 / ToDesk 的按键是**注入**进来的：低级钩子经常收不到，

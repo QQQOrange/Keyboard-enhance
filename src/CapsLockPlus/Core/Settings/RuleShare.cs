@@ -45,7 +45,6 @@ public static class RuleShare
         public List<RemapDto>? remaps { get; set; }
         public List<SnippetDto>? snippets { get; set; }
         public List<GestureDto>? gestures { get; set; }
-        public List<ChordDto>? chords { get; set; }
         public List<AppLayerDto>? appLayers { get; set; }
     }
 
@@ -73,7 +72,6 @@ public static class RuleShare
         public bool enabled { get; set; } = true;
     }
     private sealed class GestureDto { public string key { get; set; } = ""; public string action { get; set; } = ""; }
-    private sealed class ChordDto { public string k1 { get; set; } = ""; public string k2 { get; set; } = ""; public string action { get; set; } = ""; }
     private sealed class AppLayerDto { public string process { get; set; } = ""; public int layer { get; set; } }
 
     /// <summary>导出成一段 JSON 文本（空配置返回 "{}"）。</summary>
@@ -94,9 +92,6 @@ public static class RuleShare
             gestures = s.Global.KeyGestures
                 .Where(g => !string.IsNullOrWhiteSpace(g.Key))
                 .Select(g => new GestureDto { key = g.Key, action = g.DoubleTapAction }).ToList(),
-            chords = s.Global.Chords
-                .Where(c => !string.IsNullOrWhiteSpace(c.Key1))
-                .Select(c => new ChordDto { k1 = c.Key1, k2 = c.Key2, action = c.Action }).ToList(),
             appLayers = s.Global.AppLayers
                 .Where(a => !string.IsNullOrWhiteSpace(a.Process))
                 .Select(a => new AppLayerDto { process = a.Process, layer = a.LayerId }).ToList(),
@@ -106,7 +101,6 @@ public static class RuleShare
         if (dto.remaps?.Count == 0) dto.remaps = null;
         if (dto.snippets?.Count == 0) dto.snippets = null;
         if (dto.gestures?.Count == 0) dto.gestures = null;
-        if (dto.chords?.Count == 0) dto.chords = null;
         if (dto.appLayers?.Count == 0) dto.appLayers = null;
 
         return JsonSerializer.Serialize(dto, JsonOpts);
@@ -195,20 +189,6 @@ public static class RuleShare
             { skipped++; continue; }
 
             s.Global.KeyGestures.Add(new KeyGesture { Key = g.key, DoubleTapAction = g.action, Comment = "import" });
-            added++;
-        }
-
-        foreach (var c in dto.chords ?? new())
-        {
-            if (string.IsNullOrWhiteSpace(c.k1) || string.IsNullOrWhiteSpace(c.k2) || string.IsNullOrWhiteSpace(c.action))
-            { skipped++; continue; }
-
-            bool exists = s.Global.Chords.Any(y =>
-                (string.Equals(y.Key1, c.k1, StringComparison.OrdinalIgnoreCase) && string.Equals(y.Key2, c.k2, StringComparison.OrdinalIgnoreCase)) ||
-                (string.Equals(y.Key1, c.k2, StringComparison.OrdinalIgnoreCase) && string.Equals(y.Key2, c.k1, StringComparison.OrdinalIgnoreCase)));
-            if (exists) { skipped++; continue; }
-
-            s.Global.Chords.Add(new ChordRule { Key1 = c.k1, Key2 = c.k2, Action = c.action });
             added++;
         }
 

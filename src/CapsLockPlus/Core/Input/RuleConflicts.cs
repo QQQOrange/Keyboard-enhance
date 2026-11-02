@@ -21,7 +21,6 @@ public enum ConflictTarget
 
     BaseRemap,
     Gesture,
-    Chord,
     Snippet,
     AppLayer,
 
@@ -128,44 +127,10 @@ public static class RuleConflicts
             }
         }
 
-        foreach (var c in global.Chords)
-        {
-            foreach (string key in new[] { c.Key1, c.Key2 })
-            {
-                if (string.IsNullOrWhiteSpace(key)) continue;
-                if (InSet(triggers, key))
-                {
-                    list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
-                        "组合键里的「{0}」是触发键 —— 按住它会先进层，组合键组不起来。",
-                        KeyName.Display(key)), ConflictTarget.Chord));
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(c.Key1) &&
-                string.Equals(c.Key1, c.Key2, StringComparison.OrdinalIgnoreCase))
-            {
-                /* ⚠ 第三个参数是 Conflict.Target，不能塞进 Loc.F 的实参里 ——
-                 * 那样结论级别照旧、但"去修改"按钮会消失（界面只在 Target != None 时给按钮）。 */
-                list.Add(new Conflict(ConflictLevel.Warn,
-                    Loc.F("组合键的两个键都是「{0}」，永远不会触发。", KeyName.Display(c.Key1)),
-                    ConflictTarget.Chord));
-            }
-        }
-
         // ---- 2. 双击 vs 组合键：组合键先扣键，双击收不到 ----
         foreach (var g in global.KeyGestures)
         {
             if (string.IsNullOrWhiteSpace(g.Key)) continue;
-            foreach (var c in global.Chords)
-            {
-                if (Same(g.Key, c.Key1) || Same(g.Key, c.Key2))
-                {
-                    list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
-                        "「{0}」同时配了双击和组合键 —— 组合键先扣住这个键，双击不会触发。",
-                        KeyName.Display(g.Key)), ConflictTarget.Chord));
-                    break;
-                }
-            }
         }
 
         // ---- 3. 基础改键 vs 双击/组合键 ----
@@ -183,15 +148,6 @@ public static class RuleConflicts
                 }
             }
 
-            foreach (var c in global.Chords)
-            {
-                if (Same(r.From, c.Key1) || Same(r.From, c.Key2))
-                {
-                    list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
-                        "「{0}」既改键又参与组合键 —— 组合键优先，这条改键基本不会生效。",
-                        KeyName.Display(r.From)), ConflictTarget.Chord));
-                }
-            }
         }
 
         // ---- 4. 无法识别的键名（规则会静默不生效） ----
@@ -202,12 +158,6 @@ public static class RuleConflicts
         }
         foreach (var g in global.KeyGestures)
             WarnBadKey(list, g.Key, Loc.T("双击动作"), ConflictTarget.Gesture);
-        foreach (var c in global.Chords)
-        {
-            WarnBadKey(list, c.Key1, Loc.T("组合键"), ConflictTarget.Chord);
-            WarnBadKey(list, c.Key2, Loc.T("组合键"), ConflictTarget.Chord);
-        }
-
         // ---- 5. 层内重复绑定（同层同组合键，后一条生效） ----
         foreach (var layer in s.Layers ?? new List<LayerOptions>())
         {

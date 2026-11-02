@@ -170,7 +170,11 @@ public sealed class MacroRecorder
     /// <see cref="KeyName.VkOf"/> 支持回解析，播放时不会丢步。
     /// </summary>
     /// <param name="name">宏名称</param>
-    public Core.Settings.Macro Stop(string name)
+    /// <param name="fixedDelayMs">
+    /// 大于 0 时，**所有**间隔都写成这个固定值（用户要的是"节奏稳定"，不是"真实节奏"）。
+    /// 0 = 按录到的真实间隔。
+    /// </param>
+    public Core.Settings.Macro Stop(string name, int fixedDelayMs = 0)
     {
         lock (_gate)
         {
@@ -186,10 +190,19 @@ public sealed class MacroRecorder
             {
                 if (i > 0)
                 {
-                    int gap = (int)(e.Ms - events[i - 1].Ms);
-                    if (gap >= MinDelayMs)
+                    if (fixedDelayMs > 0)
                     {
-                        macro.Steps.Add(new MacroStep { Kind = "delay", DelayMs = gap });
+                        /* 固定延迟：每个按键之间都插一个同样的等待。
+                         * 不在这里滤掉"太小"的间隔 —— 用户要的就是均匀节奏。 */
+                        macro.Steps.Add(new MacroStep { Kind = "delay", DelayMs = fixedDelayMs });
+                    }
+                    else
+                    {
+                        int gap = (int)(e.Ms - events[i - 1].Ms);
+                        if (gap >= MinDelayMs)
+                        {
+                            macro.Steps.Add(new MacroStep { Kind = "delay", DelayMs = gap });
+                        }
                     }
                 }
 
@@ -200,11 +213,18 @@ public sealed class MacroRecorder
                 });
             }
 
-            // 收尾补一个短延迟，避免循环播放时按键贴在一起
+            // 收尾补一个延迟，避免循环播放时按键贴在一起
             if (macro.Steps.Count > 0)
-                macro.Steps.Add(new MacroStep { Kind = "delay", DelayMs = 100 });
+            {
+                macro.Steps.Add(new MacroStep
+                {
+                    Kind = "delay",
+                    DelayMs = fixedDelayMs > 0 ? fixedDelayMs : 100,
+                });
+            }
 
-            CoreLog.Info($"宏录制完成：{events.Count} 个事件，时长 {sw}ms，" +
+            CoreLog.Info($"宏录制完成：{events.Count} 个事件，时长 {sw}ms" +
+                         (fixedDelayMs > 0 ? $"，固定延迟 {fixedDelayMs}ms" : "") + "，" +
                          Loc.F("生成 {0} 步", macro.Steps.Count));
             return macro;
         }
