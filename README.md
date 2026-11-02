@@ -8,7 +8,7 @@
 >
 > 运行文件是 **`KeyboardEnhance.exe`**，数据目录是 **`KeyboardEnhance Data`**。
 
-**版本 v4.5.58** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 60 MB（自带运行时）**
+**版本 v4.5.58** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -78,7 +78,7 @@ dotnet --list-runtimes | findstr WindowsDesktop
 
 > **Win7 专用版说明**：.NET 10 官方不支持 Win7（最低 Win10 1809），所以 Win7 版基于
 > **.NET 7**（最后一个支持 Win7 SP1 的 .NET）单独构建，运行时打进 exe 里，
-> 体积约 60 MB，但拿到机器上双击就能跑。系统必须是 **SP1**。
+> 体积约 140 MB（64 位）/ 约 130 MB（32 位），但拿到机器上双击就能跑。系统必须是 **SP1**。
 > Win10/11 专属特性在 Win7 上自动降级：窗口是经典方角（无云母/圆角）、
 > DPI 按 system 模式缩放、亮度横条照常工作（WMI 调光不受影响）。
 >
@@ -632,7 +632,7 @@ dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net10.0-windows -c Releas
 # 32 位：Win10 1809+ / Win11，框架依赖
 dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net10.0-windows -c Release -r win-x86 --self-contained false -o dist-x86
 
-# Win7 专用：.NET 7 + 自带运行时（约 60 MB），x64 / x86 各一条
+# Win7 专用：.NET 7 + 自带运行时（约 140 MB / 约 130 MB），x64 / x86 各一条
 dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net7.0-windows -c Release -r win-x64 --self-contained true -p:EnableCompressionInSingleFile=true -o dist-win7-x64
 dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -f net7.0-windows -c Release -r win-x86 --self-contained true -p:EnableCompressionInSingleFile=true -o dist-win7-x86
 ```
