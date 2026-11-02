@@ -49,7 +49,7 @@ public partial class ToastWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        Core.Windows.OverlayWindowStyle.Apply(this, "提示条");
+        Core.Windows.OverlayWindowStyle.Apply(this, nameof(ToastWindow));
     }
 
     /// <summary>仅供自检：当前提示条窗口句柄（没显示时为 Zero）。</summary>

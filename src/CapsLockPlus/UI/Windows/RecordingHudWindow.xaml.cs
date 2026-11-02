@@ -26,7 +26,7 @@ public partial class RecordingHudWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        Core.Windows.OverlayWindowStyle.Apply(this, "录制悬浮条");
+        Core.Windows.OverlayWindowStyle.Apply(this, nameof(RecordingHudWindow));
     }
 
     /// <summary>仅供自检：当前悬浮条窗口句柄（没显示时为 Zero）。</summary>

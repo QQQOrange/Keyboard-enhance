@@ -127,6 +127,7 @@ DIAG_FILES = {
     "OsdWindow.Render.cs",     # 渲染几何调试输出
     "OsdWindow.Presentation.cs",
     "OsdWindow.Band.cs",
+    "CliFlags.cs",             # --help 打给控制台的用法表（和 --diag 一样是诊断输出，不做翻译）
 }
 
 
