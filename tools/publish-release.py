@@ -131,6 +131,13 @@ def main():
         print("FAILED after retries:", last)
         return 1
 
+    # 走到这里说明某次尝试拿到了 200/201
+    if isinstance(out, dict) and out.get("state") == "uploaded":
+        print("asset url:", out.get("browser_download_url"))
+        print("asset size:", out.get("size"))
+        return 0
+
+    print("upload status:", st)
     print("FAILED:", out)
     return 1
 
