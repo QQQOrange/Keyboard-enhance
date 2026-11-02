@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Windows;
 
@@ -33,7 +33,13 @@ public sealed class WindowBindingService
     private DateTime _lastTap = DateTime.MinValue;
     private int _lastSlot = -1;
     private int _tapCount;
-    private readonly Dictionary<int, int> _cycleIndex = new();
+    /* 上次激活的是**哪个窗口**（句柄），而不是"第几个"。
+     *
+     * 存下标看着简单，但窗口列表是按句柄排序的：用户关掉一个窗口，
+     * 后面的下标全部前移一位 —— 再按槽位键就会"跳着走"，
+     * 或者刚切过的那个窗口又被切一次。存句柄就免疫这种变化：
+     * 找不到（窗口关了）就当从头开始。 */
+    private readonly Dictionary<int, long> _lastActivated = new();
 
     public event Action<string>? Notified;
 
@@ -178,31 +184,13 @@ public sealed class WindowBindingService
             }
 
             // 多窗口：循环切换到下一个
-            int idx = _cycleIndex.TryGetValue(slot, out var ci) ? ci : -1;
-            int fgIdx = b.WindowIds.FindIndex(id => IsSameWindow(fg, new IntPtr(id)));
-            if (fgIdx >= 0) idx = fgIdx;
-            idx = (idx + 1) % b.WindowIds.Count;
-            var next = new IntPtr(b.WindowIds[idx]);
-            if (IsSameWindow(next, fg))
-            {
-                // 又按回同一个：最小化
-                WindowService.Minimize(next);
-                Notified?.Invoke(Loc.F("已最小化 {0}", DescribeSlot(slot)));
-                return true;
-            }
-            _cycleIndex[slot] = idx;
-            WindowService.Activate(next);
+            int idx = CycleNext(slot, b.WindowIds, fg);
+            WindowService.Activate(new IntPtr(b.WindowIds[idx]));
             Notified?.Invoke(Loc.F("已切到 {0}", DescribeSlot(slot)));
             return true;
         }
     }
 
-    /// <summary>
-    /// 判断两个句柄是否指向同一个顶层窗口。
-    ///
-    /// 前台窗口可能是目标程序的子窗口 / 对话框（HWND 不同但同属一个根窗口），
-    /// 这种情况也应视为“已在前台”，否则再按一次快捷键不会收起。
-    /// </summary>
     /// <summary>
     /// 启动槽位绑定的程序，并等待它的窗口真正出现后再切过去。
     ///
@@ -288,6 +276,12 @@ public sealed class WindowBindingService
         th.Start();
     }
 
+    /// <summary>
+    /// 两个句柄是否指向同一个顶层窗口。
+    ///
+    /// 前台窗口可能是目标程序的子窗口 / 对话框（HWND 不同但同属一个根窗口），
+    /// 这种情况也应视为"已在前台"，否则再按一次快捷键不会收起。
+    /// </summary>
     private static bool IsSameWindow(IntPtr a, IntPtr b)
     {
         if (a == b) return true;
@@ -491,26 +485,45 @@ public sealed class WindowBindingService
             }
 
             // 多窗口：循环
-            int idx = _cycleIndex.TryGetValue(StableHash(stateKey), out var ci) ? ci : -1;
-            int fgIdx = handles.FindIndex(h => IsSameWindow(fg, h));
-            if (fgIdx >= 0) idx = fgIdx;
-            idx = (idx + 1) % handles.Count;
-
-            var next = handles[idx];
-            if (IsSameWindow(next, fg))
-            {
-                WindowService.Minimize(next);
-                Notified?.Invoke(Loc.F("已最小化 {0}", name));
-            }
-            else
-            {
-                _cycleIndex[StableHash(stateKey)] = idx;
-                WindowService.Activate(next);
-                Notified?.Invoke(Loc.F("已切到 {0}（{1} 个窗口循环）", name, handles.Count));
-            }
+            var ids = handles.Select(h => h.ToInt64()).ToList();
+            int pick = CycleNext(StableHash(stateKey), ids, fg);
+            WindowService.Activate(handles[pick]);
+            Notified?.Invoke(Loc.F("已切到 {0}（{1} 个窗口循环）", name, handles.Count));
             return true;
         }
     }
+
+    /// <summary>
+    /// 多窗口循环：算出"下一个该切到哪个"的下标。
+    ///
+    /// 起点优先用**当前前台**在这个列表里的位置（用户可能自己点过其中一个窗口），
+    /// 否则用上次切到的那个窗口；都找不到就从第一个开始。
+    ///
+    /// 以前这里是"存下标 + 加一"，两个坑：
+    ///   ① 列表按句柄排序，关掉一个窗口后面全部前移，下标会指到别的窗口上（跳着走）；
+    ///   ② 后面那段"又按回同一个就最小化"永远不成立 —— 加一之后必然不是前台那个，
+    ///      所以多窗口的"再按一次收起"从来没生效过。循环就该老实循环。
+    /// </summary>
+    private int CycleNext(int key, List<long> ids, IntPtr fg)
+    {
+        int count = ids.Count;
+        if (count == 0) return 0;
+
+        int idx = ids.FindIndex(id => IsSameWindow(fg, new IntPtr(id)));
+        if (idx < 0 && _lastActivated.TryGetValue(key, out long last))
+            idx = ids.IndexOf(last);
+
+        int next = NextIndex(idx, count);
+        _lastActivated[key] = ids[next];
+        return next;
+    }
+
+    /// <summary>
+    /// "从 <paramref name="current"/> 往后数一个"的下标（纯函数，自检直接断言）。
+    /// current 为 -1（还不知道在哪）时回到第一个；到末尾回绕。
+    /// </summary>
+    internal static int NextIndex(int current, int count)
+        => count <= 0 ? 0 : (current + 1) % count;
 
     /// <summary>
     /// 字符串键的稳定哈希（不能用 string.GetHashCode —— 它每次进程启动都不同，

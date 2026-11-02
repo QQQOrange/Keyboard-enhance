@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 namespace CapsLockPlus.Core.Windows;
@@ -95,12 +95,6 @@ public static class VolumeService
         }
     }
 
-    /// <summary>
-    /// 系统音量"一步"是多少个百分点（通常是 2%，即 50 档）。
-    ///
-    /// 用来让系统 OSD 显示的数字和真实音量完全一致：先把音量退到
-    /// 目标值前一档，再让 shell 走一步，正好落在目标值上。
-    /// </summary>
     /// <summary>
     /// 系统音量"一步"是多少个百分点（通常 2%，即 50 档）。
     ///

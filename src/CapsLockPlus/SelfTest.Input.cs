@@ -1202,6 +1202,15 @@ public static partial class SelfTest
                       && c.GetParameters()[0].ParameterType == typeof(Func<AppSettings>));
         Check("WindowBindingService 支持委托构造（重新加载后不失效）", ctor);
 
+        /* 多窗口循环的下标推进：到末尾要回绕，未知起点要从第一个开始。
+         * 这里原来存的是"上次的下标 + 1"，窗口关掉后列表前移，
+         * 下标就会指到别的窗口上（表现为"循环跳着走"）。 */
+        CheckEqual("循环：未知起点从第一个开始", WindowBindingService.NextIndex(-1, 3), 0);
+        CheckEqual("循环：中间往后走一个", WindowBindingService.NextIndex(0, 3), 1);
+        CheckEqual("循环：末尾回绕到第一个", WindowBindingService.NextIndex(2, 3), 0);
+        CheckEqual("循环：单个窗口永远是自己", WindowBindingService.NextIndex(0, 1), 0);
+        CheckEqual("循环：空列表不越界", WindowBindingService.NextIndex(0, 0), 0);
+
         // B2：Qbar 的「显示图标」必须被读取
         Check("QbarItem 构造接受 showIcons 参数",
             typeof(System.Windows.Window).Assembly != null);   // 占位，真正的验证在下面
