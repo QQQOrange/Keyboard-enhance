@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using CapsLockPlus.Core.Input;
 
 namespace CapsLockPlus.Core.Settings;
@@ -183,8 +183,19 @@ public sealed class QEntry
     public string Arguments { get; set; } = "";
 
     /// <summary>标签上显示的名字：优先用备注，其次用关键字。</summary>
+    /// <summary>
+    /// 界面上显示的备注。
+    ///
+    /// 「默认搜索」这条是**程序生成的数据**（默认引擎表的第一条），
+    /// 它不像用户自己填的备注 —— 该跟着界面语言走。否则英文界面下
+    /// 下拉里会突兀地出现中文"默认搜索"，连图标兜底字母都变成"默"。
+    /// 其余情况（用户备注 / 没备注时用关键字）原样返回。
+    /// </summary>
     [JsonIgnore]
-    public string DisplayName => string.IsNullOrWhiteSpace(Comment) ? Key : Comment.Trim();
+    public string DisplayName =>
+        string.Equals(Comment?.Trim(), "默认搜索", System.StringComparison.Ordinal)
+            ? Localization.Loc.T("默认搜索")
+            : string.IsNullOrWhiteSpace(Comment) ? Key : Comment.Trim();
 
     public QEntry Clone() => new()
     {

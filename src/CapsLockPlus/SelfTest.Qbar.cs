@@ -158,6 +158,18 @@ public static partial class SelfTest
         var fallback = qbar.Query("一个不存在的关键词");
         Check("兜底默认搜索", fallback.Count > 0 && fallback.Last().Kind == QbarKind.Search);
 
+        /* 备注的显示规则：
+         *   · 内置"默认搜索"那条是程序生成的数据 → 跟着界面语言走（英文界面不该出现中文）；
+         *   · 用户自己填的备注是**数据** → 一个字都不能改（翻译用户内容是错的）。
+         * 这两条以前混在一起：都是直接返回 Comment。 */
+        var defaultEntry = DefaultSettings.Create().Search.First(e => e.Key == "default");
+        CheckEqual("内置默认搜索引擎的显示名走语言包",
+            defaultEntry.DisplayName, Loc.T("默认搜索"));
+        CheckEqual("用户自定义备注原样显示",
+            new QEntry { Key = "bd", Comment = "百度一下" }.DisplayName, "百度一下");
+        CheckEqual("没有备注时用关键字兜底",
+            new QEntry { Key = "gh", Comment = "" }.DisplayName, "gh");
+
         var clip = qbar.Query("hello");
         Check("剪贴板历史可被搜到", clip.Any(r => r.Kind == QbarKind.Clipboard));
 

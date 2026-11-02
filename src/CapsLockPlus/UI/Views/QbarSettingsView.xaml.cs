@@ -323,7 +323,7 @@ public partial class QbarSettingsView : UserControl
         public QEntry Entry { get; }
         public string Key => Entry.Key;
         public string Value => Entry.Value;
-        public string Comment => Entry.Comment;
+        public string Comment => Entry.DisplayName;   // 默认引擎那条的备注要跟着语言走
 
         /// <summary>图标（可能为 null）。</summary>
         public System.Windows.Media.ImageSource? Icon { get; }
