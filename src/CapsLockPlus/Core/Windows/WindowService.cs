@@ -53,9 +53,19 @@ public static class WindowService
     {
         if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return null;
         hwnd = GetAncestor(hwnd, GA_ROOT);
-        var sb = new StringBuilder(512);
-        GetWindowText(hwnd, sb, sb.Capacity);
-        var title = sb.ToString();
+
+        /* 目标窗口没响应时**不要**去取标题：GetWindowText 对别的进程本质是
+         * SendMessage(WM_GETTEXT)，会一直等到系统超时（数秒）。
+         * 这段代码在按键动作线程 / 窗口枚举里跑，卡一次就是"所有快捷键没反应"。
+         * 标题留空即可 —— 调用方拿它做匹配或显示，空串都是安全的。 */
+        var title = "";
+        if (!NativeMethods.IsHungAppWindow(hwnd))
+        {
+            var sb = new StringBuilder(512);
+            GetWindowText(hwnd, sb, sb.Capacity);
+            title = sb.ToString();
+        }
+
         var cls = new StringBuilder(256);
         GetClassName(hwnd, cls, cls.Capacity);
         GetWindowThreadProcessId(hwnd, out var pid);

@@ -23,6 +23,16 @@ public partial class MainWindow : Window
     private readonly double _baseMinWidth;
     private readonly double _baseMinHeight;
 
+    /* 按键映射页会把窗口撑大（要装下整把键盘）。撑大之后必须能缩回去：
+     * WPF 在 MinWidth 变小时**不会**自动缩窗口，于是"进过一次按键映射页，
+     * 窗口就永远变宽了" —— 用户还得自己拖回去，而且窗口尺寸如果被记住，
+     * 下次启动也是宽的。这里记下撑大前的尺寸，离开那一页时还原。 */
+    private bool _grownForKeys;
+    private double _grownWidth;
+    private double _grownHeight;
+    private double _restoreWidth;
+    private double _restoreHeight;
+
     /// <summary>当前主窗口实例（AppHost 需要用它导航到某个页面）。</summary>
     public static MainWindow? Instance { get; private set; }
 
@@ -238,8 +248,26 @@ public partial class MainWindow : Window
         {
             var (needW, needH) = keys.RequiredWindowSize();
             var wa = SystemParameters.WorkArea;
-            MinWidth = Math.Min(needW, Math.Max(480, wa.Width));
-            MinHeight = Math.Min(needH, Math.Max(400, wa.Height));
+            double targetW = Math.Min(needW, Math.Max(480, wa.Width));
+            double targetH = Math.Min(needH, Math.Max(400, wa.Height));
+
+            /* 记下"撑大之前"的尺寸，离开这一页时还原。
+             *
+             * 顺序很关键：必须在**改 MinWidth 之前**判断，因为一改 MinWidth
+             * 窗口就会立刻被撑大，之后再比就永远是"已经够大"，还原逻辑不会触发。
+             * 也只在窗口确实被顶大时记一次；用户自己拖大了就不动他。 */
+            if (!_grownForKeys && WindowState == WindowState.Normal
+                && (Width < targetW - 0.5 || Height < targetH - 0.5))
+            {
+                _grownForKeys = true;
+                _restoreWidth = Width;
+                _restoreHeight = Height;
+                _grownWidth = Math.Max(Width, targetW);
+                _grownHeight = Math.Max(Height, targetH);
+            }
+
+            MinWidth = targetW;
+            MinHeight = targetH;
 
             /* 窗口被 MinWidth 撑大时是往**右边/下边**长的，Left 不动。
              * 如果原来窗口居中，长完就会有一部分跑到屏幕外 ——
@@ -254,6 +282,22 @@ public partial class MainWindow : Window
 
         MinWidth = _baseMinWidth;
         MinHeight = _baseMinHeight;
+
+        /* 离开按键映射页：把窗口缩回进入前的尺寸。
+         *
+         * 只在"当前尺寸还是我们撑出来的那个"时还原 ——
+         * 如果用户在这期间自己拖过大小（或最大化过），就尊重他的选择。 */
+        if (_grownForKeys)
+        {
+            _grownForKeys = false;
+            if (WindowState == WindowState.Normal
+                && Math.Abs(Width - _grownWidth) < 1.5
+                && Math.Abs(Height - _grownHeight) < 1.5)
+            {
+                Width = Math.Max(_baseMinWidth, _restoreWidth);
+                Height = Math.Max(_baseMinHeight, _restoreHeight);
+            }
+        }
     }
 
     private void UpdateStatus()

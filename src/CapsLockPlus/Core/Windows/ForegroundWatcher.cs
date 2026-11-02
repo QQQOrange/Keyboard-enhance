@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -45,6 +45,9 @@ public sealed class ForegroundWatcher : IDisposable
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int max);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsHungAppWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
@@ -119,6 +122,12 @@ public sealed class ForegroundWatcher : IDisposable
 
         try
         {
+            /* 卡住的窗口不要去问标题：GetWindowText 对别的进程是
+             * SendMessage(WM_GETTEXT)，目标没响应时会一直等到系统超时。
+             * 宏条件（"前台是 X"）是在按键动作线程上求值的，
+             * 一旦堵住就是"所有快捷键失灵"，比读不到标题严重得多。 */
+            if (IsHungAppWindow(hwnd)) return "";
+
             int len = GetWindowTextLength(hwnd);
             if (len <= 0) return "";
 

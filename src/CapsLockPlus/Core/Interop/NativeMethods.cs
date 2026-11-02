@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace CapsLockPlus.Core.Interop;
@@ -230,6 +230,18 @@ public static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    /// <summary>
+    /// 窗口是不是"没在响应"（Vista+，user32）。
+    ///
+    /// 为什么需要：<see cref="GetWindowText"/> 对**别的进程**的窗口本质上是
+    /// <c>SendMessage(WM_GETTEXT)</c>，目标卡住时调用方要等系统超时（数秒）。
+    /// 我们的取标题代码跑在按键动作线程上 —— 一旦前台那个程序正好卡死
+    /// （IDE 编译、游戏加载），按一个读标题的键就会把整条动作队列堵住，
+    /// 表现为"所有快捷键都没反应"。取标题前先问一句，卡住就跳过。
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern bool IsHungAppWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowTextLength(IntPtr hWnd);
