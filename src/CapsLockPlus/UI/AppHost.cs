@@ -139,6 +139,11 @@ public sealed class AppHost : IDisposable
                 if (physical) Interlocked.Increment(ref _rawKeyCount);
 
                 if (Engine.MacroRecorder is { IsRecording: true } rec) rec.RecordRaw(vk, down);
+
+                /* 兜底：钩子长时间收不到按键时（远程桌面 / 注入输入），
+                 * 由 Raw Input 把按键喂给引擎，否则所有热键一起失灵。
+                 * 钩子正常工作时这条路自动关闭（见 ShouldUseRawFallback）。 */
+                Engine.FeedFromRaw(vk, down);
             };
             StartHookTrafficWatch();
         }
@@ -719,8 +724,38 @@ public sealed class AppHost : IDisposable
 
     public void ShowQbar(string? prefill = null)
     {
-        _qbar ??= new QbarWindow(this);
-        _qbar.Open(prefill);
+        /* 和计算器同一个坑：窗口被**关闭**过之后不能再 Show()，
+         * 而 Qbar 的字段没人清空 —— 于是"关掉一次以后 Caps+Q 再也唤不出来"。
+         * 现在关掉就把字段清空，并且整段兜住异常：宁可重建一次，也不能什么都不弹。 */
+        try
+        {
+            if (_qbar == null)
+            {
+                _qbar = new QbarWindow(this);
+                _qbar.Closed += (_, _) =>
+                {
+                    CoreLog.Info("Qbar：窗口已关闭，下次重新创建");
+                    _qbar = null;
+                };
+            }
+            _qbar.Open(prefill);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("Qbar 打开失败（将重建窗口再试一次）", ex);
+            _qbar = null;
+            try
+            {
+                _qbar = new QbarWindow(this);
+                _qbar.Closed += (_, _) => _qbar = null;
+                _qbar.Open(prefill);
+            }
+            catch (Exception ex2)
+            {
+                CoreLog.Error("Qbar 重建后仍然打不开", ex2);
+                Notify(Loc.T("Qbar 打不开，详情见日志"));
+            }
+        }
     }
 
     /// <summary>

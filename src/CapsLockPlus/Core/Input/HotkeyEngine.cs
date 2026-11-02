@@ -409,6 +409,8 @@ public sealed class HotkeyEngine : IDisposable
             CoreLog.Error("⚠ 键盘钩子没有启动成功：所有组合键与宏录制都不会收到按键。" +
                           "运行 KeyboardEnhance.exe --diag 查看原因。");
         }
+
+        MarkHookAlive();
     }
 
     /// <summary>
@@ -812,6 +814,88 @@ public sealed class HotkeyEngine : IDisposable
     private System.Windows.Threading.DispatcherTimer? _holdTimer;
 
     public bool IsHookAlive => _hook.IsRunning;
+
+    /* ================= Raw Input 兜底 =================
+     *
+     * 低级钩子并不是万能的：远程桌面 / 向日葵 / ToDesk 的按键是注入事件，
+     * 排在别的钩子后面时会被吞掉，于是**所有热键一起失灵**（用户看到的是
+     * "Caps+Q 唤不出 Qbar"）。Raw Input 不受这个影响。
+     *
+     * 触发条件刻意收得很紧：只有钩子**连续 5 秒**一个事件都没收到、而 Raw Input
+     * 还在报按键时，才把 Raw Input 当输入源喂给引擎；钩子一恢复就立刻交还，
+     * 因此正常使用不会走这条路，也就不会出现"一个键触发两次"。
+     */
+
+    /// <summary>钩子静默多久后启用兜底（毫秒）。</summary>
+    public const int RawFallbackQuietMs = 5000;
+
+    private long _lastHookSample;
+    private long _hookSeenAtMs;
+    private long _rawFedCount;
+
+    /// <summary>现在是不是靠 Raw Input 在喂热键（诊断用）。</summary>
+    public bool RawFallbackActive { get; private set; }
+
+    /// <summary>兜底一共喂了多少个按键（诊断用）。</summary>
+    public long RawFallbackCount => Interlocked.Read(ref _rawFedCount);
+
+    /// <summary>引擎启动时记一下"钩子刚才是活的"，避免一开始就误判。</summary>
+    internal void MarkHookAlive() => _hookSeenAtMs = Environment.TickCount64;
+
+    /// <summary>自检用：直接指定"上次看到钩子事件"的时刻。</summary>
+    internal void SeedHookSeenAtForTest(long ms) => _hookSeenAtMs = ms;
+
+    /// <summary>
+    /// Raw Input 这一路收到按键时的入口。
+    ///
+    /// 纯决策部分抽成 <see cref="ShouldUseRawFallback"/>，便于自检。
+    /// </summary>
+    /// <returns>真的喂给引擎了吗</returns>
+    public bool FeedFromRaw(int vk, bool down)
+        => FeedFromRaw(vk, down, _hook.KeyEventCount, Environment.TickCount64);
+
+    internal bool FeedFromRaw(int vk, bool down, long hookCount, long nowMs)
+    {
+        if (!ShouldUseRawFallback(hookCount, _lastHookSample, _hookSeenAtMs, nowMs, out bool hookJustMoved))
+            return false;
+
+        _lastHookSample = hookCount;
+        if (hookJustMoved)
+        {
+            /* 钩子回来了：交还给它，别两边都喂。 */
+            _hookSeenAtMs = nowMs;
+            if (RawFallbackActive) CoreLog.Info("键盘钩子恢复，热键交还给它");
+            RawFallbackActive = false;
+            return false;
+        }
+
+        if (!RawFallbackActive)
+        {
+            RawFallbackActive = true;
+            CoreLog.Warn($"键盘钩子已经 {RawFallbackQuietMs / 1000} 秒没收到任何按键，改由 Raw Input 触发热键" +
+                         "（远程桌面 / 注入输入时是正常的）");
+        }
+
+        Interlocked.Increment(ref _rawFedCount);
+        OnKeyEvent(vk, down, injected: false);
+        return true;
+    }
+
+    /// <summary>
+    /// 该不该用 Raw Input 兜底（纯函数）。
+    ///
+    /// 两条判据：
+    ///   ① 钩子的事件计数这期间**一动没动**；
+    ///   ② 距上次看到钩子事件已经超过 <see cref="RawFallbackQuietMs"/>。
+    /// </summary>
+    internal static bool ShouldUseRawFallback(
+        long hookCount, long lastSample, long hookSeenAtMs, long nowMs, out bool hookJustMoved)
+    {
+        hookJustMoved = hookCount != lastSample;
+        if (hookJustMoved) return false;
+        if (hookSeenAtMs == 0) return false;
+        return nowMs - hookSeenAtMs >= RawFallbackQuietMs;
+    }
 
     /// <summary>重装钩子（自愈用）。</summary>
     public void RestartHook() => _hook.Restart();

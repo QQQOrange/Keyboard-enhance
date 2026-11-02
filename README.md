@@ -8,7 +8,7 @@
 >
 > 运行文件是 **`KeyboardEnhance.exe`**，数据目录是 **`KeyboardEnhance Data`**。
 
-**版本 v4.5.61** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
+**版本 v4.5.62** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -69,9 +69,9 @@ dotnet --list-runtimes | findstr WindowsDesktop
 | 你的系统 | 下载哪个 | 运行时要求 |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
-| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.61-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
-| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.61-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
-| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.61-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.62-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.62-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.62-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
 
 > 发布页文件名用 `x86 / x64 / Win7 / SelfContained` 标注，是因为 GitHub 会自动把资产文件名里的
 > 非字母数字字符（含中文）改写成点号；本地构建产物可以保留中文名，不影响使用。
@@ -629,6 +629,20 @@ Windows 自己调音量、自己弹它自己那条横条。**不自己画**，�
 **按住 Caps 没反应？**
 检查托盘图标是否存在、设置页「运行状态」是否为「已启用」。若显示「键盘钩子未生效」，
 点一下「暂停」再「恢复」即可重装钩子。
+
+**Caps+Q 打不开 Qbar / 某些环境里热键整体失灵？**
+先看「测试」页顶部的钩子状态，再跑一次 `KeyboardEnhance.exe --diag`。
+最常见的两个原因：
+
+- **远程桌面 / 向日葵 / ToDesk**：这类工具的按键是**注入事件**，低级键盘钩子排在别人后面时会被吞掉，
+  于是所有热键一起失灵（4.5.60 之前宏录制就是这么"收不到键"的）。从 4.5.62 起，钩子连续
+  5 秒收不到任何按键时，热键会自动改由 Raw Input 触发，日志里会出现一条
+  `键盘钩子已经 5 秒没收到任何按键，改由 Raw Input 触发热键`；钩子一恢复就自动交还。
+- **钩子被安全软件拦掉**：`--diag` 会给出 11 项结论；必要时把程序加入杀软白名单，
+  或让程序与目标程序以相同权限运行（都是普通权限，或都是管理员）。
+
+Qbar 本身打不开的另一种情况（窗口被关掉后无法复用）也已经修掉：现在关掉就重建，
+失败会写日志并再试一次，不会静默什么都不弹。
 
 **某些程序里组合键不生效？**
 以管理员身份运行的程序（任务管理器、部分游戏）需要本程序也提权。

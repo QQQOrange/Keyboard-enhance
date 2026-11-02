@@ -238,9 +238,20 @@ public static partial class SelfTest
         // 核心回归：按坐标取窗口。
         // 走的是"WindowFromPoint → GA_ROOT，失败再扫 Z 序"两段式，
         // 必须能取到一个真实窗口。
+        /* 必须挑一个**真的在屏幕上**的窗口：机器上可能有别的程序把窗口停在
+         * (-32000,-32000)（贴图工具、离屏渲染残留），拿它的中心点去命中
+         * 自然是 0x0 —— 那是测试前提错了，不是点选坏了。 */
+        bool OnScreen(IntPtr h)
+        {
+            var rr = WindowService.GetRect(h);
+            /* 用"离屏幕原点太远"当判据：贴图工具 / 离屏渲染的窗口会停在 -32000 附近。 */
+            return rr.Width > 0 && rr.Height > 0 && rr.Left > -10000 && rr.Top > -10000;
+        }
+
         var anyWindow = WindowService.EnumerateTopLevel()
             .FirstOrDefault(w => !string.Equals(w.ExeName, AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)
-                                 && w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd"));
+                                 && w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd")
+                                 && w.Handle != IntPtr.Zero && OnScreen(w.Handle));
         if (anyWindow is { } target && target.Handle != IntPtr.Zero)
         {
             var r = WindowService.GetRect(anyWindow.Handle);
@@ -270,9 +281,17 @@ public static partial class SelfTest
     /// </summary>
     private static void TestPickerCommitKeepsResult()
     {
+        /* 和上面那条一样：只在**真的在屏幕上**的窗口里挑，
+         * 否则会拿到停在 -32000 的离屏窗口，点它的中心自然是空。 */
         var anyWindow = WindowService.EnumerateTopLevel()
-            .FirstOrDefault(w => !string.Equals(w.ExeName, AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)
-                                 && w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd"));
+            .FirstOrDefault(w =>
+            {
+                if (string.Equals(w.ExeName, AppInfo.ExeName, StringComparison.OrdinalIgnoreCase)) return false;
+                if (w.ClassName is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
+                if (w.Handle == IntPtr.Zero) return false;
+                var rr = WindowService.GetRect(w.Handle);
+                return rr.Width > 0 && rr.Height > 0 && rr.Left > -10000 && rr.Top > -10000;
+            });
         if (anyWindow is not { } target || target.Handle == IntPtr.Zero)
         {
             Check("没有可点选的窗口，跳过选中结果检查", true);

@@ -1226,6 +1226,39 @@ public static partial class SelfTest
          * 免得哪天顺手把它删了却没人发现。 */
         Check("Qbar 显示图标默认开启", new AppSettings().Qbar.ShowIcons);
 
+        /* ---- Raw Input 兜底：钩子哑了也要能用热键 ----
+         *
+         * 用户报"Caps+Q 唤不出 Qbar"最常见的原因不是动作坏了，而是**钩子收不到按键**
+         * （远程桌面 / 注入输入）。兜底只在这时生效，钩子一恢复就交还。 */
+        Check("兜底：钩子刚有事件时不接管",
+            !HotkeyEngine.ShouldUseRawFallback(10, 9, 1000, 1500, out bool moved1) && moved1);
+        Check("兜底：钩子静默不足 5 秒不接管",
+            !HotkeyEngine.ShouldUseRawFallback(10, 10, 1000, 1000 + 4999, out _));
+        Check("兜底：钩子静默超过 5 秒才接管",
+            HotkeyEngine.ShouldUseRawFallback(10, 10, 1000, 1000 + HotkeyEngine.RawFallbackQuietMs, out _));
+        Check("兜底：没记录过钩子活动时不动手",
+            !HotkeyEngine.ShouldUseRawFallback(0, 0, 0, 999999, out _));
+
+        // 端到端：兜底喂进来的 Caps+Q 必须真的执行 qbar
+        {
+            var s = DefaultSettings.Create();
+            var fired = new List<string>();
+            var q = new ActionQueue();
+            var e = new HotkeyEngine(q, () => s, (a, arg) => { lock (fired) fired.Add(a); return true; });
+            /* 钩子在 t=1000 之后就没再给过事件；现在 t=7000，已经静默 6 秒。 */
+            e.SeedHookSeenAtForTest(1000);
+            bool fedCaps = e.FeedFromRaw(0x14, true, 0, 7000);      // Caps 按下
+            bool fed = e.FeedFromRaw(0x51, true, 0, 7100);          // Q 按下
+            e.FeedFromRaw(0x51, false, 0, 7200);
+            e.FeedFromRaw(0x14, false, 0, 7300);
+            Check("兜底：Caps 按下也被喂进去了", fedCaps);
+            WaitUntil(() => { lock (fired) return fired.Contains("qbar"); });
+            lock (fired) Check("兜底：Caps+Q 真的触发了 Qbar", fired.Contains("qbar"), string.Join(",", fired));
+            Check("兜底：Q 的按下确实被喂进去了", fed);
+            Check("兜底：计数在涨", e.RawFallbackCount > 0, e.RawFallbackCount.ToString());
+            e.Dispose();
+        }
+
         /* ---- 片段「只在哪些程序里展开」：选程序按钮的合并逻辑 ---- */
         string merged = SnippetMatcher.MergeAppList("", "Code.exe", out bool added1);
         CheckEqual("片段范围：空列表 + 新程序 → 就是它", merged, "code.exe");

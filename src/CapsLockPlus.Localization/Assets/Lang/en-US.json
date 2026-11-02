@@ -1,6 +1,7 @@
 {
   "__name": "English",
   "\n\n⚠ 没能另存恢复前的配置（磁盘写入失败），这次恢复不可撤销。": "\n\n⚠ Could not save a copy of the current configuration (disk write failed) — this restore cannot be undone.",
+  "Qbar 打不开，详情见日志": "Can't open Qbar — see the log for details",
   "__culture": "en-US",
   "\n\n以下项目需要手动确认：\n": "\n\nThese items need manual confirmation:\n",
   "\n\n恢复前的配置已另存：{0}": "\n\nThe configuration from before the restore was saved as {0}",
@@ -2001,6 +2002,7 @@
   "进入某一层后，再按住修饰键（Ctrl / Shift / Alt / Win 及其组合），可以用到「另一套独立绑定」。": "Inside a layer, holding a modifier (Ctrl / Shift / Alt / Win or a combination) gives you **a second independent set of bindings**.",
   "进层中": "In layer",
   "进程名，如 Code.exe（大小写不敏感）": "Process name, e.g. Code.exe (case-insensitive)",
+  "远程桌面 / 向日葵里热键失灵？这类按键是注入的，钩子可能收不到；钩子连续 5 秒没有按键时程序会改由 Raw Input 触发热键，日志里有一条说明。": "Hotkeys dead over a remote session (Sunlogin / ToDesk)? Those keys are injected, and the hook may miss them; if no key reaches the hook for 5 seconds the app switches to Raw Input for hotkeys and logs a note.",
   "远程桌面虚拟键盘": "Remote Desktop virtual keyboard",
   "远程桌面（向日葵 / ToDesk / RDP）也能录：这类按键是注入的，钩子常常收不到，录制会同时读 Raw Input 那一路，日志里写成「Raw Input 补录」。": "Remote sessions (Sunlogin / ToDesk / RDP) record too: their keys are injected and the hook often misses them, so recording also reads Raw Input; the log labels those \"Raw Input fallback\".",
   "连接成功，云端有 {0} 份备份": "Connected, {0} backups in the cloud",
@@ -2166,6 +2168,7 @@
   "（系统每档 2%，会按次数平均凑成 {0}%）": "(the system moves 2% per step; presses are averaged to reach {0}%)",
   "（该版本没有填写更新说明）": "(this version has no release notes)",
   "（这是 Windows 的隔离规则，任何用户态程序都绕不过）。\n\n": "(a Windows isolation rule no user-mode app can bypass).\n\n",
+  "（远程桌面 / 注入输入时是正常的）": "(normal with remote desktop / injected input)",
   "（选择左边的条目，或点新增）": "(Select an entry on the left, or click Add)",
   "（锁屏状态下任何用户态程序都无法使用快捷键，\n": "(On the lock screen no user-mode app can use hotkeys at all,\n",
   "（需要时以管理员身份启动）": " (launches as administrator when needed)",
