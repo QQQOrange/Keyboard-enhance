@@ -1226,6 +1226,24 @@ public static partial class SelfTest
          * 免得哪天顺手把它删了却没人发现。 */
         Check("Qbar 显示图标默认开启", new AppSettings().Qbar.ShowIcons);
 
+        /* ---- 文本片段：停用要生效、长触发词不能被短的抢走 ---- */
+        var snipList = new List<Snippet>
+        {
+            new() { Trigger = ";m", Text = "short" },
+            new() { Trigger = ";mail", Text = "long" },
+            new() { Trigger = ";off", Text = "disabled", Enabled = false },
+        };
+        CheckEqual("片段：最长触发词优先", SnippetMatcher.Match(snipList, ";mail")?.Text, "long");
+        CheckEqual("片段：词边界内命中", SnippetMatcher.Match(snipList, "x ;m")?.Text, "short");
+        Check("片段：词中间不命中", SnippetMatcher.Match(snipList, "my;mail") == null);
+        Check("片段：停用的不命中", SnippetMatcher.Match(snipList, ";off") == null);
+        Check("片段：卡在短触发词上时知道还有更长的候选",
+            SnippetMatcher.HasLongerCandidate(snipList, ";m", null));
+        Check("片段：没有更长候选时不等待",
+            !SnippetMatcher.HasLongerCandidate(snipList, ";mail", null));
+        Check("片段：停用的长候选不算候选",
+            !SnippetMatcher.HasLongerCandidate(new List<Snippet> { new() { Trigger = ";x", Text = "a", Enabled = false } }, ";", null));
+
         // B9：双击窗口常量要公开，界面文案才能引用
         Check("双击窗口常量公开",
             typeof(HotkeyEngine).GetField("DoubleTapWindowMs") != null);

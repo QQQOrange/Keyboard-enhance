@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace CapsLockPlus.Core.Settings;
@@ -65,6 +65,12 @@ public static class RuleShare
 
         /// <summary>只在哪些程序里展开（空 = 所有程序）。</summary>
         public string apps { get; set; } = "";
+
+        /// <summary>备注（可选）。</summary>
+        public string comment { get; set; } = "";
+
+        /// <summary>是否启用。分享码里带上它，导入时不至于把停用的片段全都激活。</summary>
+        public bool enabled { get; set; } = true;
     }
     private sealed class GestureDto { public string key { get; set; } = ""; public string action { get; set; } = ""; }
     private sealed class ChordDto { public string k1 { get; set; } = ""; public string k2 { get; set; } = ""; public string action { get; set; } = ""; }
@@ -80,7 +86,11 @@ public static class RuleShare
                 .Select(r => new RemapDto { from = r.From, to = r.To, device = r.Device }).ToList(),
             snippets = s.Global.Snippets
                 .Where(x => !string.IsNullOrWhiteSpace(x.Trigger))
-                .Select(x => new SnippetDto { trigger = x.Trigger, text = x.Text, apps = x.Apps }).ToList(),
+                .Select(x => new SnippetDto
+                {
+                    trigger = x.Trigger, text = x.Text, apps = x.Apps,
+                    comment = x.Comment, enabled = x.Enabled,
+                }).ToList(),
             gestures = s.Global.KeyGestures
                 .Where(g => !string.IsNullOrWhiteSpace(g.Key))
                 .Select(g => new GestureDto { key = g.Key, action = g.DoubleTapAction }).ToList(),
@@ -167,7 +177,13 @@ public static class RuleShare
 
             s.Global.Snippets.Add(new Snippet
             {
-                Trigger = x.trigger, Text = x.text ?? "", Apps = x.apps ?? "", Comment = "import",
+                Trigger = x.trigger,
+                Text = x.text ?? "",
+                Apps = x.apps ?? "",
+                /* 以前这里硬编码写 "import"：中文界面里列表会显示成一串英文，
+                 * 而且把分享者自己的备注丢掉了。 */
+                Comment = string.IsNullOrWhiteSpace(x.comment) ? Loc.T("来自分享码") : x.comment,
+                Enabled = x.enabled,
             });
             added++;
         }

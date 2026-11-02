@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
+<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -166,27 +166,55 @@
                         <TextBlock Text="{loc:T '文本片段'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '输入触发词后自动展开成一段文字。触发词须以 ; / . 等符号开头（不能是字母数字），且必须落在词首。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
-                        <Grid Margin="0,8,0,0">
+                        <!-- 两个框各配一行小标签：只靠 ToolTip 的话，空框看起来一模一样，分不清哪个填什么 -->
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:T '触发词（如 ;mail）'}" Style="{StaticResource Text.Tertiary}" />
+                            <TextBlock Grid.Column="1" Text="{loc:T '展开成什么（可换行）'}" Margin="8,0,0,0"
+                                       Style="{StaticResource Text.Tertiary}" />
+                        </Grid>
+                        <Grid Margin="0,4,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="SnippetTriggerBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
-                                     ToolTip="{loc:T '例如 ;mail'}" />
-                            <TextBox x:Name="SnippetTextBox" Grid.Column="1" Margin="8,0,0,0" MinHeight="34"
+                                     ToolTip="{loc:T '例如 ;mail'}" TextChanged="OnSnippetTriggerChanged" />
+                            <TextBox x:Name="SnippetTextBox" Grid.Column="1" Margin="8,0,0,0" MinHeight="64"
                                      Style="{StaticResource TextBox.Base}" AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto"
                                      ToolTip="{loc:T '展开后的内容，可换行'}" />
-                            <Button Grid.Column="2" Content="{loc:T '添加'}" Margin="8,0,0,0" Padding="14,6"
+                            <Button x:Name="SnippetSaveButton" Grid.Column="2" Content="{loc:T '添加'}"
+                                    Margin="8,0,0,0" Padding="14,6"
                                     Style="{StaticResource Button.Base}" Click="OnAddSnippetClick" />
+                            <Button x:Name="SnippetCancelEditButton" Grid.Column="3" Content="{loc:T '取消编辑'}"
+                                    Margin="6,0,0,0" Padding="12,6" Visibility="Collapsed"
+                                    Style="{StaticResource Button.Ghost}" Click="OnCancelSnippetEdit" />
                         </Grid>
-                        <TextBox x:Name="SnippetAppsBox" Margin="0,8,0,0" MinHeight="32"
+                        <TextBlock x:Name="SnippetTriggerHint" Style="{StaticResource Text.Tertiary}"
+                                   Margin="0,4,0,0" TextWrapping="Wrap" />
+                        <TextBox x:Name="SnippetCommentBox" Margin="0,6,0,0" MinHeight="32"
+                                 Style="{StaticResource TextBox.Base}"
+                                 ToolTip="{loc:T '备注（可选）：只在列表里显示，不影响展开'}" />
+                        <TextBox x:Name="SnippetAppsBox" Margin="0,6,0,0" MinHeight="32"
                                  Style="{StaticResource TextBox.Base}"
                                  ToolTip="{loc:T '留空 = 所有程序都展开'}"
                                  TextChanged="OnSnippetAppsHint" />
                         <TextBlock x:Name="SnippetAppsHint" Style="{StaticResource Text.Tertiary}"
                                    Margin="0,4,0,0" TextWrapping="Wrap"
                                    Text="{loc:T '可选：只在哪些程序里展开（进程名，逗号分隔，如 code.exe, notepad.exe）。留空 = 所有程序。'}" />
+                        <TextBox x:Name="SnippetTestBox" Margin="0,8,0,0" MinHeight="32"
+                                 Style="{StaticResource TextBox.Base}"
+                                 ToolTip="{loc:T '试算：在这里敲一段示例，看会不会命中（不会真的展开）'}"
+                                 TextChanged="OnSnippetTestChanged" />
+                        <TextBlock x:Name="SnippetTestHint" Style="{StaticResource Text.Tertiary}"
+                                   Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Text="{loc:T '试算：在上面随便打一段（例如 ;mail），这里会说命中哪一条、为什么没命中。'}" />
                         <ItemsControl x:Name="SnippetList" Margin="0,8,0,0" />
                     </StackPanel>
 

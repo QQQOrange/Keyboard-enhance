@@ -195,6 +195,19 @@ public static partial class SelfTest
             Check("实时列表能构建", false, ex.Message);
         }
 
+        /* ---- "录不到按键"必须说出来 ----
+         *
+         * 录制态界面看起来一切正常，只是事件数停在 0 —— 用户会以为"点了没反应"。
+         * 真正常见的原因只有两个：钩子没工作，或者用户还没敲键盘。 */
+        Check("0 事件提示：3 秒内不打扰",
+            UI.Views.MacrosView.ZeroEventHint(hookAlive: true, elapsedMs: 1200) == "");
+        var hintOk = UI.Views.MacrosView.ZeroEventHint(hookAlive: true, elapsedMs: 5000);
+        Check("0 事件提示：钩子正常时提示去敲键盘",
+            hintOk.Contains("敲键盘"), hintOk);
+        var hintDead = UI.Views.MacrosView.ZeroEventHint(hookAlive: false, elapsedMs: 5000);
+        Check("0 事件提示：钩子失效时说明收不到键",
+            hintDead.Contains("--diag"), hintDead);
+
         // ---- 悬浮条：切到别的程序里录的时候，屏幕上只剩它 ----
         try
         {

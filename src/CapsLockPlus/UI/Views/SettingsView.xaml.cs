@@ -509,14 +509,52 @@ public partial class SettingsView : UserControl
 
     // ---------------- 文本片段 ----------------
 
+    /// <summary>正在编辑的片段（null = 新增模式）。</summary>
+    private Snippet? _editingSnippet;
+
     private void RefreshSnippetEditor()
     {
         if (SnippetList == null || _host == null) return;
 
         SnippetList.Items.Clear();
-        foreach (var sn in _host.Settings.Global.Snippets.ToList())
+        var items = _host.Settings.Global.Snippets.ToList();
+
+        if (items.Count == 0)
+        {
+            SnippetList.Items.Add(new TextBlock
+            {
+                Text = Loc.T("还没有片段。上面填一个触发词（例如 ;mail）和内容，点「添加」。"),
+                Style = (Style)FindResource("Text.Tertiary"),
+                Margin = new Thickness(0, 4, 0, 4),
+            });
+            return;
+        }
+
+        foreach (var sn in items)
         {
             var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
+
+            /* 暂停开关：片段经常一堆，临时不想让它展开时不该逼用户删掉。
+             * 停用的仍然显示（灰一点），一眼看得出"有这条但没生效"。 */
+            var enable = new CheckBox
+            {
+                IsChecked = sn.Enabled,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+                ToolTip = Loc.T("启用 / 停用这条片段"),
+            };
+            var captured = sn;
+            enable.Click += (_, _) =>
+            {
+                captured.Enabled = enable.IsChecked == true;
+                Save();
+                RefreshSnippetEditor();
+                _host?.Notify(captured.Enabled
+                    ? Loc.F("已启用片段 {0}", captured.Trigger)
+                    : Loc.F("已停用片段 {0}", captured.Trigger));
+            };
+            DockPanel.SetDock(enable, Dock.Left);
+            row.Children.Add(enable);
 
             var del = new Button
             {
@@ -524,10 +562,10 @@ public partial class SettingsView : UserControl
                 Padding = new Thickness(10, 3, 10, 3),
                 Style = (Style)FindResource("Button.Base"),
             };
-            var captured = sn;
             del.Click += (_, _) =>
             {
                 _host?.Settings.Global.Snippets.Remove(captured);
+                if (ReferenceEquals(_editingSnippet, captured)) ResetSnippetForm();
                 Save();
                 RefreshSnippetEditor();
             };
@@ -540,19 +578,145 @@ public partial class SettingsView : UserControl
             // 配了"只在某些程序"时把范围显示出来，否则用户看不出为什么在别处不展开
             string scope = string.IsNullOrWhiteSpace(sn.Apps)
                 ? ""
-                : $"　·　" + Loc.F("仅 {0}", sn.Apps.Trim());
+                : "　·　" + Loc.F("仅 {0}", sn.Apps.Trim());
+            string note = string.IsNullOrWhiteSpace(sn.Comment) ? "" : "　·　" + sn.Comment.Trim();
 
-            row.Children.Add(new TextBlock
+            /* 点这一行 = 载入到上面的表单里编辑。
+             * 以前只能"重新输一遍同样触发词"来覆盖，用户根本不知道能改。 */
+            var body = new TextBlock
             {
-                Text = $"{sn.Trigger} → {preview}{scope}",
+                Text = $"{sn.Trigger} → {preview}{scope}{note}",
                 VerticalAlignment = VerticalAlignment.Center,
                 Style = (Style)FindResource("Text.Tertiary"),
-            });
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = Loc.T("点这一行：载入到上面编辑"),
+                Opacity = sn.Enabled ? 1.0 : 0.5,
+            };
+            body.MouseLeftButtonUp += (_, _) => LoadSnippetIntoForm(captured);
+            row.Children.Add(body);
+
             SnippetList.Items.Add(row);
         }
     }
 
-    /// <summary>输入框变化时的即时提示：说明这条片段会不会在当前程序里生效。</summary>
+    /// <summary>把一条片段载入表单（进入编辑模式）。</summary>
+    private void LoadSnippetIntoForm(Snippet sn)
+    {
+        _editingSnippet = sn;
+        SnippetTriggerBox.Text = sn.Trigger;
+        SnippetTextBox.Text = sn.Text ?? "";
+        SnippetAppsBox.Text = sn.Apps ?? "";
+        SnippetCommentBox.Text = sn.Comment ?? "";
+        SnippetSaveButton.Content = Loc.T("保存修改");
+        SnippetCancelEditButton.Visibility = Visibility.Visible;
+        SnippetTriggerBox.Focus();
+        SnippetTriggerBox.CaretIndex = SnippetTriggerBox.Text.Length;
+        UpdateSnippetTriggerHint();
+    }
+
+    private void OnCancelSnippetEdit(object sender, RoutedEventArgs e) => ResetSnippetForm();
+
+    /// <summary>清空表单、退出编辑模式。</summary>
+    private void ResetSnippetForm()
+    {
+        _editingSnippet = null;
+        SnippetTriggerBox.Text = "";
+        SnippetTextBox.Text = "";
+        SnippetAppsBox.Text = "";
+        SnippetCommentBox.Text = "";
+        SnippetSaveButton.Content = Loc.T("添加");
+        SnippetCancelEditButton.Visibility = Visibility.Collapsed;
+        UpdateSnippetTriggerHint();
+    }
+
+    /// <summary>触发词输入的即时校验：别等到点「添加」才说哪里不对。</summary>
+    private void OnSnippetTriggerChanged(object sender, TextChangedEventArgs e) => UpdateSnippetTriggerHint();
+
+    private void UpdateSnippetTriggerHint()
+    {
+        if (SnippetTriggerHint == null) return;
+
+        string trigger = (SnippetTriggerBox.Text ?? "").Trim();
+        if (trigger.Length == 0)
+        {
+            SnippetTriggerHint.Text = Loc.T("触发词要以 ; / . 这类符号开头（例如 ;mail），不能含空格。");
+            return;
+        }
+        if (trigger.Any(char.IsWhiteSpace))
+        {
+            SnippetTriggerHint.Text = Loc.T("✗ 触发词里不能有空格。");
+            return;
+        }
+        if (SnippetMatcher.IsValidTrigger(trigger))
+        {
+            /* 提示"会不会被更长的触发词抢走"：这曾经是个坑 ——
+             * 配了 ;m 之后再配 ;mail，;mail 永远触发不了。 */
+            var others = _host?.Settings.Global.Snippets
+                .Where(s => s != _editingSnippet && s.Enabled && s.Trigger.Length > trigger.Length
+                            && s.Trigger.StartsWith(trigger, StringComparison.Ordinal))
+                .Select(s => s.Trigger).ToList() ?? new List<string>();
+
+            SnippetTriggerHint.Text = others.Count > 0
+                ? Loc.F("✓ 触发词可用。注意：它同时是 {0} 的前缀，实际会等你打完再判断（约 120ms）。",
+                        string.Join("、", others.Take(3)))
+                : Loc.T("✓ 触发词可用。");
+            return;
+        }
+
+        SnippetTriggerHint.Text = Loc.T("✗ 触发词必须以 ; / . 这类符号开头，不能以字母或数字开头。");
+    }
+
+    /// <summary>试算：不真的展开，只告诉用户会不会命中。</summary>
+    private void OnSnippetTestChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SnippetTestHint == null || _host == null) return;
+
+        string buffer = (SnippetTestBox.Text ?? "").TrimStart();
+        if (buffer.Length == 0)
+        {
+            SnippetTestHint.Text = Loc.T("试算：在上面随便打一段（例如 ;mail），这里会说命中哪一条、为什么没命中。");
+            return;
+        }
+
+        string? process = _host.Engine.ForegroundProcess;
+        var list = _host.Settings.Global.Snippets;
+        var hit = SnippetMatcher.Match(list, buffer, process);
+
+        if (hit != null)
+        {
+            string preview = (hit.Text ?? "").Replace("\r", " ").Replace("\n", " ");
+            if (preview.Length > 40) preview = preview[..40] + "…";
+            SnippetTestHint.Text = Loc.F("✓ 会展开成：{0}", preview);
+            return;
+        }
+
+        // 没命中时把最常见的原因直接点出来，省得用户猜
+        var blockedScope = list.FirstOrDefault(s => s.Enabled
+            && SnippetMatcher.IsValidTrigger(s.Trigger)
+            && buffer.EndsWith(s.Trigger, StringComparison.Ordinal)
+            && !SnippetMatcher.AllowedIn(s, process));
+        if (blockedScope != null)
+        {
+            SnippetTestHint.Text = Loc.F(
+                "命中 {0}，但它限定只在 {1} 里展开，当前前台是「{2}」。",
+                blockedScope.Trigger, blockedScope.Apps,
+                string.IsNullOrWhiteSpace(process) ? Loc.T("（未知）") : process);
+            return;
+        }
+
+        var disabled = list.FirstOrDefault(s => !s.Enabled
+            && SnippetMatcher.IsValidTrigger(s.Trigger)
+            && buffer.EndsWith(s.Trigger, StringComparison.Ordinal));
+        if (disabled != null)
+        {
+            SnippetTestHint.Text = Loc.F("命中 {0}，但这条片段被停用了。", disabled.Trigger);
+            return;
+        }
+
+        SnippetTestHint.Text = Loc.T("没有命中任何片段（触发词必须落在词首、以符号开头）。");
+    }
+
     private void OnSnippetAppsHint(object sender, TextChangedEventArgs e)
     {
         if (SnippetAppsHint == null) return;
@@ -577,6 +741,7 @@ public partial class SettingsView : UserControl
             : Loc.F("当前：只在 {0} 里展开 —— 现在的前台「{1}」不在列表里，此处不会展开。", apps, current);
     }
 
+    /// <summary>添加 / 保存修改。</summary>
     private void OnAddSnippetClick(object sender, RoutedEventArgs e)
     {
         if (_host == null || _suppress) return;
@@ -584,37 +749,69 @@ public partial class SettingsView : UserControl
         string trigger = (SnippetTriggerBox.Text ?? "").Trim();
         string text = SnippetTextBox.Text ?? "";
         string apps = (SnippetAppsBox.Text ?? "").Trim();
+        string comment = (SnippetCommentBox.Text ?? "").Trim();
 
         if (!SnippetMatcher.IsValidTrigger(trigger))
         {
             _host.Notify(Loc.T("触发词要以 ; / . 这类符号开头，且不能含空格"));
+            SnippetTriggerBox.Focus();
             return;
         }
         if (text.Length == 0)
         {
             _host.Notify(Loc.T("展开内容不能为空"));
+            SnippetTextBox.Focus();
             return;
         }
 
         int conflictsBefore = ConflictCount();
         var list = _host.Settings.Global.Snippets;
+
+        if (_editingSnippet != null)
+        {
+            // 编辑模式：先查"改成的新触发词"有没有撞上别人的
+            var clash = list.FirstOrDefault(x => !ReferenceEquals(x, _editingSnippet) && x.Trigger == trigger);
+            if (clash != null)
+            {
+                _host.Notify(Loc.F("触发词 {0} 已经属于另一条片段，请换一个或取消编辑", trigger));
+                return;
+            }
+            _editingSnippet.Trigger = trigger;
+            _editingSnippet.Text = text;
+            _editingSnippet.Apps = apps;
+            _editingSnippet.Comment = comment;
+            Save();
+            ResetSnippetForm();
+            RefreshSnippetEditor();
+            _host.Notify(WithConflictHint(Loc.F("已保存片段 {0}", trigger), conflictsBefore));
+            return;
+        }
+
         var existing = list.FirstOrDefault(x => x.Trigger == trigger);
         if (existing != null)
         {
-            existing.Text = text;       // 同触发词覆盖
+            /* 以前这里是静默覆盖：用户以为自己加了一条新片段，其实是把旧的改掉了。 */
+            bool go = AppDialog.Confirm(Window.GetWindow(this),
+                Loc.F("已经有触发词为 {0} 的片段了。\n\n要用现在的内容覆盖它吗？", trigger),
+                Loc.T("覆盖片段"), DialogKind.Question, okText: Loc.T("覆盖"));
+            if (!go) return;
+
+            existing.Text = text;
             existing.Apps = apps;
-        }
-        else
-        {
-            list.Add(new Snippet { Trigger = trigger, Text = text, Apps = apps });
+            existing.Comment = comment;
+            existing.Enabled = true;
+            Save();
+            ResetSnippetForm();
+            RefreshSnippetEditor();
+            _host.Notify(Loc.F("已覆盖片段 {0}", trigger));
+            return;
         }
 
-        SnippetTriggerBox.Text = "";
-        SnippetTextBox.Text = "";
-        SnippetAppsBox.Text = "";
+        list.Add(new Snippet { Trigger = trigger, Text = text, Apps = apps, Comment = comment, Enabled = true });
         Save();
+        ResetSnippetForm();
         RefreshSnippetEditor();
-        _host.Notify(WithConflictHint(Loc.F("已添加片段：{0}", trigger), conflictsBefore));
+        _host.Notify(WithConflictHint(Loc.F("已添加片段 {0}", trigger), conflictsBefore));
     }
 
     // ---------------- 双击动作 ----------------

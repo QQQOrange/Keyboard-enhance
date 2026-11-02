@@ -103,6 +103,11 @@ public sealed class Snippet
     public string Text { get; set; } = "";
 
     /// <summary>
+    /// 是否启用。关掉后只是不展开，配置还留着（片段列表经常有一堆临时用的）。
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
     /// 只在哪些程序里展开（进程名，逗号分隔，如 `code.exe, notepad.exe`）。
     ///
     /// 留空 = 所有程序都展开（旧行为，默认值）。

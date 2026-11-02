@@ -1,4 +1,4 @@
-﻿using CapsLockPlus.Core.Settings;
+using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus.Core.Input;
 
@@ -53,7 +53,7 @@ public static class SnippetMatcher
         Snippet? best = null;
         foreach (var s in snippets)
         {
-            if (s == null || !IsValidTrigger(s.Trigger)) continue;
+            if (s == null || !s.Enabled || !IsValidTrigger(s.Trigger)) continue;
             if (!AllowedIn(s, process)) continue;
             if (!buffer.EndsWith(s.Trigger, StringComparison.Ordinal)) continue;
 
@@ -64,6 +64,26 @@ public static class SnippetMatcher
             if (best == null || s.Trigger.Length > best.Trigger.Length) best = s;
         }
         return best;
+    }
+
+    /// <summary>
+    /// 命中的触发词后面还有没有"更长的、以它开头的"触发词。
+    ///
+    /// 为什么需要：触发词是**边打边判**的，缓冲一到 `;m` 就命中 `;m`——
+    /// 于是同时配了 `;m` 和 `;mail` 时，`;mail` 永远没机会触发。
+    /// 有这个判断，引擎就知道"先别急着展开，再等 120ms 看看"。
+    /// </summary>
+    public static bool HasLongerCandidate(IEnumerable<Snippet>? snippets, string buffer, string? process)
+    {
+        if (snippets == null || string.IsNullOrEmpty(buffer)) return false;
+        foreach (var s in snippets)
+        {
+            if (s == null || !s.Enabled || !IsValidTrigger(s.Trigger)) continue;
+            if (!AllowedIn(s, process)) continue;
+            if (s.Trigger.Length <= buffer.Length) continue;
+            if (s.Trigger.StartsWith(buffer, StringComparison.Ordinal)) return true;
+        }
+        return false;
     }
 
     /// <summary>

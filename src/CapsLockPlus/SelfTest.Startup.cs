@@ -199,8 +199,14 @@ public static partial class SelfTest
 
         static bool HasImage()
         {
-            try { return Clipboard.ContainsImage(); }
-            catch { return false; }
+            /* 带重试：剪贴板被别的程序短暂占用时 ContainsImage 会抛，
+             * 直接 return false 会变成一条假失败（和本文件里其它剪贴板探针同一个道理）。 */
+            for (int i = 0; i < 6; i++)
+            {
+                try { return Clipboard.ContainsImage(); }
+                catch { System.Threading.Thread.Sleep(60); }
+            }
+            return false;
         }
 
         /* 断言里的"详情"是**立即求值**的，所以这些读操作也必须兜住异常 ——
@@ -321,8 +327,16 @@ public static partial class SelfTest
         {
             bool copied = clip.CopyTextToSystem("selftest-copy-slot");
             Check("复制到系统剪贴板返回成功", copied);
-            Check("系统剪贴板里确实是那段文字", Clipboard.GetText() == "selftest-copy-slot",
-                Clipboard.GetText());
+            /* 剪贴板是所有程序共享的：别的程序（输入法、剪贴板工具）可能在同一瞬间占住它，
+             * 单次读取会读到空串或旧内容，变成一条假失败。多读几次再判。 */
+            string got = "";
+            for (int i = 0; i < 8; i++)
+            {
+                try { got = Clipboard.GetText(); } catch { got = ""; }
+                if (got == "selftest-copy-slot") break;
+                System.Threading.Thread.Sleep(60);
+            }
+            Check("系统剪贴板里确实是那段文字", got == "selftest-copy-slot", got);
         }
         else
         {

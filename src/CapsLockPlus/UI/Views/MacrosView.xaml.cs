@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -257,12 +257,19 @@ public partial class MacrosView : UserControl
                 RecordingHudWindow.HideHud();
                 ApplyIdleUi();
                 RecordStatus.Text = Loc.T("这次没有录到按键，没有生成宏");
+                _host.Notify(Loc.T("这次没有录到按键，没有生成宏"));
                 Focus();
                 return;
             }
 
             // 停止录制 -> 生成宏
             var macro = rec.Stop(Loc.T("新宏 ") + Loc.FormatTime(DateTime.Now));
+
+            /* 这条对照日志是给"录不到按键"准备的定位信息：
+             *   钩子增加 > 0、录制 0 个 → 事件没进录制器（挂载/实例问题）；
+             *   钩子增加 == 0            → 钩子压根没收到键（被拦截 / 没起来）。 */
+            CoreLog.Info($"宏录制结束：录制到 {rec.EventCount} 个事件，" +
+                         $"钩子期间累计增加 {_host.Engine.KeyEventCount - _hookCountAtStart} 个");
             _host.Engine.MacroRecorder = null;          // 告诉引擎：录制结束
             _host.Settings.Macros.Add(macro);
             _editing = macro;
@@ -277,9 +284,30 @@ public partial class MacrosView : UserControl
             return;
         }
 
+        /* 开始录制前先确认键盘钩子在活着 —— 录制吃的是**主钩子**送来的事件，
+         * 钩子没起来的话，界面会进入录制态却一个键都收不到，用户看到的就是
+         * "点了开始录制，完全没反应"。这里先自愈一次，再把真实状态说出来。 */
+        if (!_host.Engine.IsHookAlive)
+        {
+            _host.Engine.RestartHook();
+            for (int i = 0; i < 12 && !_host.Engine.IsHookAlive; i++) Thread.Sleep(25);
+        }
+        bool hookAlive = _host.Engine.IsHookAlive;
+
         // 开始录制：钩子继续透传，只记录事件
         rec.Start();
         _host.Engine.MacroRecorder = rec;
+        _hookCountAtStart = _host.Engine.KeyEventCount;
+        CoreLog.Info($"宏录制开始：钩子={(hookAlive ? "正常" : "失效")}，" +
+                     $"引擎={(_host.Engine.Enabled ? "启用" : "已暂停")}，" +
+                     $"已挂到引擎={(ReferenceEquals(_host.Engine.MacroRecorder, rec) ? "是" : "否")}，" +
+                     $"钩子累计收到={_hookCountAtStart}");
+
+        if (!hookAlive)
+        {
+            _host.Notify(Loc.T("键盘钩子没在工作，这次录制收不到按键 —— 到「测试」页看钩子状态，" +
+                               "或运行 KeyboardEnhance.exe --diag 查原因"));
+        }
         _live.Clear();
         _lastEventMs = -1;
         _lastKeyLabel = "";
@@ -371,8 +399,10 @@ public partial class MacrosView : UserControl
         string clock = RecordingHudWindow.Format(ms);
 
         RecordStatus.Text = Loc.F("录制中… {0} · {1} 个事件", clock, count);
+
+        string stuck = ZeroEventHint(_host?.Engine.IsHookAlive == true, ms);
         LiveStats.Text = count == 0
-            ? Loc.T("等待第一个按键…")
+            ? (stuck.Length > 0 ? stuck : Loc.T("等待第一个按键…"))
             : Loc.F("{0} 个事件 · {1} · 停止后约 {2} 步", count, clock, _live.Count);
 
         RecordingHudWindow.UpdateHud(ms, count, _lastKeyLabel);
@@ -1168,6 +1198,24 @@ public partial class MacrosView : UserControl
         ApplyIdleUi();
         RecordStatus.Text = "";
     }
+
+    /// <summary>
+    /// 录制超过 3 秒还一个键都没收到时的提示；不需要提示时返回空串。
+    ///
+    /// 为什么要专门提示：这个状态下界面看起来"一切正常"，只是数字停在 0 —— 用户会以为
+    /// 录制没生效。真正常见的原因只有两个：钩子没在工作（收不到任何按键），
+    /// 或者**用户压根没敲键盘**（在等界面出东西）。两种情况给的话不一样。
+    /// </summary>
+    internal static string ZeroEventHint(bool hookAlive, long elapsedMs)
+    {
+        if (elapsedMs < 3000) return "";
+        return hookAlive
+            ? Loc.T("还没收到按键 —— 直接敲键盘就会出现在这里。")
+            : Loc.T("还没收到按键，而且键盘钩子没在工作：这次录制收不到任何键，请运行 --diag 查原因。");
+    }
+
+    /// <summary>录制开始时钩子累计收到的事件数（停止时对比，判断断在钩子还是录制器）。</summary>
+    private long _hookCountAtStart;
 
     /// <summary>步骤列表当前的行数（自检用）。</summary>
     internal int StepRowCountForTest => _stepRows.Count;

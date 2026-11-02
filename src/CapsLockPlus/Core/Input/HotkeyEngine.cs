@@ -403,7 +403,20 @@ public sealed class HotkeyEngine : IDisposable
     {
         _hook.Start();
         StartHoldTimer();
-        CoreLog.Info("键盘钩子已启动");
+
+        /* 日志必须**如实**：以前这里无条件写"键盘钩子已启动"，
+         * 而 Start() 里 SetWindowsHookEx 失败时只会多一条 ERROR，
+         * 之后整条日志看起来一切正常 —— 用户报"按键全都不灵 / 宏录制没反应"，
+         * 从日志里根本看不出钩子其实没装上。 */
+        if (IsHookAlive)
+        {
+            CoreLog.Info("键盘钩子已启动");
+        }
+        else
+        {
+            CoreLog.Error("⚠ 键盘钩子没有启动成功：所有组合键与宏录制都不会收到按键。" +
+                          "运行 KeyboardEnhance.exe --diag 查看原因。");
+        }
     }
 
     /// <summary>
@@ -424,7 +437,13 @@ public sealed class HotkeyEngine : IDisposable
         {
             Interval = TimeSpan.FromMilliseconds(HoldTickIdleMs),
         };
-        _holdTimer.Tick += (_, _) => CheckHoldThreshold();
+        /* 同一个计时器顺带处理"等待更长的触发词"：FlushPendingSnippet 没有挂起项时
+         * 立刻返回，开销可以忽略。 */
+        _holdTimer.Tick += (_, _) =>
+        {
+            CheckHoldThreshold();
+            FlushPendingSnippet();
+        };
         _holdTimer.Start();
     }
 
@@ -1958,8 +1977,56 @@ public sealed class HotkeyEngine : IDisposable
         var hit = SnippetMatcher.Match(list, _snippetBuffer.ToString(), ForegroundProcess);
         if (hit == null) return;
 
+        /* 有更长的候选（例如配了 ;m 和 ;mail，现在命中 ;m）就先别展开：
+         * 等 120ms，用户接着打 'a' 就说明他要的是 ;mail。
+         * 没有更长的候选时立刻展开 —— 常规场景保持"打完就变"的手感。 */
+        if (SnippetMatcher.HasLongerCandidate(list, _snippetBuffer.ToString(), ForegroundProcess))
+        {
+            _snippetPending = hit;
+            _snippetPendingAt = DateTime.Now;
+            _snippetPendingBuffer = _snippetBuffer.ToString();
+            return;
+        }
+
+        ExpandSnippet(hit);
+    }
+
+    /// <summary>等长候选时的等待窗口。</summary>
+    public const int SnippetWaitMs = 120;
+
+    private Snippet? _snippetPending;
+    private DateTime _snippetPendingAt;
+    private string _snippetPendingBuffer = "";
+
+    /// <summary>
+    /// 定时器每 tick 调一次：等待窗口过了、而且缓冲没再增长（说明用户没继续打），
+    /// 就把刚才挂起的那条片段展开。
+    /// </summary>
+    internal void FlushPendingSnippet()
+    {
+        var pending = _snippetPending;
+        if (pending == null) return;
+        if ((DateTime.Now - _snippetPendingAt).TotalMilliseconds < SnippetWaitMs) return;
+
+        _snippetPending = null;
+
+        /* 缓冲变了 = 用户在继续打（或换了键），交给后面新的匹配。
+         * 这里在界面线程读、钩子线程写，理论上可能撞上 —— StringBuilder 不保证线程安全，
+         * 所以整段兜住：读不出来就当"没命中"，绝不能把异常抛到计时器里。 */
+        string now;
+        try { now = _snippetBuffer.ToString(); }
+        catch { return; }
+
+        if (!string.Equals(now, _snippetPendingBuffer, StringComparison.Ordinal)) return;
+        ExpandSnippet(pending);
+    }
+
+    /// <summary>真正执行展开（删触发词 + 打内容）。</summary>
+    private void ExpandSnippet(Snippet hit)
+    {
         SnippetMatchesForTest++;
         _snippetBuffer.Clear();
+        _snippetPending = null;
 
         int deleteCount = hit.Trigger.Length;
         string text = hit.Text ?? "";
