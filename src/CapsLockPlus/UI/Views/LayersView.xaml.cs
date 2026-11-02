@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
@@ -255,6 +255,21 @@ public partial class LayersView : UserControl
             _host.Notify(Loc.T("至少保留一个触发键"));
             return;
         }
+        /* 删掉触发键后，那一层的绑定还在，但**没有任何键能进这层了** ——
+         * 用户点"删除"时未必想到这一点（整层快捷键突然全部失效）。
+         * 有绑定时先问一句，并说明"绑定没丢、再加个触发键就能恢复"。 */
+        int layerId = _editing.LayerId;
+        int bound = _host.Settings.LayerKeys(layerId).Count(k => k.IsBound);
+        if (bound > 0)
+        {
+            bool go = AppDialog.Confirm(Window.GetWindow(this),
+                Loc.F("第 {0} 层还有 {1} 个按键绑定。\n\n删掉这个触发键后，这一层就进不去了（绑定不会丢，以后给第 {0} 层再加一个触发键就能恢复）。\n\n确定删除吗？",
+                    layerId, bound),
+                Loc.T("删除触发键"), DialogKind.Warn,
+                okText: Loc.T("删除"), cancelText: Loc.T("取消"));
+            if (!go) return;
+        }
+
         string name = KeyName.Display(_editing.Key);
         _host.Settings.Triggers.Remove(_editing);
         _editing = null;
