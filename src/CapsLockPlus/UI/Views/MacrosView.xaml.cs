@@ -43,6 +43,10 @@ public partial class MacrosView : UserControl
     public void Initialize(AppHost host)
     {
         _host = host;
+        // 订阅录制事件：页面可能在 Initialize 之前 Loaded 过（_host 为空时 OnLoaded 早退），
+        // 这里补上，保证实时列表能收到按键。
+        host.MacroRecorder.Recorded -= OnRecorderEvent;
+        host.MacroRecorder.Recorded += OnRecorderEvent;
         Reload();
     }
 
@@ -230,8 +234,17 @@ public partial class MacrosView : UserControl
 
     private void OnRecordClick(object sender, RoutedEventArgs e)
     {
-        if (_host == null) return;
+        if (_host == null)
+        {
+            CoreLog.Warn("宏录制按钮被点击，但 MacrosView 尚未 Initialize（_host 为空）");
+            return;
+        }
         var rec = Recorder;
+
+        // 确保实时列表订阅在位：OnLoaded 可能因初始化时序错过订阅，
+        // 这里补一次，保证按键能实时显示。
+        rec.Recorded -= OnRecorderEvent;
+        rec.Recorded += OnRecorderEvent;
 
         if (rec.IsRecording)
         {
