@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="CapsLockPlus.UI.Views.AboutView"
+<UserControl x:Class="CapsLockPlus.UI.Views.AboutView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -186,8 +186,11 @@
                             Padding="14,11" Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock x:Name="StatusText" Style="{StaticResource Text.Body}" TextWrapping="Wrap" />
-                            <TextBlock x:Name="ReleaseNotes" Style="{StaticResource Text.Tertiary}"
-                                       Margin="0,6,0,0" TextWrapping="Wrap" MaxHeight="160" />
+                            <!-- 更新说明可能很长：用 ScrollViewer 限高，别把最后一行切成半个字 -->
+                            <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                                <TextBlock x:Name="ReleaseNotes" Style="{StaticResource Text.Tertiary}"
+                                           TextWrapping="Wrap" />
+                            </ScrollViewer>
 
                             <!-- 没填令牌时：这里给下载地址，而且**只能**点它去浏览器下载。
                                  「下载并安装」会被整个藏起来 —— 程序内不提供下载入口，
@@ -235,7 +238,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{loc:T '项目主页'}" Style="{StaticResource Text.Secondary}" />
                         <TextBlock Grid.Column="1" x:Name="AboutGitHubLink" Style="{StaticResource Text.Body}"
-                                   Foreground="{DynamicResource Brush.Accent}" Cursor="Hand"
+                                   Foreground="{DynamicResource Brush.Accent}" Cursor="Hand" Background="Transparent"
                                    TextTrimming="CharacterEllipsis" MouseLeftButtonUp="OnOpenGitHub"
                                    ToolTip="{loc:T '点击在浏览器中打开'}" />
                     </Grid>
@@ -246,7 +249,9 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{loc:T '上游项目'}" Style="{StaticResource Text.Secondary}" />
                         <TextBlock Grid.Column="1" Style="{StaticResource Text.Body}" Foreground="{DynamicResource Brush.Accent}"
-                                   Cursor="Hand" Text="{loc:T 'wo52616111/capslock-plus（AutoHotkey 原版）'}"
+                                   Cursor="Hand" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                   Background="Transparent"
+                                   Text="{loc:T 'wo52616111/capslock-plus（AutoHotkey 原版）'}"
                                    MouseLeftButtonUp="OnOpenUpstream" ToolTip="{loc:T '点击在浏览器中打开'}" />
                     </Grid>
                     <Grid Margin="0,0,0,10">
