@@ -389,6 +389,20 @@ public static class RenderTools
         /* 这两个窗口的 XAML 写的是 WindowStartupLocation=CenterScreen，
          * 它会**盖过**手动设的 Left/Top —— 不显式改成 Manual 的话，
          * 后台渲染时它们会正正地弹在用户屏幕中央。 */
+        /* 首次运行引导：全程序唯一"第一次打开就会看到"的窗口，
+         * 却一直没进过出图流程（改坏了也没人发现）。 */
+        var onboarding = new OnboardingWindow(host)
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -32000,
+            Top = -32000,
+        };
+        onboarding.Show();
+        Pump(200);
+        Save(onboarding, Path.Combine(outDir, "onboarding.png"));
+        onboarding.Close();
+
         var math = new MathBoardWindow
         {
             ShowInTaskbar = false,

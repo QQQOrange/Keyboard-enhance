@@ -293,6 +293,35 @@ case nameof(AppSettings.Keys): settings.Keys = merged.Keys; break;
 - 英文译文补齐（这次又踩到 i18n 工具的坑：带 `\n` 的 `Loc.F` 会被当成**一条**含换行的
   key，得按它提取的原文整条加），`tools/i18n.py check` 缺 0 条。
 
+### 第九轮：首次引导里的两个问题（自启方式 + 品牌名）
+
+**1）引导页的开机自启只写注册表，不管是不是管理员模式**
+
+`OnboardingWindow.Finish()` 调的是 `StartupManager.SetEnabled(...)`（只写 HKCU Run 键），
+而设置页和启动时用的是 `StartupManager.Sync(enabled, adminMode)`（管理员模式改用计划任务，
+登录静默提权、不弹 UAC）。于是**在管理员模式下走完引导**，用户拿到的是一个
+"每次登录都要点一次 UAC"的自启项 —— 与设置页的承诺正好相反。
+
+改成和设置页同一个入口 `Sync(startup, RunAsAdmin)`。
+
+**2）欢迎页标题写的是"欢迎使用 CapsLock+"**
+
+这是**上游项目**的名字。第一次打开本程序的用户会以为装错了软件。
+改成 `Loc.F("欢迎使用 {0}", AppInfo.ProductName)` → "欢迎使用 按键增强"。
+（README / 关于页里对上游的署名是另一回事，那里应该写 CapsLock+。）
+
+**3）顺手把首次引导纳入出图流程**
+
+`--render` 从来不渲染 `OnboardingWindow` —— 全程序唯一"第一次打开就会看到"的窗口，
+改坏了没人发现。现在输出 `onboarding.png`（本次 39 张）。
+
+### 验证
+
+- 编译 0 警告 0 错误；`--selftest` 2831 项全过；
+- 出图复核 `onboarding.png`：标题已是"欢迎使用 按键增强"，布局正常
+  （左品牌区 + 右方案选择 + 底部步骤点/跳过/下一步）；
+- 英文译文补齐，`tools/i18n.py check` 缺 0 条。
+
 ---
 
 ## v4.5.58 — 全盘审视（第二轮）：输入链路三处硬伤 + 数据安全 + 界面一致性
