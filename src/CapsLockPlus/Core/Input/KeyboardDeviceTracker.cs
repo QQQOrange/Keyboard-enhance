@@ -118,6 +118,17 @@ public sealed class KeyboardDeviceTracker : IDisposable
         return IntPtr.Zero;
     }
 
+    /// <summary>
+    /// 每一个 Raw Input 键盘事件（远在设备解析之前）。
+    ///
+    /// 存在的理由：低级键盘钩子并不是万能的 —— 远程桌面、向日葵、ToDesk 这类工具的
+    /// 按键可能走驱动/注入路径，钩子收不到，但 Raw Input 仍然能看到。
+    /// 宏录制把它当第二路来源，靠时间窗去重（同一物理按键两边都会到）。
+    /// 在 UI 线程上触发，订阅方必须立刻返回。
+    /// </summary>
+    /// <summary>参数：虚拟键、是否按下、是否来自可识别的物理设备（注入/远程输入通常为 false）。</summary>
+    public event Action<int, bool, bool>? KeyObserved;
+
     private void ReadRawInput(IntPtr lParam)
     {
         uint size = 0;
@@ -141,6 +152,22 @@ public sealed class KeyboardDeviceTracker : IDisposable
             bool down = kb.Message is 0x0100 or 0x0104;         // WM_KEYDOWN / WM_SYSKEYDOWN
             bool up = kb.Message is 0x0101 or 0x0105;
             if (!down && !up) return;
+
+            /* 先抛给订阅方（宏录制用它做**第二路**来源），再去做设备路径解析 ——
+             * 顺序不能反：远程桌面 / 向日葵这类工具送进来的键，设备路径经常解析不出来
+             * （虚拟设备），下面那句 `if (device.Length == 0) return;` 会把事件丢掉，
+             * 于是"录制宏时一个键都收不到"。Raw Input 本身是能看到的。 */
+            /* 顺便判断"这是不是真实硬件按键"：注入/远程输入常常解析不出设备路径。
+             * 自愈看护只认物理按键 —— 否则远程桌面（全是注入事件）会被误判成"钩子被摘"。 */
+            string devPath;
+            try { devPath = KeyboardDevices.PathOf(header.Device); }
+            catch { devPath = ""; }
+            bool physical = DeviceKeyOf(devPath).Length > 0;
+
+            if (KeyObserved != null)
+            {
+                try { KeyObserved(kb.VKey, down, physical); } catch { }   /* 预期内：界面/录制侧异常不能影响输入 */
+            }
 
             /* 事件里只有设备句柄，路径要再问一次系统 —— 这是每按键一次的开销，
              * 但只有注册了 Raw Input 才有，且只有一次 P/Invoke（不到 0.1ms）。 */

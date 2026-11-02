@@ -8,7 +8,7 @@
 >
 > 运行文件是 **`KeyboardEnhance.exe`**，数据目录是 **`KeyboardEnhance Data`**。
 
-**版本 v4.5.59** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
+**版本 v4.5.60** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -69,9 +69,9 @@ dotnet --list-runtimes | findstr WindowsDesktop
 | 你的系统 | 下载哪个 | 运行时要求 |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
-| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.59-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
-| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.59-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
-| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.59-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.60-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.60-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.60-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
 
 > 发布页文件名用 `x86 / x64 / Win7 / SelfContained` 标注，是因为 GitHub 会自动把资产文件名里的
 > 非字母数字字符（含中文）改写成点号；本地构建产物可以保留中文名，不影响使用。
@@ -414,6 +414,8 @@ KeyboardEnhance Back\     本地备份
 - 每个宏自动出现在「按键映射」的动作列表里（分类：宏）
 - 播放时可覆盖重复次数（绑定时填参数）
 - 最小步间隔 15 ms
+- **远程桌面 / 向日葵 / ToDesk 也能录**：这类工具的按键是注入进来的，低级键盘钩子经常收不到，
+  所以录制同时接了 Raw Input 那一路（两路都到的情况按毫秒级去重，不会记成两个键）
 
 ![宏](docs/screenshots/macros.png)
 
@@ -655,6 +657,10 @@ Windows Hello（指纹/PIN）或设置一个短的无操作自动锁定时间。
 `M` 是钩子这期间实际收到的按键数：`M > 0` 而 `N = 0` 是事件没进录制器，`M = 0` 是钩子压根没收到键
 （多为安全软件拦截，或程序没有以管理员身份运行）。也可以直接跑一次
 `KeyboardEnhance.exe --diag`，它会给出 11 项结论。
+
+**用远程桌面（向日葵 / ToDesk / RDP）时钩子收不到键是正常的**：这类工具的按键是注入的，
+排队到钩子这一层经常被前面的钩子挡掉。从 4.5.60 起录制会**同时**读 Raw Input，
+日志里会写成"Raw Input 补录"；此时 `钩子 0 / Raw Input 补录 N` 是正常现象，宏照常生成。
 
 **文本片段打了触发词没展开？**
 到「设置 → 文本片段」的**试算框**里打同样的内容，它会直接说原因：触发词不在词首、

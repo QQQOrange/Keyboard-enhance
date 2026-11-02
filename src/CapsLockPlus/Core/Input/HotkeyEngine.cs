@@ -825,6 +825,17 @@ public sealed class HotkeyEngine : IDisposable
     public void RestartHook() => _hook.Restart();
 
     /// <summary>
+    /// 钩子线程还活着吗。
+    ///
+    /// 句柄在、<see cref="IsHookAlive"/> 为 true，并不等于真的还在收键 ——
+    /// 被系统摘钩或线程卡死时两者都还是 true。录制前 / 诊断时用它探一下。
+    /// </summary>
+    public bool PingHook(int timeoutMs = 400) => _hook.Ping(timeoutMs);
+
+    /// <summary>钩子回调的最长耗时（毫秒），长期超过 100ms 就要查是谁卡住了。</summary>
+    public double HookMaxCallbackMs => _hook.MaxCallbackCostMs;
+
+    /// <summary>
     /// 全局鼠标按键事件透传（屏幕物理坐标 + 鼠标消息）。
     /// Qbar 面板打开期间订阅，实现"点面板外面就收起" ——
     /// 任务栏不换前台、Deactivated 不触发，只能靠这个兜底。

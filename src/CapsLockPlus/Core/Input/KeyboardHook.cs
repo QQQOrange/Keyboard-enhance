@@ -22,6 +22,7 @@ public sealed class KeyboardHook : IDisposable
 
     /// <summary>看门狗投递给钩子线程的自定义消息（重装钩子）。</summary>
     private const int WM_APP_REARM = 0x8001;
+    private const int WM_APP_PING = 0x0400 + 0x2A;   // 探活：确认钩子线程还在跑（不是被摘/卡死）
 
     /// <summary>首次巡检延迟：覆盖"装钩失败"这种一开始就不工作的情况。</summary>
     private const int WatchdogFirstDelayMs = 5_000;
@@ -113,6 +114,7 @@ public sealed class KeyboardHook : IDisposable
                  * 钩子绑定的是"调用它的线程"，换线程装会得到一个没有消息循环
                  * 的钩子，等于装了个不会回调的空壳。 */
                 if (msg.message == WM_APP_REARM) { RearmHooks(); continue; }
+                if (msg.message == WM_APP_PING) { Interlocked.Increment(ref _pingAcks); continue; }
 
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
@@ -133,6 +135,9 @@ public sealed class KeyboardHook : IDisposable
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
+        long t0 = Stopwatch.GetTimestamp();
+        try
+        {
         if (nCode < 0) return CallNextHookEx(_hook, nCode, wParam, lParam);
         try
         {
@@ -182,8 +187,39 @@ public sealed class KeyboardHook : IDisposable
         {
             CoreLog.Error("键盘钩子回调异常", ex);
         }
-        return CallNextHookEx(_hook, nCode, wParam, lParam);
+            return CallNextHookEx(_hook, nCode, wParam, lParam);
+        }
+        finally { ObserveCallbackCost(t0, lParam); }
     }
+
+    /// <summary>
+    /// 钩子回调耗时统计。
+    ///
+    /// 系统有一条硬限制：低级钩子回调超过 LowLevelHooksTimeout（默认 300ms）
+    /// 就会被**静默摘掉** —— 之后所有按键都收不到，而句柄还在，IsHookAlive 照样是 true。
+    /// 表现就是「录制宏时一个键都没有」「组合键突然全失灵」。
+    /// 所以这里把每次回调的耗时量出来：慢的当场记一条，最快能定位是谁卡住了钩子线程。
+    /// </summary>
+    private void ObserveCallbackCost(long t0, IntPtr lParam)
+    {
+        double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+        if (ms > MaxCallbackCostMs) MaxCallbackCostMs = ms;
+        if (ms < 30) return;
+
+        // 限流：卡住时往往连续很多次，别把日志刷爆
+        long now = Environment.TickCount64;
+        if (now - _lastSlowLogAt < 5000) return;
+        _lastSlowLogAt = now;
+
+        int vk = 0;
+        try { vk = (int)Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam).vkCode; } catch { }
+        CoreLog.Warn($"钩子回调耗时 {ms:F0}ms（vk=0x{vk:X2}）—— 超过 300ms 系统会直接摘钩，之后不再收到任何按键");
+    }
+
+    /// <summary>钩子回调的最长耗时（毫秒），诊断用。</summary>
+    public double MaxCallbackCostMs { get; private set; }
+
+    private long _lastSlowLogAt;
 
     private IntPtr MouseCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
@@ -295,6 +331,31 @@ public sealed class KeyboardHook : IDisposable
     }
 
     /// <summary>卸载钩子（可再次 Start 重装，用于自愈）。</summary>
+    private long _pingAcks;
+
+    /// <summary>
+    /// 钩子线程还活着吗（发一条消息过去，看它有没有处理）。
+    ///
+    /// 为什么需要：低级钩子**被系统摘掉**之后，句柄还在、`IsRunning` 仍是 true，
+    /// 但从此刻起一个按键都收不到 —— 表现就是「宏录制没反应」「组合键突然全失灵」，
+    /// 而所有状态显示都正常。线程卡死（回调里死等）也是同样的症状。
+    /// 探活能把这三种情况分开：正常 / 线程卡死 / 线程已退出。
+    /// </summary>
+    public bool Ping(int timeoutMs = 400)
+    {
+        if (!_running || _hook == IntPtr.Zero || _threadId == 0) return false;
+        long before = Interlocked.Read(ref _pingAcks);
+        if (!PostThreadMessage(_threadId, WM_APP_PING, IntPtr.Zero, IntPtr.Zero)) return false;
+
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (Interlocked.Read(ref _pingAcks) != before) return true;
+            Thread.Sleep(5);
+        }
+        return false;
+    }
+
     public void Stop()
     {
         if (!_running) return;

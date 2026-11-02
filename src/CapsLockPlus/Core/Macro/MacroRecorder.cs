@@ -25,6 +25,18 @@ public sealed class MacroRecorder
     private readonly Stopwatch _clock = new();
     private bool _recording;
 
+    /// <summary>钩子侧最近若干事件（去重用），只保留很短一截。</summary>
+    private readonly List<(int Vk, bool Down, long Tick)> _hookRecent = new();
+
+    /// <summary>两路来源重合时的判定窗口（毫秒）。</summary>
+    public const int DedupWindowMs = 80;
+
+    /// <summary>本次录制里来自键盘钩子的事件数。</summary>
+    public int HookEventCount { get; private set; }
+
+    /// <summary>本次录制里由 Raw Input 补录的事件数（钩子没看到的那部分）。</summary>
+    public int RawEventCount { get; private set; }
+
     /// <summary>两次按键之间小于这个毫秒数就不生成延迟步骤（抖动滤除）。</summary>
     public const int MinDelayMs = 15;
 
@@ -69,8 +81,11 @@ public sealed class MacroRecorder
         lock (_gate)
         {
             _events.Clear();
+            _hookRecent.Clear();
             _clock.Restart();
             _recording = true;
+            HookEventCount = 0;
+            RawEventCount = 0;
         }
     }
 
@@ -85,6 +100,10 @@ public sealed class MacroRecorder
             ms = _clock.ElapsedMilliseconds;
             _events.Add(new KeyLog(vk, down, ms));
             count = _events.Count;
+            HookEventCount++;
+
+            _hookRecent.Add((vk, down, Environment.TickCount64));
+            if (_hookRecent.Count > 24) _hookRecent.RemoveRange(0, _hookRecent.Count - 24);
         }
 
         if (count <= 3)
@@ -93,6 +112,57 @@ public sealed class MacroRecorder
         // 事件在锁外抛：订阅方可能要抢别的锁，锁里回调容易互相等死
         try { Recorded?.Invoke(vk, down, ms); }
         catch (Exception ex) { CoreLog.Warn("宏录制事件回调出错：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// Raw Input 补录：只有**钩子没看到**这个键时才计入。
+    ///
+    /// 为什么需要：远程桌面 / 向日葵这类工具的按键可能走驱动、注入等路径，
+    /// 低级键盘钩子收不到（日志里"宏录制开始"之后一片空白就是这么来的），
+    /// 但 Raw Input 仍然能收到。两路都会到的情况靠时间窗去重。
+    /// </summary>
+    /// <returns>真的记下来了吗</returns>
+    public bool RecordRaw(int vk, bool down)
+    {
+        long ms;
+        int count;
+        lock (_gate)
+        {
+            if (!_recording) return false;
+
+            long now = Environment.TickCount64;
+            if (IsDuplicate(_hookRecent, vk, down, now, DedupWindowMs)) return false;
+
+            ms = _clock.ElapsedMilliseconds;
+            _events.Add(new KeyLog(vk, down, ms));
+            count = _events.Count;
+            RawEventCount++;
+        }
+
+        if (count <= 3)
+            CoreLog.Info($"宏录制（Raw Input 补录）：vk=0x{vk:X2} down={down}");
+
+        try { Recorded?.Invoke(vk, down, ms); }
+        catch (Exception ex) { CoreLog.Warn("宏录制事件回调出错：" + ex.Message); }
+        return true;
+    }
+
+    /// <summary>
+    /// 钩子最近见过同一个键吗（同一个物理按键两路都会到，只能算一次）。
+    ///
+    /// 只比"键 + 方向"和很短的时间窗：同一个键连按两下（间隔通常 &gt; 100ms）
+    /// 不会被误判成重复；而两路之间通常只差几毫秒。
+    /// </summary>
+    internal static bool IsDuplicate(
+        IEnumerable<(int Vk, bool Down, long Tick)> recent, int vk, bool down, long now, int windowMs)
+    {
+        foreach (var e in recent)
+        {
+            if (e.Vk != vk || e.Down != down) continue;
+            long delta = now - e.Tick;
+            if (delta <= windowMs && delta >= -windowMs) return true;
+        }
+        return false;
     }
 
     /// <summary>

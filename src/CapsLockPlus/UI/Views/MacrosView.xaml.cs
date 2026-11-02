@@ -268,7 +268,8 @@ public partial class MacrosView : UserControl
             /* 这条对照日志是给"录不到按键"准备的定位信息：
              *   钩子增加 > 0、录制 0 个 → 事件没进录制器（挂载/实例问题）；
              *   钩子增加 == 0            → 钩子压根没收到键（被拦截 / 没起来）。 */
-            CoreLog.Info($"宏录制结束：录制到 {rec.EventCount} 个事件，" +
+            CoreLog.Info($"宏录制结束：录制到 {rec.EventCount} 个事件" +
+                         $"（钩子 {rec.HookEventCount} / Raw Input 补录 {rec.RawEventCount}），" +
                          $"钩子期间累计增加 {_host.Engine.KeyEventCount - _hookCountAtStart} 个");
             _host.Engine.MacroRecorder = null;          // 告诉引擎：录制结束
             _host.Settings.Macros.Add(macro);
@@ -298,7 +299,12 @@ public partial class MacrosView : UserControl
         rec.Start();
         _host.Engine.MacroRecorder = rec;
         _hookCountAtStart = _host.Engine.KeyEventCount;
+
+        /* 探活：钩子"被系统摘掉"和"线程卡死"时，句柄与 IsHookAlive 都还是正常的，
+         * 但从这一刻起一个键都收不到 —— 这是"点了开始录制完全没反应"最常见的原因。 */
+        bool hookResponds = _host.Engine.PingHook();
         CoreLog.Info($"宏录制开始：钩子={(hookAlive ? "正常" : "失效")}，" +
+                     $"钩子响应={(hookResponds ? "正常" : "无响应")}，" +
                      $"引擎={(_host.Engine.Enabled ? "启用" : "已暂停")}，" +
                      $"已挂到引擎={(ReferenceEquals(_host.Engine.MacroRecorder, rec) ? "是" : "否")}，" +
                      $"钩子累计收到={_hookCountAtStart}");
@@ -1210,7 +1216,7 @@ public partial class MacrosView : UserControl
     {
         if (elapsedMs < 3000) return "";
         return hookAlive
-            ? Loc.T("还没收到按键 —— 直接敲键盘就会出现在这里。")
+            ? Loc.T("还没收到按键 —— 直接敲键盘就会出现在这里。用远程桌面（向日葵 / ToDesk）时，按键走的是 Raw Input 那一路。")
             : Loc.T("还没收到按键，而且键盘钩子没在工作：这次录制收不到任何键，请运行 --diag 查原因。");
     }
 

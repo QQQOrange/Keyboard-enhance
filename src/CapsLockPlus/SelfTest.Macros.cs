@@ -195,6 +195,34 @@ public static partial class SelfTest
             Check("实时列表能构建", false, ex.Message);
         }
 
+        /* ---- 第二路来源（Raw Input）与去重 ----
+         *
+         * 远程桌面 / 向日葵 / ToDesk 的按键是**注入**进来的：低级钩子经常收不到，
+         * 而 Raw Input 能收到。这条路必须单独测，否则用户只能看到"0 个事件"。 */
+        var recent = new List<(int Vk, bool Down, long Tick)>
+        {
+            (0x41, true, 1000), (0x41, false, 1080),
+        };
+        Check("去重：同一键同方向、几毫秒内 → 视为同一物理按键",
+            Core.Macro.MacroRecorder.IsDuplicate(recent, 0x41, true, 1010, 80));
+        Check("去重：不同按键不算重复",
+            !Core.Macro.MacroRecorder.IsDuplicate(recent, 0x42, true, 1010, 80));
+        Check("去重：方向不同不算重复",
+            !Core.Macro.MacroRecorder.IsDuplicate(recent, 0x41, false, 1010, 80) == false);
+        Check("去重：超出时间窗的连按不算重复",
+            !Core.Macro.MacroRecorder.IsDuplicate(recent, 0x41, true, 1400, 80));
+
+        var rrec = new Core.Macro.MacroRecorder();
+        rrec.Start();
+        rrec.Record(0x41, true);                       // 钩子先到
+        bool dup = rrec.RecordRaw(0x41, true);         // Raw Input 随后到 —— 同一个键
+        CheckEqual("去重：两路都到只记一次", rrec.EventCount, 1);
+        Check("去重：重复的那次返回 false", !dup);
+        rrec.RecordRaw(0x42, true);                    // 钩子没收到，Raw Input 补上
+        CheckEqual("补录：钩子漏掉的键记下来", rrec.EventCount, 2);
+        CheckEqual("补录：来源计数分别累计", $"{rrec.HookEventCount}/{rrec.RawEventCount}", "1/1");
+        rrec.Abort();
+
         /* ---- "录不到按键"必须说出来 ----
          *
          * 录制态界面看起来一切正常，只是事件数停在 0 —— 用户会以为"点了没反应"。

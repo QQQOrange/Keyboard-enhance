@@ -178,6 +178,7 @@ public partial class HelpView : UserControl
             Loc.T("录制中的按键不会被拦截，录完在列表里可以调整每一步的延迟。"),
             Loc.T("绑定时分类选「宏」，再从功能下拉里选具体那个宏。"),
             Loc.T("录不到按键时：标题下会说明是「钩子没工作」还是「还没敲键盘」。前者到「测试」页看钩子状态，或运行 KeyboardEnhance.exe --diag。"),
+            Loc.T("远程桌面（向日葵 / ToDesk / RDP）也能录：这类按键是注入的，钩子常常收不到，录制会同时读 Raw Input 那一路，日志里写成「Raw Input 补录」。"),
             Loc.F("当前配置：{0} 个宏。", s.Macros.Count),
         });
 

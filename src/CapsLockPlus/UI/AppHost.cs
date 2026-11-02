@@ -127,7 +127,21 @@ public sealed class AppHost : IDisposable
          * 注册失败不影响任何其它功能（DeviceResolver 保持为空 = 不区分设备）。 */
         _deviceTracker = new KeyboardDeviceTracker();
         if (_deviceTracker.Start())
+        {
             Engine.DeviceResolver = (vk, down) => _deviceTracker?.ResolveDevice(vk, down);
+
+            /* 宏录制的第二路来源：远程桌面 / 向日葵这类工具的按键可能进不了低级钩子，
+             * 但 Raw Input 看得到。去重在录制器里做（同一个物理按键两路都会到）。 */
+            _deviceTracker.KeyObserved += (vk, down, physical) =>
+            {
+                /* 自愈看护只统计**真实硬件**按键：远程桌面 / 注入工具的按键解析不出设备路径，
+                 * 拿它们判断"钩子被摘"会误报（远程会话里每一个键都是注入的）。 */
+                if (physical) Interlocked.Increment(ref _rawKeyCount);
+
+                if (Engine.MacroRecorder is { IsRecording: true } rec) rec.RecordRaw(vk, down);
+            };
+            StartHookTrafficWatch();
+        }
         else
             _deviceTracker.Dispose();
 
@@ -287,6 +301,89 @@ public sealed class AppHost : IDisposable
 
     private ForegroundWatcher? _foreground;
     private KeyboardDeviceTracker? _deviceTracker;
+
+    /// <summary>Raw Input 收到的按键总数（和钩子的事件数对比，用来发现"钩子被摘"）。</summary>
+    private long _rawKeyCount;
+
+    private System.Windows.Threading.DispatcherTimer? _hookWatch;
+    private long _lastHookCount, _lastRawCount;
+    /// <summary>钩子没收到、但 Raw Input 收到了的按键数（累计到一定量就判定摘钩）。</summary>
+    private long _rawSinceHook;
+
+    /// <summary>从什么时候开始"钩子一个都没收到"。</summary>
+    private long _hookSilentSince;
+
+    /// <summary>已经重装过几次（一场会话最多两次，避免无限重装刷日志）。</summary>
+    private int _hookHeals;
+
+    /// <summary>
+    /// 按流量比对，发现"钩子已经被系统摘掉"就重装。
+    ///
+    /// 低级钩子的老坑：回调一旦超时（默认 300ms），系统会**静默**把它摘掉 ——
+    /// 句柄还在、`IsHookAlive` 还是 true、钩子线程还活着（探活也正常），
+    /// 但从这一刻起一个按键都收不到。表现就是"宏录制没反应""组合键全失灵"，
+    /// 而界面上一切正常。
+    ///
+    /// Raw Input 不受影响，所以拿两边的增量对比就能判定：
+    /// 连续两轮（约 6 秒）Raw Input 收到了键、钩子却零，就重装钩子。
+    /// </summary>
+    private void StartHookTrafficWatch()
+    {
+        _hookWatch = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3),
+        };
+        _hookWatch.Tick += (_, _) => CheckHookTraffic();
+        _hookWatch.Start();
+    }
+
+    private void CheckHookTraffic()
+    {
+        long raw = Interlocked.Read(ref _rawKeyCount);
+        long hook = Engine.KeyEventCount;
+        long rawDelta = raw - _lastRawCount;
+        long hookDelta = hook - _lastHookCount;
+        _lastRawCount = raw;
+        _lastHookCount = hook;
+
+        if (hookDelta > 0)
+        {
+            /* 钩子在工作，全部清零。 */
+            _rawSinceHook = 0;
+            _hookSilentSince = 0;
+            return;
+        }
+
+        /* 钩子一个都没收到：把 Raw Input 期间收到的键累加起来。
+         *
+         * 不能"本轮没有按键就清零" —— 摘钩之后人往往是断续打字的，
+         * 每轮之间空一拍就永远凑不够阈值。 */
+        _rawSinceHook += rawDelta;
+        if (_rawSinceHook == 0) return;
+
+        long now = Environment.TickCount64;
+        if (_hookSilentSince == 0) _hookSilentSince = now;
+        if (_rawSinceHook < 12) return;
+        if (now - _hookSilentSince < 8000) return;
+
+        /* 只在"真实硬件按键被漏"时重装，而且一场会话最多两次：
+         * 远程桌面 / 注入工具的按键根本进不了钩子，但它们不算进这里（不是物理设备）。 */
+        if (_hookHeals >= 2)
+        {
+            _rawSinceHook = 0;
+            _hookSilentSince = 0;
+            return;
+        }
+        _hookHeals++;
+
+        CoreLog.Warn($"键盘钩子漏掉了 {_rawSinceHook} 个**物理**按键（Raw Input 收到了）—— " +
+                     $"判定钩子被系统摘掉，正在重装（第 {_hookHeals} 次）");
+        _rawSinceHook = 0;
+        _hookSilentSince = 0;
+        Engine.RestartHook();
+        _lastHookCount = Engine.KeyEventCount;
+        _lastRawCount = Interlocked.Read(ref _rawKeyCount);
+    }
 
     /// <summary>设备追踪是否可用（Raw Input 注册成功）。界面据此提示"按设备改键不可用"。</summary>
     public bool DeviceTrackingAvailable => _deviceTracker?.IsRunning == true;
