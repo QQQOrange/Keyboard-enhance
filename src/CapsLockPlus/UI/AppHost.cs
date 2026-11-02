@@ -256,7 +256,13 @@ public sealed class AppHost : IDisposable
     }
 
     public void Start()
-    {        Engine.Start();
+    {
+        /* 先起"钩子宿主"：它是个最小进程（不建界面、不做同步），装钩子的可靠性
+         * 远高于本进程 —— 完整进程的 GC 停顿会把钩子回调拖过系统的 300ms 限制，
+         * 导致钩子被静默摘掉（实测根因）。拿不到 READY 就退回自己装钩子。 */
+        bool hookHostReady = StartHookHost();
+
+        Engine.Start(installHook: !hookHostReady);
         if (Settings.Global.ShowTrayIcon) CreateTray();
         _clipboard.Start();
         _watchdog.Start();
@@ -330,6 +336,12 @@ public sealed class AppHost : IDisposable
 
     /// <summary>本次运行是否已经尝试过"重启自己救钩子"。</summary>
     private bool _selfRestartTried;
+
+    /// <summary>钩子宿主进程（最小进程，只装钩子跑热键）。</summary>
+    private System.Diagnostics.Process? _hookHost;
+
+    /// <summary>宿主是否已就绪（就绪后本进程不再装钩子）。</summary>
+    private bool _hookHostReady;
 
     /// <summary>钩子自检的计时器（首轮失败时要临时提前复查）。</summary>
     private System.Windows.Threading.DispatcherTimer? _probeTimer;
@@ -469,8 +481,111 @@ public sealed class AppHost : IDisposable
         catch (Exception ex) { CoreLog.Warn("自动重启失败：" + ex.Message); }
     }
 
+    /// <summary>
+    /// 启动钩子宿主进程并等它 READY（最多 2.5 秒）。
+    /// 详见 <see cref="Core.HookHost"/>：宿主是最小进程，不受本进程 GC 停顿影响。
+    /// </summary>
+    private bool StartHookHost()
+    {
+        string pipeName = $"clp-hook-{Environment.ProcessId}";
+        try
+        {
+            string? exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return false;
+
+            var psi = new System.Diagnostics.ProcessStartInfo(exe)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = AppContext.BaseDirectory,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("--hookhost");
+            psi.ArgumentList.Add(pipeName);
+            psi.ArgumentList.Add(Environment.ProcessId.ToString());
+
+            _hookHost = System.Diagnostics.Process.Start(psi);
+            if (_hookHost == null) return false;
+
+            var ready = new ManualResetEventSlim(false);
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    using var server = new System.IO.Pipes.NamedPipeServerStream(
+                        pipeName, System.IO.Pipes.PipeDirection.In, 1,
+                        System.IO.Pipes.PipeTransmissionMode.Byte,
+                        System.IO.Pipes.PipeOptions.None);
+                    server.WaitForConnection();
+                    using var reader = new System.IO.StreamReader(server, System.Text.Encoding.UTF8);
+                    string? line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line == "READY") { ready.Set(); continue; }
+                        if (line == "BYE") break;
+                        if (line == "HOOKFAIL")
+                        {
+                            CoreLog.Warn("钩子宿主报告：钩子没有生效");
+                            if (Core.ElevationHelper.IsElevated && !_selfRestartTried)
+                            {
+                                _selfRestartTried = true;
+                                _dispatcher.BeginInvoke(() => RestartSelfForHookRecovery());
+                            }
+                            continue;
+                        }
+                        if (!line.StartsWith("ACT\t", StringComparison.Ordinal)) continue;
+
+                        var parts = line.Split('\t');
+                        if (parts.Length < 2) continue;
+                        string action = parts[1];
+                        string arg = parts.Length > 2 ? parts[2] : "";
+                        _dispatcher.BeginInvoke(() =>
+                        {
+                            try { InvokeAction(action, arg); }
+                            catch (Exception ex) { CoreLog.Swallow(ex, "宿主动作"); }
+                        });
+                    }
+                }
+                catch (Exception ex) { CoreLog.Warn("钩子宿主管道异常：" + ex.Message); }
+
+                if (_hookHostReady)
+                {
+                    _hookHostReady = false;
+                    Engine.HookDelegatedToHost = false;
+                    CoreLog.Warn("钩子宿主已退出，改由本进程自己装钩子");
+                    _dispatcher.BeginInvoke(() =>
+                    {
+                        try { Engine.RestartHook(); } catch (Exception ex) { CoreLog.Swallow(ex, "接管钩子"); }
+                    });
+                }
+            });
+
+            if (ready.Wait(2500))
+            {
+                _hookHostReady = true;
+                Engine.HookDelegatedToHost = true;
+                CoreLog.Info($"钩子宿主已就绪（PID={_hookHost.Id}）：钩子由它负责");
+                return true;
+            }
+
+            CoreLog.Warn("钩子宿主 2.5 秒内没有就绪，改由本进程自己装钩子");
+            try { _hookHost.Kill(); } catch { }
+            _hookHost = null;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("启动钩子宿主失败，改由本进程自己装钩子：" + ex.Message);
+            try { _hookHost?.Kill(); } catch { }
+            _hookHost = null;
+            return false;
+        }
+    }
+
     private void ProbeHookOnce(string why, bool verbose = false)
     {
+        /* 宿主模式下本进程没有钩子，探针无意义。 */
+        if (_hookHostReady) return;
+
         try
         {
             /* 单次失败不算数：启动期注入可能只是慢了一拍。
@@ -519,6 +634,17 @@ public sealed class AppHost : IDisposable
             {
                 CoreLog.Info($"钩子自检第一轮没过（{why}）：可能是启动期注入还没落地，5 秒后复查");
                 if (_probeTimer != null) _probeTimer.Interval = TimeSpan.FromSeconds(5);
+                return;
+            }
+
+            /* 管理员权限下连钩子都收不到键，而同一台机器上**普通权限**的 --hooktest 是 6/6 正常
+             * （用户实测）—— 这种情况不该再折腾重装，直接换成普通权限重启一次。
+             * 这是唯一"零操作"的自救路径：用户不用去设置里关管理员模式。 */
+            if (Core.ElevationHelper.IsElevated && !_selfRestartTried)
+            {
+                _selfRestartTried = true;
+                CoreLog.Warn("管理员权限下钩子收不到按键（普通权限下同一台机器是正常的），改用普通权限重启");
+                RestartSelfForHookRecovery();
                 return;
             }
 

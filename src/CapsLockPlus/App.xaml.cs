@@ -88,6 +88,25 @@ public partial class App : Application
             return;
         }
 
+        /* `--hookhost <管道名>`：最小钩子宿主进程（见 HookHost 的注释）。
+         * 必须在任何 WPF 初始化之前处理：这个进程不建界面、不做同步，只装钩子。 */
+        if (Core.CliFlags.Has(e.Args, "--hookhost"))
+        {
+            var rest = e.Args.SkipWhile(a => !a.Equals("--hookhost", StringComparison.OrdinalIgnoreCase))
+                            .Skip(1).ToArray();
+            var pipeArg = rest.Length > 0 ? rest[0] : "";
+            int parentPid = rest.Length > 1 && int.TryParse(rest[1], out int pid) ? pid : 0;
+            if (string.IsNullOrWhiteSpace(pipeArg))
+            {
+                CoreLog.Error("--hookhost 缺少管道名参数");
+                Environment.Exit(2);
+                return;
+            }
+            try { Environment.Exit(Core.HookHost.Run(pipeArg, parentPid)); }
+            catch (Exception ex) { CoreLog.Error("钩子宿主异常退出", ex); Environment.Exit(3); }
+            return;
+        }
+
         /* `--hooktest`：只装钩子、自己敲两下数回调。
          * 排查"钩子句柄在、却一个事件都收不到"时用它 —— 这条路径不包含任何界面。 */
         if (Core.CliFlags.Has(e.Args, "--hooktest"))

@@ -391,10 +391,23 @@ public sealed class HotkeyEngine : IDisposable
         _hook.SwallowOnError = ShouldSwallowOnError;
     }
 
-    public void Start()
+    /// <param name="installHook">
+    /// 是否由本进程安装键盘钩子。为 false 时只起计时器 —— 钩子由
+    /// <see cref="HookHost"/> 那个最小进程负责（见它的注释：完整进程里
+    /// GC 停顿会把钩子回调拖过 300ms，系统直接摘钩）。
+    /// </param>
+    public void Start(bool installHook = true)
     {
-        _hook.Start();
+        if (installHook) _hook.Start();
         StartHoldTimer();
+
+        if (!installHook)
+        {
+            CoreLog.Info("键盘钩子由独立宿主进程负责（本进程不再装钩子）");
+            MarkHookAlive();
+            return;
+        }
+
 
         /* 日志必须**如实**：以前这里无条件写"键盘钩子已启动"，
          * 而 Start() 里 SetWindowsHookEx 失败时只会多一条 ERROR，
@@ -813,7 +826,7 @@ public sealed class HotkeyEngine : IDisposable
 
     private System.Windows.Threading.DispatcherTimer? _holdTimer;
 
-    public bool IsHookAlive => _hook.IsRunning;
+    public bool IsHookAlive => HookDelegatedToHost || _hook.IsRunning;
 
     /* ================= Raw Input 兜底 =================
      *
@@ -959,6 +972,17 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>钩子句柄是否非零（诊断用）。</summary>
     public bool HookInstalled => _hook.HookInstalled;
+
+    /// <summary>本进程当前有没有在装钩子（宿主模式下为 false）。</summary>
+    public bool HookOwned => _hook.IsRunning;
+
+    /// <summary>
+    /// 钩子是否由独立宿主进程负责。
+    ///
+    /// 为 true 时：<see cref="IsHookAlive"/> 一律报"正常"，
+    /// 各处的看门狗/自愈逻辑都不会再去装第二个钩子（两个钩子会互相打架）。
+    /// </summary>
+    public bool HookDelegatedToHost { get; set; }
 
     /// <summary>钩子线程状态（诊断用）。</summary>
     public string HookThreadState => _hook.ThreadState;
