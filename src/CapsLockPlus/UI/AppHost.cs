@@ -531,6 +531,34 @@ public sealed class AppHost : IDisposable
                     {
                         if (line == "READY") { ready.Set(); continue; }
                         if (line == "BYE") break;
+                        if (Environment.GetEnvironmentVariable("CLP_MIRROR_LOG") == "1")
+                            CoreLog.Info($"[镜像] {line}");
+
+                        if (line.StartsWith("KEY\t", StringComparison.Ordinal))
+                        {
+                            var p3 = line.Split('\t');
+                            if (p3.Length >= 3 && int.TryParse(p3[1], out int k) && p3[2] == "1")
+                                _dispatcher.BeginInvoke(() => Engine.ApplyRemoteKey(k, true));
+                            else if (p3.Length >= 3 && int.TryParse(p3[1], out int k2))
+                                _dispatcher.BeginInvoke(() => Engine.ApplyRemoteKey(k2, false));
+                            continue;
+                        }
+                        if (line.StartsWith("TRIG\t", StringComparison.Ordinal))
+                        {
+                            var p4 = line.Split('\t');
+                            bool held = p4.Length > 1 && p4[1] == "1";
+                            int layer = p4.Length > 2 && int.TryParse(p4[2], out int l0) ? l0 : -1;
+                            string key = p4.Length > 3 ? p4[3] : "";
+                            _dispatcher.BeginInvoke(() => Engine.ApplyRemoteTrigger(held, key, layer));
+                            continue;
+                        }
+                        if (line.StartsWith("LAYER\t", StringComparison.Ordinal))
+                        {
+                            if (int.TryParse(line[6..], out int l1))
+                                _dispatcher.BeginInvoke(() => Engine.ApplyRemoteLayer(l1));
+                            continue;
+                        }
+
                         if (line == "HOOKFAIL")
                         {
                             CoreLog.Warn("钩子宿主报告：钩子没有生效");

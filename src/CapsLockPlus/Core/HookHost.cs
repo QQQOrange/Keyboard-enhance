@@ -60,20 +60,43 @@ internal static class HookHost
         var queue = new ActionQueue("HookHost.Actions");
         HotkeyEngine? engine = null;
 
+        /* 写管道要加锁：引擎回调线程（ACT/KEY/TRIG）和主循环线程（LAYER）会并发写，
+         * StreamWriter 不是线程安全的，不加锁会互相踩（表现为"界面偶尔收不到按键"）。 */
+        var pipeGate = new object();
+
         void Forward(string action, string arg)
         {
-            try { writer?.WriteLine($"ACT\t{action}\t{arg}"); }
+            try { lock (pipeGate) writer?.WriteLine($"ACT\t{action}\t{arg}"); }
             catch { /* 主程序没了也不影响吞键 */ }
         }
 
         engine = new HotkeyEngine(queue, () => settings, (action, arg) => { Forward(action, arg); return true; });
 
+        /* 把按键 / 触发键状态回传给主程序：「测试」页靠它显示实时流水与当前层。
+         * 这里只做显示，吞键决策全在宿主这边。 */
+        engine.KeySeen += (vk, down, _) =>
+        {
+            try { lock (pipeGate) writer?.WriteLine($"KEY\t{vk}\t{(down ? 1 : 0)}"); } catch { }
+        };
+        engine.TriggerHeldChanged += held =>
+        {
+            try { lock (pipeGate) writer?.WriteLine($"TRIG\t{(held ? 1 : 0)}\t{engine.ActiveLayer}\t{engine.ActiveTriggerKey ?? ""}"); } catch { }
+        };
+
         /* 配置改动靠**文件修改时间**发现：主程序每次保存都会重写 settings.json，
          * 这里每秒看一眼有没有变，变了就重读。比再开一条控制管道简单也更稳。 */
         DateTime settingsStamp = SafeStamp();
         long lastReloadLog = 0;
+        int lastLayer = -1;
 
         engine.Start();
+
+        /* 宿主没有 WPF 消息循环，引擎里的 DispatcherTimer 不会跑 ——
+         * 必须自己驱动长按判定，否则「按住触发键不放」永远进不了层。 */
+        using var holdTimer = new Timer(_ =>
+        {
+            try { engine.TickHold(); } catch { }
+        }, null, 20, 20);
         try { writer.WriteLine("READY"); } catch { }
 
         /* 钩子没装上要立刻告诉主程序：主程序据此决定是否改用普通权限重启
@@ -88,7 +111,7 @@ internal static class HookHost
         // 2) 主循环：配置文件变了就重读
         while (true)
         {
-            Thread.Sleep(1000);
+            Thread.Sleep(100);
 
             var stamp = SafeStamp();
             if (stamp != settingsStamp && stamp != default)
@@ -105,6 +128,14 @@ internal static class HookHost
                     }
                 }
                 catch { /* 配置读不了就继续用旧的 */ }
+            }
+
+            // 层变化：每秒比对一次，变了就回传（界面靠它显示"当前层"）
+            int layerNow = engine.ActiveLayer;
+            if (layerNow != lastLayer)
+            {
+                lastLayer = layerNow;
+                try { lock (pipeGate) writer?.WriteLine($"LAYER\t{layerNow}"); } catch { }
             }
 
             /* 主程序没了就自尽，避免留孤儿进程占着钩子。

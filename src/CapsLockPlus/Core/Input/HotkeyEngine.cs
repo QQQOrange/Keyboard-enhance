@@ -320,10 +320,43 @@ public sealed class HotkeyEngine : IDisposable
     }
 
     /// <summary>是否正处于某个触发键的按住状态。</summary>
-    public bool IsTriggerHeld => _triggerHeld;
+    public bool IsTriggerHeld => _triggerHeld || _remoteTriggerHeld;
+
+    /* ---- 宿主模式的显示镜像 ----
+     *
+     * 钩子在宿主进程里时，本进程看不到按键，界面（测试页）会一片空白。
+     * 宿主把这些状态回传过来，这里只做**显示**，绝不参与热键决策
+     * （否则等于两个进程都在处理按键）。 */
+    private volatile bool _remoteTriggerHeld;
+    private int _remoteLayer = -1;
+    private string? _remoteTriggerKey;
+
+    /// <summary>宿主回传：某个键被按下了（只用于界面显示）。</summary>
+    internal void ApplyRemoteKey(int vk, bool down)
+    {
+        try { KeySeen?.Invoke(vk, down, ActiveLayer); } catch { }
+    }
+
+    /// <summary>宿主回传：触发键按住/松开（只用于界面显示）。</summary>
+    internal void ApplyRemoteTrigger(bool held, string? key, int layer)
+    {
+        _remoteTriggerHeld = held;
+        _remoteTriggerKey = key;
+        _remoteLayer = layer;
+        try { TriggerHeldChanged?.Invoke(held); } catch { }
+    }
+
+    /// <summary>宿主回传：当前层变了（只用于界面显示）。</summary>
+    internal void ApplyRemoteLayer(int layer)
+    {
+        if (_remoteLayer == layer) return;
+        _remoteLayer = layer;
+        /* 页面靠 TriggerHeldChanged 刷新整块状态（含"当前层"），这里借它通知一次。 */
+        try { TriggerHeldChanged?.Invoke(_remoteTriggerHeld); } catch { }
+    }
 
     /// <summary>当前激活的层（未激活时为 -1）。</summary>
-    public int ActiveLayer => _layerActive ? _activeLayer : -1;
+    public int ActiveLayer => _layerActive ? _activeLayer : _remoteLayer;
 
     /// <summary>
     /// 当前按住的非修饰键子层键（空 = 没有子层）。
@@ -350,7 +383,7 @@ public sealed class HotkeyEngine : IDisposable
     public event Action<string>? SubLayerChanged;
 
     /// <summary>当前激活的触发键名（未激活时为 null）。</summary>
-    public string? ActiveTriggerKey => _triggerHeld ? _activeTrigger?.Key : null;
+    public string? ActiveTriggerKey => _triggerHeld ? _activeTrigger?.Key : _remoteTriggerKey;
 
     /// <summary>需要通知界面的提示（动作名称）。</summary>
     public event Action<string>? ActionTriggered;
@@ -425,6 +458,15 @@ public sealed class HotkeyEngine : IDisposable
 
         MarkHookAlive();
     }
+
+    /// <summary>
+    /// 供宿主进程调用：驱动一次「长按阈值判定」。
+    ///
+    /// 主程序里这活由 DispatcherTimer 干，但宿主进程**没有 WPF 消息循环**，
+    /// 那个计时器根本不会滴答 —— 结果是「按住触发键不放、不按别的键」永远进不了层
+    /// （按别的键能进，因为那条路在钩子回调里）。所以宿主用普通计时器每秒调它 50 次。
+    /// </summary>
+    public void TickHold() => CheckHoldThreshold();
 
     /// <summary>
     /// 启动长按判定计时器。
