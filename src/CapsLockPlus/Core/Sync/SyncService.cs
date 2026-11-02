@@ -839,7 +839,8 @@ public sealed class SyncService
             long kb = payload.Length / 1024;
             CoreLog.Info($"WebDAV 上传完成：{stampName}（已加密，{kb}KB）");
 
-            // ③ 云端也按同一套策略清理，不然网盘会越堆越满
+            /* ③ 云端也按同一套策略清理，不然网盘会越堆越满。
+             * 清理自己已经兜了异常（内部 try/catch，失败只记日志），所以这里不用再包一层。 */
             int pruned = await PruneCloudAsync(client, ct).ConfigureAwait(false);
 
             return SyncResult.Done(Loc.F("已上传 {0}（已加密，{1}KB）", stampName, kb)

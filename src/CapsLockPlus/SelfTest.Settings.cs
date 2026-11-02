@@ -225,6 +225,27 @@ public static partial class SelfTest
         // ③ 换台机器（本机没令牌）整份恢复 → 令牌被带过来
         var fresh = DefaultSettings.Create();
         fresh.Sync.BackupPassword = pass;
+        /* ---- 导入时"文件里没有的键"不能把本机清空 ----
+         *
+         * Apply 以前按 allow 逐个赋值，而 merged 是从"数据里有的键"反序列化出来的，
+         * 缺失字段会变成默认值（Keys = 空列表）。于是"勾了某组、但文件里恰好没有这个键"
+         * （老版本导出 / 手改过的文件）会把本机对应的内容清成默认。 */
+        var target = DefaultSettings.Create();
+        target.Keys = new List<KeyBinding>
+        {
+            new() { Combo = "Caps+Q", Action = "qbar" },
+            new() { Combo = "Caps+W", Action = "winClose" },
+        };
+        int keysBefore = target.Keys.Count;
+
+        var partialData = System.Text.Json.Nodes.JsonNode.Parse(
+            "{\"Layers\":[{\"Id\":1,\"Name\":\"改过的层\"}]}")!.AsObject();
+        Core.Sync.ExportImport.Apply(target, new List<string> { "keys" }, partialData);
+        Check("文件里没有 Keys 时本机按键不被清空", target.Keys.Count == keysBefore,
+            target.Keys.Count.ToString());
+        Check("同一份数据里有的 Layers 正常生效",
+            target.Layers.Any(l => l.Name == "改过的层"));
+
         /* ---- 只勾「按键映射」就导入时，要能数出"指向缺失宏的按键" ----
          *
          * 分组是按项导出的：按键里存的是 macro:<id> 引用，宏定义在「宏」那组。

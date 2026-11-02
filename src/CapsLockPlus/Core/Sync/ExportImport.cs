@@ -421,6 +421,14 @@ public static class ExportImport
 
         foreach (string key in allow)
         {
+            /* 数据里没有这一项就**不要动本机的**。
+             *
+             * merged 是从 filtered 反序列化出来的：缺失的字段会变成默认值
+             * （Keys = 空列表、Qbar = 全套默认外观）。以前这里按 allow 逐个赋值，
+             * 于是"勾了某一组、但文件里恰好没有这个键"（老版本导出、手改过的、
+             * 别的工具生成的）会把本机对应的内容**清空成默认**。 */
+            if (!filtered.ContainsKey(key)) continue;
+
             switch (key)
             {
                 case nameof(AppSettings.Keys):
