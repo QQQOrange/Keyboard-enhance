@@ -53,6 +53,17 @@ public partial class App : Application
             return;
         }
 
+        /* `--help`：打印用法后退出。
+         *
+         * 放在单实例与启动密码之前 —— 那两道门都可能让"看帮助"这件事被拦住
+         * （主程序开着时会被单实例判掉、设了启动密码会要求先输密码）。 */
+        if (Core.CliFlags.Has(e.Args, "--help") || Core.CliFlags.Has(e.Args, "-h"))
+        {
+            Core.CliFlags.PrintUsage();
+            Environment.Exit(0);
+            return;
+        }
+
         DispatcherUnhandledException += OnUnhandled;
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             CoreLog.Error("未处理异常", args.ExceptionObject as Exception);

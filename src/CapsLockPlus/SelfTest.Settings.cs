@@ -96,6 +96,20 @@ public static partial class SelfTest
             UpdateService.IsLegacyWindows, Environment.OSVersion.Version.Major < 10);
         Check("进程架构只有 x86 / x64 两种",
             UpdateService.ProcessArch is "x86" or "x64", UpdateService.ProcessArch);
+
+        /* ---- 命令行用法说明不能漏开关 ----
+         * 诊断开关十来个（--pick-test / --osd-hold 这类连 README 都没写），
+         * 漏一个用户就不知道该跑哪个。这条断言把"用法表"和"开关清单"钉在一起。 */
+        var undocumented = Core.CliFlags.DiagnosticFlagsForTest
+            .Where(f => !Core.CliFlags.Usage.Contains(f, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Check("用法说明覆盖所有诊断开关", undocumented.Count == 0, string.Join(", ", undocumented));
+        var dryUndocumented = Core.CliFlags.DryRunFlagsForTest
+            .Where(f => !Core.CliFlags.Usage.Contains(f, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Check("用法说明覆盖所有干跑开关", dryUndocumented.Count == 0, string.Join(", ", dryUndocumented));
+        Check("用法说明里有 --help", Core.CliFlags.Usage.Contains("--help"));
+        Check("用法说明里有 --selftest", Core.CliFlags.Usage.Contains("--selftest"));
     }
 
     /// <summary>
