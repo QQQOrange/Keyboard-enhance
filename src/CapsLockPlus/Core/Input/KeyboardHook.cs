@@ -91,12 +91,35 @@ public sealed class KeyboardHook : IDisposable
     public void Start()
     {
         if (_running) return;
+
+        /* 上一轮线程还没退干净时绝不装第二条 —— 那会退化成"旧线程卸掉新钩子"。 */
+        if (_thread is { IsAlive: true } stale)
+        {
+            if (!stale.Join(3000))
+            {
+                CoreLog.Error("上一条钩子线程仍未退出，取消本次安装（避免两条线程互相卸钩子）");
+                return;
+            }
+        }
+
         _running = true;
         _thread = new Thread(() =>
         {
             _threadId = GetCurrentThreadId();
-            _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
-            _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc!, GetModuleHandle(null), 0);
+
+            /* 句柄必须**先用局部变量接着**。
+             *
+             * 以前这里直接写 `_hook = SetWindowsHookEx(...)`，退出时也照 `_hook` 卸 ——
+             * 一旦出现"旧线程还没退、新线程已经装好"（Stop 的 Join 超时就会这样），
+             * 旧线程退出时卸掉的是**新线程的句柄**：新钩子从此不在链上，
+             * 句柄非零、线程还活着、状态全正常，但一个按键都收不到。
+             * 这正好是"钩子时好时坏、重装也救不回来"的成因。 */
+            var myHook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
+            _hook = myHook;
+            CoreLog.Info($"钩子线程 tid={_threadId} 安装结果=0x{myHook.ToInt64():X}");
+
+            var myMouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc!, GetModuleHandle(null), 0);
+            _mouseHook = myMouseHook;
             if (_hook == IntPtr.Zero)
             {
                 LastErrorTime = DateTime.Now;
@@ -119,8 +142,13 @@ public sealed class KeyboardHook : IDisposable
                 TranslateMessage(ref msg);
                 DispatchMessage(ref msg);
             }
-            if (_hook != IntPtr.Zero) { UnhookWindowsHookEx(_hook); _hook = IntPtr.Zero; }
-            if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
+            CoreLog.Error($"钩子线程退出（_running={_running}）：从此不再收到任何按键");
+
+            /* 只卸**自己装的**那两个句柄；如果字段已经被新线程换掉，不能动它。 */
+            if (myHook != IntPtr.Zero) UnhookWindowsHookEx(myHook);
+            if (myMouseHook != IntPtr.Zero) UnhookWindowsHookEx(myMouseHook);
+            if (_hook == myHook) _hook = IntPtr.Zero;
+            if (_mouseHook == myMouseHook) _mouseHook = IntPtr.Zero;
         })
         {
             IsBackground = true,
@@ -223,13 +251,13 @@ public sealed class KeyboardHook : IDisposable
     /// 杀掉一切外部依赖，自己发一个键再自己数。
     /// 收到就说明钩子在链上且能收注入事件，收不到就是真坏了 —— 直接重装。
     /// </summary>
-    /// <returns>探针是否被钩子看到</returns>
-    public bool SelfProbe(int timeoutMs = 400)
+    /// <returns>true=钩子看到了；false=没看到；null=注入本身失败（结论未知，别当成"钩子坏了"）</returns>
+    public bool? SelfProbe(int timeoutMs = 400)
     {
         if (!IsRunning) return false;
 
         long before = Interlocked.Read(ref _keyEvents);
-        if (!InputSender.TapUntagged(0x87 /*F24*/)) return false;
+        if (!InputSender.TapUntagged(0x87 /*F24*/)) return null;
 
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < timeoutMs)
@@ -238,6 +266,17 @@ public sealed class KeyboardHook : IDisposable
             Thread.Sleep(10);
         }
         return false;
+    }
+
+    /// <summary>钩子线程状态描述（诊断用）。</summary>
+    public string ThreadState
+    {
+        get
+        {
+            var t = _thread;
+            if (t == null) return "(无线程)";
+            return t.IsAlive ? $"存活（{t.ThreadState}）" : $"已退出（{t.ThreadState}）";
+        }
     }
 
     /// <summary>钩子回调的最长耗时（毫秒），诊断用。</summary>
@@ -387,11 +426,29 @@ public sealed class KeyboardHook : IDisposable
         _watchdog?.Dispose();
         _watchdog = null;
         if (_threadId != 0) PostThreadMessage(_threadId, 0x0012 /*WM_QUIT*/, IntPtr.Zero, IntPtr.Zero);
-        _thread?.Join(1500);
+
+        /* Join 必须等到线程真的退出。
+         *
+         * 只等一次 1.5 秒是不够的：回调正在跑（比如刚被我们自己的自检注入打断）时
+         * 线程会晚一点退，这时如果直接 Start()，就会出现"两条钩子线程"，
+         * 旧线程退出时把新钩子卸掉 —— 见线程体里的注释。
+         * 这里最多等 3 秒，仍未退出就明确记一条，让日志能看出这次重装是"带病重装"。 */
+        var thread = _thread;
+        if (thread != null && thread.IsAlive)
+        {
+            if (!thread.Join(3000))
+                CoreLog.Warn("钩子线程 3 秒内没有退出（回调可能被卡住），本次重装可能不彻底");
+        }
         _thread = null;
         _threadId = 0;
-        if (_hook != IntPtr.Zero) { UnhookWindowsHookEx(_hook); _hook = IntPtr.Zero; }
-        if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
+
+        // 兜底：线程自己没来得及卸的句柄，这里补卸
+        var h = _hook;
+        var mh = _mouseHook;
+        _hook = IntPtr.Zero;
+        _mouseHook = IntPtr.Zero;
+        if (h != IntPtr.Zero) UnhookWindowsHookEx(h);
+        if (mh != IntPtr.Zero) UnhookWindowsHookEx(mh);
     }
 
     /// <summary>重装钩子。</summary>

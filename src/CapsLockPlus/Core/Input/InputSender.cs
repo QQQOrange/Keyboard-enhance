@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using CapsLockPlus.Core.Interop;
 using static CapsLockPlus.Core.Interop.NativeMethods;
 
@@ -27,6 +28,15 @@ public static class InputSender
     /// 关掉出口就不可能漏，将来新增的测试也不会重犯。
     /// </summary>
     public static bool DryRun { get; set; }
+
+    /// <summary>
+    /// 最近一次注入失败的错误码（0 = 没失败过）。
+    ///
+    /// SendInput 在**前台窗口属于更高完整性级别**时会被 UIPI 拒绝（错误 5），
+    /// 这跟"键盘钩子坏了"完全不是一回事。以前注入失败被静默吞掉，
+    /// 于是自检判成"钩子收不到按键" → 重装 → 兜底接管，一路把正常状态搞坏。
+    /// </summary>
+    public static int LastInjectError { get; private set; }
 
     /// <summary>
     /// 最近一次真正注入按键的时间。
@@ -155,13 +165,27 @@ public static class InputSender
     public static bool TapUntagged(int vk)
     {
         if (DryRun) return false;
+        if (DryRun) return false;
+
         var down = KeyInput(vk, up: false);
         down.U.ki.dwExtraInfo = IntPtr.Zero;     // 关键：不带标记
-        Send(down);
+        if (SendInput(1, new[] { down }, InputSize) == 0)
+        {
+            LastInjectError = Marshal.GetLastWin32Error();
+            return false;
+        }
+
         System.Threading.Thread.Sleep(12);
+
         var upInput = KeyInput(vk, up: true);
         upInput.U.ki.dwExtraInfo = IntPtr.Zero;
-        Send(upInput);
+        if (SendInput(1, new[] { upInput }, InputSize) == 0)
+        {
+            LastInjectError = Marshal.GetLastWin32Error();
+            return false;
+        }
+
+        LastInjectAt = DateTime.Now;
         return true;
     }
 

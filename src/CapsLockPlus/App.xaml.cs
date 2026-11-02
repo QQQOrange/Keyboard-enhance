@@ -57,6 +57,14 @@ public partial class App : Application
          *
          * 放在单实例与启动密码之前 —— 那两道门都可能让"看帮助"这件事被拦住
          * （主程序开着时会被单实例判掉、设了启动密码会要求先输密码）。 */
+        /* `--hooktest`：只装钩子、自己敲两下数回调。
+         * 排查"钩子句柄在、却一个事件都收不到"时用它 —— 这条路径不包含任何界面。 */
+        if (Core.CliFlags.Has(e.Args, "--hooktest"))
+        {
+            Environment.Exit(Core.HookSelfTest.Run());
+            return;
+        }
+
         if (Core.CliFlags.Has(e.Args, "--help") || Core.CliFlags.Has(e.Args, "-h"))
         {
             Core.CliFlags.PrintUsage();

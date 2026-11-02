@@ -197,18 +197,6 @@ public static partial class SelfTest
             return now;
         }
 
-        static bool HasImage()
-        {
-            /* 带重试：剪贴板被别的程序短暂占用时 ContainsImage 会抛，
-             * 直接 return false 会变成一条假失败（和本文件里其它剪贴板探针同一个道理）。 */
-            for (int i = 0; i < 6; i++)
-            {
-                try { return Clipboard.ContainsImage(); }
-                catch { System.Threading.Thread.Sleep(60); }
-            }
-            return false;
-        }
-
         /// <summary>能不能读到"有没有图片"；读不到返回 null（= 环境问题，不是结论）。</summary>
         static string? ClipboardHasImageOrNull()
         {
@@ -271,6 +259,7 @@ public static partial class SelfTest
                     /* 剪贴板是所有程序共享的：被别的程序长时间占住时，"读不到图片"可能只是
                  * 读不到（不是被顶掉）。这种情况按环境限制跳过，别报假失败。 */
                 string? looksEmpty = ClipboardHasImageOrNull();
+                if (looksEmpty != null && SafeFormats().Contains("被占用")) looksEmpty = null;
                 if (looksEmpty == null)
                 {
                     Check("（环境限制）剪贴板被占用，跳过图片还原验证", true);

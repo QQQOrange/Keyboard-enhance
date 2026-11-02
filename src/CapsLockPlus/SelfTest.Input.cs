@@ -1258,9 +1258,9 @@ public static partial class SelfTest
          * （远程桌面 / 注入输入）。兜底只在这时生效，钩子一恢复就交还。 */
         Check("兜底：钩子刚有事件时不接管",
             !HotkeyEngine.ShouldUseRawFallback(10, 9, 1000, 1500, out bool moved1) && moved1);
-        Check("兜底：钩子静默不足 5 秒不接管",
+        Check("兜底：钩子静默不足 10 秒不接管",
             !HotkeyEngine.ShouldUseRawFallback(10, 10, 1000, 1000 + 4999, out _));
-        Check("兜底：钩子静默超过 5 秒才接管",
+        Check("兜底：钩子静默超过 10 秒才接管",
             HotkeyEngine.ShouldUseRawFallback(10, 10, 1000, 1000 + HotkeyEngine.RawFallbackQuietMs, out _));
         Check("兜底：没记录过钩子活动时不动手",
             !HotkeyEngine.ShouldUseRawFallback(0, 0, 0, 999999, out _));
@@ -1271,18 +1271,33 @@ public static partial class SelfTest
             var fired = new List<string>();
             var q = new ActionQueue();
             var e = new HotkeyEngine(q, () => s, (a, arg) => { lock (fired) fired.Add(a); return true; });
-            /* 钩子在 t=1000 之后就没再给过事件；现在 t=7000，已经静默 6 秒。 */
+            /* 钩子在 t=1000 之后就没再给过事件；现在 t=12000，已经静默 11 秒。
+             * 新规则：还要**连续漏掉 3 个键**才接管，所以先喂 3 个"确认钩子真哑了"的键。 */
             e.SeedHookSeenAtForTest(1000);
-            bool fedCaps = e.FeedFromRaw(0x14, true, 0, 7000);      // Caps 按下
-            bool fed = e.FeedFromRaw(0x51, true, 0, 7100);          // Q 按下
-            e.FeedFromRaw(0x51, false, 0, 7200);
-            e.FeedFromRaw(0x14, false, 0, 7300);
+            for (int i = 0; i < 3; i++) e.FeedFromRaw(0x41 + i, true, 0, 11000 + i);
+            bool fedCaps = e.FeedFromRaw(0x14, true, 0, 12000);     // Caps 按下
+            bool fed = e.FeedFromRaw(0x51, true, 0, 12100);         // Q 按下
+            e.FeedFromRaw(0x51, false, 0, 12200);
+            e.FeedFromRaw(0x14, false, 0, 12300);
             Check("兜底：Caps 按下也被喂进去了", fedCaps);
             WaitUntil(() => { lock (fired) return fired.Contains("qbar"); });
             lock (fired) Check("兜底：Caps+Q 真的触发了 Qbar", fired.Contains("qbar"), string.Join(",", fired));
             Check("兜底：Q 的按下确实被喂进去了", fed);
             Check("兜底：计数在涨", e.RawFallbackCount > 0, e.RawFallbackCount.ToString());
             e.Dispose();
+        }
+
+        /* 只漏一两个键时不能接管（启动期/偶发漏键就接管会把热键切到"吞不掉"的模式） */
+        {
+            var s3 = DefaultSettings.Create();
+            var e3 = new HotkeyEngine(new ActionQueue(), () => s3, (a, arg) => true);
+            e3.SeedHookSeenAtForTest(1000);
+            bool one = e3.FeedFromRaw(0x41, true, 0, 20000);
+            bool two = e3.FeedFromRaw(0x42, true, 0, 20100);
+            Check("兜底：只漏 1~2 个键不接管", !one && !two);
+            bool three = e3.FeedFromRaw(0x43, true, 0, 20200);
+            Check("兜底：连漏 3 个才开始接管", three);
+            e3.Dispose();
         }
 
         /* ---- 片段「只在哪些程序里展开」：选程序按钮的合并逻辑 ---- */

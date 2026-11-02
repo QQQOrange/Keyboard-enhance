@@ -269,7 +269,7 @@ public sealed class AppHost : IDisposable
         {
             _selectionWatcher ??= new Core.Text.SelectionWatcher();
             Context.SelectionWatcher = _selectionWatcher;
-            _selectionWatcher.Start();
+            if (Environment.GetEnvironmentVariable("CLP_NO_SELECTION") != "1") _selectionWatcher.Start();
         }
         catch (Exception ex) { CoreLog.Warn("选区监听启动失败：" + ex.Message); }
 
@@ -324,6 +324,12 @@ public sealed class AppHost : IDisposable
     /// <summary>钩子自检连续失败次数。</summary>
     private int _probeFailures;
 
+    /// <summary>本次运行是否已经尝试过"重启自己救钩子"。</summary>
+    private bool _selfRestartTried;
+
+    /// <summary>钩子自检的计时器（首轮失败时要临时提前复查）。</summary>
+    private System.Windows.Threading.DispatcherTimer? _probeTimer;
+
     /// <summary>Raw Input 收到的按键总数（和钩子的事件数对比，用来发现"钩子被摘"）。</summary>
     private long _rawKeyCount;
 
@@ -372,28 +378,119 @@ public sealed class AppHost : IDisposable
     /// </summary>
     private void StartHookProbe()
     {
+        /* 排查用：CLP_PROBE_LOG=1 时每 2 秒探一次，并且**通过也记**。 */
+        bool verbose = Environment.GetEnvironmentVariable("CLP_PROBE_LOG") == "1";
+
         var timer = new System.Windows.Threading.DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(3),
+            /* 首次延迟 10 秒：启动那几秒窗口/页面在构建，注入按键不一定能立刻落地，
+             * 早探会把"还没准备好"误判成"钩子坏了"—— 以前就是这么误触发重装的。 */
+            Interval = TimeSpan.FromSeconds(verbose ? 2 : 10),
         };
+        _probeTimer = timer;
         int round = 0;
         timer.Tick += (_, _) =>
         {
             round++;
-            if (round == 1)
+            if (round == 1 && !verbose)
             {
                 timer.Interval = TimeSpan.FromSeconds(60);
             }
-            ProbeHookOnce(round == 1 ? "启动自检" : "定期自检");
+            ProbeHookOnce(round == 1 ? "启动自检" : "定期自检", verbose);
         };
         timer.Start();
     }
 
-    private void ProbeHookOnce(string why)
+    /// <summary>
+    /// 钩子在这个进程里救不回来时，重启自己。
+    ///
+    /// 背景（实测）：同一个时刻，跑了几分钟的主进程里新装的钩子一个事件都收不到，
+    /// 而新起一个进程装的钩子立刻就能收到 —— 这是进程级的故障，进程内怎么重装都没用。
+    /// 用户看到的现象是"长按 Tab 一直跳焦点"（兜底能触发但吞不掉按键）。
+    ///
+    /// 约束：
+    ///   · 只在普通运行时做（诊断/自检模式绝不重启）；
+    ///   · 每次运行最多一次，且 15 分钟内不重复（用数据目录里的时间戳文件防抖），
+    ///     否则一旦环境持续异常就会无限重启。
+    /// </summary>
+    private void RestartSelfForHookRecovery()
     {
         try
         {
-            if (Engine.ProbeHook())
+            if (Core.CliFlags.IsDiagnostic(Environment.GetCommandLineArgs().Skip(1)))
+            {
+                CoreLog.Warn("诊断模式下不自动重启（避免打断诊断）");
+                return;
+            }
+
+            string stamp = System.IO.Path.Combine(Core.AppPaths.DataDir, "hook-self-restart.txt");
+            try
+            {
+                if (System.IO.File.Exists(stamp) &&
+                    DateTime.Now - System.IO.File.GetLastWriteTime(stamp) < TimeSpan.FromMinutes(15))
+                {
+                    CoreLog.Warn("15 分钟内已经自动重启过一次，这次不再重启（避免循环）");
+                    return;
+                }
+                System.IO.File.WriteAllText(stamp, DateTime.Now.ToString("O"));
+            }
+            catch { /* 写不了时间戳就不做防抖，按"本次运行最多一次"限制 */ }
+
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return;
+
+            var args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
+            CoreLog.Warn($"键盘钩子已失效且无法在进程内恢复，自动重启程序以恢复（{exe} {args}）");
+
+            var psi = new System.Diagnostics.ProcessStartInfo(exe)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = AppContext.BaseDirectory,
+            };
+            foreach (var a in Environment.GetCommandLineArgs().Skip(1)) psi.ArgumentList.Add(a);
+            System.Diagnostics.Process.Start(psi);
+
+            _dispatcher.BeginInvoke(() => ExitApp());
+        }
+        catch (Exception ex) { CoreLog.Warn("自动重启失败：" + ex.Message); }
+    }
+
+    private void ProbeHookOnce(string why, bool verbose = false)
+    {
+        try
+        {
+            /* 单次失败不算数：启动期注入可能只是慢了一拍。
+             * 连续三次都收不到才认为钩子真的坏了 —— 误判一次就要重装一次，
+             * 而重装是有代价的（旧线程卸新钩子的竞态就是这么触发的）。 */
+            bool ok = false;
+            bool inconclusive = false;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                var r = Engine.ProbeHook(attempt == 1 ? 600 : 900);
+                if (r == true) { ok = true; break; }
+                if (r == null) { inconclusive = true; break; }
+                Thread.Sleep(150);
+            }
+
+            /* 注入本身失败（前台是提权窗口时 UIPI 会拒绝 SendInput）：
+             * 这跟钩子坏没坏无关，什么都不能下结论。 */
+            if (!ok && inconclusive)
+            {
+                CoreLog.Warn($"钩子自检无法进行（{why}）：注入按键被系统拒绝，错误码 {Core.Input.InputSender.LastInjectError}" +
+                             "（前台是管理员窗口时是正常的），本次不重装");
+                return;
+            }
+            if (ok)
+            {
+                _probeFailures = 0;
+                if (_probeTimer != null && !verbose && _probeTimer.Interval != TimeSpan.FromSeconds(60))
+                    _probeTimer.Interval = TimeSpan.FromSeconds(60);
+            }
+            if (ok && verbose)
+            {
+                CoreLog.Info($"钩子自检通过（{why}）, 累计事件={Engine.KeyEventCount}");
+            }
+            if (ok)
             {
                 /* 通过时不写日志（每 60 秒一条太吵），失败才记。 */
                 _probeFailures = 0;
@@ -401,8 +498,46 @@ public sealed class AppHost : IDisposable
             }
 
             _probeFailures++;
-            CoreLog.Warn($"钩子自检失败（{why}，连续第 {_probeFailures} 次）：钩子收不到自己注入的按键，正在重装");
+
+            /* 第一次失败只记一笔、不动手：启动期注入慢一拍很常见，
+             * 而重装本身是有风险的（旧线程卸新钩子的竞态）。 */
+            if (_probeFailures < 2)
+            {
+                CoreLog.Info($"钩子自检第一轮没过（{why}）：可能是启动期注入还没落地，5 秒后复查");
+                if (_probeTimer != null) _probeTimer.Interval = TimeSpan.FromSeconds(5);
+                return;
+            }
+
+            CoreLog.Warn($"钩子自检失败（{why}，连续第 {_probeFailures} 次）：收不到自己注入的按键" +
+                         $"（句柄非零={Engine.HookInstalled}，线程={Engine.HookThreadState}，" +
+                         $"探活={(Engine.PingHook(200) ? "有响应" : "无响应")}，" +
+                         $"最长回调={Engine.HookMaxCallbackMs:F0}ms），正在重装");
             Engine.RestartHook();
+
+            /* 重装后立刻复验一次：成功就当场恢复（用户不用等下一个 60 秒），
+             * 仍然失败就说明不是"偶发摘钩"，继续计数。 */
+            bool recovered = false;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                Thread.Sleep(200);
+                if (Engine.ProbeHook(900) == true) { recovered = true; break; }
+            }
+            if (recovered)
+            {
+                CoreLog.Info("重装后自检通过，钩子已恢复");
+                return;
+            }
+            CoreLog.Warn("重装后自检仍然失败（这次重装没救回来）");
+
+            /* 连续多次救不回来：这个进程里的钩子已经废了（实测同一时刻新进程的钩子完全正常）。
+             * 与其让用户面对"热键时灵时不灵、触发键还漏键"，不如自己重启一次 ——
+             * 新进程的钩子是好的，这是唯一被证据支持的恢复手段。 */
+            if (_probeFailures >= 4 && !_selfRestartTried)
+            {
+                _selfRestartTried = true;
+                RestartSelfForHookRecovery();
+                return;
+            }
 
             /* 连续三次都装不回来：这不是"偶发摘钩"，是环境不允许（安全软件拦截提权进程的钩子
              * 之类）。热键此时靠 Raw Input 还能触发，但**吞不掉**按键，必须让用户知道。 */

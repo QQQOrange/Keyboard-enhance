@@ -827,7 +827,7 @@ public sealed class HotkeyEngine : IDisposable
      */
 
     /// <summary>钩子静默多久后启用兜底（毫秒）。</summary>
-    public const int RawFallbackQuietMs = 5000;
+    public const int RawFallbackQuietMs = 10000;
 
     private long _lastHookSample;
     private long _hookSeenAtMs;
@@ -843,6 +843,9 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>现在是不是靠 Raw Input 在喂热键（诊断用）。</summary>
     public bool RawFallbackActive { get; private set; }
+
+    /// <summary>连续漏掉的按键数（钩子没看到、Raw Input 看到了）。</summary>
+    private int _missedStreak;
 
     /// <summary>兜底一共喂了多少个按键（诊断用）。</summary>
     public long RawFallbackCount => Interlocked.Read(ref _rawFedCount);
@@ -864,8 +867,19 @@ public sealed class HotkeyEngine : IDisposable
 
     internal bool FeedFromRaw(int vk, bool down, long hookCount, long nowMs)
     {
-        if (!ShouldUseRawFallback(hookCount, _lastHookSample, _hookSeenAtMs, nowMs, out bool hookJustMoved))
+        /* 先数「钩子漏掉了几个键」：偶尔漏一个键是正常的（钩子被摘的那一刻、
+         * 注入事件被上游钩子吃掉一次），连续漏掉 3 个才说明它真的不在链上了。
+         * 以前单个键就接管，启动期一次误判就会把热键切到「吞不掉」的模式。 */
+        if (hookCount == _lastHookSample) Interlocked.Increment(ref _missedStreak);
+        else _missedStreak = 0;
+
+        if (!ShouldUseRawFallback(hookCount, _lastHookSample, _hookSeenAtMs, nowMs, out bool hookJustMoved)
+            || _missedStreak < 3)
+        {
+            if (hookJustMoved) _missedStreak = 0;
+            _lastHookSample = hookCount;
             return false;
+        }
 
         _lastHookSample = hookCount;
         if (hookJustMoved)
@@ -918,7 +932,19 @@ public sealed class HotkeyEngine : IDisposable
     }
 
     /// <summary>重装钩子（自愈用）。</summary>
-    public void RestartHook() => _hook.Restart();
+    public void RestartHook()
+    {
+        _hook.Restart();
+
+        /* ⚠ 这里**不能**刷新「钩子活着」的时间锚。
+         *
+         * 重装成功只代表 SetWindowsHookEx 返回了句柄，不代表它真的会回调。
+         * 一旦刷新，兜底的"静默超过 10 秒"判据就要从此刻重新计满 10 秒，
+         * 而这段时间里热键是彻底不响应的 —— 等于把兜底自己废掉。
+         * 连漏计数也**不清**：清了以后紧跟着的每个键都要重新攒 3 次，
+         * 用户会看到"重装之后头两个键又丢了"。 */
+        RawFallbackActive = RawFallbackActive;
+    }
 
     /// <summary>
     /// 钩子线程还活着吗。
@@ -931,11 +957,17 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>钩子回调的最长耗时（毫秒），长期超过 100ms 就要查是谁卡住了。</summary>
     public double HookMaxCallbackMs => _hook.MaxCallbackCostMs;
 
+    /// <summary>钩子句柄是否非零（诊断用）。</summary>
+    public bool HookInstalled => _hook.HookInstalled;
+
+    /// <summary>钩子线程状态（诊断用）。</summary>
+    public string HookThreadState => _hook.ThreadState;
+
     /// <summary>
     /// 钩子自检：自己敲一个不带标记的 F24，看钩子收不收得到。
     /// false = 钩子已经不在链上了（或线程卡死），应当重装。
     /// </summary>
-    public bool ProbeHook(int timeoutMs = 400) => _hook.SelfProbe(timeoutMs);
+    public bool? ProbeHook(int timeoutMs = 400) => _hook.SelfProbe(timeoutMs);
 
     /// <summary>
     /// 全局鼠标按键事件透传（屏幕物理坐标 + 鼠标消息）。
