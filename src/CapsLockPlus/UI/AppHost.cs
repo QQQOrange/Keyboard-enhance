@@ -343,6 +343,7 @@ public sealed class AppHost : IDisposable
     /// <summary>宿主是否已就绪（就绪后本进程不再装钩子）。</summary>
     private bool _hookHostReady;
 
+
     /// <summary>钩子自检的计时器（首轮失败时要临时提前复查）。</summary>
     private System.Windows.Threading.DispatcherTimer? _probeTimer;
 
@@ -487,6 +488,14 @@ public sealed class AppHost : IDisposable
     /// </summary>
     private bool StartHookHost()
     {
+        /* 自检 / 渲染 / 诊断模式不拉宿主：这些模式跑完就退，
+         * 多一个常驻子进程只会在日志里制造噪音，也没有热键需求。 */
+        if (Core.CliFlags.IsDiagnostic(Environment.GetCommandLineArgs().Skip(1)))
+        {
+            CoreLog.Info("诊断模式：不启动钩子宿主");
+            return false;
+        }
+
         string pipeName = $"clp-hook-{Environment.ProcessId}";
         try
         {
@@ -897,6 +906,7 @@ public sealed class AppHost : IDisposable
         /* 防抖 400ms：参数框是逐字符触发，以前每敲一个字就序列化 + 加密 + 三次磁盘操作。
          * 现在界面线程只记一笔，真正落盘由后台写线程在静默后完成。 */
         SettingsStore.RequestSave(Settings);
+
 
         /* 防抖动：打字时每次按键都会调 SaveSettings（参数框的 TextChanged），
          * 直接同步通知会让所有页面跟着重绘，卡顿明显。

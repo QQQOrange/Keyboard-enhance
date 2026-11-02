@@ -68,25 +68,10 @@ internal static class HookHost
 
         engine = new HotkeyEngine(queue, () => settings, (action, arg) => { Forward(action, arg); return true; });
 
-        // 主程序要求重读配置
-        var reload = new AutoResetEvent(false);
-        _ = new Thread(() =>
-        {
-            try
-            {
-                using var srv = new NamedPipeServerStream(pipeName + "-ctl", PipeDirection.In);
-                while (true)
-                {
-                    srv.WaitForConnection();
-                    using var r = new StreamReader(srv, Encoding.UTF8);
-                    string? line;
-                    while ((line = r.ReadLine()) != null)
-                        if (line.Trim() == "RELOAD") reload.Set();
-                    srv.Disconnect();
-                }
-            }
-            catch { /* 控制通道可有可无 */ }
-        }) { IsBackground = true, Name = "HookHost.Ctl" };
+        /* 配置改动靠**文件修改时间**发现：主程序每次保存都会重写 settings.json，
+         * 这里每秒看一眼有没有变，变了就重读。比再开一条控制管道简单也更稳。 */
+        DateTime settingsStamp = SafeStamp();
+        long lastReloadLog = 0;
 
         engine.Start();
         try { writer.WriteLine("READY"); } catch { }
@@ -100,15 +85,24 @@ internal static class HookHost
         }
         Trace($"引擎已启动，钩子={(engine.IsHookAlive ? "正常" : "未生效")}");
 
-        // 2) 主循环：只看有没有重读配置的请求
+        // 2) 主循环：配置文件变了就重读
         while (true)
         {
-            if (reload.WaitOne(1000))
+            Thread.Sleep(1000);
+
+            var stamp = SafeStamp();
+            if (stamp != settingsStamp && stamp != default)
             {
+                settingsStamp = stamp;
                 try
                 {
                     settings = SettingsStore.Load();
                     Trace("已重读配置");
+                    if (Environment.TickCount64 - lastReloadLog > 5000)
+                    {
+                        lastReloadLog = Environment.TickCount64;
+                        CoreLog.Info("钩子宿主：已重读配置（设置文件有更新）");
+                    }
                 }
                 catch { /* 配置读不了就继续用旧的 */ }
             }
@@ -133,6 +127,17 @@ internal static class HookHost
         queue.Dispose();
         TryWriteReport(log);
         return 0;
+    }
+
+    /// <summary>设置文件的最后修改时间（读不到就返回 default）。</summary>
+    private static DateTime SafeStamp()
+    {
+        try
+        {
+            string path = AppPaths.SettingsFile;
+            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : default;
+        }
+        catch { return default; }
     }
 
     /// <summary>把宿主的运行情况写一份到 logs\hookhost.log，便于事后排查。</summary>
