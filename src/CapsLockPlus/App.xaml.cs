@@ -57,6 +57,31 @@ public partial class App : Application
          *
          * 放在单实例与启动密码之前 —— 那两道门都可能让"看帮助"这件事被拦住
          * （主程序开着时会被单实例判掉、设了启动密码会要求先输密码）。 */
+        /* `--dump-triggers`：把**解密后的**触发键/层配置打印出来（排查"触发键没生效"用）。
+         * 用户配置是加密的，光看 settings.json 看不出配了什么。 */
+        if (Core.CliFlags.Has(e.Args, "--dump-triggers"))
+        {
+            try
+            {
+                var s = Core.Settings.SettingsStore.Load();
+                Console.WriteLine("=== 触发键 ===");
+                Console.WriteLine($"条数: {s.Triggers.Count}");
+                foreach (var t in s.Triggers)
+                {
+                    Console.WriteLine($"  Key=[{t.Key}] Enabled={t.Enabled} LayerId={t.LayerId} HoldMs={t.HoldMs} " +
+                                      $"解析={Core.Input.HotkeyEngine.DescribeTriggerForDiag(t.Key)}");
+                }
+                Console.WriteLine("=== 层 ===");
+                foreach (var l in s.Layers)
+                    Console.WriteLine($"  层 {l.Id}：{l.Name}，绑定 {l.Keys.Count} 条");
+                Console.WriteLine($"=== 热键方案 === {s.Global.HotkeyScheme}");
+                Console.WriteLine($"=== Tab 是否被当作触发键 === {s.Triggers.Any(t => t.Enabled && Core.Input.HotkeyEngine.DescribeTriggerForDiag(t.Key).Contains("匹配 Tab"))}");
+            }
+            catch (Exception ex) { Console.WriteLine("读取配置失败：" + ex); }
+            Environment.Exit(0);
+            return;
+        }
+
         /* `--hooktest`：只装钩子、自己敲两下数回调。
          * 排查"钩子句柄在、却一个事件都收不到"时用它 —— 这条路径不包含任何界面。 */
         if (Core.CliFlags.Has(e.Args, "--hooktest"))

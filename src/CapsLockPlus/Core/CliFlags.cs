@@ -23,7 +23,7 @@ public static class CliFlags
     {
         "--selftest", "--render", "--render-diag", "--osd", "--diag",
         "--hwtest", "--webdav-test", "--svg2png", "--reveal", "--pick-test",
-        "--help", "--hooktest",
+        "--help", "--hooktest", "--dump-triggers",
     };
 
     /// <summary>
@@ -44,6 +44,7 @@ public static class CliFlags
         "  --selftest                      跑全部自检；退出码 0 = 全过（日志在数据目录 selftest.log）\n" +
          "  --diag                          环境诊断（钩子、前台会话、注入链路）；发现问题时退出码非 0\n" +
          "  --hooktest                      只装键盘钩子并自己敲两下，检查钩子是否真的能收到按键\n" +
+         "  --dump-triggers                 打印解密后的触发键/层配置（排查触发键不生效时用）\n" +
         "  --hwtest                        硬件测试：真的调一次音量与亮度（会出声/变亮）\n" +
         "  --pick-test <结果文件>           验证「选中文字直接搜索」的取词链路，结果写进文件\n" +
         "  --webdav-test <地址> [用户名] [密码]   实测一次 WebDAV 往返\n" +

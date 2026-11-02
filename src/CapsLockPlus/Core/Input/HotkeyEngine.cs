@@ -1460,6 +1460,17 @@ public sealed class HotkeyEngine : IDisposable
     /// 这里会取出主键 K 并当作单键触发 —— 这样老配置不会彻底失效，
     /// 但也明确表达"组合触发已不再支持"。
     /// </summary>
+    /// <summary>
+    /// 诊断用：把外部配置里的键名解析结果描述出来（--dump-triggers）。
+    /// 返回人类可读的结论，顺便回答"这个触发键会不会匹配 Tab(0x09)"。
+    /// </summary>
+    internal static string DescribeTriggerForDiag(string? key)
+    {
+        var m = ParseTrigger(key);
+        if (m == null) return "解析失败（键名认不出来，永远不会触发）";
+        return m.Value.Matches(0x09) ? "解析成功，且匹配 Tab(0x09)" : "解析成功";
+    }
+
     private static TriggerMatch? ParseTrigger(string? key)
     {
         if (string.IsNullOrWhiteSpace(key)) return null;

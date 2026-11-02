@@ -124,6 +124,31 @@ public static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
 
+    /* ---- 桌面（Desktop）----
+     *
+     * 低级钩子绑定的是"装它的那条线程所在的桌面"。远程桌面 / 向日葵 / 切换用户 /
+     * 锁屏解锁之后，输入桌面可能和进程所在桌面**不是同一个**：这时 SetWindowsHookEx
+     * 照样返回有效句柄，但**回调永远不触发**，而 Raw Input 仍然收得到 ——
+     * 这正是"日志里钩子正常、Raw Input 有键、钩子一个没收到"的典型形态。 */
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetThreadDesktop(IntPtr hDesktop);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetThreadDesktop(uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool CloseDesktop(IntPtr hDesktop);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex,
+        System.Text.StringBuilder pvInfo, int nLength, out int lpnLengthNeeded);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool UnhookWindowsHookEx(IntPtr hhk);

@@ -103,15 +103,11 @@ public sealed class KeyboardHook : IDisposable
         }
 
 
-        /* 上一轮线程还没退干净时绝不装第二条 —— 那会退化成"旧线程卸掉新钩子"。 */
-        if (_thread is { IsAlive: true } stale)
-        {
-            if (!stale.Join(3000))
-            {
-                CoreLog.Error("上一条钩子线程仍未退出，取消本次安装（避免两条线程互相卸钩子）");
-                return;
-            }
-        }
+        /* 上一轮线程还没退干净时**等它退出**再装。
+         * 注意：这里**不能**"等不到就放弃安装" —— 那等于把钩子彻底弄没了，
+         * 而调用方（自愈逻辑）以为已经重装成功。 */
+        if (_thread is { IsAlive: true } stale && !stale.Join(3000))
+            CoreLog.Warn("上一条钩子线程 3 秒内没退出，仍继续安装新的（旧线程只卸自己装的句柄）");
 
         _running = true;
         _thread = new Thread(() =>
@@ -125,9 +121,10 @@ public sealed class KeyboardHook : IDisposable
              * 旧线程退出时卸掉的是**新线程的句柄**：新钩子从此不在链上，
              * 句柄非零、线程还活着、状态全正常，但一个按键都收不到。
              * 这正好是"钩子时好时坏、重装也救不回来"的成因。 */
+            string desktopText = AlignToInputDesktop();
             var myHook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
             _hook = myHook;
-            CoreLog.Info($"钩子线程 tid={_threadId} 安装结果=0x{myHook.ToInt64():X}");
+            CoreLog.Info($"钩子线程 tid={_threadId} 安装结果=0x{myHook.ToInt64():X}；{desktopText}");
 
             /* 实验开关：CLP_NO_MOUSE_HOOK=1 时不装鼠标钩子（排查"键盘钩子被摘"用）。 */
             var myMouseHook = Environment.GetEnvironmentVariable("CLP_NO_MOUSE_HOOK") == "1"
@@ -436,14 +433,51 @@ public sealed class KeyboardHook : IDisposable
         }
     }
 
+    /// <summary>取桌面对像的名字（Default / Winlogon / …）。</summary>
+    private static string DesktopName(IntPtr h)
+    {
+        if (h == IntPtr.Zero) return "(空)";
+        var sb = new System.Text.StringBuilder(256);
+        return GetUserObjectInformation(h, 2 /*UOI_NAME*/, sb, sb.Capacity, out _) ? sb.ToString() : "(未知)";
+    }
+
+    /// <summary>
+    /// 把当前线程切到**输入桌面**上（如果本来不是）。
+    ///
+    /// 必须在装钩子之前调用：钩子绑定的是线程当时的桌面，装完再切无效。
+    /// 返回一段可直接写进日志的描述。
+    /// </summary>
+    private static string AlignToInputDesktop()
+    {
+        string mine = DesktopName(GetThreadDesktop(GetCurrentThreadId()));
+
+        IntPtr input = OpenInputDesktop(0, false, 0x000F01FF /*DESKTOP_ALL*/);
+        if (input == IntPtr.Zero)
+            return $"钩子桌面={mine}；输入桌面打不开（错误码 {Marshal.GetLastWin32Error()}）";
+
+        try
+        {
+            string theirs = DesktopName(input);
+            if (string.Equals(mine, theirs, StringComparison.Ordinal))
+                return $"钩子桌面={mine}（与输入桌面一致）";
+
+            if (SetThreadDesktop(input))
+                return $"钩子桌面={mine} → 已切到输入桌面={theirs}（原来不在同一桌面，钩子收不到按键）";
+
+            return $"钩子桌面={mine} 输入桌面={theirs}，切换失败（错误码 {Marshal.GetLastWin32Error()}）";
+        }
+        finally { CloseDesktop(input); }
+    }
+
     /// <summary>在调用线程上安装钩子（该线程必须自己泵消息，界面线程满足）。</summary>
     private void InstallOnCurrentThread()
     {
         _uiThreadMode = true;
         _threadId = GetCurrentThreadId();
+        string desktopText = AlignToInputDesktop();
         var h = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
         _hook = h;
-        CoreLog.Info($"钩子装在当前线程 tid={_threadId} 安装结果=0x{h.ToInt64():X}");
+        CoreLog.Info($"钩子装在当前线程 tid={_threadId} 安装结果=0x{h.ToInt64():X}；{desktopText}");
         if (h == IntPtr.Zero)
         {
             LastErrorTime = DateTime.Now;
@@ -536,6 +570,16 @@ public sealed class KeyboardHook : IDisposable
     /// <summary>重装钩子。</summary>
     public void Restart()
     {
+        /* 线程还活着：**在它自己身上原地重装**（先装新的再卸旧的，没有空窗）。
+         *
+         * 以前这里是 Stop()+Start()：Stop 会等线程退出（最多 3 秒），等不到就作废，
+         * 于是"重装"变成了"把钩子弄没"。原地重装没有这个问题。 */
+        if (!_uiThreadMode && _running && _threadId != 0 && _thread is { IsAlive: true })
+        {
+            PostThreadMessage(_threadId, WM_APP_REARM, IntPtr.Zero, IntPtr.Zero);
+            return;
+        }
+
         if (_uiThreadMode)
         {
             /* 已经在界面线程上：直接原地重装（先装新的再卸旧的，没有空窗）。 */
