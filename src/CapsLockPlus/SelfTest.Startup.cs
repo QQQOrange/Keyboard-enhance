@@ -1,5 +1,6 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
+using System.Windows;
 using System.Xml.Linq;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
@@ -143,6 +144,140 @@ public static partial class SelfTest
 
         Check("代理参数：大小写不敏感",
             SelectionProxy.ParseHelperArg(new[] { "--PICK", "P2" }) == "P2");
+    }
+
+    /// <summary>
+    /// 剪贴板"先备份、之后还原"。
+    ///
+    /// 这条链路是"取词 / 替换选区 / 算式结果写回"的中转站：中转完必须把用户
+    /// **原来**的剪贴板内容还回去。早先只记纯文本，原内容是截图或一批文件时
+    /// 会被 `Clipboard.Clear()` 永久删掉 —— 所以这里重点验证位图与文件列表，
+    /// 而不是"文字能还回去"（那是最容易也对的那一半）。
+    ///
+    /// 自检会临时改写剪贴板，结束时把用户原来的内容还回去（用同一套快照机制）。
+    /// </summary>
+    private static void TestClipboardBackup()
+    {
+        var userBackup = Core.Text.ClipboardBackup.Capture();
+
+        /* 剪贴板是全局独占资源：本程序自己（运行中的实例）还在监听剪贴板历史，
+         * 别的程序也可能随时打开它 —— 实测会出现 CLIPBRD_E_CANT_OPEN。
+         * 所以每一步都重试几次；实在拿不到就把这一步标成"环境限制"跳过，
+         * 不能让它变成一条假的失败。 */
+        static bool TryOp(Action op, int attempts = 6)
+        {
+            for (int i = 0; i < attempts; i++)
+            {
+                try { op(); return true; }
+                catch (System.Runtime.InteropServices.ExternalException) { Thread.Sleep(40); }
+                catch (Exception) { return false; }
+            }
+            return false;
+        }
+
+        static string ReadText()
+        {
+            try { return Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
+            catch { return ""; }
+        }
+
+        static bool HasImage()
+        {
+            try { return Clipboard.ContainsImage(); }
+            catch { return false; }
+        }
+
+        try
+        {
+            /* ---- ① 纯文本 ---- */
+            if (!TryOp(() => Clipboard.SetText("原始文字A")))
+            {
+                Check("（环境限制）剪贴板被占用，跳过快照验证", true);
+                return;
+            }
+
+            var textBackup = Core.Text.ClipboardBackup.Capture();
+            if (!TryOp(() => Clipboard.SetText("中转文字B")))
+            {
+                Check("（环境限制）剪贴板被占用，跳过文本验证", true);
+                return;
+            }
+            textBackup.Restore();
+            CheckEqual("文本内容能被还原", ReadText(), "原始文字A");
+
+            /* ---- ② 位图：当初就是这里丢的 ----
+             * 原剪贴板是截图时，旧实现 `hadText == false` 直接 Clear()，
+             * 那张截图就永久没了。 */
+            var bmp = new System.Windows.Media.Imaging.WriteableBitmap(
+                8, 8, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            var pixels = new byte[8 * 8 * 4];
+            for (int i = 0; i < pixels.Length; i++) pixels[i] = 0x60;
+            bmp.WritePixels(new Int32Rect(0, 0, 8, 8), pixels, 8 * 4, 0);
+
+            if (TryOp(() => Clipboard.SetImage(bmp)))
+            {
+                var imageBackup = Core.Text.ClipboardBackup.Capture();
+                if (TryOp(() => Clipboard.SetText("中转文字C")))
+                {
+                    imageBackup.Restore();
+                    Check("图片不会被中转文字顶掉", HasImage(),
+                        string.Join(",", Clipboard.GetDataObject()?.GetFormats() ?? Array.Empty<string>()));
+                }
+                else
+                {
+                    Check("（环境限制）剪贴板被占用，跳过图片验证", true);
+                }
+            }
+            else
+            {
+                Check("（环境限制）写不进位图，跳过图片验证", true);
+            }
+
+            /* ---- ③ 文件列表 ---- */
+            var files = new System.Collections.Specialized.StringCollection { @"C:\Windows\notepad.exe" };
+            if (TryOp(() => Clipboard.SetFileDropList(files)))
+            {
+                var fileBackup = Core.Text.ClipboardBackup.Capture();
+                if (TryOp(() => Clipboard.SetText("中转文字D")))
+                {
+                    fileBackup.Restore();
+                    var dropped = Clipboard.GetFileDropList();
+                    Check("文件列表能被还原", dropped != null && dropped.Count == 1,
+                        dropped == null ? "(null)" : dropped.Count.ToString());
+                }
+                else
+                {
+                    Check("（环境限制）剪贴板被占用，跳过文件列表验证", true);
+                }
+            }
+            else
+            {
+                Check("（环境限制）写不进文件列表，跳过该项", true);
+            }
+
+            /* ---- ④ 守卫：期间用户自己复制了别的，不能再盖回去 ---- */
+            if (TryOp(() => Clipboard.SetText("用户原内容")))
+            {
+                var guarded = Core.Text.ClipboardBackup.Capture();
+                if (TryOp(() => Clipboard.SetText("中转内容")) && TryOp(() => Clipboard.SetText("用户后来复制")))
+                {
+                    guarded.Restore(currentTextGuard: "中转内容");
+                    CheckEqual("期间用户复制的内容不会被覆盖", ReadText(), "用户后来复制");
+                }
+                else
+                {
+                    Check("（环境限制）剪贴板被占用，跳过守卫验证", true);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Check("剪贴板快照/还原", false, ex.Message);
+        }
+        finally
+        {
+            userBackup.Restore();       // 把用户原来的剪贴板还回去
+        }
     }
     /// <summary>
     /// 动作失败通知的文案。
