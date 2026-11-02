@@ -106,18 +106,31 @@ def main():
     # 3) 上传
     data = open(exe, "rb").read()
     name = os.path.basename(exe)
-    st, out = call(
-        upload_url + "?name=" + name,
-        method="POST",
-        raw=data,
-        extra={"Content-Type": "application/octet-stream",
-               "Content-Length": str(len(data))},
-    )
-    print("upload:", st)
-    if st in (200, 201):
-        print("asset url:", out["browser_download_url"])
-        print("asset size:", out["size"])
-        return 0
+
+    # 大文件（Win7 自包含形态 ~140MB）传一半被重置是常态：GitHub 前面有代理，
+    # 偶发 ConnectionReset / SSL EOF。重试几次即可，不要让人重新跑一遍。
+    last = None
+    for attempt in range(1, 5):
+        try:
+            st, out = call(
+                upload_url + "?name=" + name,
+                method="POST",
+                raw=data,
+                extra={"Content-Type": "application/octet-stream",
+                       "Content-Length": str(len(data))},
+            )
+            if st in (200, 201):
+                break
+            last = (st, out)
+            print("attempt", attempt, "failed:", st)
+        except Exception as e:          # 网络异常种类很多，统一重试
+            last = (0, str(e))
+            print("attempt", attempt, "error:", e)
+        time.sleep(5 * attempt)
+    else:
+        print("FAILED after retries:", last)
+        return 1
+
     print("FAILED:", out)
     return 1
 
