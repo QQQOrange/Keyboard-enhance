@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -273,6 +273,9 @@ public static partial class SelfTest
 
         Section("引擎复查修复");
         TestEngineAuditFixes();
+
+        Section("引擎回归（第二轮）");
+        TestEngineRegressions2();
 
         Section("宏可绑定");
         TestMacroIsBindable();

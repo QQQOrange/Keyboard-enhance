@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -659,8 +659,33 @@ public sealed class UpdateService
 
             // 1) 当前 exe 改名（不会失败于"正在使用"）
             File.Move(current, old, true);
-            // 2) 新文件就位（同目录同卷，一次原子改名）
-            File.Move(staged, current, true);
+
+            /* 2) 新文件就位（同目录同卷，一次原子改名）。
+             *
+             * 这一步**必须**有回滚：它失败时（杀毒软件正握着刚写出来的 .new、
+             * ACL 变更、磁盘错误）程序名已经被上一步改掉了 ——
+             * 桌面快捷方式和开机自启指的还是 KeyboardEnhance.exe，
+             * 而那个文件此刻不存在，用户下次双击就是"找不到文件"。
+             * 早先这里直接抛到外层 catch，只记一条日志就返回 false。 */
+            try
+            {
+                File.Move(staged, current, true);
+            }
+            catch (Exception replaceEx)
+            {
+                CoreLog.Error($"新版本就位失败，已回滚到原程序：{replaceEx.Message}");
+                try
+                {
+                    if (!File.Exists(current)) File.Move(old, current, true);
+                }
+                catch (Exception rollbackEx)
+                {
+                    CoreLog.Error("回滚失败 —— 程序文件可能在 " + old, rollbackEx);
+                }
+                try { if (File.Exists(staged)) File.Delete(staged); }
+                catch { }   /* 预期内：清理动作，失败无副作用 */
+                return false;
+            }
 
             // 3) 启动新版本（只有一个 exe，就是它自己）。
             //    带 --elevated，避免再次弹 UAC

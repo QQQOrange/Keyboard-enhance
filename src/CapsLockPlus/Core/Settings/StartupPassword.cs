@@ -52,16 +52,11 @@ public static class StartupPassword
         System.IO.Path.Combine(DirOverride ?? AppPaths.DataDir, FileName);
 
     /* 这些命令行模式不弹密码门：自检 / 离屏渲染 / 一次性诊断都跑完即退，
-     * 弹窗只会把它们卡死。正常启动（含 --tray、--updated）一律要过门。 */
-    private static readonly string[] SkipFlags =
-    {
-        "--selftest", "--render", "--render-diag", "--osd", "--diag",
-        "--hwtest", "--webdav-test", "--svg2png", "--reveal",
-    };
-
+     * 弹窗只会把它们卡死。正常启动（含 --tray、--updated）一律要过门。
+     *
+     * 清单统一在 Core.CliFlags 里维护（那边同时也是"免单实例"的清单）。 */
     /// <summary>这次启动该不该跳过密码门（测试 / 诊断模式跳过）。</summary>
-    public static bool ShouldSkip(string[] args) =>
-        args.Any(a => SkipFlags.Contains(a, StringComparer.OrdinalIgnoreCase));
+    public static bool ShouldSkip(string[] args) => CliFlags.IsDiagnostic(args);
 
     private sealed record Payload(string Salt, string Hash, int Iterations);
 

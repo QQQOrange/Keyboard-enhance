@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapsLockPlus.Core.Settings;
@@ -459,11 +459,30 @@ public sealed class SyncService
         /* 降序遍历：第一次见到的同内容文件是**最新**的，留它，后面的都算重复。 */
         foreach (var f in all.OrderByDescending(x => x.Modified))
         {
+            // ① 上传残留：永远不可能是有效备份，直接清
             if (IsTempArtifact(f.Name)) { doomed.Add(f); continue; }
-            if (f.Size < 64) { doomed.Add(f); continue; }
+
+            /* 只处理"本软件的备份"。
+             *
+             * 这条**必须排在"太小"之前**：用户可能把自己的一些文件放在同一个
+             * WebDAV 目录里（地址是用户自己填的，只有两个已知网盘才会自动补
+             * KeyboardEnhance/ 子目录），旧顺序会把其中小于 64 字节的先判死，
+             * 与「只动云端冗余、不碰用户的其它文件」这句承诺相矛盾。 */
+            bool isStableAlias =
+                string.Equals(f.Name, WebDavClient.LatestFile, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(f.Name, WebDavClient.LegacyLatestFile, StringComparison.OrdinalIgnoreCase);
+            if (!IsBackupName(f.Name) && !isStableAlias) continue;
+
+            /* ② 太小 —— 只有服务器**明确报出**小尺寸时才判定。
+             *
+             * `<getcontentlength>` 在 PROPFIND 里是可选的，不少服务器根本不返回；
+             * 那时 RemoteFile.Size 就是 0。把"没报尺寸"当成"0 字节"，
+             * 会让下面的规则把整套云端备份一次性删光 —— 用户的备份历史
+             * 被"清理冗余"按钮清空，而且没法恢复。 */
+            if (f.Size > 0 && f.Size < MinBackupBytes) { doomed.Add(f); continue; }
+            if (isStableAlias) continue;                 // 稳定别名只留不删
 
             // 只有"看起来是备份"的才值得下载校验（别去碰用户放在同目录的其它文件）
-            if (!IsBackupName(f.Name)) continue;
             if (checkedCount >= MaxRedundantScan) continue;
             checkedCount++;
 
@@ -519,6 +538,12 @@ public sealed class SyncService
 
     /// <summary>内容比对最多下载多少份 —— 网盘慢的时候别把"清理"变成"等十分钟"。</summary>
     private const int MaxRedundantScan = 40;
+
+    /// <summary>
+    /// 一份正常备份至少这么大（字节）。小于它的**明确尺寸**才判定为无效；
+    /// 尺寸未知（服务器没报 getcontentlength，Size == 0）不参与这条判定。
+    /// </summary>
+    private const long MinBackupBytes = 64;
 
     /// <summary>上传中断留下的临时文件。</summary>
     internal static bool IsTempArtifact(string name)

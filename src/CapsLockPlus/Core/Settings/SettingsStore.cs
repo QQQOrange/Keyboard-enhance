@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
@@ -119,6 +119,26 @@ public static class SettingsStore
         {
             try
             {
+                /* 先把"防抖中 / 排队中"的保存落盘，再读文件。
+                 *
+                 * 没有这一步，"保存 → 立刻重新加载"这类组合会读到**旧文件**：
+                 * 恢复默认设置、导入旧版 ini、导入配置文件、恢复备份
+                 * 都是 SaveSettings() 紧跟 ReloadAll()，而 SaveSettings 只
+                 * 存下对象并挂了一个 400ms 的防抖计时器 —— 文件这时还是旧的。
+                 * 于是界面弹了"已恢复"，内存里却换回了旧配置，
+                 * 400ms 后计时器又把新配置写进磁盘，两边彻底对不上；
+                 * 下一次任何改动都会把旧对象再存一遍，恢复的内容永久丢失。
+                 *
+                 * 这里只做"把已经决定要写的写掉"，不改任何业务行为。 */
+                if (_pendingSave is { } pending)
+                {
+                    _pendingSave = null;
+                    _debounce?.Change(Timeout.Infinite, Timeout.Infinite);
+                    string? pendingJson = SerializeLocked(pending);
+                    if (pendingJson != null) _queuedJson = pendingJson;
+                }
+                DrainWritesLocked();
+
                 Directory.CreateDirectory(AppPaths.DataDir);
                 if (!File.Exists(AppPaths.SettingsFile))
                 {
@@ -330,17 +350,20 @@ public static class SettingsStore
     /// 同步保存：函数返回时文件已经写好。
     /// 退出、恢复备份、切换加密这类"必须立刻落盘"的场景用它；
     /// 界面上的普通改动请用 <see cref="RequestSave"/>。
+    ///
+    /// 返回 false = 这次没写成功（只读保护 / 未解锁 / 磁盘错误）。
+    /// 换密钥这种"写不进去就会丢数据"的操作必须看返回值。
     /// </summary>
-    public static void Save(AppSettings settings)
+    public static bool Save(AppSettings settings)
     {
         string? json;
         lock (Gate) json = SerializeLocked(settings);
-        if (json == null) return;
+        if (json == null) return false;
 
         lock (Gate)
         {
             _queuedJson = json;      // 覆盖尚未落盘的旧内容，保证顺序
-            DrainWritesLocked();
+            return DrainWritesLocked();
         }
     }
 
@@ -374,18 +397,20 @@ public static class SettingsStore
         }
     }
 
-    /// <summary>加密 + 原子写入（只在写线程或同步保存时执行）。</summary>
-    private static void DrainWritesLocked()
+    /// <summary>加密 + 原子写入（只在写线程或同步保存时执行）。返回是否写成功。</summary>
+    private static bool DrainWritesLocked()
     {
+        bool ok = true;
         while (_queuedJson != null)
         {
             string json = _queuedJson;
             _queuedJson = null;
-            WriteJsonLocked(json);
+            ok = WriteJsonLocked(json);
         }
+        return ok;
     }
 
-    private static void WriteJsonLocked(string json)
+    private static bool WriteJsonLocked(string json)
     {
         try
         {
@@ -397,7 +422,7 @@ public static class SettingsStore
                 if (!DataVault.IsUnlocked)
                 {
                     CoreLog.Warn("加密已启用但尚未解锁，本次保存已跳过");
-                    return;
+                    return false;
                 }
                 json = DataVault.Encrypt(json);
             }
@@ -407,10 +432,12 @@ public static class SettingsStore
             if (File.Exists(AppPaths.SettingsFile))
                 File.Copy(AppPaths.SettingsFile, AppPaths.SettingsFile + ".bak", true);
             File.Move(tmp, AppPaths.SettingsFile, true);
+            return true;
         }
         catch (Exception ex)
         {
             CoreLog.Error("保存设置失败", ex);
+            return false;
         }
     }
 
@@ -617,18 +644,32 @@ public static class SettingsStore
         /* 已删除的动作：老配置里可能还绑着，统一改成"什么都不做"。
          *
          * 不这么做的话，按下去会提示"未知动作：translate" —— 用户不知道
-         * 是软件坏了还是功能被删了。翻译功能整块移除，这里把它清干净。 */
+         * 是软件坏了还是功能被删了。翻译功能整块移除，这里把它清干净。
+         *
+         * 窗口槽位（winbindActivate1~10 / winbindBind1~10）同理：槽位机制
+         * 早已移除，但老配置里还留着这些 id。不清掉的话每按一次就写两条
+         * WARN 日志（"未知动作" / "动作未执行"），实际行为却是什么都不做 ——
+         * 用户看到的只有"这个键按了没反应"。 */
+        int retiredActions = 0;
         foreach (var list in AllBindingLists(s))
         {
             foreach (var b in list)
             {
-                if (string.Equals(b.Action, "translate", StringComparison.OrdinalIgnoreCase))
-                {
-                    b.Action = "doNothing";
-                    b.Arg = "";
-                }
+                if (string.IsNullOrEmpty(b.Action)) continue;
+
+                bool retired =
+                    string.Equals(b.Action, "translate", StringComparison.OrdinalIgnoreCase) ||
+                    b.Action.StartsWith("winbindActivate", StringComparison.OrdinalIgnoreCase) ||
+                    b.Action.StartsWith("winbindBind", StringComparison.OrdinalIgnoreCase);
+
+                if (!retired) continue;
+                b.Action = "doNothing";
+                b.Arg = "";
+                retiredActions++;
             }
         }
+        if (retiredActions > 0)
+            CoreLog.Info($"[设置] 清理 {retiredActions} 条指向已移除动作的绑定");
 
         /* 翻译相关的搜索入口也一并清掉（v4.5.10）。
          *
@@ -671,15 +712,19 @@ public static class SettingsStore
          * 只迁移这一个已知的旧默认值，用户自己选的颜色不动。 */
         if (string.Equals(s.Qbar.PanelColor, "#1C1F27", StringComparison.OrdinalIgnoreCase))
             s.Qbar.PanelColor = "auto";
-        /* 布局方案固定为新版（Capslox），不再允许切换。
+        /* 布局方案只有两套，写错就退回新版；但**保留用户选过的经典方案**。
          *
-         * 旧的「经典 CapsLock+ 3.0」方案只是历史兼容产物：两套布局的差别
-         * 仅在于默认绑定表，而用户真正需要的是"改哪个键做什么"，
-         * 不需要先理解自己属于哪一代方案。留着切换只会制造困惑。
+         * 早先这里无条件写成 capslox，理由是"按键映射页不再提供切换"。
+         * 可首次运行引导仍然会问用户选哪套 —— 选了经典、按了"恢复默认按键"，
+         * 结果恢复出来是新版布局：界面问了一次、存了一次、读回来又改掉，
+         * 用户看到的就是"我选的方案不生效"。
          *
-         * 这里强制归一化：老配置即使写着 capslock_plus，读进来也会变成
-         * capslox。字段本身保留，避免旧配置文件解析失败。 */
-        s.Global.HotkeyScheme = "capslox";
+         * 现在只做"非法值兜底"，合法值原样保留：
+         *   · 引导页 → ApplyHotkeyScheme(选的方案) → 存进 settings；
+         *   · 下次启动读回来仍是那套 → 「恢复默认按键」恢复的也是那一套。 */
+        string scheme = (s.Global.HotkeyScheme ?? "").Trim().ToLowerInvariant();
+        if (scheme != "capslock_plus") scheme = "capslox";
+        s.Global.HotkeyScheme = scheme;
 
         NormalizeLayers(s);
 
@@ -1236,7 +1281,11 @@ public static class DefaultSettings
         Set("caps_t", "doNothing");
         Set("caps_y", "moveUp", "5");
         Set("caps_z", "undoRedo");
-        Set("caps_backquote", "winbindActivate9");
+        /* 经典布局里 Caps+` 原是"激活第 9 个窗口槽位"。槽位机制已经整块移除，
+         * 那个动作 id（winbindActivate9）在动作表里根本不存在 ——
+         * 直接把旧 id 写进默认表，等于给经典方案的用户留了一个
+         * "按下去没反应、日志里报未知动作"的死键。 */
+        Set("caps_backquote", "doNothing");
         Set("caps_9", "doNothing");
         Set("caps_0", "selectUp", "5");
         Set("caps_minus", "pageUp");

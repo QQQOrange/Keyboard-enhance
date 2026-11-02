@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -1582,11 +1582,24 @@ public static partial class SelfTest
         Check("问号按钮被排版出来了", help.ActualWidth > 0 && help.ActualHeight > 0,
             $"{help.ActualWidth:F0}x{help.ActualHeight:F0}");
 
-        // 对齐：两者中心线的高度差不超过 2 DIP
-        double boxMid = box.TranslatePoint(new System.Windows.Point(0, box.ActualHeight / 2), view).Y;
-        double helpMid = help.TranslatePoint(new System.Windows.Point(0, help.ActualHeight / 2), view).Y;
-        Check("问号与输入框垂直居中对齐", Math.Abs(boxMid - helpMid) <= 2,
-            $"输入框中线 {boxMid:F1}，问号中线 {helpMid:F1}");
+        /* 布局：标签行 / 输入框 / 按钮行 三段式。
+         *
+         * 早先是"标签 + 输入框 + 四个按钮"挤在同一行：1240 宽时输入框只剩
+         * ~126 DIP，最小窗口 980 时直接被挤成 0 —— 用户看不见自己填了什么。
+         * 这里断言输入框**真的有宽度**，防止哪天又被挤回去。 */
+        Check("令牌输入框有可用宽度（不再被按钮挤扁）", box.ActualWidth >= 320,
+            $"{box.ActualWidth:F0} DIP");
+        double boxTop = box.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
+        double helpTop = help.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
+        Check("问号按钮与标签同处输入框上方", helpTop < boxTop,
+            $"问号 {helpTop:F0} / 输入框 {boxTop:F0}");
+
+        // 窄窗口（最小窗口宽度下关于页约 700 DIP）也要保证输入框能用
+        view.Measure(new System.Windows.Size(700, 2400));
+        view.Arrange(new System.Windows.Rect(0, 0, 700, 2400));
+        view.UpdateLayout();
+        Check("窄窗口下输入框仍然放得下内容", box.ActualWidth >= 150,
+            $"{box.ActualWidth:F0} DIP");
 
         // 可达性：Button 默认可聚焦，但 Focusable 被样式改掉就点不着了
         Check("问号按钮可用键盘聚焦", help.Focusable, $"Focusable={help.Focusable}");

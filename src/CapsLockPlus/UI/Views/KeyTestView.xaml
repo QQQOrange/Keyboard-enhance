@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="CapsLockPlus.UI.Views.KeyTestView"
+<UserControl x:Class="CapsLockPlus.UI.Views.KeyTestView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -19,6 +19,28 @@
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Padding" Value="4,3" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <!-- 不重写模板时，Aero2 会在选中行上重新铺一层系统高亮蓝 ——
+                 深色主题里那一行就是刺眼的浅蓝底配深色字。 -->
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <GridViewRowPresenter
+                                Columns="{Binding View.Columns, RelativeSource={RelativeSource AncestorType=ListView}}"
+                                Content="{TemplateBinding Content}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Brush.Hover}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Brush.Selected}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -98,22 +120,24 @@
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Text="{loc:T '每一行 = 一次真实按键，附带它所在层会执行的动作。只记录真实按键，软件自己注入的不算。'}" />
 
+                    <!-- 列宽合计要放得进 1240 宽的窗口；放不下时允许横向滚动，
+                         否则最后一列（动作）在窄窗口里永远看不到。 -->
                     <ListView x:Name="EventList" Height="392" Margin="0,12,0,0"
                               Background="Transparent" BorderThickness="0"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="{loc:T '时间'}" Width="70" DisplayMemberBinding="{Binding Time}" />
-                                <GridViewColumn Header="{loc:T '按键'}" Width="110" DisplayMemberBinding="{Binding Key}" />
-                                <GridViewColumn Header="{loc:T '层'}" Width="90" DisplayMemberBinding="{Binding Layer}" />
-                                <GridViewColumn Header="{loc:T '动作'}" Width="180" DisplayMemberBinding="{Binding Action}" />
+                                <GridViewColumn Header="{loc:T '时间'}" Width="64" DisplayMemberBinding="{Binding Time}" />
+                                <GridViewColumn Header="{loc:T '按键'}" Width="96" DisplayMemberBinding="{Binding Key}" />
+                                <GridViewColumn Header="{loc:T '层'}" Width="56" DisplayMemberBinding="{Binding Layer}" />
+                                <GridViewColumn Header="{loc:T '动作'}" Width="150" DisplayMemberBinding="{Binding Action}" />
                             </GridView>
                         </ListView.View>
                     </ListView>
 
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="{loc:T '清空'}" Click="OnClear" Padding="14,6" Margin="0,0,8,0" />
-                        <Button Content="{loc:T '复制诊断信息'}" Click="OnCopyDiag" Padding="14,6" />
+                        <Button Content="{loc:T '清空'}" Style="{StaticResource Button.Base}" Click="OnClear" Padding="14,6" Margin="0,0,8,0" />
+                        <Button Content="{loc:T '复制诊断信息'}" Style="{StaticResource Button.Base}" Click="OnCopyDiag" Padding="14,6" />
                         <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}"
                                    VerticalAlignment="Center" Margin="12,0,0,0" />
                     </StackPanel>

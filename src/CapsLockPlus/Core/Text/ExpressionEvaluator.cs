@@ -45,8 +45,18 @@ public static class ExpressionEvaluator
     public static string Format(double value)
     {
         double rounded = Math.Round(value, 12);
-        if (Math.Abs(rounded - Math.Round(rounded)) < 1e-12 && Math.Abs(rounded) < 1e15)
-            return ((long)Math.Round(rounded)).ToString();
+
+        /* 整数走 long。
+         *
+         * 阈值必须是 **long 的精确范围**（约 9.2e18），不能是 1e15：
+         * 超过 1e15 的整数会掉到 "0.############" 那条分支，而那个格式最多
+         * 15 位有效数字 —— `2^50` 会被打平成 1125899906842620（差 4），
+         * 而 Caps+Tab 会把这个错值直接写回文档。
+         * double 在 2^53 以上本来就只能是整数，所以"整数值就按 long 输出"
+         * 对任何可表示的值都成立。 */
+        if (rounded == Math.Floor(rounded) && Math.Abs(rounded) < 9.2e18)
+            return ((long)rounded).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
         return rounded.ToString("0.############", System.Globalization.CultureInfo.InvariantCulture);
     }
 
@@ -113,12 +123,11 @@ public static class ExpressionEvaluator
                 SkipSpaces();
                 if (_pos >= _text.Length) return left;
                 char c = _text[_pos];
-                if (c == '*' && _pos + 1 < _text.Length && _text[_pos + 1] == '*')
-                {
-                    _pos += 2;
-                    left = Math.Pow(left, ParseUnary());
-                }
-                else if (c == '*') { _pos++; left *= ParseUnary(); }
+                /* 注意：`**` 不在这里处理 —— 它和 `^` 一样是幂运算，
+                 * 必须走 ParsePower（右结合、只作用于紧邻的操作数）。
+                 * 放在这里会让 `2*3**2` 变成 (2*3)^2 = 36，而 `2*3^2` 是 18，
+                 * 同一道式子两种写法给出两个答案。 */
+                if (c == '*') { _pos++; left *= ParseUnary(); }
                 else if (c == '/')
                 {
                     _pos++;
@@ -147,11 +156,18 @@ public static class ExpressionEvaluator
         {
             double baseVal = ParsePrimary();
             SkipSpaces();
-            if (_pos < _text.Length && _text[_pos] == '^')
+            if (_pos >= _text.Length) return baseVal;
+
+            // `^` 和 `**` 是同义词，都按右结合处理（2^3^2 = 2^(3^2) = 512）
+            if (_text[_pos] == '^')
             {
                 _pos++;
-                double exp = ParseUnary();
-                return Math.Pow(baseVal, exp);
+                return Math.Pow(baseVal, ParseUnary());
+            }
+            if (_text[_pos] == '*' && _pos + 1 < _text.Length && _text[_pos + 1] == '*')
+            {
+                _pos += 2;
+                return Math.Pow(baseVal, ParseUnary());
             }
             return baseVal;
         }
@@ -226,7 +242,12 @@ public static class ExpressionEvaluator
             {
                 "sqrt" => Math.Sqrt(A(0)),
                 "abs" => Math.Abs(A(0)),
-                "round" => args.Count > 1 ? Math.Round(A(0), (int)A(1)) : Math.Round(A(0)),
+                /* round() 用"四舍五入"而不是 .NET 默认的银行家舍入：
+                 * 计算器里 round(2.5) 应该是 3，不是 2；
+                 * 亮度/音量步进那边（BrightnessAccel）也是特意避开这个坑的。 */
+                "round" => args.Count > 1
+                    ? Math.Round(A(0), (int)A(1), MidpointRounding.AwayFromZero)
+                    : Math.Round(A(0), MidpointRounding.AwayFromZero),
                 "floor" => Math.Floor(A(0)),
                 "ceil" => Math.Ceiling(A(0)),
                 "sin" => Math.Sin(A(0)),

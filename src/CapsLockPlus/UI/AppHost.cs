@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
@@ -222,11 +222,11 @@ public sealed class AppHost : IDisposable
     }
 
     public void Start()
-    {
-        Engine.Start();
+    {        Engine.Start();
         if (Settings.Global.ShowTrayIcon) CreateTray();
         _clipboard.Start();
         _watchdog.Start();
+        EnsureWakeWindow();
 
         /* 「选中即捕获」：监听用户的 Ctrl+C。
          *
@@ -539,11 +539,64 @@ public sealed class AppHost : IDisposable
     }
 
     // ---------------- 窗口 ----------------
+    private System.Windows.Interop.HwndSource? _wakeWindow;
+
+    /// <summary>
+    /// 建一个**隐藏的顶层窗口**，专门接收"第二次启动本程序"的唤醒消息。
+    ///
+    /// 为什么需要它：默认启动不显示主窗口（只驻留托盘），这时
+    /// `Process.MainWindowHandle` 是 0（它只认可见窗口），于是
+    /// <see cref="SingleInstance.ActivateExisting"/> 走"广播消息"那条路 ——
+    /// 而早先**没有任何窗口处理这个消息**：用户双击第二次，
+    /// 等 6 秒（互斥体超时），然后什么都没有发生。
+    ///
+    /// 注意不能用 message-only 窗口（HWND_MESSAGE）：广播消息只发给顶层窗口，
+    /// 消息窗口收不到。这里建的是普通顶层窗口，只是从来不 Show。
+    /// </summary>
+    private void EnsureWakeWindow()
+    {
+        if (_wakeWindow != null) return;
+        try
+        {
+            var p = new System.Windows.Interop.HwndSourceParameters("KeyboardEnhance.Wake")
+            {
+                Width = 0,
+                Height = 0,
+                WindowStyle = 0,                 // 不要 WS_VISIBLE
+                ExtendedWindowStyle = 0x80,      // WS_EX_TOOLWINDOW：不进 Alt+Tab
+            };
+            _wakeWindow = new System.Windows.Interop.HwndSource(p);
+            _wakeWindow.AddHook(OnWakeMessage);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("创建唤醒窗口失败（再启动一次不会自动打开主窗口）：" + ex.Message);
+        }
+    }
+
+    private IntPtr OnWakeMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg != SingleInstance.WmShowWindow) return IntPtr.Zero;
+        handled = true;
+        CoreLog.Info("收到「再打开一次」的唤醒消息，显示主窗口");
+        ShowMainWindow();
+        return IntPtr.Zero;
+    }
+
     public void ShowMainWindow(string? page = null)
     {
         _dispatcher.BeginInvoke(() =>
         {
-            _main ??= new MainWindow(this);
+            if (_main == null)
+            {
+                _main = new MainWindow(this);
+                /* 窗口被真的关掉之后（用户关掉「关闭时最小化到托盘」），
+                 * 这个字段必须清空：WPF 的已关闭窗口不能再 Show()，
+                 * 否则托盘图标、托盘菜单、「设置」动作从此全部弹
+                 * "Cannot set Visibility or call Show after a Window has closed"，
+                 * 只有重启进程才能恢复。 */
+                _main.Closed += (_, _) => _main = null;
+            }
             if (page != null) _main.Navigate(page);
             _main.Show();
             if (_main.WindowState == WindowState.Minimized) _main.WindowState = WindowState.Normal;
@@ -592,15 +645,28 @@ public sealed class AppHost : IDisposable
 
     public void ShowMathBoard()
     {
-        // 窗口被用户关掉（Esc / 关闭按钮）后不能再复用：Show() 一个已关闭的窗口会抛异常。
-        if (_math is not { IsLoaded: true }) _math = new MathBoardWindow();
+        /* 窗口被用户关掉（Esc / 标题栏 ×）之后不能再复用：Show() 一个已关闭的
+         * 窗口会抛异常。而 `IsLoaded` 在关闭之后**仍然是 true**（WPF 不复位它），
+         * 拿它当"还能用吗"的判据等于永远判"能用" ——
+         * 实际表现是：计算器按 Esc 关掉一次，之后 Caps+F2 再也打不开，
+         * 只会弹一个"出错了：…"。
+         * 正确做法是让 Closed 把字段清空，下次自然新建。 */
+        if (_math == null)
+        {
+            _math = new MathBoardWindow();
+            _math.Closed += (_, _) => _math = null;
+        }
         _math.Show();
         _math.Activate();
     }
 
     public void ShowClipboardHistory()
     {
-        if (_clipHistory is not { IsLoaded: true }) _clipHistory = new ClipboardHistoryWindow(this);
+        if (_clipHistory == null)
+        {
+            _clipHistory = new ClipboardHistoryWindow(this);
+            _clipHistory.Closed += (_, _) => _clipHistory = null;
+        }
         _clipHistory.RefreshItems();
         _clipHistory.Show();
         _clipHistory.Activate();
@@ -922,6 +988,7 @@ public sealed class AppHost : IDisposable
     {
         try { _foreground?.Dispose(); _foreground = null; } catch { }
         try { _deviceTracker?.Dispose(); _deviceTracker = null; } catch { }
+        try { _wakeWindow?.Dispose(); _wakeWindow = null; } catch { }
         if (_disposed) return;
         _disposed = true;
         _watchdog.Dispose();

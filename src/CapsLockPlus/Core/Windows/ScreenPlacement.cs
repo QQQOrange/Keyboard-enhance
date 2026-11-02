@@ -64,7 +64,7 @@ public static class ScreenPlacement
             var work = mi.rcWork;
             if (work.Width <= 0 || work.Height <= 0) return false;
 
-            double scale = ScaleOf(hwnd);
+            double scale = ScaleOf(monitor, hwnd);
 
             // 尺寸用 DIP → 物理像素；窗口还没排过版时退回显式 Width/Height
             double dipW = window.ActualWidth > 1 ? window.ActualWidth : window.Width;
@@ -105,9 +105,27 @@ public static class ScreenPlacement
         }
     }
 
-    /// <summary>窗口所在显示器的缩放（拿不到就按 1.0，等于按 96 DPI 算）。</summary>
-    private static double ScaleOf(IntPtr hwnd)
+    /// <summary>
+    /// **目标显示器**的缩放（拿不到就退回窗口所在显示器，再不行按 1.0）。
+    ///
+    /// 必须问显示器而不是窗口：Qbar / Toast 是在 `Open()` 里、窗口句柄刚建好
+    /// 还停在上一块屏（常常是主屏）的时候摆位的。按 `GetDpiForWindow` 取缩放，
+    /// 100% 主屏 + 150% 副屏的组合下会把 760 DIP 宽的面板算成 760 物理像素，
+    /// 而 WPF 随后按 150% 重新缩放成 1140 —— 面板整体偏右、Toast 压到任务栏下面。
+    /// </summary>
+    private static double ScaleOf(IntPtr monitor, IntPtr hwnd)
     {
+        try
+        {
+            if (NativeMethods.GetDpiForMonitor(monitor, NativeMethods.MDT_EFFECTIVE_DPI,
+                                               out uint dx, out _) == 0 && dx > 0)
+                return dx / 96.0;
+        }
+        catch
+        {
+            // 老系统（Win7）没有这个 API，走下面的兜底
+        }
+
         try
         {
             uint dpi = NativeMethods.GetDpiForWindow(hwnd);
@@ -115,7 +133,7 @@ public static class ScreenPlacement
         }
         catch
         {
-            // 老系统上没有这个 API：退回 1.0
+            // 同样：极老系统上没有
         }
         return 1.0;
     }

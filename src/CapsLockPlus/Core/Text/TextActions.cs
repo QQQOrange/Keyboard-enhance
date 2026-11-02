@@ -97,13 +97,9 @@ public static class TextActions
 
         lock (ClipGate)
         {
-            string old = string.Empty;
-            bool hadText = false;
-            try
-            {
-                if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
-            }
-            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+            /* 完整快照（含图片 / 文件列表），不再只记纯文本 ——
+             * 只记文本时，原剪贴板是截图就会在还原阶段被 Clear() 掉。 */
+            var backup = ClipboardBackup.Capture();
 
             /* 记住"我们自己复制出来的内容"。
              * 收尾还原剪贴板时要用它判断：如果剪贴板里已经不是这段文字，
@@ -143,7 +139,7 @@ public static class TextActions
             }
             finally
             {
-                RestoreClipboard(old, hadText, copiedByUs);
+                backup.Restore(copiedByUs);
             }
         }
     }
@@ -223,54 +219,16 @@ public static class TextActions
         return false;
     }
 
-    private static void RestoreClipboard(string old, bool hadText)
-    {
-        try
-        {
-            if (hadText) Clipboard.SetText(old);
-            else Clipboard.Clear();
-        }
-        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
-    }
-
-    /// <summary>
-    /// 取词结束后还原剪贴板。
-    ///
-    /// <paramref name="copiedByUs"/> 是我们刚才复制出来的内容。还原前先确认
-    /// 剪贴板里**还是**这段文字 —— 如果不是，说明期间用户自己按了 Ctrl+C
-    /// （或别的程序写了剪贴板），此时还原等于把用户刚复制的东西擦掉，
-    /// 属于**帮倒忙**，所以直接放手不管。
-    /// </summary>
-    private static void RestoreClipboard(string old, bool hadText, string? copiedByUs)
-    {
-        if (copiedByUs != null)
-        {
-            try
-            {
-                string current = Clipboard.ContainsText() ? Clipboard.GetText() : "";
-                if (!string.Equals(current, copiedByUs, StringComparison.Ordinal))
-                {
-                    CoreLog.Info("[取词] 剪贴板已被用户/其它程序改写，跳过还原");
-                    return;
-                }
-            }
-            catch { return; }
-        }
-        RestoreClipboard(old, hadText);
-    }
 
     /// <summary>用给定文本替换当前选区（没有选区则插入到光标处）。</summary>
     public static void ReplaceSelection(string text)
     {
         lock (ClipGate)
         {
-            string old = string.Empty;
-            bool hadText = false;
-            try
-            {
-                if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
-            }
-            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+            /* 整份备份：原来是什么（图片 / 文件 / 富文本）就还什么。
+             * 旧实现只认纯文本，没有文本时 finally 里 Clipboard.Clear() ——
+             * 用户刚截的图就这么没了。 */
+            var backup = ClipboardBackup.Capture();
 
             try
             {
@@ -286,12 +244,7 @@ public static class TextActions
             finally
             {
                 Thread.Sleep(90);
-                try
-                {
-                    if (hadText) Clipboard.SetText(old);
-                    else Clipboard.Clear();
-                }
-                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+                backup.Restore();
             }
         }
     }
@@ -349,13 +302,7 @@ public static class TextActions
     {
         lock (ClipGate)
         {
-            string old = string.Empty;
-            bool hadText = false;
-            try
-            {
-                if (Clipboard.ContainsText()) { old = Clipboard.GetText(); hadText = true; }
-            }
-            catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+            var backup = ClipboardBackup.Capture();
 
             try
             {
@@ -378,7 +325,7 @@ public static class TextActions
             }
             finally
             {
-                RestoreClipboard(old, hadText);
+                backup.Restore();
             }
         }
     }

@@ -258,7 +258,14 @@ public sealed class KeyboardDeviceTracker : IDisposable
         public ushort Reserved;
         public ushort VKey;
         public uint Message;
-        public IntPtr ExtraInformation;
+        /* 原生类型是 ULONG（4 字节），不是指针。
+         *
+         * 写成 IntPtr 会让这个结构在 x64 上变成 24 字节（含 4 字节对齐填充），
+         * 而 GetRawInputData 给的缓冲区是 RAWINPUTHEADER(24) + RAWKEYBOARD(16) = 40。
+         * PtrToStructure 会从偏移 24 读 24 字节，最后 8 字节越过缓冲区 ——
+         * 属于越界读，撞到页边界时是 AccessViolation（整个进程崩）。
+         * 这个字段目前没被读取，所以一直没暴露出来。 */
+        public uint ExtraInformation;
     }
 
     [DllImport("user32.dll", SetLastError = true)]

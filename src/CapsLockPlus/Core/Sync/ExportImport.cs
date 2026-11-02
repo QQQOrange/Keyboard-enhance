@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Settings;
@@ -317,6 +317,9 @@ public static class ExportImport
                     "这个文件既不是导出配置、也不是备份（里面没有可识别的配置字段）。"
                     + "请确认选的是 KeyboardEnhance 导出的 .clpconf 或备份的 .keyboardenhance 文件。");
 
+            /* 整份备份走"全部组"：这是用户点"恢复备份"时的预期 ——
+             * 备份里有 8 组就恢复 8 组，包括同步设置与令牌。
+             * （导入前界面会弹确认框，明确告诉用户这是一次整份覆盖。） */
             var allIds = Groups.Select(g => g.Id).ToList();
             return (allIds, root, true);
         }
@@ -362,6 +365,14 @@ public static class ExportImport
     /// </summary>
     public static List<string> Apply(AppSettings settings, List<string> groups, JsonObject data)
     {
+        /* 是不是"整份"导入（备份恢复 / 全选导出）。
+         *
+         * 整份导入 = 用户明确要覆盖全部配置，Global 里那些内容型的成员
+         * （片段 / 组合键 / 双击 / 叠加层 / 改键 / 令牌）当然要跟着过来。
+         * 只有**部分导入**（比如只勾了「外观与行为」）才保留本机的内容型配置，
+         * 否则朋友发来一份外观配置，你的片段和改键就没了。 */
+        bool fullRestore = groups.Count >= Groups.Length;
+
         var allow = AllowKeys(groups);
         var filtered = new JsonObject();
         foreach (string key in allow)
@@ -400,7 +411,25 @@ public static class ExportImport
                 case nameof(AppSettings.Qbar):
                     settings.Qbar = merged.Qbar; break;
                 case nameof(AppSettings.Global):
-                    settings.Global = merged.Global; break;
+                    /* 「外观与行为」这一组承诺的是主题、面板样式、鼠标速度这类设置，
+                     * 不是"把整台机器的个性化内容换掉"。
+                     *
+                     * Global 里同时塞着文本片段、组合键、双击动作、按应用叠加层、
+                     * 基础改键和 GitHub 令牌 —— 部分导入时整块替换会**静默删掉**
+                     * 本机的这些内容（朋友发来一份"外观"配置，导完你的片段和改键全没了）。
+                     * 整份备份恢复则相反：那本来就是"覆盖全部"，必须原样带过来。 */
+                    var incoming = merged.Global;
+                    if (!fullRestore)
+                    {
+                        incoming.Chords = settings.Global.Chords;
+                        incoming.Snippets = settings.Global.Snippets;
+                        incoming.KeyGestures = settings.Global.KeyGestures;
+                        incoming.AppLayers = settings.Global.AppLayers;
+                        incoming.BaseRemaps = settings.Global.BaseRemaps;
+                        incoming.GitHubToken = settings.Global.GitHubToken;
+                    }
+                    settings.Global = incoming;
+                    break;
                 case nameof(AppSettings.Sync):
                     settings.Sync = merged.Sync; break;
             }

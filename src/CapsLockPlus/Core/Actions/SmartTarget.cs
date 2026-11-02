@@ -252,19 +252,38 @@ public static class SmartTargetDetector
         return new SmartTarget(SmartKind.MissingFolder, p, raw);
     }
 
-    /// <summary>`file:///C:/a/b.txt` → `C:/a/b.txt`。</summary>
+    /// <summary>
+    /// `file:///C:/a/b.txt` → `C:/a/b.txt`；`file://server/share/x.txt` → `\\server\share\x.txt`。
+    ///
+    /// 走 <see cref="Uri.LocalPath"/>：它自带 UNC（authority）处理与百分号解码。
+    /// 早先是手工切 "file://" 再 TrimStart('/')，于是网络路径的服务器名
+    /// 被当成第一段目录 —— `file://server/share/x.txt` 变成相对路径
+    /// `server\share\x.txt`，智能直达永远判"文件不存在"。
+    /// </summary>
     private static string FileUriToPath(string uri)
     {
         try
         {
-            string s = uri["file://".Length..];
-            s = Uri.UnescapeDataString(s);
-            // file:///C:/… 前面会留一个斜杠
-            if (s.StartsWith('/') && s.Length > 2 && s[2] == ':') s = s[1..];
-            s = s.TrimStart('/');
-            return s;
+            var u = new Uri(uri, UriKind.Absolute);
+            string p = u.LocalPath;
+            /* file:///C:/… 解析出来是 C:\…（正常）；
+             * 有些写法会给出 /C:/… 这种，去掉前面的斜杠。 */
+            if (p.StartsWith('/') && p.Length > 2 && p[2] == ':') p = p[1..];
+            return p;
         }
-        catch { return ""; }
+        catch
+        {
+            // 兜底：至少按老办法解一遍百分号编码
+            try
+            {
+                string s = uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                    ? uri["file://".Length..] : uri;
+                s = Uri.UnescapeDataString(s);
+                if (s.StartsWith('/') && s.Length > 2 && s[2] == ':') s = s[1..];
+                return s.TrimStart('/');
+            }
+            catch { return ""; }
+        }
     }
 
     private static bool HasFileLikeTld(string domainish)

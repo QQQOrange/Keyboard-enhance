@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -1004,9 +1004,179 @@ public static partial class SelfTest
         }
     }
 
-    private static void TestAuditFindings()
+    /// <summary>
+    /// 引擎级回归（第二轮全盘审视）。
+    ///
+    /// 这一组全部是"单元测试测不到、只有把整条按键链路跑起来才暴露"的缺陷：
+    ///   · 文本片段缓冲区被每个键清空 → 多字符触发词永远不命中；
+    ///   · 按应用叠加层只生效一次（账本不清）；
+    ///   · 暂停时改键目标键粘住；
+    ///   · 层外按下、层内自动重复的键，抬起被误吞。
+    /// </summary>
+    private static void TestEngineRegressions2()
     {
-        // A4：粘贴系统剪贴板曾经是 `=> true;` 空实现。
+        // ---- 1. 文本片段：多字符触发词必须能累积 ----
+        var s1 = DefaultSettings.Create();
+        foreach (var t in s1.Triggers) t.Enabled = false;
+        s1.Global.Snippets.Clear();
+        s1.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
+
+        var q1 = new ActionQueue();
+        var e1 = new HotkeyEngine(q1, () => s1, (_, _) => true);
+        // ';' = 0xBA；字母键的虚拟码是**大写** ASCII（'M' = 0x4D），不是 'm'
+        int[] seq = { 0xBA, 'M', 'A', 'I', 'L' };
+        foreach (int vk in seq)
+        {
+            e1.SimulateKey(vk, true);
+            e1.SimulateKey(vk, false);
+        }
+        DoEvents(120);
+        CheckEqual("片段：多字符触发词能命中", e1.SnippetMatchesForTest, 1);
+
+        // 反例：只打到一半不能命中
+        var s1b = DefaultSettings.Create();
+        foreach (var t in s1b.Triggers) t.Enabled = false;
+        s1b.Global.Snippets.Clear();
+        s1b.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
+        var q1b = new ActionQueue();
+        var e1b = new HotkeyEngine(q1b, () => s1b, (_, _) => true);
+        foreach (int vk in new[] { 0xBA, 'M', 'A' })
+        {
+            e1b.SimulateKey(vk, true);
+            e1b.SimulateKey(vk, false);
+        }
+        DoEvents(80);
+        CheckEqual("片段：只打了前缀不命中", e1b.SnippetMatchesForTest, 0);
+        e1b.Dispose();
+        q1b.Dispose();
+        e1.Dispose();
+        q1.Dispose();
+
+        // ---- 2. 按应用叠加层：连按两次要执行两次 ----
+        var s2 = DefaultSettings.Create();
+        foreach (var t in s2.Triggers) t.Enabled = false;
+        var layer2 = s2.Layers.First(l => l.Id == 2);
+        layer2.Keys.Clear();
+        layer2.Keys.Add(new KeyBinding
+        { Combo = KeyName.BuildComboEx(KeyModifiers.None, "q"), Action = "qbar" });
+
+        int fired = 0;
+        var q2 = new ActionQueue();
+        var e2 = new HotkeyEngine(q2, () => s2, (_, _) => { Interlocked.Increment(ref fired); return true; });
+        e2.AppLayerId = 2;
+
+        for (int i = 0; i < 2; i++)
+        {
+            bool swallowed = e2.SimulateKey(0x51, true);
+            bool upSwallowed = e2.SimulateKey(0x51, false);
+            Check($"叠加层：第 {i + 1} 次按下被吞", swallowed);
+            Check($"叠加层：第 {i + 1} 次抬起被吞", upSwallowed);
+        }
+        WaitUntil(() => Volatile.Read(ref fired) >= 2);
+        CheckEqual("叠加层：连按两次执行两次", Volatile.Read(ref fired), 2);
+
+        // ---- 3. 暂停时改键目标键要松开 ----
+        var s3 = DefaultSettings.Create();
+        foreach (var t in s3.Triggers) t.Enabled = false;
+        s3.Global.BaseRemaps.Clear();
+        s3.Global.BaseRemaps.Add(new KeyRemap { From = "lctrl", To = "lalt" });
+
+        var q3 = new ActionQueue();
+        var e3 = new HotkeyEngine(q3, () => s3, (_, _) => true);
+        Check("改键：按下被接管", e3.SimulateKey(0xA2, true));
+        CheckEqual("改键：记账里有 1 个目标键", e3.PendingRemapsForTest, 1);
+        e3.Enabled = false;      // 相当于用户点了托盘「暂停」
+        CheckEqual("改键：暂停后目标键被松开", e3.PendingRemapsForTest, 0);
+        e3.Enabled = true;
+        e3.Dispose();
+        q3.Dispose();
+        e2.Dispose();
+        q2.Dispose();
+
+        // ---- 4. 层外按下、层内自动重复的键：抬起不能被补吞 ----
+        var s4 = DefaultSettings.Create();
+        foreach (var t in s4.Triggers) { t.Enabled = true; t.HoldMs = 200; }
+        var q4 = new ActionQueue();
+        var e4 = new HotkeyEngine(q4, () => s4, (_, _) => true)
+        { EnterLayerImmediatelyForTest = true };
+
+        Check("层外：方向键按下放行", !e4.SimulateKey(0x28, true));
+        e4.SimulateKey(VK.CapsLock, true);            // 进层
+        Check("层内：方向键的自动重复被吞", e4.SimulateKey(0x28, true));
+        e4.SimulateKey(VK.CapsLock, false);            // 退层
+        Check("退层后：这个键的抬起不被补吞", !e4.SimulateKey(0x28, false));
+        e4.Dispose();
+        q4.Dispose();
+
+        // ---- 5. 表达式：大整数精确、`**` 与 `^` 同义、round 四舍五入 ----
+        Check("算式：2^50 精确", ExpressionEvaluator.TryEvaluate("2^50", out var v50, out _)
+            && ExpressionEvaluator.Format(v50) == "1125899906842624",
+            ExpressionEvaluator.Format(v50));
+        Check("算式：1234567890123456 精确",
+            ExpressionEvaluator.TryEvaluate("1234567890123456", out var vBig, out _)
+            && ExpressionEvaluator.Format(vBig) == "1234567890123456",
+            ExpressionEvaluator.Format(vBig));
+        Check("算式：2*3**2 = 18",
+            ExpressionEvaluator.TryEvaluate("2*3**2", out var vPow, out _)
+            && Math.Abs(vPow - 18) < 1e-9, vPow.ToString());
+        Check("算式：2**3**2 = 512（右结合）",
+            ExpressionEvaluator.TryEvaluate("2**3**2", out var vPow2, out _)
+            && Math.Abs(vPow2 - 512) < 1e-9, vPow2.ToString());
+        Check("算式：round(2.5) = 3",
+            ExpressionEvaluator.TryEvaluate("round(2.5)", out var vR, out _)
+            && Math.Abs(vR - 3) < 1e-9, vR.ToString());
+        Check("算式：round(0.5) = 1",
+            ExpressionEvaluator.TryEvaluate("round(0.5)", out var vR2, out _)
+            && Math.Abs(vR2 - 1) < 1e-9, vR2.ToString());
+
+        // ---- 6. 智能直达：UNC 的 file:// 地址不能丢服务器名 ----
+        var unc = SmartTargetDetector.Detect("file://server/share/x.txt",
+            _ => false, _ => false);
+        Check("智能直达：UNC 文件地址保留 \\\\server",
+            unc.Target.StartsWith(@"\\server", StringComparison.Ordinal), unc.Target);
+        var local = SmartTargetDetector.Detect("file:///C:/Windows/notepad.exe",
+            _ => false, _ => false);
+        Check("智能直达：本地 file:/// 仍解析成本地路径",
+            local.Target.StartsWith(@"C:\Windows", StringComparison.OrdinalIgnoreCase), local.Target);
+
+        // ---- 7. 导入：只勾了「外观」的文件，夹带 Sync 也必须被组裁剪挡住 ----
+        const string hostile =
+            "{\"kind\":\"clp-config\",\"items\":[\"appearance\"],"
+            + "\"data\":{\"Global\":{\"Theme\":\"light\"},"
+            + "\"Sync\":{\"WebDavUrl\":\"https://attacker/dav/\"}}}";
+        var (groups, data, wasBackup) = CapsLockPlus.Core.Sync.ExportImport.Parse(hostile, null);
+        Check("导入：有 kind 的导出文件不被当成备份", !wasBackup);
+        Check("导入：只声明了外观组", groups.Count == 1 && groups[0] == "appearance",
+            string.Join(",", groups));
+
+        var victim = DefaultSettings.Create();
+        victim.Sync.WebDavUrl = "https://mine/dav/";
+        CapsLockPlus.Core.Sync.ExportImport.Apply(victim, groups, data);
+        CheckEqual("导入：夹带的网盘地址不生效", victim.Sync.WebDavUrl, "https://mine/dav/");
+        CheckEqual("导入：文件里声明的主题生效", victim.Global.Theme, "light");
+
+        // ---- 8. 导入「外观与行为」不能清掉本机的片段 / 改键 ----
+        var target = DefaultSettings.Create();
+        target.Global.Snippets.Add(new Snippet { Trigger = ";x", Text = "本地片段" });
+        target.Global.BaseRemaps.Add(new KeyRemap { From = "capslock", To = "esc" });
+
+        var payload = new System.Text.Json.Nodes.JsonObject
+        {
+            ["Global"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["Theme"] = "light",
+                ["Snippets"] = new System.Text.Json.Nodes.JsonArray(),
+                ["BaseRemaps"] = new System.Text.Json.Nodes.JsonArray(),
+            },
+        };
+        CapsLockPlus.Core.Sync.ExportImport.Apply(target, new List<string> { "appearance" }, payload);
+        CheckEqual("导入外观：主题已应用", target.Global.Theme, "light");
+        CheckEqual("导入外观：本机片段保留", target.Global.Snippets.Count, 1);
+        CheckEqual("导入外观：本机改键保留", target.Global.BaseRemaps.Count, 1);
+    }
+
+    private static void TestAuditFindings()
+    {        // A4：粘贴系统剪贴板曾经是 `=> true;` 空实现。
         // 这里用反射确认它不会再退化成一行 return true。
         var m = typeof(Core.Actions.ClipboardService)
             .GetMethod("PasteSystem", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);

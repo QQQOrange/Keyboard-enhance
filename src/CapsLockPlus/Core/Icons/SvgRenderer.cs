@@ -449,7 +449,15 @@ public static class SvgRenderer
                 }
                 val = new Point(num8, num9);
                 val2 = val;
-                streamGeometryContext.BeginFigure(val, isFilled: true, isClosed: true);
+                /* 所有子路径都按"不闭合"开始，闭合由 Z 自己补一条线段。
+                 *
+                 * 早先这里写 isClosed: true，于是**每条**子路径都被闭合：
+                 * `M15 31c5 2.6 13 2.6 18 0` 这种只有描边、没有 fill 的弧线，
+                 * 会被多画一条"从终点直线回到起点"的弦 —— 图标上多出一块
+                 * 莫名其妙的实心形状（amazon 的笑脸弧、百度的笑嘴、
+                 * spotify 的弧线全是这个毛病）。
+                 * SVG 的填充本来就会把开放子路径当作闭合处理，所以填充不受影响。 */
+                streamGeometryContext.BeginFigure(val, isFilled: true, isClosed: false);
                 c = ((c == 'm') ? 'l' : 'L');
                 break;
             }
@@ -650,7 +658,17 @@ public static class SvgRenderer
             }
             case 'Z':
             case 'z':
-                streamGeometryContext.BeginFigure(val2, isFilled: true, isClosed: true);
+                /* 闭合子路径：显式连回起点。
+                 *
+                 * StreamGeometryContext 没有 Close() —— 早先的做法是
+                 * "在起点再 BeginFigure 一个 isClosed:true 的空图形"，
+                 * 但那样闭合的是**新图形**（空图形画不出东西），
+                 * 真正要闭合的那条子路径仍是开放的。
+                 * 这里直接补一条回到起点的线段：描边和填充都与 SVG 一致。 */
+                if (val != val2)
+                {
+                    streamGeometryContext.LineTo(val2, isStroked: true, isSmoothJoin: false);
+                }
                 val = val2;
                 break;
             default:

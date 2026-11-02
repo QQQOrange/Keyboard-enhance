@@ -1,4 +1,4 @@
-﻿using CapsLockPlus.Core.Macro;
+using CapsLockPlus.Core.Macro;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Windows;
 using static CapsLockPlus.Core.Interop.NativeMethods;
@@ -59,6 +59,13 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>当前按住的"源键 → 目标键"，用于成对松开（否则会粘键）。</summary>
     private readonly Dictionary<int, int> _remappedDown = new();
+
+    /* 改键账本 / 双击时间戳都会被**钩子线程**和**界面线程**同时碰
+     * （暂停、挂起、钩子重装都会从界面线程调 ResetTriggerState）。
+     * 字典没有线程安全保证，一边遍历一边增删会抛"集合已修改"，
+     * 而抛出点在钩子回调里 —— 结果可能是某个目标键永远松不开。
+     * 一把只在极短临界区内持有的锁，代价远小于这个风险。 */
+    private readonly object _remapGate = new();
 
     /// <summary>叠加层 id，由前台窗口监听写入（钩子线程读，必须 volatile）。</summary>
     private volatile int _appLayerId;
@@ -290,7 +297,15 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     private void ResetTriggerState(string reason)
     {
-        if (!_triggerHeld && !_layerActive) return;
+        /* 没有触发键会话时也要往下走 —— 只要还有"改键欠账"。
+         *
+         * 场景：用户按住被改键的 Ctrl（引擎已经把目标键 Alt 按下去了），
+         * 这时点托盘「暂停」。早先这里因为"没有触发键/层"直接返回，
+         * ReleaseRemappedKeys 不执行，于是 Alt 一直停在被按下的状态 ——
+         * 复现后每个按键都会变成 Alt+键，而且在下次按 Ctrl 抬起之前无法解除。 */
+        int pendingRemaps;
+        lock (_remapGate) pendingRemaps = _remappedDown.Count;
+        if (!_triggerHeld && !_layerActive && pendingRemaps == 0) return;
         CoreLog.Info($"引擎状态复位（{reason}）：丢弃未完成的触发键会话");
         _triggerHeld = false;
         _layerActive = false;
@@ -309,7 +324,7 @@ public sealed class HotkeyEngine : IDisposable
         }
         ClearContinuousRepeat();
         ReleaseRemappedKeys();      // 复位时把改键的目标键松开，避免粘键
-        _gestureLastTick.Clear();   // 双击判定作废，避免跨会话误触发
+        lock (_remapGate) _gestureLastTick.Clear();   // 双击判定作废，避免跨会话误触发
     }
 
     /// <summary>是否正处于某个触发键的按住状态。</summary>
@@ -750,8 +765,7 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>
     /// 仅供自检：查询某个修饰键当前被记为"按住"（Ctrl/Shift/Alt/Win）。
     /// </summary>
-    internal bool ModifierHeldForTest(KeyModifiers which) => which switch
-    {
+    internal bool ModifierHeldForTest(KeyModifiers which) => which switch    {
         KeyModifiers.Ctrl => _ctrlDown,
         KeyModifiers.Shift => _shiftDown,
         KeyModifiers.Alt => _laltDown,
@@ -761,6 +775,18 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>仅供自检：手动跑一次阈值检查，不依赖计时器。</summary>
     public void CheckHoldThresholdForTest() => CheckHoldThreshold();
+
+    /// <summary>
+    /// 仅供自检：已经命中的文本片段数（命中后不一定真的注入文字 ——
+    /// 焦点不可编辑时会跳过，所以这里只统计"匹配到"这件事）。
+    /// </summary>
+    internal int SnippetMatchesForTest { get; private set; }
+
+    /// <summary>仅供自检：当前还有几个改键目标键处于"按下未松"的记账里。</summary>
+    internal int PendingRemapsForTest
+    {
+        get { lock (_remapGate) return _remappedDown.Count; }
+    }
 
     /// <summary>
     /// 仅供自检：把"最后一次按键活动"往前拨，用来复现
@@ -928,7 +954,13 @@ public sealed class HotkeyEngine : IDisposable
          */
         if (!down)
         {
-            if (_remappedDown.Remove(vk, out int held))
+            int held = 0;
+            bool found;
+            lock (_remapGate)
+            {
+                found = _remappedDown.Remove(vk, out held);
+            }
+            if (found)
             {
                 int t = held;
                 _queue.Post(() => InputSender.KeyUp(t));
@@ -947,7 +979,7 @@ public sealed class HotkeyEngine : IDisposable
 
         if (!_remapTable.TryGet(vk, device, out int target)) return false;
 
-        _remappedDown[vk] = target;
+        lock (_remapGate) _remappedDown[vk] = target;
         int pressed = target;
         _queue.Post(() => InputSender.KeyDown(pressed));
         return true;
@@ -959,14 +991,22 @@ public sealed class HotkeyEngine : IDisposable
     /// </summary>
     private void ReleaseRemappedKeys()
     {
-        if (_remappedDown.Count == 0) return;
-
-        foreach (var kv in _remappedDown)
+        /* 先加锁取快照再发键：
+         * 这个方法会被界面线程（暂停 / 挂起）和钩子线程（触发键复位）同时调用，
+         * 而 `_remappedDown` 另一头正被 TryApplyRemap 增删。
+         * 直接遍历会抛"集合已修改"—— 那样后面几个键就松不开了。 */
+        int[] targets;
+        lock (_remapGate)
         {
-            int t = kv.Value;
+            if (_remappedDown.Count == 0) return;
+            targets = _remappedDown.Values.ToArray();
+            _remappedDown.Clear();
+        }
+
+        foreach (int t in targets)
+        {
             _queue.Post(() => InputSender.KeyUp(t));
         }
-        _remappedDown.Clear();
     }
 
     private bool OnKeyEvent(int vk, bool down, bool injected)
@@ -1061,9 +1101,19 @@ public sealed class HotkeyEngine : IDisposable
         }
 
         // ---- 1. 这个键是不是触发键？ ----
-        _snippetBuffer.Clear();     // 被吞掉的键不参与片段拼接
+        /* ⚠ 片段缓冲区**不能**在这里无条件清空。
+         *
+         * 这一行原来是 `_snippetBuffer.Clear()`，写在"每个按键"上 ——
+         * 而 ObserveSnippet 只追加当前这一个字符，于是缓冲区永远只有 1 个字，
+         * `EndsWith(触发词)` 只可能匹配单字符触发词。
+         * 用户配的 `;mail` / `;log` 这类长度大于 1 的片段**永远不展开**，
+         * 而这个功能看起来"装好了"（配置界面、自检的纯函数都正常）。
+         *
+         * 现在只在"这个键被引擎吃掉"的地方清空 —— 被吞掉的键本来就不该
+         * 参与拼接，放行的键才按顺序累加。 */
         if (IsTrigger(settings, vk))
         {
+            _snippetBuffer.Clear();     // 被吞掉的键不参与片段拼接
             // 按下和抬起都吞掉：短按的原功能由 OnTriggerUp 里补发，
             // 长按则彻底不发出。这样不会污染系统的按键状态。
             if (down) OnTriggerDown(settings, vk, wasPhysicallyDown);
@@ -1110,19 +1160,30 @@ public sealed class HotkeyEngine : IDisposable
         // ---- 3. 不在层模式：放行，但先把"欠着的抬起"结清 ----
         if (!_triggerHeld || !_layerActive)
         {
+            /* 下面每个 `return true` 都是"这个键被引擎吃掉了"，
+             * 都要顺手清掉片段缓冲区（被吞掉的键不参与拼接）。 */
+
             /* 组合键：命中就把这个键扣住等第二个键，超时再放行。 */
-            if (TryChord(settings, vk, down)) return true;
+            if (TryChord(settings, vk, down)) { _snippetBuffer.Clear(); return true; }
 
             /* 双击动作：只对配置过的键生效，单击完全保持原样。 */
-            if (down && TryRunDoubleTapGesture(settings, vk, wasPhysicallyDown)) return true;
-            if (!down && _gestureSwallowUp.Remove(vk)) return true;
+            if (down && TryRunDoubleTapGesture(settings, vk, wasPhysicallyDown))
+            {
+                _snippetBuffer.Clear();
+                return true;
+            }
+            if (!down && _gestureSwallowUp.Remove(vk)) { _snippetBuffer.Clear(); return true; }
 
             /* 按应用的叠加层：只接管**绑过**的组合，未绑定的键原样放行。 */
-            if (down && TryRunAppLayerBinding(settings, vk)) return true;
+            if (down && TryRunAppLayerBinding(settings, vk))
+            {
+                _snippetBuffer.Clear();
+                return true;
+            }
 
             /* 基础改键：只要不在层里就生效。
              * 放在"放行"之前 —— 命中就吞掉原键并改成目标键。 */
-            if (TryApplyRemap(settings, vk, down)) return true;
+            if (TryApplyRemap(settings, vk, down)) { _snippetBuffer.Clear(); return true; }
 
             /* 按下被我们吞过、抬起还没结账的键，这里必须补吞。
              *
@@ -1132,8 +1193,18 @@ public sealed class HotkeyEngine : IDisposable
              * 记事本这类程序无感，但游戏 / 远程桌面 / WebView2 会判定
              * 输入异常，个别实现甚至认为该键一直按着、反复自重复。
              *
-             * 只在 up 上查表；Down 走原来的放行逻辑。 */
-            if (!down) return _swallowedUp.TryRemove(vk, out _);
+             * ⚠ 这里的 `_swallowedDown` 也**必须**一起清：
+             * 它是"这个键的按下被吞过"的账本，同时被「按应用叠加层」
+             * 拿来当自动重复的判据（`ContainsKey` 就当作重复 → 直接吞掉）。
+             * 只在抬起时清 `_swallowedUp`，账本会永远留着这个键 ——
+             * 表现是：按应用叠加层里绑的快捷键**只生效一次**，
+             * 第二次按下被静默吃掉、动作不执行，抬起还漏给前台。 */
+            if (!down)
+            {
+                _swallowedDown.TryRemove(vk, out _);
+                if (_swallowedUp.TryRemove(vk, out _)) { _snippetBuffer.Clear(); return true; }
+                return false;
+            }
 
             /* 文本片段：只有"真的会打出去"的键才计入缓冲区。
              * 带 Ctrl/Alt/Win 的是命令，不是输入，直接断开。 */
@@ -1144,7 +1215,8 @@ public sealed class HotkeyEngine : IDisposable
         }
 
         // ---- 4. 层模式内的按键 ----
-        return down ? OnKeyDownInLayer(vk) : OnKeyUpInLayer(vk);
+        _snippetBuffer.Clear();     // 层内按键一律被接管，不参与拼接
+        return down ? OnKeyDownInLayer(vk, wasPhysicallyDown) : OnKeyUpInLayer(vk);
     }
 
     /// <summary>
@@ -1834,15 +1906,20 @@ public sealed class HotkeyEngine : IDisposable
         if (wasPhysicallyDown) return false;      // 系统自动重复，不算第二次
 
         long now = Environment.TickCount64;
-        if (_gestureLastTick.TryGetValue(vk, out long last) && now - last <= DoubleTapWindowMs)
+        bool isSecond;
+        lock (_remapGate)                       // 与 ResetTriggerState 的 Clear 互斥（同一把短锁）
         {
-            _gestureLastTick.Remove(vk);
+            isSecond = _gestureLastTick.TryGetValue(vk, out long last)
+                       && now - last <= DoubleTapWindowMs;
+            if (isSecond) _gestureLastTick.Remove(vk);
+            else _gestureLastTick[vk] = now;
+        }
+        if (isSecond)
+        {
             _gestureSwallowUp.Add(vk);
             _queue.Post(() => RunTapAction(action));
             return true;
         }
-
-        _gestureLastTick[vk] = now;
         return false;
     }
 
@@ -1881,6 +1958,7 @@ public sealed class HotkeyEngine : IDisposable
         var hit = SnippetMatcher.Match(list, _snippetBuffer.ToString(), ForegroundProcess);
         if (hit == null) return;
 
+        SnippetMatchesForTest++;
         _snippetBuffer.Clear();
 
         int deleteCount = hit.Trigger.Length;
@@ -1943,8 +2021,21 @@ public sealed class HotkeyEngine : IDisposable
         };
     }
 
-    private bool OnKeyDownInLayer(int vk)
+    private bool OnKeyDownInLayer(int vk, bool wasPhysicallyDown)
     {
+        /* 「欠着的抬起」只在**本次按下的第一次**记账。
+         *
+         * 系统自动重复的 down 不能重复记账：用户可能先按住 Down 不放，
+         * 再按住触发键进层 —— 这时 Down 的原始 down 早就放给前台了，
+         * 若在层内把它的每个重复 down 都记成"按下被吞过"，
+         * 松手时那次 up 就会被补吞，前台只收到 down、收不到 up
+         * （游戏 / 远程桌面会一直认为这个键按着）。
+         * wasPhysicallyDown 正是"这不可能是第一次按下"的判据。 */
+        void OweUp(int code)
+        {
+            if (!wasPhysicallyDown) _swallowedUp.TryAdd(code, 0);
+        }
+
         /* 修饰键：记录状态并吞掉（否则会触发系统级 Alt / Win 菜单）。
          *
          * ⚠ 左右与通用码都要认。早先只认 LControl/LShift/LMenu：
@@ -1954,25 +2045,25 @@ public sealed class HotkeyEngine : IDisposable
         if (vk is VK.LMenu or VK.RMenu or 0x12)
         {
             _laltDown = true;
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             return true;
         }
         if (vk is VK.LWin or VK.RWin)
         {
             if (vk == VK.LWin) _lwinDown = true; else _rwinDown = true;
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             return true;
         }
         if (vk is VK.LControl or VK.RControl or 0x11)
         {
             _ctrlDown = true;
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             return true;
         }
         if (vk is VK.LShift or VK.RShift or 0x10)
         {
             _shiftDown = true;
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             return true;
         }
 
@@ -1987,7 +2078,7 @@ public sealed class HotkeyEngine : IDisposable
         {
             _usedOtherKey = true;
             _swallowedDown.TryAdd(vk, 0);
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             return true;
         }
 
@@ -2014,7 +2105,7 @@ public sealed class HotkeyEngine : IDisposable
             string.Equals(keyName, _subLayerKeyDown, StringComparison.OrdinalIgnoreCase))
         {
             _swallowedDown.TryAdd(vk, 0);
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             return true;
         }
 
@@ -2022,7 +2113,7 @@ public sealed class HotkeyEngine : IDisposable
         {
             _subLayerKeyDown = keyName;
             _swallowedDown.TryAdd(vk, 0);   // 记下 down：抬起时成对清理、重复时能被识别
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             SubLayerChanged?.Invoke(keyName);
             return true;
         }
@@ -2063,7 +2154,7 @@ public sealed class HotkeyEngine : IDisposable
              * 的抬起"，个别程序（游戏、远程桌面）会因此判定输入异常。 */
             _usedOtherKey = true;
             _swallowedDown.TryAdd(vk, 0);
-            _swallowedUp.TryAdd(vk, 0);
+            OweUp(vk);
             return true;
         }
 
@@ -2085,7 +2176,7 @@ public sealed class HotkeyEngine : IDisposable
 
         _lastRepeatVk = vk;
         _swallowedDown.TryAdd(vk, 0);
-        _swallowedUp.TryAdd(vk, 0);
+        OweUp(vk);
         _usedCombo = true;
 
         _queue.Post(() =>

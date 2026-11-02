@@ -144,9 +144,11 @@ public static class RuleConflicts
             if (!string.IsNullOrWhiteSpace(c.Key1) &&
                 string.Equals(c.Key1, c.Key2, StringComparison.OrdinalIgnoreCase))
             {
-                list.Add(new Conflict(ConflictLevel.Warn, Loc.F(
-                    "组合键的两个键都是「{0}」，永远不会触发。", KeyName.Display(c.Key1),
-                    ConflictTarget.Chord)));
+                /* ⚠ 第三个参数是 Conflict.Target，不能塞进 Loc.F 的实参里 ——
+                 * 那样结论级别照旧、但"去修改"按钮会消失（界面只在 Target != None 时给按钮）。 */
+                list.Add(new Conflict(ConflictLevel.Warn,
+                    Loc.F("组合键的两个键都是「{0}」，永远不会触发。", KeyName.Display(c.Key1)),
+                    ConflictTarget.Chord));
             }
         }
 

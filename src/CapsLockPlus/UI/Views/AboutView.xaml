@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
              FontFamily="{StaticResource Font.Ui}">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,4,20,24"
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24,4,20,20"
                   SizeChanged="OnAboutScrollSizeChanged">
         <!--
             全屏时不能再让内容挤在左边一条：以前是 MaxWidth=880 + 左对齐，
@@ -60,7 +60,7 @@
                         <TextBlock x:Name="BuildInfo" Foreground="{StaticResource Brush.BrandAccent}" FontSize="11.5" Margin="0,4,0,0" />
                     </StackPanel>
 
-                    <Button Grid.Column="2" x:Name="GitHubButton" Style="{StaticResource Button.Base}"
+                    <Button Grid.Column="2" x:Name="GitHubButton" Style="{StaticResource Button.Brand}"
                             Background="{StaticResource Brush.BrandOnLight}" BorderBrush="{StaticResource Brush.BrandOnLight}"
                             Foreground="{StaticResource Brush.BrandOnLightText}" FontWeight="SemiBold"
                             Padding="16,9" VerticalAlignment="Center" Click="OnOpenGitHub"
@@ -98,64 +98,56 @@
 
                     <!-- GitHub 个人访问令牌：解除更新检查的接口限流 -->
                     <StackPanel Margin="0,2,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                        <!-- 标签自己占一行，不再和输入框抢宽度 -->
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{loc:T 'GitHub 个人访问令牌'}" Style="{StaticResource Text.Body}"
+                                       VerticalAlignment="Center" />
+                            <!-- 问号按钮：点开 GitHub 官方文档（新标签页）。
+                                 用 Button 而不是图片图标：它天生能 Tab 到、能用
+                                 空格/回车触发，读屏软件也念得出（AutomationProperties）。
+                                 字形用文字 "?" 而不是图标字体 —— E 系列字形在部分
+                                 Win10 的 Fluent Icons 里是空白方框。 -->
+                            <Button x:Name="TokenHelpButton" Content="?"
+                                    Style="{StaticResource Button.Ghost}"
+                                    Width="22" Height="22" MinWidth="0" Padding="0"
+                                    Margin="6,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                    VerticalAlignment="Center" Click="OnOpenTokenHelp"
+                                    AutomationProperties.Name="{loc:T '什么是 GitHub 个人访问令牌（打开官方帮助）'}"
+                                    AutomationProperties.HelpText="{loc:T '在浏览器中打开 GitHub 官方中文文档：管理个人访问令牌'}">
+                                <Button.ToolTip>
+                                    <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                                               Text="{loc:T '个人访问令牌（PAT）相当于给程序用的专用密码：填了之后，本程序以你的账号身份调用 GitHub 接口，配额从每小时 60 次提到 5000 次，还能一键自动下载更新。只读公开仓库不需要勾任何权限。&#x0a;&#x0a;点这个问号，在浏览器中打开 GitHub 官方说明（含创建步骤）。'}" />
+                                </Button.ToolTip>
+                            </Button>
+                        </StackPanel>
 
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="{loc:T 'GitHub 个人访问令牌'}" Style="{StaticResource Text.Body}"
-                                           VerticalAlignment="Center" />
-                                <!-- 问号按钮：点开 GitHub 官方文档（新标签页）。
-                                     用 Button 而不是图片图标：它天生能 Tab 到、能用
-                                     空格/回车触发，读屏软件也念得出（AutomationProperties）。
-                                     字形用文字 "?" 而不是图标字体 —— E 系列字形在部分
-                                     Win10 的 Fluent Icons 里是空白方框。 -->
-                                <Button x:Name="TokenHelpButton" Content="?"
-                                        Style="{StaticResource Button.Ghost}"
-                                        Width="22" Height="22" MinWidth="0" Padding="0"
-                                        Margin="6,0,0,0" FontSize="12" FontWeight="SemiBold"
-                                        VerticalAlignment="Center" Click="OnOpenTokenHelp"
-                                        AutomationProperties.Name="{loc:T '什么是 GitHub 个人访问令牌（打开官方帮助）'}"
-                                        AutomationProperties.HelpText="{loc:T '在浏览器中打开 GitHub 官方中文文档：管理个人访问令牌'}">
-                                    <Button.ToolTip>
-                                        <TextBlock MaxWidth="320" TextWrapping="Wrap"
-                                                   Text="{loc:T '个人访问令牌（PAT）相当于给程序用的专用密码：填了之后，本程序以你的账号身份调用 GitHub 接口，配额从每小时 60 次提到 5000 次，还能一键自动下载更新。只读公开仓库不需要勾任何权限。&#x0a;&#x0a;点这个问号，在浏览器里打开 GitHub 官方说明（含创建步骤）。'}" />
-                                    </Button.ToolTip>
-                                </Button>
-                            </StackPanel>
+                        <!-- 已保存时这里显示一串圆点（固定 8 个，不暴露真实长度）。
+                             一旦开始输入/粘贴，圆点会被清掉换成新令牌 —— 见 OnTokenBoxPreviewTextInput。 -->
+                        <TextBox x:Name="TokenBox" Margin="0,8,0,0"
+                                 Style="{StaticResource TextBox.Base}" MinHeight="34"
+                                 VerticalContentAlignment="Center"
+                                 GotKeyboardFocus="OnTokenBoxGotFocus"
+                                 PreviewTextInput="OnTokenBoxPreviewTextInput"
+                                 DataObject.Pasting="OnTokenBoxPasting"
+                                 ToolTip="{loc:T '已保存时显示为圆点；直接输入或粘贴新令牌就会替换掉旧的'}" />
 
-                            <!-- 已保存时这里显示一串圆点（固定 8 个，不暴露真实长度）。
-                                 一旦开始输入/粘贴，圆点会被清掉换成新令牌 —— 见 OnTokenBoxPreviewTextInput。 -->
-                            <TextBox Grid.Column="1" x:Name="TokenBox" Margin="12,0,0,0"
-                                     Style="{StaticResource TextBox.Base}" MinHeight="34"
-                                     VerticalContentAlignment="Center"
-                                     GotKeyboardFocus="OnTokenBoxGotFocus"
-                                     PreviewTextInput="OnTokenBoxPreviewTextInput"
-                                     DataObject.Pasting="OnTokenBoxPasting"
-                                     ToolTip="{loc:T '已保存时显示为圆点；直接输入或粘贴新令牌就会替换掉旧的'}" />
-
-                            <!-- 验证：拿这个令牌真请求一次 GitHub，确认它可用，并显示配额。
-                                 先验证再保存，比"存进去之后检查更新才发现是错的"省事得多。 -->
-                            <Button Grid.Column="2" x:Name="VerifyTokenButton" Content="{loc:T '验证'}"
-                                    Style="{StaticResource Button.Base}" Padding="14,6" Margin="8,0,0,0"
+                        <!-- 四个按钮单独一行，用 WrapPanel：窄窗口（最小 980）时自动折行，
+                             而不是把上面的输入框挤成 0 宽。 -->
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button x:Name="VerifyTokenButton" Content="{loc:T '验证'}"
+                                    Style="{StaticResource Button.Base}" Padding="14,6" Margin="0,0,6,6"
                                     Click="OnVerifyToken"
                                     ToolTip="{loc:T '用这个令牌请求一次 GitHub，确认真能用（顺便显示剩余配额）'}" />
-                            <Button Grid.Column="3" x:Name="SaveTokenButton" Content="{loc:T '保存'}"
-                                    Style="{StaticResource Button.Primary}" Padding="14,6" Margin="6,0,0,0"
+                            <Button x:Name="SaveTokenButton" Content="{loc:T '保存'}"
+                                    Style="{StaticResource Button.Primary}" Padding="14,6" Margin="0,0,6,6"
                                     Click="OnSaveToken" />
-                            <Button Grid.Column="4" x:Name="ClearTokenButton" Content="{loc:T '清除'}"
-                                    Style="{StaticResource Button.Ghost}" Padding="12,6" Margin="6,0,0,0"
+                            <Button x:Name="ClearTokenButton" Content="{loc:T '清除'}"
+                                    Style="{StaticResource Button.Ghost}" Padding="12,6" Margin="0,0,6,6"
                                     Click="OnClearToken" />
-                            <Button Grid.Column="5" Content="{loc:T '去创建'}" Style="{StaticResource Button.Ghost}"
-                                    Padding="12,6" Margin="6,0,0,0" Click="OnOpenTokenPage"
+                            <Button Content="{loc:T '去创建'}" Style="{StaticResource Button.Ghost}"
+                                    Padding="12,6" Margin="0,0,0,6" Click="OnOpenTokenPage"
                                     ToolTip="{loc:T '打开 GitHub 的令牌管理页（只需勾选 Public repositories 只读）'}" />
-                        </Grid>
+                        </WrapPanel>
 
                         <TextBlock x:Name="TokenStatusText" Style="{StaticResource Text.Tertiary}"
                                    TextWrapping="Wrap" Margin="0,7,0,0" />

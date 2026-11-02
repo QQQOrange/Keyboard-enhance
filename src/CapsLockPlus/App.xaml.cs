@@ -69,12 +69,7 @@ public partial class App : Application
          * 最后还跟了一句 hi（宏播放测试干的）。
          *
          * 放在最前面，任何模式分支之前，避免以后新加开关又忘。 */
-        if (e.Args.Any(a =>
-                a.Equals("--selftest", StringComparison.OrdinalIgnoreCase) ||
-                a.Equals("--render", StringComparison.OrdinalIgnoreCase) ||
-                a.Equals("--render-diag", StringComparison.OrdinalIgnoreCase) ||
-                a.Equals("--diag", StringComparison.OrdinalIgnoreCase) ||
-                a.Equals("--webdav-test", StringComparison.OrdinalIgnoreCase)))
+        if (CliFlags.NeedsDryRun(e.Args))
         {
             Core.Input.InputSender.DryRun = true;
             CoreLog.Info("测试模式：注入干跑（不会真的发送按键）");
@@ -323,7 +318,18 @@ public partial class App : Application
         // 注意：提权实例_也_必须获取互斥体。
         // 否则它不持锁，之后再启动一个普通实例就能成功拿到锁并又拉起一个提权实例，
         // 结果是同一时间跑着好几个实例。
-        if (!SingleInstance.TryAcquire(out bool running))
+        /* 诊断 / 测试类开关不参与单实例互斥。
+         *
+         * 典型场景：用户（或发版脚本）在软件常驻托盘时跑一次
+         * `KeyboardEnhance.exe --render docs\screenshots` ——
+         * 原先会在这里被判成"已有实例"，唤醒主窗口后以 0 退出，
+         * **一张图都不出**，而且没有任何提示。这类入口本来就是
+         * "跑完即退"的一次性进程，与常驻实例不冲突。 */
+        if (CliFlags.IsDiagnostic(e.Args))
+        {
+            CoreLog.Info("诊断模式：跳过单实例检查");
+        }
+        else if (!SingleInstance.TryAcquire(out bool running))
         {
             CoreLog.Info("已有实例在运行，唤醒它并退出");
             SingleInstance.ActivateExisting();
@@ -554,7 +560,15 @@ public partial class App : Application
             if (string.IsNullOrWhiteSpace(pass)) return;
 
             DataVault.Enable(pass);
-            SettingsStore.Save(settings);
+            /* 写不进去就把密钥退回去：Enable 已经换了 vault.json，
+             * 此时磁盘上还是旧密文 —— 不回滚等于两个密码都打不开。 */
+            if (!SettingsStore.Save(settings))
+            {
+                DataVault.RollbackKeyChange();
+                CoreLog.Error("[加密] 自动加密时设置写盘失败，已回滚到明文（下次启动会再试）");
+                return;
+            }
+            DataVault.CommitKeyChange();
             CoreLog.Info("[加密] 检测到已有备份密码，已自动把本地数据转为密文");
         }
         catch (Exception ex)

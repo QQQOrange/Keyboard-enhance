@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -757,11 +757,36 @@ public partial class QbarWindow : Window
                 e.Handled = true;
                 break;
             case Key.Enter:
+                /* 搜索/网址/程序这几类结果，回车先"补全成引擎 + 空格"，
+                 * 第二次回车才真正执行。
+                 *
+                 * 原因：用户敲 `bd` 时匹配到的是百度**搜索引擎**这一条，
+                 * 它的载荷是 `https://www.baidu.com/s?wd={q}` 这种模板。
+                 * 直接执行会把没替换的 {q} 原样打开 —— 浏览器里出现
+                 * "搜索 {q}" 这种结果。补全是这一行本来的意图：
+                 * 变成「bd 」标签，接着打关键词即可。 */
+                if (Results.SelectedItem is QbarItem sel && ShouldCompleteOnEnter(sel.Result))
+                {
+                    CompleteSelected();
+                    e.Handled = true;
+                    break;
+                }
                 ExecuteSelected();
                 e.Handled = true;
                 break;
         }
     }
+
+    /// <summary>
+    /// 这一条结果回车时是否该"补全"而不是"执行"。
+    ///
+    /// 判据：归类里带标签（说明它是个"引擎 / 程序 / 网址前缀"），
+    /// 且载荷里还有没填的占位符 —— 那它就不是一个可以直接打开的地址。
+    /// </summary>
+    private static bool ShouldCompleteOnEnter(QbarResult r)
+        => r.Kind is QbarKind.Search or QbarKind.Web or QbarKind.Run
+           && r.Badge.Length > 0
+           && r.Payload.Contains("{q}", StringComparison.Ordinal);
 
     private void MoveSelection(int delta)
     {

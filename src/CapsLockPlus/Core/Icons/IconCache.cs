@@ -182,13 +182,19 @@ public static class IconCache
     {
         nint[] array = new nint[1];
         nint[] phiconSmall = new nint[1];
-        nint num = ((ExtractIconEx(path, 0, array, phiconSmall, 1u) != 0) ? array[0] : IntPtr.Zero);
-        if (num == IntPtr.Zero)
-        {
-            return null;
-        }
+        nint num = IntPtr.Zero;
+        nint small = IntPtr.Zero;
         try
         {
+            /* ExtractIconEx 一次会同时填**大图标和小图标**两个数组。
+             * 早先只取了 array[0] 并只 DestroyIcon 它 ——
+             * 小图标那一份句柄每个路径泄漏一个（缓存清理后还会再漏一次），
+             * 长时间运行后 USER 句柄数一直涨。 */
+            if (ExtractIconEx(path, 0, array, phiconSmall, 1u) == 0) return null;
+            num = array[0];
+            small = phiconSmall[0];
+            if (num == IntPtr.Zero) return null;
+
             using Icon icon = Icon.FromHandle(num);
             using Bitmap bitmap = icon.ToBitmap();
             using MemoryStream memoryStream = new MemoryStream();
@@ -204,7 +210,8 @@ public static class IconCache
         }
         finally
         {
-            DestroyIcon(num);
+            if (num != IntPtr.Zero) DestroyIcon(num);
+            if (small != IntPtr.Zero && small != num) DestroyIcon(small);
         }
     }
 

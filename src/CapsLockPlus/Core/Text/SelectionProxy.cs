@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -116,28 +116,40 @@ public static class SelectionProxy
     public static int RunHelper(string pipeName)
     {
         InHelper = true;
+        if (string.IsNullOrEmpty(pipeName)) return 2;
 
         string text = "";
         try
         {
-            // 用"本地"实现，避免代理再把自己拉起来
-            text = TextActions.GetSelectedTextLocal(1200);
-        }
-        catch (Exception ex)
-        {
-            CoreLog.Warn("[取词代理] 取词异常：" + ex.Message);
-        }
-
-        try
-        {
-            if (string.IsNullOrEmpty(pipeName)) return 2;
-
+            /* ⚠ 管道服务端必须在**取词之前**建好。
+             *
+             * 主进程在启动子进程之后只等 1.3 秒就要 Connect 上；
+             * 而取词（UIA / WM_COPY / SendInput 五条通道挨个试）本身
+             * 就要 0.7~1.2 秒。先取词再建服务端 = 主进程早就超时放弃了，
+             * 这条"管理员模式下用普通权限取词"的保底通道几乎从不生效。
+             *
+             * 现在先建服务端并异步等连接，再去取词；取完直接写回去。 */
             using var server = new NamedPipeServerStream(
                 pipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte);
 
-            // 主进程可能还在启动中，给 3 秒等它连上来
             var wait = server.WaitForConnectionAsync();
-            if (!wait.Wait(3000)) return 2;
+
+            try
+            {
+                // 用"本地"实现，避免代理再把自己拉起来
+                text = TextActions.GetSelectedTextLocal(1200);
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Warn("[取词代理] 取词异常：" + ex.Message);
+            }
+
+            // 主进程可能还在启动中，最多再等 3 秒
+            if (!wait.Wait(3000))
+            {
+                CoreLog.Warn("[取词代理] 主进程没有在预期时间内连上来");
+                return 2;
+            }
 
             byte[] payload = Encoding.UTF8.GetBytes(text ?? "");
             server.Write(payload, 0, payload.Length);

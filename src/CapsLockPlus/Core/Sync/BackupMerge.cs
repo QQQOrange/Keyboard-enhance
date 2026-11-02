@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapsLockPlus.Core.Settings;
 
@@ -189,6 +189,35 @@ public static class BackupMerge
             {
                 lo["Enabled"] = JsonNodeTool.DeepClone(ro["Enabled"]!);
                 replaced++;
+            }
+
+            /* 子层定义一起合并。
+             *
+             * 只搬 Keys 不搬 SubLayers 会造出"永远不生效"的绑定：
+             * 备份里第 4 层用 Tab 做子层，绑了 caps_tab_q；合并到一台
+             * 本地第 4 层只有 ctrl/shift/alt/win 的机器上，caps_tab_q 照样被搬过去，
+             * 但 IsSubLayerKey 认不出 tab —— 那个键按下去毫无反应，
+             * 而界面上显示的仍是默认的四个子层，用户根本查不出原因。 */
+            if (ro["SubLayers"] is JsonArray rs)
+            {
+                if (lo["SubLayers"] is JsonArray ls)
+                {
+                    MergeKeyed(ls, rs, "Key", ref added, ref replaced);
+                }
+                else
+                {
+                    lo["SubLayers"] = JsonNodeTool.DeepClone(rs);
+                    added += rs.Count;
+                }
+            }
+            if (ro["SubLayerModifiers"] is JsonArray rm)
+            {
+                // 修饰键型子层：整份替换（它是"层的一个属性"，逐条合并没有意义）
+                if (!JsonNodeTool.DeepEquals(lo["SubLayerModifiers"], rm))
+                {
+                    lo["SubLayerModifiers"] = JsonNodeTool.DeepClone(rm);
+                    replaced++;
+                }
             }
 
             if (ro["Keys"] is JsonArray rk)

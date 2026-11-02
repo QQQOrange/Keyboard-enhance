@@ -14,7 +14,7 @@
     <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
                   SizeChanged="OnPageSizeChanged">
-        <Grid x:Name="PageBody" Margin="24,4,20,24">
+        <Grid x:Name="PageBody" Margin="24,4,20,20">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -40,11 +40,11 @@
                                    Foreground="{StaticResource Brush.BrandSubtitle}" FontSize="13.5" Margin="0,9,0,0" TextWrapping="Wrap"
                                    MaxWidth="760" HorizontalAlignment="Left" />
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                            <Button Content="{loc:T '开始 3 步设置'}" Style="{StaticResource Button.Base}"
+                            <Button Content="{loc:T '开始 3 步设置'}" Style="{StaticResource Button.Brand}"
                                     Background="{StaticResource Brush.BrandOnLight}" BorderBrush="{StaticResource Brush.BrandOnLight}"
                                     Foreground="{StaticResource Brush.BrandOnLightText}"
                                     FontWeight="SemiBold" Padding="18,8" Click="OnStartSetup" />
-                            <Button Content="{loc:T '查看快捷键速查'}" Style="{StaticResource Button.Base}"
+                            <Button Content="{loc:T '查看快捷键速查'}" Style="{StaticResource Button.BrandGhost}"
                                     Background="{StaticResource Brush.BrandHairline}" BorderBrush="{StaticResource Brush.BrandHairline}"
                                     Foreground="{StaticResource Brush.BrandTitle}"
                                     Padding="16,8" Margin="10,0,0,0" Click="OnOpenHelp" />

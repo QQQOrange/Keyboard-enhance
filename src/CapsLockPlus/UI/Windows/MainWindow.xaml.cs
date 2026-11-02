@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
 using CapsLockPlus.UI.Theme;
@@ -39,8 +39,32 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         StateChanged += OnStateChanged;
         Closing += OnClosing;
+        Closed += OnClosed;
         _host.EnabledChanged += OnEnabledChanged;
         _host.SettingsChanged += UpdateStatus;
+    }
+
+    /// <summary>
+    /// 窗口真的关掉之后（用户关掉了「关闭时最小化到托盘」）：
+    /// 退订宿主事件、清掉静态实例。
+    ///
+    /// 不退订的话，宿主的事件会一直握着这个已经关闭的窗口 ——
+    /// 之后再新建一个主窗口，同一个事件上就挂着两个处理者
+    /// （死窗口 + 活窗口），既泄漏又会让状态刷新做两遍。
+    /// </summary>
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        _host.EnabledChanged -= OnEnabledChanged;
+        _host.SettingsChanged -= UpdateStatus;
+        if (ReferenceEquals(Instance, this)) Instance = null;
+
+        // 页面里也有订阅了宿主事件的（例如「同步与备份」），
+        // 走 Unloaded 让它们自己退订 —— 关闭窗口时 WPF 不保证会发 Unloaded，
+        // 所以这里显式通知一次。
+        foreach (var page in _pages.Values)
+        {
+            if (page is FrameworkElement fe) fe.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -278,9 +302,17 @@ public partial class MainWindow : Window
 
     public void ReloadFromSettings()
     {
+        /* 先记住当前停在哪一页，再清缓存。
+         *
+         * 早先是先 `_current = ""` 再问"该显示哪页"，于是永远落到默认的
+         * 「快速上手」：改完语言、按 Caps+F5 重新加载、恢复默认设置、
+         * 导入配置、恢复备份之后，用户都被弹回第一页，
+         * 刚操作的设置页（连着他改的那个下拉框）直接消失。 */
+        string keep = _current.Length > 0 ? _current : _pendingPage ?? "guide";
+
         foreach (var page in _pages.Keys.ToList()) _pages.Remove(page);
         _current = "";
-        if (IsVisible) ShowPage(_pendingPage ?? "guide");
+        if (IsVisible) ShowPage(keep);
         UpdateStatus();
     }
 }

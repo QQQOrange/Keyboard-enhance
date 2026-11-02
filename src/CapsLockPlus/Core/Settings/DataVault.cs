@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -68,6 +68,15 @@ public static class DataVault
     /// <summary>
     /// 启用加密：用密码派生密钥，写 vault.json 与 DPAPI 缓存。
     /// 调用方负责在此之前把设置以加密形式重新保存一次。
+    ///
+    /// ⚠ **换密钥是有中间态的**：新密钥一写进 vault.json，磁盘上那份
+    /// 旧密文（用旧密钥加密的 settings.json）就再也解不开了。
+    /// 所以这里是"两段式"：
+    ///   1. <see cref="Enable"/> 记下旧密钥/旧文件（回滚点），装上新的；
+    ///   2. 调用方把设置按新密钥写盘成功 → <see cref="CommitKeyChange"/>；
+    ///      写盘失败 → <see cref="RollbackKeyChange"/>。
+    /// 早先没有这一步：Save 失败时异常被吞掉，vault.json 已经是新密钥，
+    /// settings.json 还是旧密文 —— 两个密码都打不开，配置永久丢失。
     /// </summary>
     public static void Enable(string password)
     {
@@ -77,6 +86,12 @@ public static class DataVault
         lock (Gate)
         {
             Directory.CreateDirectory(AppPaths.DataDir);
+
+            // 回滚点：必须在改动任何文件之前抓下来
+            _undoVaultText = File.Exists(VaultFile) ? File.ReadAllText(VaultFile) : null;
+            _undoCacheBytes = File.Exists(CacheFile) ? File.ReadAllBytes(CacheFile) : null;
+            _undoKey = _key;
+            _keyChangePending = true;
 
             byte[] salt = RandomNumberGenerator.GetBytes(SaltLen);
             byte[] key = Derive(password, salt, Iterations);
@@ -97,14 +112,78 @@ public static class DataVault
         }
     }
 
+    private static string? _undoVaultText;
+    private static byte[]? _undoCacheBytes;
+    private static byte[]? _undoKey;
+    private static bool _keyChangePending;
+
+    /// <summary>
+    /// 新密钥下的设置已经写盘成功 → 回滚点作废。
+    /// 不调用也不影响正确性（下次 Enable 会覆盖回滚点），但会多留一份旧密钥在内存里。
+    /// </summary>
+    public static void CommitKeyChange()
+    {
+        lock (Gate)
+        {
+            _keyChangePending = false;
+            if (_undoKey != null) CryptographicOperations.ZeroMemory(_undoKey);
+            _undoKey = null;
+            _undoVaultText = null;
+            _undoCacheBytes = null;
+        }
+    }
+
+    /// <summary>
+    /// 新密钥没能落盘 → 把 vault.json / 缓存 / 内存密钥全部退回去，
+    /// 让"旧密钥 + 旧密文"这个一致状态继续可用。
+    /// </summary>
+    public static void RollbackKeyChange()
+    {
+        lock (Gate)
+        {
+            if (!_keyChangePending) return;
+            _keyChangePending = false;
+
+            try
+            {
+                if (_undoVaultText == null) TryDelete(VaultFile);
+                else File.WriteAllText(VaultFile, _undoVaultText, Encoding.UTF8);
+
+                if (_undoCacheBytes == null) TryDelete(CacheFile);
+                else File.WriteAllBytes(CacheFile, _undoCacheBytes);
+
+                CoreLog.Warn("[加密] 换密钥失败，已回滚到原密钥（配置没有丢失）");
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error("[加密] 回滚密钥失败 —— 配置可能已无法读取", ex);
+            }
+
+            _key = _undoKey;          // 旧密钥（之前没加密时是 null）
+            _undoKey = null;
+            _undoVaultText = null;
+            _undoCacheBytes = null;
+        }
+    }
+
     /// <summary>
     /// 关闭加密：删掉 vault.json 与缓存，清空内存密钥。
     /// 调用方负责把设置改存成明文。
+    ///
+    /// ⚠ 和 <see cref="Enable"/> 一样是两段式：删掉 vault.json 之后，
+    /// 磁盘上那份密文就再也解不开了。所以这里也记回滚点 ——
+    /// 调用方写明文失败时必须 <see cref="RollbackKeyChange"/>，
+    /// 否则"关掉加密"失败 = 配置永久读不出来。
     /// </summary>
     public static void Disable()
     {
         lock (Gate)
         {
+            _undoVaultText = File.Exists(VaultFile) ? File.ReadAllText(VaultFile) : null;
+            _undoCacheBytes = File.Exists(CacheFile) ? File.ReadAllBytes(CacheFile) : null;
+            _undoKey = _key;
+            _keyChangePending = true;
+
             _key = null;
             TryDelete(VaultFile);
             TryDelete(CacheFile);

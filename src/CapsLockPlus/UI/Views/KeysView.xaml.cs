@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
@@ -792,8 +792,15 @@ public partial class KeysView : UserControl
             }
 
             var mode = ModeOf(SelectedCategory);
-            ApplyEditorMode(mode);
 
+            /* 先把"动作"定下来，再铺面板。
+             *
+             * 顺序反过来（先铺面板再改动作）会留下一个很坑的中间态：
+             * 面板按**旧动作**渲染，于是文本框是空的；紧接着动作被换成
+             * 「输入文本」，但 Arg 还是上一个动作的参数（很多默认绑定都带
+             * "5" / "30" 这种步进值），键帽立刻显示成 "5" ——
+             * 用户看到的是空文本框 + 键帽上的 5，按下去真的会打出 "5"。
+             * 窗口绑定（Arg 当程序路径）、直达链接（Arg 当目标）同理。 */
             if (mode == EditorMode.Normal)
             {
                 BuildActionBox();
@@ -817,6 +824,8 @@ public partial class KeysView : UserControl
             {
                 EnsureCustomKeyAction();
             }
+
+            ApplyEditorMode(mode);
         }
         finally
         {
@@ -844,6 +853,12 @@ public partial class KeysView : UserControl
          * 不能被继承成"步进 5%" —— 用户没设过却生效了，非常费解。 */
         if (IsStepArgAction(actionId) && !IsValidStep(binding.Arg)) binding.Arg = "";
 
+        /* 切到"参数就是内容"的动作（输入文本 / 窗口绑定 / 直达链接 / 自定义按键）时，
+         * 上一个动作的参数必须清掉：它可能是"5"这种步进值，留着就会被当成
+         * 要输入的文字、要启动的程序名、要打开的路径 —— 用户根本没填过。 */
+        if (IsContentArgAction(actionId) && !SameArgFamily(binding.Action, actionId))
+            binding.Arg = "";
+
         binding.Action = actionId;
         _host.SaveSettings();
         BuildKeyboard();
@@ -867,6 +882,21 @@ public partial class KeysView : UserControl
     /// <summary>是不是「直达链接」分类下的三种动作之一。</summary>
     private static bool IsLinkAction(string? actionId) =>
         actionId is LinkUrlAction or LinkFolderAction or LinkFileAction;
+
+    /// <summary>
+    /// 参数就是"内容"的动作：Arg 存的是用户填的文字 / 程序 / 目标 / 按键组合。
+    ///
+    /// 和"参数是步进值"的动作（移动几个字符、音量步进几 %）不是一回事：
+    /// 两类之间切换时绝不能沿用对方的 Arg。
+    /// </summary>
+    private static bool IsContentArgAction(string? actionId) =>
+        actionId is "typeText" or "winBind" or "customKey"
+                 or LinkUrlAction or LinkFolderAction or LinkFileAction;
+
+    /// <summary>两个动作的 Arg 语义是否相同（同类之内切换才允许保留）。</summary>
+    private static bool SameArgFamily(string? from, string? to)
+        => string.Equals(from, to, StringComparison.OrdinalIgnoreCase)
+           || (IsLinkAction(from) && IsLinkAction(to));
 
     /* 这里原本有「直达网址 / 直达文件夹 / 直达文件」三个按钮和 CurrentLinkKind()。
      * v4.5.19 起类型不再让用户选：输入框边填边识别，

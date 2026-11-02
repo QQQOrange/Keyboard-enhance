@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -669,6 +669,28 @@ public static class RenderTools
         if (w <= 0 || ht <= 0) return;
 
         var bmp = new RenderTargetBitmap(w, ht, dpi, dpi, PixelFormats.Pbgra32);
+
+        /* 先铺一层窗口自己的 Background，再把内容画上去。
+         *
+         * RenderTargetBitmap 只渲染**传进去的那个 Visual 的子树**，
+         * 而 Window.Background 是窗口自己（而不是 Content）的属性 ——
+         * 内容里所有透明的地方（标题栏那一行、页面外边距、侧栏与页面之间
+         * 的缝）在 PNG 里就成了纯黑。
+         *
+         * 深色主题下"黑"与底色本来就接近，看不出来；浅色主题下整条标题栏
+         * 都是黑块、标题文字（深色字）完全不可读，看起来像渲染器坏了。
+         * 发版截图（docs/screenshots）就是这条路径产出的，所以必须铺底。 */
+        var background = window.Background;
+        if (background != null)
+        {
+            var backdrop = new DrawingVisual();
+            using (var dc = backdrop.RenderOpen())
+            {
+                dc.DrawRectangle(background, null, new Rect(0, 0, logicalW, logicalH));
+            }
+            bmp.Render(backdrop);
+        }
+
         bmp.Render(root);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bmp));

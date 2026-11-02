@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -705,6 +705,28 @@ public static partial class SelfTest
         var missing = settings.Keys.Where(k => k.IsBound && catalog.Get(k.Action) == null)
             .Select(k => k.Combo + "=" + k.Action).ToList();
         Check("默认绑定全部可解析", missing.Count == 0, string.Join(", ", missing.Take(6)));
+
+        /* 两套内置方案都要逐个动作核对。
+         *
+         * 只查 DefaultSettings.Create() 是不够的：它只覆盖"当前方案"，
+         * 而经典方案（ClassicScheme）里曾经留着已经整块移除的
+         * winbindActivate9 —— 首次引导选了经典方案的用户，
+         * Caps+` 按下去没有任何反应，只在日志里留一行"未知动作"。
+         * 这条自检就是那种缺陷的守门员。 */
+        foreach (var (schemeName, schemeKeys) in new[]
+                 {
+                     ("Capslox", DefaultSettings.CapsloxScheme()),
+                     ("经典", DefaultSettings.ClassicScheme()),
+                 })
+        {
+            var bad = schemeKeys
+                .Where(k => k.IsBound && catalog.Get(k.Action) == null)
+                .Select(k => k.Combo + "=" + k.Action).ToList();
+            Check($"「{schemeName}」方案的绑定全部可解析", bad.Count == 0,
+                string.Join(", ", bad.Take(6)));
+        }
+
+        // 删掉的动作不能从表里删掉（老配置还绑着），必须隐藏 —— 见下方 openUrl
 
         // 每个预设动作都被默认绑定或可选
         Check("不绑定动作存在", catalog.Get("doNothing") != null);

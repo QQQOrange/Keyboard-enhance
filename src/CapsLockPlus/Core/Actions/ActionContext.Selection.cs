@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using CapsLockPlus.Core.Input;
@@ -87,9 +87,32 @@ public sealed partial class ActionContext
 
         // 太长的话不截断会撑爆 GET 请求长度，也会让搜索页体验很差
         const int maxLen = 1000;
-        if (text.Length > maxLen) text = text[..maxLen];
+        if (text.Length > maxLen)
+        {
+            /* 截断不能把代理对（emoji 等）劈成两半：
+             * 半截代理项会让 Uri.EscapeDataString 直接抛 UriFormatException，
+             * 表现是"按了搜索，提示正在搜索，然后什么都没打开"。 */
+            int cut = maxLen;
+            if (char.IsHighSurrogate(text[cut - 1])) cut--;
+            text = text[..cut];
+        }
 
-        string encoded = Uri.EscapeDataString(text);
+        string encoded;
+        try
+        {
+            encoded = Uri.EscapeDataString(text);
+        }
+        catch (UriFormatException)
+        {
+            // 极端脏数据（无效代理项）也不该让动作崩掉：退到"逐字符安全编码"
+            var sb = new StringBuilder(text.Length * 3);
+            foreach (char ch in text)
+            {
+                if (char.IsSurrogate(ch)) continue;
+                sb.Append(Uri.EscapeDataString(ch.ToString()));
+            }
+            encoded = sb.ToString();
+        }
         string url;
         if (entry.Value.Contains("{q}", StringComparison.Ordinal))
         {
@@ -312,6 +335,14 @@ public sealed partial class ActionContext
         }
 
         Notify(UiText.Failed("算出结果", err));
+
+        /* 失败时要把选区收起来。
+         *
+         * SelectLineToCaret 是用 Shift+Home 选中"从行首到光标"的，
+         * 成功分支会 ReplaceSelection（顺带把选区替换掉）；
+         * 失败分支原来直接 return —— 选中的那段前缀留在原地，
+         * 用户接着打一个字，整行前半段就被替换成了那个字。 */
+        InputSender.Tap(0x27);   // VK_RIGHT：光标右移一格，顺带取消选择
         return true;
     }
 

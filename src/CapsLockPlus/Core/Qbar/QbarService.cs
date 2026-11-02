@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Text;
@@ -553,6 +553,17 @@ public sealed class QbarService
                 break;
             case QbarKind.Search:
             case QbarKind.Web:
+                /* 载荷里还留着 {q} 的，是"搜索引擎模板"而不是一个具体地址。
+                 *
+                 * 这种条目本该先被补全成「关键字 + 空格」的标签。
+                 * 万一走到执行（其它调用方 / 键盘路径变了），
+                 * 也绝不能把 `...?wd={q}` 原样丢给浏览器 ——
+                 * 用户会看到浏览器在搜"{q}"这个字符串。 */
+                if (result.Payload.Contains("{q}", StringComparison.Ordinal))
+                {
+                    cb.Notify(Loc.T("先输入要搜索的内容：关键字后面加一个空格"));
+                    break;
+                }
                 cb.OpenTarget(result.Payload);
                 break;
 

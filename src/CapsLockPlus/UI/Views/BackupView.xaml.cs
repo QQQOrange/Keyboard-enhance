@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -19,13 +19,26 @@ public partial class BackupView : UserControl
     private bool _suppress;
     private readonly List<GroupVm> _groups = new();
 
-    public BackupView() => InitializeComponent();
+    public BackupView()
+    {
+        InitializeComponent();
+        /* 页面是按需创建、可被整体丢弃重建的（切语言、Caps+F5 重新加载、
+         * 恢复默认设置都会清掉页面缓存）。宿主的事件是长生命周期的，
+         * 不退订就等于把整棵可视树永久钉在内存里 ——
+         * 每重建一次多一个孤儿页面，每次同步完成还要多刷一遍磁盘目录。 */
+        Unloaded += (_, _) =>
+        {
+            if (_host != null) _host.SyncCompleted -= OnSyncCompleted;
+        };
+    }
 
     public void Initialize(AppHost host)
     {
         _host = host;
         BuildGroups();
         Refresh();
+        // 先退订再订：页面被重复 Initialize 时不会挂两遍
+        host.SyncCompleted -= OnSyncCompleted;
         host.SyncCompleted += OnSyncCompleted;
     }
 
@@ -192,7 +205,14 @@ public partial class BackupView : UserControl
             {
                 if (!DataVault.IsEnabled) return;
                 DataVault.Disable();
-                SettingsStore.Save(_host.Settings);       // 写回明文
+                // 写回明文失败 → 把密钥装回去：否则磁盘上只剩一份解不开的密文
+                if (!SettingsStore.Save(_host.Settings))
+                {
+                    DataVault.RollbackKeyChange();
+                    ShowVaultStatus(Loc.T("关闭加密失败：设置文件写不进去，数据仍然是加密状态。"), ok: false);
+                    return;
+                }
+                DataVault.CommitKeyChange();
                 RemovePlaintextBackups();
                 ShowVaultStatus(Loc.T("已关闭本地加密：数据恢复为明文存储。"), ok: false);
                 return;
@@ -202,8 +222,20 @@ public partial class BackupView : UserControl
             DataVault.Enable(pass);
 
             /* 必须**立刻**落盘：AppHost 的 SaveSettings 有防抖，
-             * 万一用户此时关掉窗口，明文就留在磁盘上了。 */
-            SettingsStore.Save(_host.Settings);
+             * 万一用户此时关掉窗口，明文就留在磁盘上了。
+             *
+             * ⚠ 这一步失败必须**回滚密钥**：`Enable` 已经把新密钥写进
+             * vault.json 了，而磁盘上的 settings.json 还是旧密钥的密文 ——
+             * 新密码解不开、旧密码也解不开，整个配置永久丢失。
+             * Save 返回 false 就是"没写进去"，这时把 vault 退回去，
+             * 保持"旧密钥 + 旧密文"这个一致状态。 */
+            if (!SettingsStore.Save(_host.Settings))
+            {
+                DataVault.RollbackKeyChange();
+                ShowVaultStatus(Loc.T("加密未生效：设置文件写不进去（可能被其它程序占用或磁盘已满）。数据保持原样，可以稍后再试。"), ok: false);
+                return;
+            }
+            DataVault.CommitKeyChange();
             RemovePlaintextBackups();
 
             ShowVaultStatus(firstTime

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Management;
 using System.Runtime.InteropServices;
@@ -741,10 +741,30 @@ public static class BrightnessService
 
         return _backend switch
         {
-            BrightnessBackend.Wmi => WmiSet(percent) || DdcSet(percent, verify),
+            /* WMI 写完要**回读验证**再决定算不算成功。
+             *
+             * 有一类机器（驱动暴露了 CurrentBrightness，但 WmiSetBrightness 不生效）
+             * 调用不会抛异常、状态码也不报错，`WmiSet` 就返回 true ——
+             * 于是 `|| DdcSet(...)` 被短路，明明 DDC 能用却永远轮不到它，
+             * 用户看到的是"按亮度键，屏幕纹丝不动"。
+             * 只在 verify 打开（用户按键触发的真实调节）时多读一次；
+             * 预检/探测路径不读，避免多余的 WMI 往返。 */
+            BrightnessBackend.Wmi => WmiWriteVerified(percent, verify) || DdcSet(percent, verify),
             BrightnessBackend.Ddc => DdcSet(percent, verify) || WmiSet(percent),
             _ => false,
         };
+    }
+
+    /// <summary>WMI 写入；启用校验时回读确认值真的变了。</summary>
+    private static bool WmiWriteVerified(int percent, bool verify)
+    {
+        if (!WmiSet(percent)) return false;
+        if (!verify) return true;
+
+        int after = WmiGet();
+        // 读不到就不敢断言失败（可能是"能写、读不回"的机型），按成功处理
+        if (after < 0) return true;
+        return Math.Abs(after - percent) <= 2;
     }
 
     // ================= 通道 ①：WMI =================
