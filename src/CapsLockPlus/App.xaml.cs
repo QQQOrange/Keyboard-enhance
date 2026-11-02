@@ -419,6 +419,16 @@ public partial class App : Application
             }
             CoreLog.Info("启动密码校验通过");
         }
+        else if (!StartupPassword.ShouldSkip(e.Args) && settings.Security.StartupPasswordEnabled)
+        {
+            /* 设置里记着"已开启启动密码"，但 startup.json 已经不在 / 读不出来了。
+             *
+             * 这时门其实没关上 —— 用户以为有锁，实际没有。必须留一条明确的日志，
+             * 并把设置里的镜像对齐到真实状态（否则设置页会一直显示"已开启"）。 */
+            CoreLog.Warn("设置里记着启动密码，但 startup.json 不存在或无法读取 —— 本次启动没有密码门。"
+                         + "到「设置 → 启动密码」重新设一次即可恢复。");
+            StartupPassword.MirrorTo(settings.Security);
+        }
 
         Host = new AppHost(settings, Dispatcher);
         Host.Start();

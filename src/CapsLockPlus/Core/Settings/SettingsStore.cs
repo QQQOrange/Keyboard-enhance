@@ -105,6 +105,72 @@ public static class SettingsStore
     }
 
     /// <summary>
+    /// 把对象图里的 null 洗干净：字符串 → ""、集合 → 空集合、列表里的 null 元素 → 删掉。
+    ///
+    /// 只走 CapsLockPlus 自己的类型（按命名空间判断），也只处理有 setter 的
+    /// 公共属性；层数限制 8 层防环（配置对象图是树，这里只是保险）。
+    /// </summary>
+    private static void SanitizeNulls(object? root, int depth = 0)
+    {
+        if (root == null || depth > 8) return;
+
+        foreach (var prop in root.GetType()
+                     .GetProperties(System.Reflection.BindingFlags.Public |
+                                    System.Reflection.BindingFlags.Instance))
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+
+            var type = prop.PropertyType;
+
+            if (type == typeof(string))
+            {
+                if (prop.GetValue(root) == null) prop.SetValue(root, "");
+                continue;
+            }
+
+            // 泛型列表：补空集合 / 删 null 元素 / 递归进元素
+            if (type.IsGenericType &&
+                typeof(System.Collections.IList).IsAssignableFrom(type))
+            {
+                if (prop.GetValue(root) is not System.Collections.IList list)
+                {
+                    try { prop.SetValue(root, Activator.CreateInstance(type)); } catch { }
+                    continue;
+                }
+
+                var element = type.GetGenericArguments()[0];
+                if (element == typeof(string))
+                {
+                    for (int i = 0; i < list.Count; i++)
+                        if (list[i] == null) list[i] = "";
+                    continue;
+                }
+                if (element.IsValueType) continue;
+
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    if (list[i] == null) { list.RemoveAt(i); continue; }
+                    SanitizeNulls(list[i], depth + 1);
+                }
+                continue;
+            }
+
+            // 配置里的嵌套对象（GlobalOptions / LayerOptions / Macro …）
+            if (type.IsClass && type.Namespace != null &&
+                type.Namespace.StartsWith("CapsLockPlus", StringComparison.Ordinal))
+            {
+                var value = prop.GetValue(root);
+                if (value == null)
+                {
+                    try { prop.SetValue(root, Activator.CreateInstance(type)); } catch { }
+                    continue;
+                }
+                SanitizeNulls(value, depth + 1);
+            }
+        }
+    }
+
+    /// <summary>
     /// 上次 <see cref="Load"/> 失败时给用户看的说明；正常时为 null。
     ///
     /// 以前这里的处理是"复制成 settings.json.broken，然后返回默认设置"，
@@ -617,6 +683,20 @@ public static class SettingsStore
     /// <summary>补齐缺失字段、修正非法值。</summary>
     public static void Normalize(AppSettings s)
     {
+        /* 先把对象图里的 null 洗掉，再谈"补齐/夹取"。
+         *
+         * 设置文件是纯文本：用户会手改，导入的配置来自另一台机器，
+         * 同步下来的备份也可能被外部工具处理过 —— 这些来源都可能写出
+         * `"Key": null`。而 `JsonSerializer` 对**非可空 string 属性照样赋 null**
+         * （它不看可空性注解），于是后面 `x.Key.Equals(...)`、`e.Key.Contains(...)`
+         * 这些在加载路径上的调用直接抛 NullReferenceException。
+         *
+         * 代价不是"某个功能失灵"：Load() 会走"读取失败 → 回退默认设置"分支，
+         * 用户看到的是**一整份配置没了**（只在旁边留一个 settings.json.broken）。
+         * 所以这里用一趟反射把"字符串补成空串、集合补成空集合、列表里的 null 元素删掉"，
+         * 顺手也就覆盖了以后新加的字段（逐个手写必然漏）。 */
+        SanitizeNulls(s);
+
         s.Global ??= new GlobalOptions();
         s.Qbar ??= new QbarOptions();
         s.Sync ??= new SyncOptions();

@@ -616,6 +616,66 @@ public static partial class SelfTest
         Check("重复绑定被去重", normalized.Keys.Count(k => k.Combo == "caps_q") == 1);
         Check("每个默认绑定都有对应动作", DefaultSettings.Create().Keys.All(k =>
             k.Action.Length > 0));
+
+        /* ---- 手改 / 导入的配置里出现 null 字段：必须被洗掉，不能抛 ----
+         *
+         * 设置文件是纯文本，用户会手改，备份/导入来自另一台机器，
+         * 这些来源都可能写出 `"Key": null` 这种值。`JsonSerializer` 对
+         * 非可空 string 属性照样赋 null —— 之后 `MigrateBuiltinEngines`
+         * 的 `x.Key.Equals(...)`、Qbar 检索的 `e.Key.Contains(...)` 会在
+         * 加载路径上直接抛 NullReferenceException。
+         *
+         * 后果不是"某个功能失灵"，而是 Load() 走"读取失败 → 回退默认设置"，
+         * 用户看到的是一整份配置没了（只留下一个 settings.json.broken）。
+         * 这里把"加载 + 规范化 + 内置引擎迁移 + 体检"整条链路跑一遍。 */
+        const string hostileJson = """
+        {
+          "Search": [ { "Key": null, "Value": null, "Comment": null }, {} ],
+          "Run": [ { "Key": null } ],
+          "Web": [ null, { "Key": null, "Value": null } ],
+          "HotStrings": [ { "Key": null } ],
+          "Keys": [ { "Combo": null, "Action": null, "Arg": null } ],
+          "Layers": [ { "Id": 1, "Name": null,
+                        "Keys": [ { "Combo": null, "Action": null } ],
+                        "SubLayers": [ { "Key": null } ] } ],
+          "Triggers": [ { "Key": null, "LayerId": 99, "HoldMs": -5, "TapAction": null } ],
+          "Macros": [ { "Name": null, "Steps": [ { "Kind": null, "Key": null, "Text": null } ] } ],
+          "Bindings": [ { "ExePath": null, "DisplayName": null } ],
+          "Global": { "BaseRemaps": [ { "From": null, "To": null } ],
+                      "Snippets": [ { "Trigger": null, "Text": null } ] }
+        }
+        """;
+
+        bool hostileSurvived = true;
+        string hostileWhy = "";
+        try
+        {
+            var hostile = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(
+                hostileJson, SettingsStore.JsonOptions)!;
+            SettingsStore.Normalize(hostile);
+            SettingsStore.MigrateBuiltinEnginesForTest(hostile);   // 启动时会跑
+            _ = Core.Input.RuleConflicts.Analyze(hostile);          // 保存时会跑
+
+            Check("坏配置：第 1 层与 Settings.Keys 仍是同一份列表",
+                ReferenceEquals(hostile.Keys, hostile.Layers.First(l => l.Id == 1).Keys));
+            Check("坏配置：10 个层都在",
+                Enumerable.Range(1, 10).All(i => hostile.Layers.Any(l => l.Id == i)));
+            Check("坏配置：触发键的层号与长按阈值被夹回合法范围",
+                hostile.Triggers.All(t => t.LayerId is >= 1 and <= 10 && t.HoldMs is >= 50 and <= 2000),
+                string.Join(",", hostile.Triggers.Select(t => $"{t.LayerId}/{t.HoldMs}")));
+            Check("坏配置：搜索项没有留下 null 键",
+                hostile.Search.All(e => e != null && e.Key != null),
+                hostile.Search.Count(e => e?.Key == null).ToString());
+            Check("坏配置：网址/启动项没有留下 null 键",
+                hostile.Web.All(e => e != null && e.Key != null) &&
+                hostile.Run.All(e => e != null && e.Key != null));
+        }
+        catch (Exception ex)
+        {
+            hostileSurvived = false;
+            hostileWhy = ex.GetType().Name + ": " + ex.Message;
+        }
+        Check("坏配置（null 字段）不会让加载链路抛异常", hostileSurvived, hostileWhy);
     }
 
     private static void TestLegacyImport()

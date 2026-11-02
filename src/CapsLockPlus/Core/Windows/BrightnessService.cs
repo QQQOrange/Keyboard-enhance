@@ -142,6 +142,12 @@ public static class BrightnessService
     /// <summary>上次探测失败的时刻（用来决定什么时候再试一次）。</summary>
     private static long _probeFailTick;
 
+    /* 同一条"设备不支持"只记一次日志：探测每 5 秒重试，逐次记会把 app.log 刷满
+     * （实测用户机器两周 100+ 条），真正的问题反而被淹掉。
+     * 恢复可用时（探测成功）会把这两个标志复位，下次再坏还能看到提示。 */
+    private static bool _wmiUnsupportedWarned;
+    private static bool _unsupportedWarned;
+
     private static Thread? _pump;
 
     /// <summary>
@@ -697,6 +703,8 @@ public static class BrightnessService
         {
             _backend = BrightnessBackend.Wmi;
             lock (TinyGate) _supported = 1;
+            _wmiUnsupportedWarned = false;
+            _unsupportedWarned = false;
             CoreLog.Info("[亮度] 使用 WMI 通道");
             return;
         }
@@ -705,6 +713,7 @@ public static class BrightnessService
         {
             _backend = BrightnessBackend.Ddc;
             lock (TinyGate) _supported = 1;
+            _unsupportedWarned = false;      // 通道恢复 → 下次再坏时重新提示一次
             CoreLog.Info($"[亮度] 使用 DDC/CI 通道（{_ddc?.Count ?? 0} 台显示器）");
             return;
         }
@@ -712,7 +721,11 @@ public static class BrightnessService
         _backend = BrightnessBackend.Unsupported;
         _probeFailTick = Environment.TickCount64;
         MarkUnsupported();
-        CoreLog.Warn("[亮度] 两条通道都不可用（设备不支持或未开启 DDC/CI）");
+        if (!_unsupportedWarned)
+        {
+            _unsupportedWarned = true;
+            CoreLog.Warn("[亮度] 两条通道都不可用（设备不支持或未开启 DDC/CI）；之后静默重试");
+        }
     }
 
     private static int? ReadLocked() => _backend switch
@@ -791,7 +804,13 @@ public static class BrightnessService
         }
         catch (Exception ex)
         {
-            CoreLog.Warn("[亮度] WMI 读取失败：" + ex.Message);
+            /* 只记一次：某些机器上 WMI 永远"不支持"，而探测每 5 秒重试一次 ——
+         * 逐次记日志会把 app.log 刷满（实测两周 100+ 条），排障时反而淹没真正的问题。 */
+        if (!_wmiUnsupportedWarned)
+        {
+            _wmiUnsupportedWarned = true;
+            CoreLog.Warn("[亮度] WMI 读取失败（后续同类失败不再重复记录）：" + ex.Message);
+        }
         }
         return -1;
     }

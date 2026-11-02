@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 using CapsLockPlus.Core.Settings;
@@ -85,6 +85,13 @@ public static partial class SelfTest
             File.WriteAllText(StartupPassword.FilePath, "{ 这不是有效 JSON");
             Check("文件损坏视为未设置", !StartupPassword.IsSet());
             Check("文件损坏时校验不过", !StartupPassword.Verify("correct-horse"));
+
+            /* 读不出来的文件会被改名成 .bad 留档：
+             * 不这么做的话，每次启动都要读 2~3 遍、刷 2~3 条同样的 WARN，
+             * 而保护本身早就失效了 —— 日志里只剩噪声。 */
+            Check("损坏文件已被改名留档", File.Exists(StartupPassword.FilePath + ".bad"));
+            Check("损坏文件不再占着原文件名", !File.Exists(StartupPassword.FilePath));
+            try { File.Delete(StartupPassword.FilePath + ".bad"); } catch { }
             File.Delete(StartupPassword.FilePath);
 
             /* ---- 4. 边界 ---- */

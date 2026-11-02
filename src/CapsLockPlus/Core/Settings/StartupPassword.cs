@@ -198,22 +198,64 @@ public static class StartupPassword
     /// </summary>
     private static Payload? Read()
     {
+        string path = FilePath;
         try
         {
-            string path = FilePath;
             if (!File.Exists(path)) return null;
 
             string raw = File.ReadAllText(path);
+
+            /* 内容根本不是 JSON 对象（首字符不是 '{'）：
+             * 多半是被别的程序/加密软件改写过，或者是旧版本留下的二进制文件。
+             *
+             * 这时不反复报同一个警告（每次启动会读 2~3 遍），
+             * 而是把它改名成 .bad 留档 —— 保护本来就已经失效了，
+             * 留着一个读不出来的文件只会每次启动都刷两条 WARN。 */
+            if (!raw.TrimStart().StartsWith('{'))
+            {
+                Quarantine(path, "内容不是 JSON");
+                return null;
+            }
+
             var p = JsonSerializer.Deserialize<Payload>(raw, ReadOptions);
-            if (p == null) return null;
-            if (string.IsNullOrEmpty(p.Salt) || string.IsNullOrEmpty(p.Hash)) return null;
-            if (p.Iterations <= 0) return null;
+            if (p == null) { Quarantine(path, "解析结果为空"); return null; }
+            if (string.IsNullOrEmpty(p.Salt) || string.IsNullOrEmpty(p.Hash))
+            {
+                Quarantine(path, "缺少 salt / hash");
+                return null;
+            }
+            if (p.Iterations <= 0) { Quarantine(path, "迭代次数非法"); return null; }
             return p;
+        }
+        catch (JsonException ex)
+        {
+            // 内容坏了（不是合法 JSON / 字段类型不对）：改名留档，别每次启动都刷警告
+            Quarantine(path, ex.Message);
+            return null;
         }
         catch (Exception ex)
         {
+            /* 读不到（文件被占用 / 权限不足）→ **不要**改名：
+             * 这通常是暂时性的，把用户的密码文件搬走等于把锁弄丢了。 */
             CoreLog.Warn("读取启动密码文件失败，按未设置处理：" + ex.Message);
             return null;
+        }
+    }
+
+    /// <summary>把读不出来的密码文件改名留档，避免每次启动都重复警告。</summary>
+    private static void Quarantine(string path, string reason)
+    {
+        try
+        {
+            string bad = path + ".bad";
+            if (File.Exists(bad)) File.Delete(bad);
+            File.Move(path, bad, true);
+            CoreLog.Warn($"启动密码文件无法使用（{reason}），已改名留档为 {System.IO.Path.GetFileName(bad)}："
+                         + "本次启动没有密码门。要重新加锁，到设置里再设一次即可。");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("启动密码文件损坏，且改名留档失败：" + ex.Message);
         }
     }
 
