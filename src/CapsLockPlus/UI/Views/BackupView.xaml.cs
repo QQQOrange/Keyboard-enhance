@@ -493,7 +493,7 @@ public partial class BackupView : UserControl
     private async void OnCleanupOld(object sender, RoutedEventArgs e) =>
         await CleanupAsync(
             Loc.T("清理 7 天前的备份"),
-            Loc.T("删除本地和云端**早于 7 天**的备份。\n\n")
+            Loc.T("删除本地和云端「早于 7 天」的备份。\n\n")
             + Loc.F("· 本地目录：{0}\n", SyncService.BackupDir)
             + (_host?.Sync.Configured == true
                 ? Loc.T("· 云端：同样按时间清理\n")
@@ -504,7 +504,7 @@ public partial class BackupView : UserControl
     private async void OnCleanupKeep(object sender, RoutedEventArgs e) =>
         await CleanupAsync(
             Loc.T("只保留最近 10 份备份"),
-            Loc.T("本地和云端都只保留**最新 10 份**，更旧的删掉。\n\n")
+            Loc.T("本地和云端都只保留「最新 10 份」，更旧的删掉。\n\n")
             + (_host?.Sync.Configured == true
                 ? Loc.T("· 本地与云端一起处理\n")
                 : Loc.T("· 云端未配置，这次只清本地\n"))
@@ -514,7 +514,7 @@ public partial class BackupView : UserControl
     private async void OnCleanupRedundant(object sender, RoutedEventArgs e) =>
         await CleanupAsync(
             Loc.T("清除云端冗余数据"),
-            Loc.T("只清理**云端**目录里这些东西：\n\n")
+            Loc.T("只清理「云端」目录里这些东西：\n\n")
             + Loc.T("· 上传中断的残留（.tmp / .part / .crdownload / ~$ 开头）\n")
             + Loc.T("· 0 字节或小于 64 字节的文件\n")
             + Loc.T("· 内容完全重复的备份（只留最新那份）\n")
@@ -782,7 +782,7 @@ public partial class BackupView : UserControl
 
             var names = groups.Select(g => ExportImport.FindGroup(g)?.DisplayName ?? g).ToList();
             string question = wasBackup
-                ? Loc.T("这是一份**备份文件**（整份配置，不是按项导出）。\n\n")
+                ? Loc.T("这是一份「备份文件」（整份配置，不是按项导出）。\n\n")
                   + Loc.T("导入会按整份配置覆盖对应的项；导入前建议先点「现在就备份一次」。\n\n继续吗？")
                 : Loc.F("将导入以下内容（会覆盖当前对应的项）：\n\n　{0}\n\n继续吗？",
                     string.Join("\n　", names));

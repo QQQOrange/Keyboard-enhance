@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using CapsLockPlus.Core.Input;
@@ -116,14 +116,14 @@ public partial class HelpView : UserControl
         AddSection(Loc.T("① 触发键与图层"), new[]
         {
             Loc.T("按住触发键（默认 CapsLock）就是「功能键」，此时再按其他键会执行你在「按键映射」里配的功能。"),
-            Loc.T("一共 10 个图层，每层可以有**自己的触发键**（CapsLock、F13、右 Alt…），互不干扰。"),
+            Loc.T("一共 10 个图层，每层可以有「自己的触发键」（CapsLock、F13、右 Alt…），互不干扰。"),
             Loc.T("触发键只能是单个按键 —— 组合键留给层内绑定用，避免「同样按 Ctrl+K，到底算触发还是算绑定」的歧义。"),
             Loc.F("当前配置：{0} 个启用的触发键。", s.Triggers.Count(t => t.Enabled)),
         });
 
         AddSection(Loc.T("② 子层（层内修饰键）"), new[]
         {
-            Loc.T("进入某一层后，再按住修饰键（Ctrl / Shift / Alt / Win 及其组合），可以用到**另一套独立绑定**。"),
+            Loc.T("进入某一层后，再按住修饰键（Ctrl / Shift / Alt / Win 及其组合），可以用到「另一套独立绑定」。"),
             Loc.T("每层最多 10 个子层，在「按键映射」页点「设置子层…」自由勾选。"),
             Loc.T("例：基础层按 Q 打开面板，按住 Ctrl 再按 Q 则可以是「删除前一个单词」。"),
             Loc.T("每个子层都有独立的按键绑定，互不覆盖。"),
@@ -132,7 +132,7 @@ public partial class HelpView : UserControl
         AddSection(Loc.T("③ 按键映射"), new[]
         {
             Loc.T("左半是完整 108 键键盘：点任意键即可编辑它的功能，修改立刻生效。"),
-            Loc.T("深蓝色键帽 = 已绑定功能；浅蓝色 = 未绑定。键帽上方的小字是**功能分类**，中间是功能名，下方是键名。"),
+            Loc.T("深蓝色键帽 = 已绑定功能；浅蓝色 = 未绑定。键帽上方的小字是「功能分类」，中间是功能名，下方是键名。"),
             Loc.T("右侧「编辑绑定」顶部的搜索框可以按功能名、分类、宏名、网址快速找到要绑的功能。"),
             Loc.T("「分类」决定功能下拉里显示哪一类；「窗口绑定」「直达链接」「输入文本」这三类会换成专用的编辑界面。"),
         });

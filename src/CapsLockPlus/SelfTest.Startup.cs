@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Windows;
 using System.Xml.Linq;
@@ -181,6 +181,22 @@ public static partial class SelfTest
             catch { return ""; }
         }
 
+        /* 读回时轮询一下：剪贴板是全局资源，本程序自己的历史监听、
+         * 其它程序都可能在两个调用之间动它，刚写完立刻读偶尔会读到空的
+         * （实测出现过一次）。400ms 内稳定下来都算通过。 */
+        static string WaitText(string expected, int timeoutMs = 400)
+        {
+            string now = ReadText();
+            long deadline = Environment.TickCount64 + timeoutMs;
+            while (!string.Equals(now, expected, StringComparison.Ordinal)
+                   && Environment.TickCount64 < deadline)
+            {
+                Thread.Sleep(40);
+                now = ReadText();
+            }
+            return now;
+        }
+
         static bool HasImage()
         {
             try { return Clipboard.ContainsImage(); }
@@ -203,7 +219,7 @@ public static partial class SelfTest
                 return;
             }
             textBackup.Restore();
-            CheckEqual("文本内容能被还原", ReadText(), "原始文字A");
+            CheckEqual("文本内容能被还原", WaitText("原始文字A"), "原始文字A");
 
             /* ---- ② 位图：当初就是这里丢的 ----
              * 原剪贴板是截图时，旧实现 `hadText == false` 直接 Clear()，
@@ -262,7 +278,7 @@ public static partial class SelfTest
                 if (TryOp(() => Clipboard.SetText("中转内容")) && TryOp(() => Clipboard.SetText("用户后来复制")))
                 {
                     guarded.Restore(currentTextGuard: "中转内容");
-                    CheckEqual("期间用户复制的内容不会被覆盖", ReadText(), "用户后来复制");
+                    CheckEqual("期间用户复制的内容不会被覆盖", WaitText("用户后来复制"), "用户后来复制");
                 }
                 else
                 {

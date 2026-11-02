@@ -791,4 +791,70 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <!-- ============ 折叠面板 ============ -->
+    <!-- 默认 Expander 的展开箭头是 Aero2 那个**白色实心圆**：深色主题下它是整页
+         最亮的一个点，像误触出来的圆点。这里换成主题色的小三角（收起点右、展开朝下），
+         并用透明背景的 ToggleButton 当标题行 —— 键盘可聚焦、空格/回车能切换。 -->
+    <Style TargetType="Expander">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <StackPanel>
+                        <ToggleButton x:Name="HeaderSite"
+                                      Content="{TemplateBinding Header}"
+                                      IsChecked="{Binding IsExpanded, Mode=TwoWay,
+                                                  RelativeSource={RelativeSource TemplatedParent}}"
+                                      Focusable="True" Cursor="Hand"
+                                      HorizontalContentAlignment="Left"
+                                      Background="Transparent" BorderThickness="0">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bg" Background="Transparent"
+                                            CornerRadius="{StaticResource Radius.Control}"
+                                            Padding="2,6,6,6">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path x:Name="Chevron"
+                                                  Data="M 0,0 L 7,4 L 0,8 Z"
+                                                  Fill="{DynamicResource Brush.TextTertiary}"
+                                                  VerticalAlignment="Center" Margin="0,0,9,0">
+                                                <Path.RenderTransform>
+                                                    <RotateTransform Angle="0" CenterX="3.5" CenterY="4" />
+                                                </Path.RenderTransform>
+                                            </Path>
+                                            <ContentPresenter VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <!-- 收起 = 朝右（基准形状）；展开 = 朝下（转 +90）。
+                                             注意 Triggers 的 Value 是 IsChecked，即"IsExpanded"。 -->
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <!-- Freezable（RotateTransform）不能当 TargetName，只能整体换掉 RenderTransform -->
+                                            <Setter TargetName="Chevron" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="90" CenterX="3.5" CenterY="4" />
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Chevron" Property="Fill"
+                                                    Value="{DynamicResource Brush.TextSecondary}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+
+                        <!-- 内容区：展开才显示（和默认模板一致，收起时不占位、不参与 Tab 序） -->
+                        <ContentPresenter x:Name="ExpandSite" Visibility="Collapsed" Margin="0,10,0,0" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>
