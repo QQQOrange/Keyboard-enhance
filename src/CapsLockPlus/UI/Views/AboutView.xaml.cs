@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -43,12 +43,28 @@ public partial class AboutView : UserControl
         Refresh();
     }
 
+    /// <summary>
+    /// "上次检查更新"那一行。
+    ///
+    /// `Global.LastUpdateCheck` 以前**只写不读**（存了但从不显示），
+    /// 用户没法判断自动更新到底跑没跑。这里把它显示出来。
+    /// </summary>
+    private void RefreshLastCheckText()
+    {
+        if (LastCheckText == null || _host == null) return;
+        var when = _host.Settings.Global.LastUpdateCheck;
+        LastCheckText.Text = when <= DateTime.MinValue
+            ? Loc.T("还没检查过更新")
+            : Loc.F("上次检查：{0}", Loc.FormatTime(when));
+    }
+
     public void Refresh()
     {
         if (_host == null) return;
         string version = UpdateService.CurrentVersion;
         VersionBadge.Text = "v" + version;
         CurrentVersionText.Text = version;
+        RefreshLastCheckText();
         AboutVersion.Text = version;
         BuildInfo.Text = $".NET {Environment.Version.ToString(3)} · " +
                          $"{System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}";
@@ -395,6 +411,7 @@ public partial class AboutView : UserControl
             var result = await _updates.CheckAsync(_host?.Settings.Global.GitHubToken);
             if (_host != null) _host.Settings.Global.LastUpdateCheck = DateTime.Now;
             _host?.SaveSettings();
+            RefreshLastCheckText();
 
             if (!result.Success)
             {

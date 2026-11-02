@@ -873,7 +873,6 @@ public sealed class QbarOptions
 {
     public string PanelColor { get; set; } = "auto";   // auto = 跟随主题
     public string PanelOpacity { get; set; } = "0.96";
-    public string TextFont { get; set; } = "Microsoft YaHei UI";
     public double TextFontSize { get; set; } = 20;
     public int ListCount { get; set; } = 6;
     public double LineHeight { get; set; } = 38;

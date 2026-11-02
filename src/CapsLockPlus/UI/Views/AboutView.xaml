@@ -168,6 +168,10 @@
                             <TextBlock Text="{loc:T '当前版本'}" Style="{StaticResource Text.Body}" />
                             <TextBlock x:Name="CurrentVersionText" Text="1.0.0"
                                        Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+                            <!-- 上次检查更新的时间：自动更新默认每天要检查，
+                                 用户需要知道"到底查过没有、什么时候查的" -->
+                            <TextBlock x:Name="LastCheckText" Style="{StaticResource Text.Tertiary}"
+                                       FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="CheckButton" Content="{loc:T '检查更新'}" Style="{StaticResource Button.Base}"

@@ -1216,9 +1216,15 @@ public static partial class SelfTest
         CheckEqual("循环：单个窗口永远是自己", WindowBindingService.NextIndex(0, 1), 0);
         CheckEqual("循环：空列表不越界", WindowBindingService.NextIndex(0, 0), 0);
 
-        // B2：Qbar 的「显示图标」必须被读取
-        Check("QbarItem 构造接受 showIcons 参数",
-            typeof(System.Windows.Window).Assembly != null);   // 占位，真正的验证在下面
+        /* B2：Qbar 的「显示图标」开关。
+         *
+         * 这里原来是一条**永真断言**（`typeof(Window).Assembly != null`），
+         * 注释还写着"真正的验证在下面"，但下面根本没有 —— 典型的假覆盖。
+         * 真正的读取点在 QbarWindow 构造列表项时
+         * （`new QbarItem(r, Settings.Qbar.ShowIcons)`），那是个私有嵌套类，
+         * 外部断言不到；这里退一步钉住"设置项存在且默认开启"，
+         * 免得哪天顺手把它删了却没人发现。 */
+        Check("Qbar 显示图标默认开启", new AppSettings().Qbar.ShowIcons);
 
         // B9：双击窗口常量要公开，界面文案才能引用
         Check("双击窗口常量公开",
