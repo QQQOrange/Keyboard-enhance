@@ -8,7 +8,7 @@
 >
 > 运行文件是 **`KeyboardEnhance.exe`**，数据目录是 **`KeyboardEnhance Data`**。
 
-**版本 v4.5.64** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
+**版本 v4.5.65** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -69,9 +69,9 @@ dotnet --list-runtimes | findstr WindowsDesktop
 | 你的系统 | 下载哪个 | 运行时要求 |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
-| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.64-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
-| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.64-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
-| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.64-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.65-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.65-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.65-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
 
 > 发布页文件名用 `x86 / x64 / Win7 / SelfContained` 标注，是因为 GitHub 会自动把资产文件名里的
 > 非字母数字字符（含中文）改写成点号；本地构建产物可以保留中文名，不影响使用。
@@ -649,7 +649,17 @@ Qbar 本身打不开的另一种情况（窗口被关掉后无法复用）也已
 而是**钩子不在链上**：钩子收不到键时，程序会切到 Raw Input 兜底 —— 热键**能触发**，但**吞不掉**按键，
 于是层切过去了、Tab 还在往前台送。
 
-4.5.64 起程序会自己救：
+**4.5.65 的两个根因（长按触发键一直输出原键的真正原因）：**
+
+1. **日志拖住了钩子回调**。日志每写一行都 flush 到磁盘，而钩子回调里也会写日志。
+   磁盘一慢（同时开云同步 / 自动备份 / 安全软件在扫），回调就卡在 flush 上；
+   低级钩子回调超过 300ms 系统会**丢弃这次输入并摘掉钩子**。
+   现在日志改成**异步写**：调用方只入队，后台线程写盘，按键路径永不碰磁盘。
+2. **选区监听装了第二个低级键盘钩子**。钩子是串行的，它排在主钩子前面，
+   它一慢，主钩子连回调都进不去 —— 于是热键全失灵。
+   现在它**不再装钩子**，改用已有的 Raw Input 通道识别 Ctrl+C。
+
+4.5.64 起程序还会自己救：
 
 1. 每 10 秒（启动后 10 秒开始、之后每 60 秒）给自己发一个**不带标记的 F24** 探钩子；
 2. 探不到就重装钩子，装回来会写 `重装后自检通过，钩子已恢复`；

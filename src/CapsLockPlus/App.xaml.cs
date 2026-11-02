@@ -378,7 +378,14 @@ public partial class App : Application
         try
         {
             var s = SettingsStore.Load();
-            if (s.Global.RunAsAdmin)
+            /* CLP_SKIP_ELEVATE=1：本次运行**不提权**。
+             *
+             * 用途：管理员模式下键盘钩子装不上时（实测该环境下钩子收不到任何按键），
+             * 程序会带着这个变量用普通权限重启自己 —— 普通权限下钩子是正常的。 */
+            bool skipElevate = Environment.GetEnvironmentVariable("CLP_SKIP_ELEVATE") == "1";
+            if (s.Global.RunAsAdmin && skipElevate)
+                CoreLog.Warn("设置了 CLP_SKIP_ELEVATE=1：本次以普通权限运行（管理员模式下钩子收不到按键时用来自救）");
+            else if (s.Global.RunAsAdmin)
                 relaunched = ElevationHelper.TryRelaunchElevated(e.Args);
             else
                 CoreLog.Info("以普通权限运行（设置里未开启管理员模式）");

@@ -1304,6 +1304,7 @@
   "无法识别版本号：{0}": "Unrecognised version: {0}",
   "无法识别的字符：{0}": "Unrecognised character: {0}",
   "无法识别的数字：{0}": "Unrecognised number: {0}",
+  "日志现在是异步写的：按键路径不碰磁盘。以前每写一行都刷盘，磁盘一慢就会把钩子回调卡过 300ms，系统直接丢弃输入并摘掉钩子 —— 那正是「热键突然全失灵」的元凶。": "Logging is now asynchronous: the key path never touches the disk. Each line used to be flushed immediately, so a slow disk could stall the hook callback past 300 ms and Windows would drop the input and unhook us.",
   "日志：{0}": "Log: {0}",
   "早于 {0} 天的备份": "Backups older than {0} days",
   "时间": "Time",

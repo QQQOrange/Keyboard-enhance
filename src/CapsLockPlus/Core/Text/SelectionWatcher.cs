@@ -1,4 +1,5 @@
-﻿using System;
+using System.Diagnostics;
+using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -57,6 +58,38 @@ public sealed class SelectionWatcher : IDisposable
     [DllImport("user32.dll")]
     private static extern uint GetClipboardSequenceNumber();
 
+    /* 钩子必须装在有消息循环的线程上，而**不能是界面线程**。
+     *
+     * 这一条是 v4.5.65 的真正根因：以前 Start() 是在界面线程上调用的，
+     * 钩子就挂在了界面线程上。低级钩子的回调会被投递到"装钩子的那条线程"，
+     * 界面线程一忙（建页面、云同步、备份、渲染），系统就要等它 ——
+     * 等超时（默认 300ms）就**丢弃这次输入**，并可能把钩子摘掉。
+     *
+     * 表现：整个系统的按键偶尔丢；更致命的是这条钩子排在 KeyboardHook 前面，
+     * 它一卡，我们自己的钩子**连回调都进不去** —— 于是热键全部失灵、
+     * 长按触发键一直输出原键，而所有状态显示都正常。 */
+    [DllImport("user32.dll")]
+    private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public int x;
+        public int y;
+    }
+
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
@@ -74,6 +107,9 @@ public sealed class SelectionWatcher : IDisposable
 
     private LowLevelProc? _proc;
     private IntPtr _hook;
+    private Thread? _thread;
+    private uint _threadId;
+    private volatile bool _running;
 
     /// <summary>捕获到新选区时触发。参数是选中的文字。</summary>
     public event Action<string>? Captured;
@@ -99,44 +135,76 @@ public sealed class SelectionWatcher : IDisposable
         return DateTime.UtcNow - LastSelectionAt <= window ? LastSelection : null;
     }
 
-    /// <summary>钩子是否在跑。</summary>
-    public bool IsRunning => _hook != IntPtr.Zero;
+    /// <summary>是否已启用（现在由 Raw Input 驱动，不再有自己的钩子）。</summary>
+    public bool IsRunning => _running;
 
     /// <summary>
     /// 开始监听。重复调用安全（已在运行则直接返回）。
     /// </summary>
     public bool Start()
     {
-        if (_hook != IntPtr.Zero) return true;
+        if (_running) return true;
 
-        _proc = HookCallback;
-        _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc,
-            GetModuleHandle(null), 0);
+        _running = true;
 
-        if (_hook == IntPtr.Zero)
-        {
-            int err = Marshal.GetLastWin32Error();
-            CoreLog.Warn($"选区监听钩子安装失败，错误码 {err}");
-            return false;
-        }
-
-        CoreLog.Info("选区监听已启动（Ctrl+C 即捕获）");
+        /* ⚠ 这里**不再装第二个低级键盘钩子**（v4.5.65 的根因）。
+         *
+         * 以前这里自己 SetWindowsHookEx 了一个 WH_KEYBOARD_LL。低级钩子是**串行**的：
+         * 它排在 KeyboardHook 前面，只要它的回调没及时返回（装在界面线程上时，
+         * 界面一忙就会被系统等待），系统就会**丢弃这次输入**，后面的钩子（我们的）
+         * 一个事件都收不到 —— 表现就是"热键全失灵、长按触发键一直输出原键"，
+         * 而所有状态显示都正常，完全无法从日志看出问题。
+         *
+         * 现在改成由已有的 Raw Input 通道喂键（见 NotifyKey）：
+         *   · 全进程只有一个低级钩子，链路简单；
+         *   · Raw Input 对远程桌面 / 注入输入同样有效，比钩子更可靠；
+         *   · 不再影响别的程序收键。
+         */
+        CoreLog.Info("选区监听已启用（Ctrl+C 即捕获，走 Raw Input，不额外装钩子）");
         return true;
     }
 
     public void Stop()
     {
+        if (!_running && _hook == IntPtr.Zero) return;
+        _running = false;
         if (_hook != IntPtr.Zero)
         {
-            UnhookWindowsHookEx(_hook);
+            UnhookWindowsHookEx(_hook);       // 老版本装过的钩子，兜底卸掉
             _hook = IntPtr.Zero;
-            CoreLog.Info("选区监听已停止");
         }
         _proc = null;
+        CoreLog.Info("选区监听已停止");
     }
 
     /// <summary>
-    /// 钩子回调。
+    /// 由 Raw Input 通道喂进来的按键（替代原来的低级钩子）。
+    ///
+    /// 看到 Ctrl+C / Ctrl+Insert 按下时，**同步**记下当前剪贴板序号 ——
+    /// 此刻用户这次复制还没生效，序号是"复制前"的值；然后排延时任务比对。
+    /// </summary>
+    public void NotifyKey(int vk, bool down)
+    {
+        if (!_running || !down) return;
+        if (vk != VK_C && vk != VK_INSERT) return;
+
+        try
+        {
+            bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+            if (!ctrlDown) return;
+
+            uint before = GetClipboardSequenceNumber();
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                await System.Threading.Tasks.Task.Delay(180);
+                await CheckClipboard(before);
+            });
+        }
+        catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+    }
+
+    /// <summary>
+    /// 钩子回调（仅老版本残留路径；现在不再安装）。
     ///
     /// 看到 Ctrl+C / Ctrl+Insert 按下时，**同步**记下当前剪贴板序号 ——
     /// 此刻用户这次复制还没生效，序号是"复制前"的值。

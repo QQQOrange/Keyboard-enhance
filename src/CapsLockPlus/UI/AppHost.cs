@@ -142,6 +142,10 @@ public sealed class AppHost : IDisposable
 
                 if (Engine.MacroRecorder is { IsRecording: true } rec) rec.RecordRaw(vk, down);
 
+                /* 选区监听也靠这条路：不再让 SelectionWatcher 自己装第二个低级钩子
+                 * （那条钩子会把整条输入链拖住，见 SelectionWatcher.Start 的注释）。 */
+                _selectionWatcher?.NotifyKey(vk, down);
+
                 /* 兜底：钩子长时间收不到按键时（远程桌面 / 注入输入），
                  * 由 Raw Input 把按键喂给引擎，否则所有热键一起失灵。
                  * 钩子正常工作时这条路自动关闭（见 ShouldUseRawFallback）。 */
@@ -447,6 +451,16 @@ public sealed class AppHost : IDisposable
                 UseShellExecute = false,
                 WorkingDirectory = AppContext.BaseDirectory,
             };
+
+            /* 管理员权限下钩子反复装不上：改成**普通权限**重启。
+             * 实测普通权限下钩子收发正常，而提权进程里经常一个事件都收不到
+             * （安全软件 / UIPI 拦截提权进程的全局钩子）。 */
+            bool wasElevated = Core.ElevationHelper.IsElevated;
+            if (wasElevated)
+            {
+                psi.Environment["CLP_SKIP_ELEVATE"] = "1";
+                CoreLog.Warn("当前是管理员权限：改用普通权限重启（管理员模式下键盘钩子收不到按键）");
+            }
             foreach (var a in Environment.GetCommandLineArgs().Skip(1)) psi.ArgumentList.Add(a);
             System.Diagnostics.Process.Start(psi);
 
@@ -511,7 +525,8 @@ public sealed class AppHost : IDisposable
             CoreLog.Warn($"钩子自检失败（{why}，连续第 {_probeFailures} 次）：收不到自己注入的按键" +
                          $"（句柄非零={Engine.HookInstalled}，线程={Engine.HookThreadState}，" +
                          $"探活={(Engine.PingHook(200) ? "有响应" : "无响应")}，" +
-                         $"最长回调={Engine.HookMaxCallbackMs:F0}ms），正在重装");
+                         $"最长回调={Engine.HookMaxCallbackMs:F0}ms，" +
+                         $"回调卡住={Engine.HookCallbackStuckMs}ms(vk=0x{Engine.HookStuckVk:X2})），正在重装");
             Engine.RestartHook();
 
             /* 重装后立刻复验一次：成功就当场恢复（用户不用等下一个 60 秒），

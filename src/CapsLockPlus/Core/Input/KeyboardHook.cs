@@ -92,6 +92,17 @@ public sealed class KeyboardHook : IDisposable
     {
         if (_running) return;
 
+        /* 实验：CLP_HOOK_UI_THREAD=1 时把钩子装在**调用线程**（界面线程）上。
+         *
+         * 依据：程序里的 --diag / KeyDiagnostics 就是装在自己的线程上，
+         * 在我们的所有测试里从未失效过；而装在后台线程上的那条链路会时好时坏。 */
+        if (Environment.GetEnvironmentVariable("CLP_HOOK_UI_THREAD") == "1")
+        {
+            InstallOnCurrentThread();
+            return;
+        }
+
+
         /* 上一轮线程还没退干净时绝不装第二条 —— 那会退化成"旧线程卸掉新钩子"。 */
         if (_thread is { IsAlive: true } stale)
         {
@@ -118,7 +129,10 @@ public sealed class KeyboardHook : IDisposable
             _hook = myHook;
             CoreLog.Info($"钩子线程 tid={_threadId} 安装结果=0x{myHook.ToInt64():X}");
 
-            var myMouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc!, GetModuleHandle(null), 0);
+            /* 实验开关：CLP_NO_MOUSE_HOOK=1 时不装鼠标钩子（排查"键盘钩子被摘"用）。 */
+            var myMouseHook = Environment.GetEnvironmentVariable("CLP_NO_MOUSE_HOOK") == "1"
+                ? IntPtr.Zero
+                : SetWindowsHookEx(WH_MOUSE_LL, _mouseProc!, GetModuleHandle(null), 0);
             _mouseHook = myMouseHook;
             if (_hook == IntPtr.Zero)
             {
@@ -188,6 +202,8 @@ public sealed class KeyboardHook : IDisposable
                                  $"flags=0x{data.flags:X} extra=0x{data.dwExtraInfo.ToInt64():X} 自己发的={injectedByUs}");
                 }
                 bool swallow = false;
+                Volatile.Write(ref _callbackVk, (int)data.vkCode);
+                Interlocked.Exchange(ref _callbackStartedTick, Environment.TickCount64);
                 try
                 {
                     swallow = KeyEvent?.Invoke((int)data.vkCode, isDown, injectedByUs) ?? false;
@@ -207,6 +223,8 @@ public sealed class KeyboardHook : IDisposable
                     try { swallow = SwallowOnError?.Invoke((int)data.vkCode) ?? false; }
                     catch { swallow = false; }
                 }
+                finally { Interlocked.Exchange(ref _callbackStartedTick, 0); }
+
                 // 返回 1（非零）且不调用 CallNextHookEx 即可吞掉该按键
                 if (swallow) return new IntPtr(1);
             }
@@ -228,6 +246,31 @@ public sealed class KeyboardHook : IDisposable
     /// 表现就是「录制宏时一个键都没有」「组合键突然全失灵」。
     /// 所以这里把每次回调的耗时量出来：慢的当场记一条，最快能定位是谁卡住了钩子线程。
     /// </summary>
+    /// <summary>
+    /// 回调"进行中"打点：进入时记时间戳，退出时清零。
+    ///
+    /// 用途：低级钩子回调如果**卡住不返回**，系统会等它（最长 300ms）然后丢弃这次输入、
+    /// 并可能把钩子摘掉。这种阻塞从"回调耗时"里看不出来（它根本没返回），
+    /// 只能靠另一个线程观察这个时间戳。症状是"整个系统的按键都变慢/丢，热键全失灵"。
+    /// </summary>
+    private long _callbackStartedTick;
+    private int _callbackVk;
+
+    /// <summary>回调是否正卡着（毫秒）。0 表示没卡。</summary>
+    internal long CallbackStuckMs
+    {
+        get
+        {
+            long started = Interlocked.Read(ref _callbackStartedTick);
+            if (started == 0) return 0;
+            long ms = Environment.TickCount64 - started;
+            return ms > 2000 ? ms : 0;
+        }
+    }
+
+    /// <summary>卡住时正在处理的那个键（诊断用）。</summary>
+    internal int StuckVk => Volatile.Read(ref _callbackVk);
+
     private void ObserveCallbackCost(long t0, IntPtr lParam)
     {
         double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
@@ -393,6 +436,31 @@ public sealed class KeyboardHook : IDisposable
         }
     }
 
+    /// <summary>在调用线程上安装钩子（该线程必须自己泵消息，界面线程满足）。</summary>
+    private void InstallOnCurrentThread()
+    {
+        _uiThreadMode = true;
+        _threadId = GetCurrentThreadId();
+        var h = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
+        _hook = h;
+        CoreLog.Info($"钩子装在当前线程 tid={_threadId} 安装结果=0x{h.ToInt64():X}");
+        if (h == IntPtr.Zero)
+        {
+            LastErrorTime = DateTime.Now;
+            CoreLog.Error($"键盘钩子安装失败，错误码 {Marshal.GetLastWin32Error()}");
+        }
+
+        _mouseHook = Environment.GetEnvironmentVariable("CLP_NO_MOUSE_HOOK") == "1"
+            ? IntPtr.Zero
+            : SetWindowsHookEx(WH_MOUSE_LL, _mouseProc!, GetModuleHandle(null), 0);
+
+        _running = true;
+        StartWatchdog();
+    }
+
+    /// <summary>是否工作在"钩子装在调用线程"模式。</summary>
+    private bool _uiThreadMode;
+
     /// <summary>卸载钩子（可再次 Start 重装，用于自愈）。</summary>
     private long _pingAcks;
 
@@ -406,7 +474,9 @@ public sealed class KeyboardHook : IDisposable
     /// </summary>
     public bool Ping(int timeoutMs = 400)
     {
-        if (!_running || _hook == IntPtr.Zero || _threadId == 0) return false;
+        if (!_running || _hook == IntPtr.Zero) return false;
+        if (_uiThreadMode) return true;      // 界面线程在跑，钩子回调就有人处理
+        if (_threadId == 0) return false;
         long before = Interlocked.Read(ref _pingAcks);
         if (!PostThreadMessage(_threadId, WM_APP_PING, IntPtr.Zero, IntPtr.Zero)) return false;
 
@@ -422,6 +492,18 @@ public sealed class KeyboardHook : IDisposable
     public void Stop()
     {
         if (!_running) return;
+
+        if (_uiThreadMode)
+        {
+            _running = false;
+            _watchdog?.Dispose();
+            _watchdog = null;
+            if (_hook != IntPtr.Zero) { UnhookWindowsHookEx(_hook); _hook = IntPtr.Zero; }
+            if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
+            _uiThreadMode = false;
+            return;
+        }
+
         _running = false;
         _watchdog?.Dispose();
         _watchdog = null;
@@ -454,6 +536,13 @@ public sealed class KeyboardHook : IDisposable
     /// <summary>重装钩子。</summary>
     public void Restart()
     {
+        if (_uiThreadMode)
+        {
+            /* 已经在界面线程上：直接原地重装（先装新的再卸旧的，没有空窗）。 */
+            RearmHooks();
+            return;
+        }
+
         Stop();
         Thread.Sleep(80);
         Start();

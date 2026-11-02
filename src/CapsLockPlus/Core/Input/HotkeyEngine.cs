@@ -963,6 +963,12 @@ public sealed class HotkeyEngine : IDisposable
     /// <summary>钩子线程状态（诊断用）。</summary>
     public string HookThreadState => _hook.ThreadState;
 
+    /// <summary>钩子回调是不是正卡着（毫秒，0 = 没卡）。</summary>
+    public long HookCallbackStuckMs => _hook.CallbackStuckMs;
+
+    /// <summary>卡住时正在处理的键（诊断用）。</summary>
+    public int HookStuckVk => _hook.StuckVk;
+
     /// <summary>
     /// 钩子自检：自己敲一个不带标记的 F24，看钩子收不收得到。
     /// false = 钩子已经不在链上了（或线程卡死），应当重装。
