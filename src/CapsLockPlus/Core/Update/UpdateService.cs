@@ -550,8 +550,8 @@ public sealed class UpdateService
                 {
                     TryDelete(temp);
                     return (false, "",
-                        Loc.F("校验失败，文件可能已损坏（期望 {0}…，", expected[..Math.Min(12, expected.Length)]) +
-                        Loc.F("实际 {0}…）", actual[..12]), false);
+                        Loc.F("校验失败，文件可能已损坏（期望 {0}…，实际 {1}…）",
+                              expected[..Math.Min(12, expected.Length)], actual[..12]), false);
                 }
             }
             return (true, temp, "", false);

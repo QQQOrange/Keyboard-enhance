@@ -1,6 +1,7 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using CapsLockPlus.Core.Input;
 
 namespace CapsLockPlus.Core;
 
@@ -129,40 +130,66 @@ public static class KeyDiagnostics
         }
         sb.AppendLine();
 
-        // 3) 实测：让用户按键，统计钩子能否收到
+        /* 3) 实测：先自己发一个无害按键（F24），确认"钩子 → 回调"这条链路通。
+         *
+         * 以前这里只有"请在 8 秒内随便敲几个键"。问题是：用户去倒了杯水、
+         * 或者根本没看懂要按 —— 结果也是 0 个事件，报告就直接下结论
+         * "全局键盘钩子收不到任何按键，请检查安全软件"。
+         * 那是**冤枉**安全软件的假警报，比不给结论更糟。
+         *
+         * 现在分两步：
+         *   ① 自测注入（F24，没有任何程序会响应它）—— 能收到就说明链路是通的；
+         *   ② 自测失败才真的等用户按键 —— 这种情况多半是 SendInput 被 UIPI/安全软件
+         *      挡了，人工按键仍可能正常，值得再给一次机会。 */
         if (hook != IntPtr.Zero)
         {
-            sb.AppendLine($"【实测】请在 {listenSeconds} 秒内随便敲几个键（建议敲一下 CapsLock）…");
+            sb.AppendLine("【实测】正在自动验证钩子链路…");
             WriteAndFlush(sb.ToString());
             sb = new StringBuilder();
 
-            var end = DateTime.Now.AddSeconds(listenSeconds);
-            while (DateTime.Now < end)
-            {
-                if (PeekMessage(out var msg, IntPtr.Zero, 0, 0, 1))
-                {
-                    // 只是为了让钩子有机会被调用
-                }
-                else
-                {
-                    Thread.Sleep(10);
-                }
-            }
+            int before = _observed;
+            /* `--diag` 在 CliFlags.DryRunFlags 里（诊断模式一律不许真的发按键），
+             * 但这一项**必须**真的注入 —— 否则测的就是"DoWork 被跳过"这件事本身。
+             * 所以只在这一小段临时关掉干跑，发完立刻恢复。 */
+            bool dry = InputSender.DryRun;
+            InputSender.DryRun = false;
+            try { InputSender.Tap(0x87 /*F24*/, 3); }   // 6 个事件（3 次按下 + 3 次抬起）
+            catch (Exception ex) { CoreLog.Warn("诊断：自发按键失败 " + ex.Message); }
+            finally { InputSender.DryRun = dry; }
+            PumpFor(800);
+            int autoSeen = _observed - before;
 
-            sb.AppendLine($"  收到按键事件：{_observed} 个");
-            if (_observed == 0)
+            sb.AppendLine($"  自发按键收到：{autoSeen} / 6 个");
+            if (autoSeen > 0)
             {
-                sb.AppendLine("  ✗ 一个都没收到 —— 全局键盘钩子收不到任何按键。");
-                sb.AppendLine("    请检查：");
-                sb.AppendLine("      1. 是否有安全软件（火绒、360、卡巴斯基等）拦截了键盘钩子；");
-                sb.AppendLine("      2. 是否用了“筛选键/粘滞键”等辅助功能；");
-                sb.AppendLine("      3. 是否在远程桌面/虚拟机里运行（需在物理桌面运行）；");
-                sb.AppendLine("      4. 键盘是否被其他改键软件独占（如 PowerToys Keyboard Manager、某些游戏外设驱动）。");
-                problems++;
+                sb.AppendLine("  ✓ 钩子链路正常（钩子装得上、回调能进来）。");
             }
             else
             {
-                sb.AppendLine("  ✓ 钩子能正常收到按键。");
+                sb.AppendLine($"  ⚠ 自发按键没被收到，改为等你手工按（{listenSeconds} 秒内敲几下，建议敲 CapsLock）…");
+                WriteAndFlush(sb.ToString());
+                sb = new StringBuilder();
+
+                int manualBefore = _observed;
+                PumpFor(listenSeconds * 1000);
+                int manualSeen = _observed - manualBefore;
+                sb.AppendLine($"  手工按键收到：{manualSeen} 个");
+
+                if (manualSeen == 0)
+                {
+                    sb.AppendLine("  ✗ 自动注入和手工按键都没收到 —— 全局键盘钩子被挡住了。");
+                    sb.AppendLine("    请检查：");
+                    sb.AppendLine("      1. 是否有安全软件（火绒、360、卡巴斯基等）拦截了键盘钩子；");
+                    sb.AppendLine("      2. 是否用了“筛选键/粘滞键”等辅助功能；");
+                    sb.AppendLine("      3. 是否在远程桌面/虚拟机里运行（需在物理桌面运行）；");
+                    sb.AppendLine("      4. 键盘是否被其他改键软件独占（如 PowerToys Keyboard Manager、某些游戏外设驱动）。");
+                    problems++;
+                }
+                else
+                {
+                    sb.AppendLine("  ✓ 手工按键能收到：钩子本身正常，只是程序化的按键注入被挡了。");
+                    sb.AppendLine("    这会影响「输入一段文字 / 发送按键」这类功能，但不影响你手敲组合键。");
+                }
             }
             UnhookWindowsHookEx(hook);
         }
@@ -179,6 +206,21 @@ public static class KeyDiagnostics
 
         WriteAndFlush(sb.ToString());
         return problems;
+    }
+
+    /// <summary>
+    /// 泵消息若干毫秒，让低级钩子回调有机会执行。
+    ///
+    /// 低级键盘钩子挂在**装钩子的线程**的消息队列上：不取消息就永远收不到事件。
+    /// 这也是"自动化实测"能成立的前提。
+    /// </summary>
+    private static void PumpFor(int milliseconds)
+    {
+        var end = DateTime.Now.AddMilliseconds(milliseconds);
+        while (DateTime.Now < end)
+        {
+            if (!PeekMessage(out _, IntPtr.Zero, 0, 0, 1)) Thread.Sleep(5);
+        }
     }
 
     private static void WriteAndFlush(string text)
