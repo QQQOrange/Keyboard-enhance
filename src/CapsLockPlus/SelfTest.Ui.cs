@@ -34,6 +34,50 @@ public static partial class SelfTest
     ///   3. 「窗口绑定」分类只有 1 个动作；
     ///   4. 底层 ActivateExe / BindByExe 的安全性。
     /// </summary>
+    /// <summary>
+    /// 浮层定位的纯函数（<see cref="Core.Windows.ScreenPlacement.ComputePoint"/>）。
+    ///
+    /// 这一块以前**完全没有测试**：一直只在"200% 单屏"这台机器上肉眼看，
+    /// 换台混 DPI 的机器/负坐标副屏就可能把提示条摆到屏幕外。
+    /// 拆成纯函数后，负坐标、超小工作区、超大窗口都能造出来断言。
+    /// </summary>
+    private static void TestScreenPlacement()
+    {
+        static Core.Interop.NativeMethods.RECT R(int l, int t, int r, int b) =>
+            new() { Left = l, Top = t, Right = r, Bottom = b };
+
+        // ① 普通主屏：右下角 / 顶部居中 / 上方 22%
+        var work = R(0, 0, 1920, 1040);
+        var br = Core.Windows.ScreenPlacement.ComputePoint(
+            Core.Windows.ScreenPlacement.Anchor.BottomRight, work, 300, 100, 10, 10);
+        CheckEqual("右下角：贴右下留边距", (br.X, br.Y), (1920 - 300 - 10, 1040 - 100 - 10));
+
+        var tc = Core.Windows.ScreenPlacement.ComputePoint(
+            Core.Windows.ScreenPlacement.Anchor.TopCenter, work, 760, 400, 12, 12);
+        CheckEqual("顶部居中：水平居中", (tc.X, tc.Y), ((1920 - 760) / 2, 12));
+
+        var uc = Core.Windows.ScreenPlacement.ComputePoint(
+            Core.Windows.ScreenPlacement.Anchor.UpperCenter, work, 760, 400, 12, 12);
+        CheckEqual("上方居中：落在 22% 处", (uc.X, uc.Y), ((1920 - 760) / 2, (int)Math.Round(1040 * 0.22)));
+
+        // ② 负坐标的左侧副屏（Windows 里很常见）
+        var left = R(-1920, 0, 0, 1040);
+        var lb = Core.Windows.ScreenPlacement.ComputePoint(
+            Core.Windows.ScreenPlacement.Anchor.BottomRight, left, 300, 100, 10, 10);
+        CheckEqual("副屏在左边：坐标是负的", (lb.X, lb.Y), (-300 - 10, 1040 - 100 - 10));
+
+        // ③ 窗口比工作区还大：必须夹回工作区左上角，而不是算出负坐标跑到屏幕外
+        var tiny = R(0, 0, 800, 600);
+        var big = Core.Windows.ScreenPlacement.ComputePoint(
+            Core.Windows.ScreenPlacement.Anchor.BottomRight, tiny, 1200, 900, 10, 10);
+        CheckEqual("窗口大于工作区：夹到左上角", (big.X, big.Y), (0, 0));
+
+        // ④ 上边界：窗口刚好贴住右边/下边
+        var exact = Core.Windows.ScreenPlacement.ComputePoint(
+            Core.Windows.ScreenPlacement.Anchor.BottomRight, work, 1920, 1040, 0, 0);
+        CheckEqual("刚好占满：落在工作区原点", (exact.X, exact.Y), (0, 0));
+    }
+
     private static void TestWindowBindings()
     {
         var settings = DefaultSettings.Create();

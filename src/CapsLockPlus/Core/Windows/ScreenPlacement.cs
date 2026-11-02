@@ -75,24 +75,7 @@ public static class ScreenPlacement
             int mx = (int)Math.Round(marginX * scale);
             int my = (int)Math.Round(marginY * scale);
 
-            int x, y;
-            switch (anchor)
-            {
-                case Anchor.BottomRight:
-                    x = work.Right - w - mx;
-                    y = work.Bottom - h - my;
-                    break;
-
-                case Anchor.UpperCenter:
-                    x = work.Left + (work.Width - w) / 2;
-                    y = work.Top + (int)Math.Round(work.Height * 0.22);
-                    break;
-
-                default: // TopCenter
-                    x = work.Left + (work.Width - w) / 2;
-                    y = work.Top + my;
-                    break;
-            }
+            var (x, y) = ComputePoint(anchor, work, w, h, mx, my);
 
             NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0,
                 NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER | NativeMethods.SWP_NOACTIVATE);
@@ -103,6 +86,46 @@ public static class ScreenPlacement
             CoreLog.Warn("浮层定位失败，退回默认位置：" + ex.Message);
             return false;
         }
+    }
+
+    /// <summary>
+    /// 纯函数：算出窗口左上角的**物理像素**坐标。
+    ///
+    /// 单独拆出来有两个原因：
+    ///   ① 可以脱开屏幕做单元测试（负坐标的副屏、混 DPI、超小工作区都能造）；
+    ///   ② 顺手补上**越界夹取** —— 窗口比工作区还宽/高时（小副屏 + 大浮层、
+    ///      或者用户把缩放调到 200% 后换了个小屏），原来的算式会算出负坐标，
+    ///      浮层整块跑到屏幕外，用户以为"功能没反应"。
+    /// </summary>
+    internal static (int X, int Y) ComputePoint(Anchor anchor,
+        NativeMethods.RECT work, int w, int h, int mx, int my)
+    {
+        int x, y;
+        switch (anchor)
+        {
+            case Anchor.BottomRight:
+                x = work.Right - w - mx;
+                y = work.Bottom - h - my;
+                break;
+
+            case Anchor.UpperCenter:
+                x = work.Left + (work.Width - w) / 2;
+                y = work.Top + (int)Math.Round(work.Height * 0.22);
+                break;
+
+            default: // TopCenter
+                x = work.Left + (work.Width - w) / 2;
+                y = work.Top + my;
+                break;
+        }
+
+        /* 夹进工作区：窗口比工作区大的时候，宁可贴左上角也不要跑到屏幕外。
+         * 上界用 Math.Max 兜住"窗口更大"的情况，否则 Min 会把坐标压成负数。 */
+        int maxX = Math.Max(work.Left, work.Right - w);
+        int maxY = Math.Max(work.Top, work.Bottom - h);
+        x = Math.Clamp(x, work.Left, maxX);
+        y = Math.Clamp(y, work.Top, maxY);
+        return (x, y);
     }
 
     /// <summary>
