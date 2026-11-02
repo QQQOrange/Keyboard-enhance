@@ -134,9 +134,11 @@ public sealed class AppHost : IDisposable
              * 但 Raw Input 看得到。去重在录制器里做（同一个物理按键两路都会到）。 */
             _deviceTracker.KeyObserved += (vk, down, physical) =>
             {
-                /* 自愈看护只统计**真实硬件**按键：远程桌面 / 注入工具的按键解析不出设备路径，
-                 * 拿它们判断"钩子被摘"会误报（远程会话里每一个键都是注入的）。 */
-                if (physical) Interlocked.Increment(ref _rawKeyCount);
+                /* 看护统计**所有**按键：远程会话里每个键都是注入的，如果只看物理键，
+                 * 钩子在那类环境下死了也永远不会被重装 —— 表现就是"热键全靠兜底、
+                 * 按键还吞不掉"。误报风险由"一场会话最多重装两次"兜住。 */
+                Interlocked.Increment(ref _rawKeyCount);
+                if (physical) Interlocked.Increment(ref _rawPhysicalCount);
 
                 if (Engine.MacroRecorder is { IsRecording: true } rec) rec.RecordRaw(vk, down);
 
@@ -146,6 +148,7 @@ public sealed class AppHost : IDisposable
                 Engine.FeedFromRaw(vk, down);
             };
             StartHookTrafficWatch();
+            StartHookProbe();
         }
         else
             _deviceTracker.Dispose();
@@ -186,6 +189,14 @@ public sealed class AppHost : IDisposable
         // 注意：这里必须用 lambda 包一层（原因见下）。
         // 而且要把引擎关键字传下去：qbar:<引擎> 动作绑定到按键后，
         // 按下去弹出的 Qbar 要**默认用那个引擎**搜索。
+        /* 兜底接管后按键吞不掉：提示一次，避免用户以为"长按 Tab 一边切层一边跳焦点"是 bug。 */
+        Engine.RawFallbackDegraded += () => _dispatcher.BeginInvoke(() =>
+        {
+            if (_degradedNotified) return;
+            _degradedNotified = true;
+            Notify(Loc.T("键盘钩子收不到按键，已改用 Raw Input 触发热键：热键能用，但被吞的键仍会传给当前程序"));
+        });
+
         Context.QbarRequested += engineKey =>
             _dispatcher.BeginInvoke(() => ShowQbar(EnginePrefill(engineKey)));
         Context.MathBoardRequested += () => _dispatcher.BeginInvoke(() => ShowMathBoard());
@@ -307,8 +318,17 @@ public sealed class AppHost : IDisposable
     private ForegroundWatcher? _foreground;
     private KeyboardDeviceTracker? _deviceTracker;
 
+    /// <summary>降级提示只弹一次。</summary>
+    private bool _degradedNotified;
+
+    /// <summary>钩子自检连续失败次数。</summary>
+    private int _probeFailures;
+
     /// <summary>Raw Input 收到的按键总数（和钩子的事件数对比，用来发现"钩子被摘"）。</summary>
     private long _rawKeyCount;
+
+    /// <summary>其中能识别出物理设备的那些（日志用）。</summary>
+    private long _rawPhysicalCount;
 
     private System.Windows.Threading.DispatcherTimer? _hookWatch;
     private long _lastHookCount, _lastRawCount;
@@ -340,6 +360,59 @@ public sealed class AppHost : IDisposable
         };
         _hookWatch.Tick += (_, _) => CheckHookTraffic();
         _hookWatch.Start();
+    }
+
+    /// <summary>
+    /// 钩子自检的定时器：启动 3 秒后探一次，之后每 60 秒一次。
+    ///
+    /// 探针 = 自己敲一个不带标记的 F24，再数钩子有没有收到。
+    /// 这是唯一不依赖"用户按键"的判据：钩子被系统摘掉时，
+    /// 句柄在、线程活、探活 ping 也正常，只看状态永远发现不了。
+    /// 探不到就重装 —— 装回来后热键才真正"能吞键"。
+    /// </summary>
+    private void StartHookProbe()
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3),
+        };
+        int round = 0;
+        timer.Tick += (_, _) =>
+        {
+            round++;
+            if (round == 1)
+            {
+                timer.Interval = TimeSpan.FromSeconds(60);
+            }
+            ProbeHookOnce(round == 1 ? "启动自检" : "定期自检");
+        };
+        timer.Start();
+    }
+
+    private void ProbeHookOnce(string why)
+    {
+        try
+        {
+            if (Engine.ProbeHook())
+            {
+                /* 通过时不写日志（每 60 秒一条太吵），失败才记。 */
+                _probeFailures = 0;
+                return;
+            }
+
+            _probeFailures++;
+            CoreLog.Warn($"钩子自检失败（{why}，连续第 {_probeFailures} 次）：钩子收不到自己注入的按键，正在重装");
+            Engine.RestartHook();
+
+            /* 连续三次都装不回来：这不是"偶发摘钩"，是环境不允许（安全软件拦截提权进程的钩子
+             * 之类）。热键此时靠 Raw Input 还能触发，但**吞不掉**按键，必须让用户知道。 */
+            if (_probeFailures >= 3 && !_degradedNotified)
+            {
+                _degradedNotified = true;
+                Notify(Loc.T("键盘钩子一直装不上（可能被安全软件拦截）：热键仍能用，但按下的键也会传给当前程序。建议重启程序或把本程序加入白名单"));
+            }
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "钩子自检"); }
     }
 
     private void CheckHookTraffic()

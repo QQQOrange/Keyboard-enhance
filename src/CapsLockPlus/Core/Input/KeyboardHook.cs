@@ -216,6 +216,30 @@ public sealed class KeyboardHook : IDisposable
         CoreLog.Warn($"钩子回调耗时 {ms:F0}ms（vk=0x{vk:X2}）—— 超过 300ms 系统会直接摘钩，之后不再收到任何按键");
     }
 
+    /// <summary>
+    /// 钩子自检：自己敲一个**不带标记**的 F24，看钩子能不能收到。
+    ///
+    /// 这是唯一能分清"钩子坏了"和"用户还没按键"的办法：
+    /// 杀掉一切外部依赖，自己发一个键再自己数。
+    /// 收到就说明钩子在链上且能收注入事件，收不到就是真坏了 —— 直接重装。
+    /// </summary>
+    /// <returns>探针是否被钩子看到</returns>
+    public bool SelfProbe(int timeoutMs = 400)
+    {
+        if (!IsRunning) return false;
+
+        long before = Interlocked.Read(ref _keyEvents);
+        if (!InputSender.TapUntagged(0x87 /*F24*/)) return false;
+
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (Interlocked.Read(ref _keyEvents) >= before + 2) return true;
+            Thread.Sleep(10);
+        }
+        return false;
+    }
+
     /// <summary>钩子回调的最长耗时（毫秒），诊断用。</summary>
     public double MaxCallbackCostMs { get; private set; }
 

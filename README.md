@@ -8,7 +8,7 @@
 >
 > 运行文件是 **`KeyboardEnhance.exe`**，数据目录是 **`KeyboardEnhance Data`**。
 
-**版本 v4.5.62** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
+**版本 v4.5.63** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -69,9 +69,9 @@ dotnet --list-runtimes | findstr WindowsDesktop
 | 你的系统 | 下载哪个 | 运行时要求 |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
-| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.62-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
-| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.62-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
-| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.62-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-4.5.63-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-4.5.63-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-4.5.63-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
 
 > 发布页文件名用 `x86 / x64 / Win7 / SelfContained` 标注，是因为 GitHub 会自动把资产文件名里的
 > 非字母数字字符（含中文）改写成点号；本地构建产物可以保留中文名，不影响使用。
@@ -643,6 +643,13 @@ Windows 自己调音量、自己弹它自己那条横条。**不自己画**，�
 
 Qbar 本身打不开的另一种情况（窗口被关掉后无法复用）也已经修掉：现在关掉就重建，
 失败会写日志并再试一次，不会静默什么都不弹。
+
+**把 Tab 设成触发键，长按却一直输出 Tab？**
+这是钩子不在链上的连带症状：钩子收不到键时，程序会切到 Raw Input 兜底 ——
+热键**能触发**，但**吞不掉**按键，于是层切过去了、Tab 还在往前台送。
+从 4.5.63 起程序会**自己给自己发一个 F24** 探钩子（启动 3 秒后、之后每 60 秒），
+收不到就重装；兜底一启用也会先重装一次。连续三次都装不上会弹提示并写日志
+（`钩子自检失败…正在重装`），这时请把本程序加入安全软件白名单，或重启程序。
 
 **某些程序里组合键不生效？**
 以管理员身份运行的程序（任务管理器、部分游戏）需要本程序也提权。

@@ -1,4 +1,4 @@
-﻿using CapsLockPlus.Core.Interop;
+using CapsLockPlus.Core.Interop;
 using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Input;
@@ -143,6 +143,26 @@ public static class InputSender
     {
         if (SenderForTest is { } spy) { spy(vk, up); return; }
         Send(KeyInput(vk, up));
+    }
+
+    /// <summary>
+    /// 敲一个**不带本程序标记**的键（dwExtraInfo = 0）。
+    ///
+    /// 只给"钩子自检"用：普通注入带 <see cref="InjectionTag"/>，会被钩子当成
+    /// "自己发的"放行 —— 那样探不到"钩子到底还能不能收键"。
+    /// 自检键固定用 F24（0x87）：常规程序不认这个键，按下去不会有副作用。
+    /// </summary>
+    public static bool TapUntagged(int vk)
+    {
+        if (DryRun) return false;
+        var down = KeyInput(vk, up: false);
+        down.U.ki.dwExtraInfo = IntPtr.Zero;     // 关键：不带标记
+        Send(down);
+        System.Threading.Thread.Sleep(12);
+        var upInput = KeyInput(vk, up: true);
+        upInput.U.ki.dwExtraInfo = IntPtr.Zero;
+        Send(upInput);
+        return true;
     }
 
     /// <summary>完整敲击一个虚拟键（按下+抬起）。</summary>

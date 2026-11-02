@@ -833,6 +833,14 @@ public sealed class HotkeyEngine : IDisposable
     private long _hookSeenAtMs;
     private long _rawFedCount;
 
+    /// <summary>
+    /// 兜底已启用、而且**吞不掉**按键时的通知（只抛一次）。
+    ///
+    /// 界面用它提示"热键能用，但按键还会传给当前程序"，
+    /// 否则用户看到的是"长按 Tab 一边切层一边狂跳焦点"，比不生效更迷惑。
+    /// </summary>
+    public event Action? RawFallbackDegraded;
+
     /// <summary>现在是不是靠 Raw Input 在喂热键（诊断用）。</summary>
     public bool RawFallbackActive { get; private set; }
 
@@ -874,6 +882,18 @@ public sealed class HotkeyEngine : IDisposable
             RawFallbackActive = true;
             CoreLog.Warn($"键盘钩子已经 {RawFallbackQuietMs / 1000} 秒没收到任何按键，改由 Raw Input 触发热键" +
                          "（远程桌面 / 注入输入时是正常的）");
+
+            /* 光靠 Raw Input 只能"触发"，**吞不掉**按键 —— 用户按住触发键时，
+             * 前台会继续收到这个键（长按 Tab 就一直跳焦点）。
+             * 所以这里先把钩子重装一次：装回来了就恢复"能吞"，吞不掉才降级。 */
+            try
+            {
+                RestartHook();
+                CoreLog.Info("已尝试重装键盘钩子（恢复后会自动接管，不用重启程序）");
+            }
+            catch (Exception ex) { CoreLog.Warn("重装键盘钩子失败：" + ex.Message); }
+
+            RawFallbackDegraded?.Invoke();
         }
 
         Interlocked.Increment(ref _rawFedCount);
@@ -910,6 +930,12 @@ public sealed class HotkeyEngine : IDisposable
 
     /// <summary>钩子回调的最长耗时（毫秒），长期超过 100ms 就要查是谁卡住了。</summary>
     public double HookMaxCallbackMs => _hook.MaxCallbackCostMs;
+
+    /// <summary>
+    /// 钩子自检：自己敲一个不带标记的 F24，看钩子收不收得到。
+    /// false = 钩子已经不在链上了（或线程卡死），应当重装。
+    /// </summary>
+    public bool ProbeHook(int timeoutMs = 400) => _hook.SelfProbe(timeoutMs);
 
     /// <summary>
     /// 全局鼠标按键事件透传（屏幕物理坐标 + 鼠标消息）。

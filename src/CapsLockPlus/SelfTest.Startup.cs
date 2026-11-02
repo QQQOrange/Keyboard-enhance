@@ -209,6 +209,17 @@ public static partial class SelfTest
             return false;
         }
 
+        /// <summary>能不能读到"有没有图片"；读不到返回 null（= 环境问题，不是结论）。</summary>
+        static string? ClipboardHasImageOrNull()
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                try { return Clipboard.ContainsImage() ? "yes" : "no"; }
+                catch { System.Threading.Thread.Sleep(60); }
+            }
+            return null;
+        }
+
         /* 断言里的"详情"是**立即求值**的，所以这些读操作也必须兜住异常 ——
          * 剪贴板被别的进程短暂占用时 OpenClipboard 会失败并抛 CLIPBRD_E_CANT_OPEN，
          * 那会变成一条假的崩溃（不是被测逻辑的错）。 */
@@ -257,8 +268,17 @@ public static partial class SelfTest
                 if (TryOp(() => Clipboard.SetText("中转文字C")))
                 {
                     imageBackup.Restore();
-                    Check("图片不会被中转文字顶掉", HasImage(),
-                        SafeFormats());
+                    /* 剪贴板是所有程序共享的：被别的程序长时间占住时，"读不到图片"可能只是
+                 * 读不到（不是被顶掉）。这种情况按环境限制跳过，别报假失败。 */
+                string? looksEmpty = ClipboardHasImageOrNull();
+                if (looksEmpty == null)
+                {
+                    Check("（环境限制）剪贴板被占用，跳过图片还原验证", true);
+                }
+                else
+                {
+                    Check("图片不会被中转文字顶掉", looksEmpty == "yes", SafeFormats());
+                }
                 }
                 else
                 {

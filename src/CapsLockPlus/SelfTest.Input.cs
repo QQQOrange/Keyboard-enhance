@@ -1226,6 +1226,32 @@ public static partial class SelfTest
          * 免得哪天顺手把它删了却没人发现。 */
         Check("Qbar 显示图标默认开启", new AppSettings().Qbar.ShowIcons);
 
+        /* ---- Tab 当触发键：按住不能漏 Tab ----
+         *
+         * 用户报"CapsLock 位置换成 Tab 当触发键，长按却一直输出 Tab"。
+         * 先钉住引擎这一层的约定：触发键的**每一次** down（含系统自动重复）
+         * 都必须被吞掉，只有短按松手时才补发一次原键。 */
+        {
+            var ts = DefaultSettings.Create();
+            ts.Triggers.Clear();
+            ts.Triggers.Add(new Core.Settings.TriggerKey
+            {
+                Key = "tab", Enabled = true, LayerId = 1, HoldMs = 200,
+            });
+            foreach (var b in ts.Layers[0].Keys.Where(x => x.Combo == "tab").ToList()) ts.Layers[0].Keys.Remove(b);
+
+            var tq = new ActionQueue();
+            var te = new HotkeyEngine(tq, () => ts, (a, arg) => true);
+            te.EnterLayerImmediatelyForTest = true;      // 直接把"已过阈值"这条路走通
+
+            Check("Tab 触发键：按下被吞", te.SimulateKey(0x09, true));
+            Check("Tab 触发键：进了层", te.ActiveLayer == 1, te.ActiveLayer.ToString());
+            Check("Tab 触发键：系统自动重复也被吞", te.SimulateKey(0x09, true));
+            Check("Tab 触发键：重复不会反复切层", te.SimulateKey(0x09, true) && te.ActiveLayer == 1);
+            Check("Tab 触发键：抬起被吞（不补发长按）", te.SimulateKey(0x09, false));
+            te.Dispose();
+        }
+
         /* ---- Raw Input 兜底：钩子哑了也要能用热键 ----
          *
          * 用户报"Caps+Q 唤不出 Qbar"最常见的原因不是动作坏了，而是**钩子收不到按键**
