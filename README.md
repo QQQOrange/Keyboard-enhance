@@ -738,6 +738,15 @@ dist\KeyboardEnhance.exe --selftest
 # 诊断：全局钩子链路（会自动注入一个 F24 自检 6/6，不用你手工敲键）
 dist\KeyboardEnhance.exe --diag
 
+# 诊断：钩子到底能不能收到按键（只装钩子、自己敲两下，结果会弹窗）
+Start-Process "dist\KeyboardEnhance.exe" -ArgumentList "--hooktest" -Wait
+
+# 诊断：把解密后的触发键/层配置打出来（结果会弹窗，同时写 logs\triggers.txt）
+Start-Process "dist\KeyboardEnhance.exe" -ArgumentList "--dump-triggers" -Wait
+
+# 注意：本程序是窗口型程序，直接 `& KeyboardEnhance.exe --hooktest` 时 PowerShell 不会等待、
+# 也没有控制台可显示，看起来像“一点反应都没有”。用 Start-Process -Wait，或看弹窗。
+
 # 硬件联调：音量 / 系统音量键 / 亮度，跑完自动还原
 dist\KeyboardEnhance.exe --hwtest
 

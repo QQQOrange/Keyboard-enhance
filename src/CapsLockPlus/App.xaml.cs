@@ -61,23 +61,29 @@ public partial class App : Application
          * 用户配置是加密的，光看 settings.json 看不出配了什么。 */
         if (Core.CliFlags.Has(e.Args, "--dump-triggers"))
         {
+            var sb = new System.Text.StringBuilder();
             try
             {
                 var s = Core.Settings.SettingsStore.Load();
-                Console.WriteLine("=== 触发键 ===");
-                Console.WriteLine($"条数: {s.Triggers.Count}");
+                sb.AppendLine("=== 触发键 ===");
+                sb.AppendLine($"条数: {s.Triggers.Count}");
                 foreach (var t in s.Triggers)
                 {
-                    Console.WriteLine($"  Key=[{t.Key}] Enabled={t.Enabled} LayerId={t.LayerId} HoldMs={t.HoldMs} " +
-                                      $"解析={Core.Input.HotkeyEngine.DescribeTriggerForDiag(t.Key)}");
+                    sb.AppendLine($"  Key=[{t.Key}] Enabled={t.Enabled} LayerId={t.LayerId} HoldMs={t.HoldMs} " +
+                                  $"解析={Core.Input.HotkeyEngine.DescribeTriggerForDiag(t.Key)}");
                 }
-                Console.WriteLine("=== 层 ===");
+                sb.AppendLine();
+                sb.AppendLine("=== 层 ===");
                 foreach (var l in s.Layers)
-                    Console.WriteLine($"  层 {l.Id}：{l.Name}，绑定 {l.Keys.Count} 条");
-                Console.WriteLine($"=== 热键方案 === {s.Global.HotkeyScheme}");
-                Console.WriteLine($"=== Tab 是否被当作触发键 === {s.Triggers.Any(t => t.Enabled && Core.Input.HotkeyEngine.DescribeTriggerForDiag(t.Key).Contains("匹配 Tab"))}");
+                    sb.AppendLine($"  层 {l.Id}：{l.Name}，绑定 {l.Keys.Count} 条");
+                sb.AppendLine();
+                sb.AppendLine($"热键方案: {s.Global.HotkeyScheme}");
+                sb.AppendLine($"Tab 是否被当作触发键: " +
+                              $"{s.Triggers.Any(t => t.Enabled && Core.Input.HotkeyEngine.DescribeTriggerForDiag(t.Key).Contains("匹配 Tab"))}");
             }
-            catch (Exception ex) { Console.WriteLine("读取配置失败：" + ex); }
+            catch (Exception ex) { sb.AppendLine("读取配置失败：" + ex.Message); }
+
+            Core.CliOutput.Report("按键增强 · 触发键配置", "triggers.txt", sb.ToString());
             Environment.Exit(0);
             return;
         }
