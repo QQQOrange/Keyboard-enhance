@@ -703,10 +703,13 @@ public partial class SettingsView : UserControl
         AppLayerLayerBox.Items.Clear();
         foreach (var l in layers)
         {
-            string text = string.IsNullOrWhiteSpace(l.Name)
-                ? Loc.F("第 {0} 层", l.Id)
-                : Loc.F("第 {0} 层 · {1}", l.Id, l.Name);
-            AppLayerLayerBox.Items.Add(new ComboBoxItem { Content = text, Tag = l.Id });
+            /* 名字要走 LayerName.Display：层的名字是**配置里的数据**，
+             * 程序生成的默认名（"基础层" / "第 3 层"）要跟着界面语言走，
+             * 用户自己改过的名字才原样显示。
+             * 以前这里直接用 l.Name —— 英文界面下会看到 "Layer 1 · 基础层" 这种半中半英。 */
+            string name = LayerName.Display(l.Id, l.Name);
+            string text = Loc.F("第 {0} 层 · {1}", l.Id, name);
+            AppLayerLayerBox.Items.Add(new ComboBoxItem { Content = text, Tag = l.Id, ToolTip = text });
         }
         if (AppLayerLayerBox.Items.Count > 0) AppLayerLayerBox.SelectedIndex = 0;
 

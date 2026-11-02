@@ -1,4 +1,4 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -128,7 +128,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="AppLayerProcessBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
                                      ToolTip="{loc:T '进程名，如 Code.exe（大小写不敏感）'}" />
-                            <ComboBox x:Name="AppLayerLayerBox" Grid.Column="1" Width="130" Margin="8,0,0,0"
+                            <ComboBox x:Name="AppLayerLayerBox" Grid.Column="1" Width="168" Margin="8,0,0,0"
                                       Style="{StaticResource ComboBox.Base}" />
                             <Button x:Name="AppLayerAddButton" Grid.Column="2" Content="{loc:T '添加'}"
                                     Margin="8,0,0,0" Padding="14,6"
@@ -222,11 +222,11 @@
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
                         <WrapPanel Margin="0,8,0,0">
                             <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
-                                    Content="Vim 导航" Tag="vim" Click="OnApplyPackClick" />
+                                    Content="{loc:T 'Vim 导航'}" Tag="vim" Click="OnApplyPackClick" />
                             <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
-                                    Content="窗口管理" Tag="window" Click="OnApplyPackClick" />
+                                    Content="{loc:T '窗口管理'}" Tag="window" Click="OnApplyPackClick" />
                             <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
-                                    Content="剪贴板效率" Tag="clip" Click="OnApplyPackClick" />
+                                    Content="{loc:T '剪贴板效率'}" Tag="clip" Click="OnApplyPackClick" />
                         </WrapPanel>
                     </StackPanel>
 

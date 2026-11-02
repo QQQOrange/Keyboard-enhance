@@ -383,7 +383,7 @@ public partial class KeysView : UserControl
             .Select(s => new SubLayerDef { Key = s.Key, Name = s.Name })
             .ToList();
 
-        var dlg = new UI.Windows.SubLayerEditorWindow(layer.Name, current)
+        var dlg = new UI.Windows.SubLayerEditorWindow(LayerName.Display(layer.Id, layer.Name), current)
         {
             Owner = Window.GetWindow(this),
         };
@@ -405,7 +405,7 @@ public partial class KeysView : UserControl
 
         UpdateLayerButtons();
         SelectKey(_selectedKey);
-        ShowBindStatus(Loc.F("「{0}」现有 {1} 个子层", layer.Name, layer.EffectiveSubLayers.Count));
+        ShowBindStatus(Loc.F("「{0}」现有 {1} 个子层", LayerName.Display(layer.Id, layer.Name), layer.EffectiveSubLayers.Count));
     }
 
     private void SelectKey(string keyId)
