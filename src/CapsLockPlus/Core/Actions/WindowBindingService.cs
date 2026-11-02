@@ -5,276 +5,38 @@ using CapsLockPlus.Core.Windows;
 namespace CapsLockPlus.Core.Actions;
 
 /// <summary>
-/// 窗口绑定（对应上游的 Caps+1~0 / Caps+LAlt+1~0 / Caps+Win+1~0）。
-/// 每个槽位可以：
-///   * 只绑一个窗口（窗口关掉后按槽位会自动重开程序）；
-///   * 绑多个窗口，反复按循环切换；
-///   * 绑定某个程序的全部窗口（新开的窗口自动加入）。
+/// 「切换窗口」动作的实现：按**程序路径**找到它的窗口，
+/// 切过去 / 已在前台则最小化 / 没开就启动并等窗口出现。
+///
+/// ## 为什么只按程序路径
+///
+/// 上游 CapsLock+ 用 10 个固定槽位（Caps+1~0），用户得先"把当前窗口绑到槽位 3"。
+/// 这一版取消了槽位：程序路径直接存在 <c>KeyBinding.Arg</c> 里，动作 ID 是 "winBind"。
+/// 于是它和别的动作完全同构 —— 一样出现在「按键映射」的功能下拉里、
+/// 一样按层独立、一样能导入导出，而且**不需要额外的绑定步骤**。
+///
+/// 旧的槽位实现（Bind/Activate/BindByExe/…）在 4.5.59 里删掉了：
+/// 它们只被自检调用，运行时零调用，留着只会让后来的人以为还有第二个入口。
 /// </summary>
 public sealed class WindowBindingService
 {
-    /// <summary>
-    /// 设置读取委托。
-    ///
-    /// ⚠ 必须用委托而不是直接存 AppSettings 引用。
-    /// "重新加载配置 / 重置全部设置 / 导入旧版 ini / 从备份恢复"
-    /// 都会整体替换 AppHost.Settings 对象；如果这里抓着旧引用，
-    /// 就会出现「界面显示的是新绑定，按快捷键却按旧配置切窗口」，
-    /// 而且新建的绑定会写进那个已经被丢弃的对象里，看起来像"绑定丢了"。
-    ///
-    /// 其它服务（HotkeyEngine / QbarService / SyncService）本来就是委托，
-    /// 只有这里漏了。
-    /// </summary>
-    private readonly Func<AppSettings> _getSettings;
-
-    private AppSettings _settings => _getSettings();
-
     private readonly object _gate = new();
-    private DateTime _lastTap = DateTime.MinValue;
-    private int _lastSlot = -1;
-    private int _tapCount;
+
     /* 上次激活的是**哪个窗口**（句柄），而不是"第几个"。
      *
      * 存下标看着简单，但窗口列表是按句柄排序的：用户关掉一个窗口，
-     * 后面的下标全部前移一位 —— 再按槽位键就会"跳着走"，
+     * 后面的下标全部前移一位 —— 再按窗口键就会"跳着走"，
      * 或者刚切过的那个窗口又被切一次。存句柄就免疫这种变化：
      * 找不到（窗口关了）就当从头开始。 */
     private readonly Dictionary<int, long> _lastActivated = new();
 
     public event Action<string>? Notified;
 
-    /// <summary>推荐用法：传一个读取最新设置的委托。</summary>
-    public WindowBindingService(Func<AppSettings> getSettings) => _getSettings = getSettings;
-
-    /// <summary>兼容用法：直接传设置对象（内部包成固定委托）。</summary>
-    public WindowBindingService(AppSettings settings) : this(() => settings) { }
-
-    public WinBinding GetOrCreate(int slot)
-    {
-        lock (_gate)
-        {
-            var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
-            if (b == null)
-            {
-                b = new WinBinding { Slot = slot };
-                _settings.Bindings.Add(b);
-            }
-            return b;
-        }
-    }
-
-    public IReadOnlyList<WinBinding> All => _settings.Bindings;
-
     /// <summary>
     /// 仅供自检：拦截"启动程序"这一步，返回是否假装启动成功。
     /// 置为 null 时走真实的 Process.Start。
     /// </summary>
     public static Func<string, bool>? LaunchInterceptForTest { get; set; }
-
-    /// <summary>把当前前台窗口绑定到槽位（连续按多次 = 追加更多窗口）。</summary>
-    public bool Bind(int slot)
-    {
-        var info = WindowService.ForegroundInfo();
-        if (info == null) { Notified?.Invoke("没有可绑定的窗口"); return false; }
-        if (info.ExeName.Equals(Core.AppInfo.ExeName, StringComparison.OrdinalIgnoreCase))
-        {
-            Notified?.Invoke("不能绑定按键增强自己的窗口");
-            return false;
-        }
-
-        bool multi = _lastSlot == slot && (DateTime.Now - _lastTap).TotalMilliseconds < 1200;
-        _tapCount = multi ? _tapCount + 1 : 1;
-        _lastSlot = slot;
-        _lastTap = DateTime.Now;
-
-        var b = GetOrCreate(slot);
-        lock (_gate)
-        {
-            b.ExePath = info.ExePath;
-            b.ClassName = info.ClassName;
-            b.DisplayName = info.ExeName;
-            long id = info.Handle.ToInt64();
-            if (_tapCount >= 3)
-            {
-                // 连按三次：绑定该程序的所有窗口
-                b.Mode = WinBindMode.Application;
-                b.WindowIds.Clear();
-                foreach (var w in WindowService.EnumerateTopLevel())
-                {
-                    if (string.Equals(w.ExePath, info.ExePath, StringComparison.OrdinalIgnoreCase))
-                        b.WindowIds.Add(w.Handle.ToInt64());
-                }
-                Notified?.Invoke(Loc.F("槽位 {0}：已绑定 {1} 的全部窗口", slot, info.ExeName));
-            }
-            else if (_tapCount == 1)
-            {
-                b.Mode = WinBindMode.Single;
-                b.WindowIds.Clear();
-                b.WindowIds.Add(id);
-                Notified?.Invoke(Loc.F("槽位 {0} ← {1}", slot, info.Display));
-            }
-            else
-            {
-                b.Mode = WinBindMode.Multi;
-                if (!b.WindowIds.Contains(id)) b.WindowIds.Add(id);
-                Notified?.Invoke(Loc.F("槽位 {0}：已加入 {1}（共 {2} 个窗口）", slot, info.Display, b.WindowIds.Count));
-            }
-        }
-        return true;
-    }
-
-    /// <summary>激活槽位（不存在则尝试启动对应程序）。</summary>
-    public bool Activate(int slot)
-    {
-        var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
-        if (b == null || b.IsEmpty)
-        {
-            Notified?.Invoke(Loc.F("槽位 {0} 还没绑定窗口（先按 Caps+LAlt+{1} 绑定）", slot, slot));
-            return false;
-        }
-
-        lock (_gate)
-        {
-            // 清掉已经关闭的窗口
-            b.WindowIds.RemoveAll(id => !WindowService.Exists(new IntPtr(id)));
-
-            if (b.Mode == WinBindMode.Application)
-            {
-                foreach (var w in WindowService.EnumerateTopLevel())
-                {
-                    if (string.Equals(w.ExePath, b.ExePath, StringComparison.OrdinalIgnoreCase) &&
-                        !b.WindowIds.Contains(w.Handle.ToInt64()))
-                        b.WindowIds.Add(w.Handle.ToInt64());
-                }
-            }
-
-            if (b.WindowIds.Count == 0)
-            {
-                if (!string.IsNullOrEmpty(b.ExePath) && File.Exists(b.ExePath))
-                {
-                    LaunchAndTrack(slot, b);
-                    return true;
-                }
-                Notified?.Invoke(Loc.F("槽位 {0} 的窗口已经关闭", slot));
-                return false;
-            }
-
-            var fg = WindowService.Foreground;
-            if (b.WindowIds.Count == 1)
-            {
-                var h = new IntPtr(b.WindowIds[0]);
-
-                // “是不是已经在前台”要用**根窗口**判断：
-                // 前台可能是同一程序弹出的对话框（另一个 HWND），
-                // 直接比 HWND 会误判成“没激活过”，于是再按一次不会收起。
-                bool alreadyFront = IsSameWindow(fg, h);
-
-                if (alreadyFront)
-                {
-                    // 再按一次：最小化（恢复原样）
-                    WindowService.Minimize(h);
-                    Notified?.Invoke(Loc.F("已最小化 {0}", DescribeSlot(slot)));
-                    return true;
-                }
-
-                // 切过去
-                WindowService.Activate(h);
-                Notified?.Invoke(Loc.F("已切到 {0}", DescribeSlot(slot)));
-                return true;
-            }
-
-            // 多窗口：循环切换到下一个
-            int idx = CycleNext(slot, b.WindowIds, fg);
-            WindowService.Activate(new IntPtr(b.WindowIds[idx]));
-            Notified?.Invoke(Loc.F("已切到 {0}", DescribeSlot(slot)));
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// 启动槽位绑定的程序，并等待它的窗口真正出现后再切过去。
-    ///
-    /// 常见痛点：软件没开时按槽位键，只是把程序拉起来，
-    /// 窗口还在初始化，用户看到的是桌面 —— 以为没反应。
-    /// 所以这里启动后会轮询等窗口出现（最多 15 秒），
-    /// 一旦出现就立即激活，真正实现"按一下就到那个窗口"。
-    /// </summary>
-    private void LaunchAndTrack(int slot, WinBinding b)
-    {
-        string exe = b.ExePath;
-
-        // 自检可以拦截启动动作：验证"要不要启动"的决策，
-        // 而不用真的把程序拉起来（真拉起来会留一个 15 秒的轮询线程）。
-        if (LaunchInterceptForTest != null)
-        {
-            bool ok = LaunchInterceptForTest(exe);
-            Notified?.Invoke(ok ? Loc.F("正在启动 {0}…", b.DisplayName) : "启动失败：被拦截");
-            return;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            Notified?.Invoke(UiText.Failed("启动这个程序", ex.Message));
-            CoreLog.Warn($"窗口绑定启动失败 {exe}: {ex.Message}");
-            return;
-        }
-
-        Notified?.Invoke(Loc.F("正在启动 {0}…", b.DisplayName));
-        CoreLog.Info($"窗口绑定槽位 {slot}：启动 {exe}，等待窗口出现");
-
-        // 放到后台线程等，避免卡住按键回调
-        var th = new Thread(() =>
-        {
-            var deadline = DateTime.UtcNow.AddSeconds(15);
-            IntPtr found = IntPtr.Zero;
-
-            while (DateTime.UtcNow < deadline && found == IntPtr.Zero)
-            {
-                Thread.Sleep(350);
-
-                // 单窗口模式：按程序路径找窗口
-                var hit = WindowService.EnumerateTopLevel()
-                    .FirstOrDefault(w => string.Equals(w.ExePath, exe,
-                        StringComparison.OrdinalIgnoreCase));
-
-                /* FirstOrDefault 在"还没出现"时返回 null —— 这本来就是
-                 * 等待循环的常态，必须判空再取 Handle。
-                 * 之前直接写 hit.Handle，程序启动慢或路径不对时
-                 * 会在后台线程上抛 NullReferenceException（整个进程会挂）。 */
-                if (hit is { } w2 && w2.Handle != IntPtr.Zero)
-                {
-                    found = w2.Handle;
-                    lock (_gate)
-                    {
-                        b.WindowIds.Clear();
-                        b.WindowIds.Add(w2.Handle.ToInt64());
-                    }
-                    break;
-                }
-            }
-
-            if (found == IntPtr.Zero)
-            {
-                CoreLog.Warn($"窗口绑定槽位 {slot}：等了 15 秒仍未看到 {b.DisplayName} 的窗口");
-                Notified?.Invoke(Loc.F("{0} 好像还没启动完成，再按一次槽位键试试", b.DisplayName));
-                return;
-            }
-
-            // 窗口出现了 —— 切过去
-            CoreLog.Info($"窗口绑定槽位 {slot}：等到窗口 0x{found.ToInt64():X}，激活");
-            Thread.Sleep(400);            // 让窗口把内容画完，避免激活到一个空白框
-            WindowService.Activate(found);
-        })
-        {
-            IsBackground = true,
-            Name = "bind-launch",
-        };
-        th.Start();
-    }
 
     /// <summary>
     /// 两个句柄是否指向同一个顶层窗口。
@@ -291,106 +53,6 @@ public sealed class WindowBindingService
         return ra == rb || ra == b || a == rb;
     }
 
-    /// <summary>
-    /// 按可执行文件绑定槽位。
-    ///
-    /// 与"绑定当前窗口"不同，这里记录的是**程序**而不是某个窗口实例：
-    /// 只要该程序有窗口存在，按槽位就能切过去；一个都没有时会帮你启动它。
-    /// </summary>
-    public bool BindByExe(int slot, string exePath)
-    {
-        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
-        {
-            Notified?.Invoke("找不到这个程序文件");
-            return false;
-        }
-
-        string? runningPath = null;
-        try { runningPath = WindowService.GetProcessPath((uint)Environment.ProcessId); }
-        catch (Exception ex) { CoreLog.Swallow(ex, "读取自身进程路径"); }
-        if (runningPath != null &&
-            Path.GetFullPath(exePath).Equals(Path.GetFullPath(runningPath), StringComparison.OrdinalIgnoreCase))
-        {
-            Notified?.Invoke("不能绑定按键增强自己");
-            return false;
-        }
-
-        var b = GetOrCreate(slot);
-        lock (_gate)
-        {
-            b.ExePath = exePath;
-            b.DisplayName = Path.GetFileNameWithoutExtension(exePath);
-            b.ClassName = "";
-            b.Mode = WinBindMode.Application;   // 绑定该程序的所有窗口
-            b.WindowIds.Clear();
-            foreach (var w in WindowService.EnumerateTopLevel())
-            {
-                if (string.Equals(w.ExePath, exePath, StringComparison.OrdinalIgnoreCase))
-                    b.WindowIds.Add(w.Handle.ToInt64());
-            }
-        }
-
-        Notified?.Invoke(b.WindowIds.Count > 0
-            ? Loc.F("槽位 {0} ← {1}（当前已开 {2} 个窗口）", slot, b.DisplayName, b.WindowIds.Count)
-            : Loc.F("槽位 {0} ← {1}（还没运行，按 {2} 时会帮你打开）", slot, b.DisplayName, slot));
-        return true;
-    }
-
-    /// <summary>
-    /// 用“十字准星点选”的方式绑定：由界面取到目标窗口句柄后调用。
-    /// 与 Bind() 的区别是目标明确，不受“当前前台窗口”影响。
-    /// </summary>
-    public bool BindWindow(int slot, IntPtr hwnd)
-    {
-        var info = WindowService.Describe(hwnd);
-        if (info == null)
-        {
-            Notified?.Invoke("选中的不是有效窗口");
-            return false;
-        }
-        if (info.ExeName.Equals(Core.AppInfo.ExeName, StringComparison.OrdinalIgnoreCase))
-        {
-            Notified?.Invoke("不能绑定按键增强自己的窗口");
-            return false;
-        }
-
-        var b = GetOrCreate(slot);
-        lock (_gate)
-        {
-            b.ExePath = info.ExePath;
-            b.ClassName = info.ClassName;
-            b.DisplayName = info.ExeName;
-            b.Mode = WinBindMode.Single;
-            b.WindowIds.Clear();
-            b.WindowIds.Add(info.Handle.ToInt64());
-        }
-        Notified?.Invoke(Loc.F("槽位 {0} ← {1}", slot, info.ExeName));
-        return true;
-    }
-
-    /// <summary>槽位当前状态的简短描述（供界面显示）。</summary>
-    public string DescribeSlot(int slot)
-    {
-        var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
-        if (b == null || b.IsEmpty) return "未绑定";
-        string name = string.IsNullOrEmpty(b.DisplayName) ? "已绑定" : b.DisplayName;
-        return b.WindowIds.Count switch
-        {
-            0 => Loc.F("{0}（未运行）", name),
-            1 => Loc.F("{0}（1 个窗口）", name),
-            _ => Loc.F("{0}（{1} 个窗口循环）", name, b.WindowIds.Count),
-        };
-    }
-
-    public void Unbind(int slot)
-    {
-        lock (_gate)
-        {
-            var b = _settings.Bindings.FirstOrDefault(x => x.Slot == slot);
-            if (b != null) _settings.Bindings.Remove(b);
-        }
-    }
-
     // ================= 任意按键绑定窗口（不占槽位） =================
     //
     // 上游 CapsLock+ 只有 10 个固定槽位（Caps+1~0）。这一版让**任意按键**
@@ -398,8 +60,7 @@ public sealed class WindowBindingService
     // 动作 ID 用 "winBind"。这样它就和别的动作完全同构：
     // 一样出现在「按键映射」的功能下拉里、一样按层独立、一样能导入导出。
     //
-    // 下面这组方法只认 exe 路径，不碰 Bindings 槽位表 —— 两者互不干扰，
-    // 老用户的 10 个槽位照旧可用。
+    // 下面这组方法只认 exe 路径。
 
     /// <summary>
     /// 激活（或启动）某个程序，用于"任意按键绑定窗口"。

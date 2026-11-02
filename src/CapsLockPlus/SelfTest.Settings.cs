@@ -827,7 +827,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new ClipboardService(),
             Windows = new WindowActions(),
-            WindowBindings = new WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new MouseService(),
             Notify = _ => { },
         };
@@ -853,7 +853,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new ClipboardService(),
             Windows = new WindowActions(),
-            WindowBindings = new WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new MouseService(),
             Notify = m => notes.Add(m),
         };
@@ -1557,7 +1557,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };

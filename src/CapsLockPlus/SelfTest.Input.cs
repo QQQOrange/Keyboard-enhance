@@ -296,7 +296,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -526,7 +526,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -764,7 +764,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -782,7 +782,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -1196,11 +1196,16 @@ public static partial class SelfTest
         Check("HotkeyEngine 暴露 MacroPlayer",
             typeof(HotkeyEngine).GetProperty("MacroPlayer") != null);
 
-        // A3：WindowBindingService 必须能接受委托（重新加载后仍读最新设置）。
-        var ctor = typeof(WindowBindingService).GetConstructors()
-            .Any(c => c.GetParameters().Length == 1
-                      && c.GetParameters()[0].ParameterType == typeof(Func<AppSettings>));
-        Check("WindowBindingService 支持委托构造（重新加载后不失效）", ctor);
+        /* A3：窗口绑定**不再持有设置引用**。
+         *
+         * 4.5.58 之前它存的是 AppSettings 引用，配置被整体替换后会出现
+         * "界面是新绑定、按键按旧配置切窗口"；当时改成传委托来修这个 bug。
+         * 4.5.59 把槽位子系统删掉之后，它只按 exe 路径工作、根本不读设置 ——
+         * 问题从根上消失。这里钉住"没有依赖"，防止以后又把设置塞回来。 */
+        var ctors = typeof(WindowBindingService).GetConstructors();
+        Check("WindowBindingService 不再依赖设置对象（不会出现陈旧引用）",
+            ctors.Length > 0 && ctors.All(c => c.GetParameters().Length == 0),
+            string.Join(" / ", ctors.Select(c => c.GetParameters().Length.ToString())));
 
         /* 多窗口循环的下标推进：到末尾要回绕，未知起点要从第一个开始。
          * 这里原来存的是"上次的下标 + 1"，窗口关掉后列表前移，

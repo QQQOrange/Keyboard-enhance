@@ -83,9 +83,6 @@ public static class ExportImport
             new[] { nameof(AppSettings.Run), nameof(AppSettings.Web), nameof(AppSettings.HotStrings) },
             Private: false, DefaultChecked: true),
 
-        new("bindings", "窗口绑定", "10 个窗口槽位绑定的程序",
-            new[] { nameof(AppSettings.Bindings) },
-            Private: false, DefaultChecked: true),
 
         new("appearance", "外观与行为", "主题、Qbar 面板样式、鼠标速度、按键行为等",
             new[] { nameof(AppSettings.Qbar), nameof(AppSettings.Global) },
@@ -420,8 +417,6 @@ public static class ExportImport
                     settings.Web = merged.Web; break;
                 case nameof(AppSettings.HotStrings):
                     settings.HotStrings = merged.HotStrings; break;
-                case nameof(AppSettings.Bindings):
-                    settings.Bindings = merged.Bindings; break;
                 case nameof(AppSettings.Qbar):
                     settings.Qbar = merged.Qbar; break;
                 case nameof(AppSettings.Global):

@@ -76,7 +76,7 @@ public sealed class AppHost : IDisposable
 
         // 用委托而不是直接传 settings：重新加载配置会整体替换 Settings 对象，
 // 抓着旧引用会导致"界面显示新绑定、实际按旧配置切窗口"。
-        Bindings = new WindowBindingService(() => Settings);
+        Bindings = new WindowBindingService();
         Bindings.Notified += Notify;
 
         var mouse = new MouseService

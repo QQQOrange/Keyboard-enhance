@@ -93,7 +93,6 @@ public static class SettingsStore
         target.Run = copy.Run;
         target.Web = copy.Web;
         target.HotStrings = copy.HotStrings;
-        target.Bindings = copy.Bindings;
         target.BuiltinEnginesVersion = copy.BuiltinEnginesVersion;
     }
 
@@ -739,7 +738,6 @@ public static class SettingsStore
         s.Run ??= new List<QEntry>();
         s.Web ??= new List<QEntry>();
         s.HotStrings ??= new List<QEntry>();
-        s.Bindings ??= new List<WinBinding>();
         s.Triggers ??= new List<TriggerKey>();
         s.Layers ??= new List<LayerOptions>();
         s.Macros ??= new List<Macro>();
@@ -1273,7 +1271,6 @@ public static class DefaultSettings
             new() { Key = "clp", Value = "CapsLock+", Comment = "展开成 CapsLock+" },
             new() { Key = "@@", Value = "你的邮箱@example.com", Comment = "邮箱" },
         };
-        s.Bindings = Enumerable.Range(1, 10).Select(i => new WinBinding { Slot = i }).ToList();
 
         // 键盘层：默认 10 层，第 1 层就是上面的 Keys；触发键默认只有 CapsLock。
         for (int i = 1; i <= 10; i++)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace CapsLockPlus.Core.Windows;
 
@@ -152,7 +152,7 @@ public static class HardwareProbe
                     Settings = () => settings,
                     Clipboard = new Core.Actions.ClipboardService(),
                     Windows = new Core.Actions.WindowActions(),
-                    WindowBindings = new Core.Actions.WindowBindingService(settings),
+                    WindowBindings = new Core.Actions.WindowBindingService(),
                     Mouse = new Core.Actions.MouseService(),
                     Notify = n => W($"  [提示] {n}"),
                 };

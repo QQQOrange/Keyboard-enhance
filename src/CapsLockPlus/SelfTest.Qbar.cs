@@ -332,7 +332,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -538,7 +538,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = n => notes.Add(n),
         };
@@ -910,7 +910,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -1045,7 +1045,7 @@ public static partial class SelfTest
                 Settings = () => noPlaceholder,
                 Clipboard = new Core.Actions.ClipboardService(),
                 Windows = new Core.Actions.WindowActions(),
-                WindowBindings = new Core.Actions.WindowBindingService(noPlaceholder),
+                WindowBindings = new WindowBindingService(),
                 Mouse = new Core.Actions.MouseService(),
                 Notify = _ => { },
                 CaptureTextForTest = () => "关键词QQ",
@@ -1075,7 +1075,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -1108,7 +1108,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };

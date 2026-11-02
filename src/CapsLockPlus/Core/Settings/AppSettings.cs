@@ -205,34 +205,6 @@ public sealed class QEntry
     };
 }
 
-public enum WinBindMode
-{
-    /// <summary>只绑定一个具体窗口。</summary>
-    Single = 0,
-    /// <summary>绑定多个窗口，反复按键循环切换。</summary>
-    Multi = 1,
-    /// <summary>绑定某个程序的全部窗口（自动跟随新窗口）。</summary>
-    Application = 2,
-}
-
-public sealed class WinBinding
-{
-    public int Slot { get; set; } = 1;
-    public WinBindMode Mode { get; set; } = WinBindMode.Single;
-    public string ExePath { get; set; } = "";
-    public string ClassName { get; set; } = "";
-    public string DisplayName { get; set; } = "";
-    public List<long> WindowIds { get; set; } = new();
-
-    [JsonIgnore] public bool IsEmpty => string.IsNullOrEmpty(ExePath) && WindowIds.Count == 0;
-
-    public WinBinding Clone() => new()
-    {
-        Slot = Slot, Mode = Mode, ExePath = ExePath, ClassName = ClassName,
-        DisplayName = DisplayName, WindowIds = new List<long>(WindowIds),
-    };
-}
-
 public sealed class GlobalOptions
 {
     /// <summary>开机自启（写入 HKCU Run）。</summary>
@@ -934,7 +906,6 @@ public sealed class AppSettings
     public List<QEntry> Run { get; set; } = new();
     public List<QEntry> Web { get; set; } = new();
     public List<QEntry> HotStrings { get; set; } = new();
-    public List<WinBinding> Bindings { get; set; } = new();
 
     /// <summary>触发键列表（可多个；每个绑定一层）。</summary>
     public List<TriggerKey> Triggers { get; set; } = new();

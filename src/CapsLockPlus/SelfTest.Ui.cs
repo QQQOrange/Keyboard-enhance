@@ -37,7 +37,7 @@ public static partial class SelfTest
     private static void TestWindowBindings()
     {
         var settings = DefaultSettings.Create();
-        var svc = new WindowBindingService(settings);
+        var svc = new WindowBindingService();
 
         var catalog = ActionCatalog.Create(new ActionContext
         {
@@ -69,17 +69,18 @@ public static partial class SelfTest
         CheckEqual("「窗口绑定」分类只有 1 个动作", inCat.Count, 1);
         CheckEqual("那个动作是 winBind", inCat.FirstOrDefault()?.Id, "winBind");
 
-        // 4. 底层安全性（不依赖槽位表了）
-        string exe = Environment.ProcessPath ?? "";
-        if (exe.Length > 0)
-        {
-            Check("拒绝绑定自身", !svc.BindByExe(1, exe));
-            Check("拒绝不存在的路径", !svc.BindByExe(1, @"C:\__no_such_program__.exe"));
-        }
-        else
-        {
-            Check("取不到自身路径，跳过自身绑定检查", true);
-        }
+        /* 4. 真实入口（ActivateExe）的安全边界 */
+        var notes = new List<string>();
+        svc.Notified += m => { lock (notes) notes.Add(m); };
+        lock (notes) notes.Clear();
+        Check("空路径不启动、给出提示",
+            !svc.ActivateExe("", "t") && notes.Any(n => n.Contains("还没选要绑定的程序")),
+            string.Join(" | ", notes));
+        lock (notes) notes.Clear();
+        Check("程序不存在时不启动、给出提示",
+            !svc.ActivateExe(@"C:\__no_such_program__.exe", "t")
+            && notes.Any(n => n.Contains("程序不存在")),
+            string.Join(" | ", notes));
 
         // 动画已按用户要求全部删除：确认公开 API 里不再有动画开关
         Check("WindowService 不再暴露动画开关",
@@ -507,12 +508,15 @@ public static partial class SelfTest
     /// <summary>
     /// 窗口绑定：**程序没启动时要先把它启动起来**。
     /// 这是用户明确要求的行为，用拦截器验证决策而不真的拉进程。
+    ///
+    /// 走的是运行时真正的入口 <see cref="WindowBindingService.ActivateExe"/>
+    /// （旧的槽位版 Activate(slot) 在 4.5.59 已删除 —— 它只被自检调用，
+    /// 测它等于测死代码，会给人一种"这块有覆盖"的错觉）。
     /// </summary>
     private static void TestWindowBindingLaunch()
     {
-        var settings = DefaultSettings.Create();
         var notes = new List<string>();
-        var svc = new WindowBindingService(settings);
+        var svc = new WindowBindingService();
         svc.Notified += m => { lock (notes) notes.Add(m); };
 
         string launched = "";
@@ -524,47 +528,42 @@ public static partial class SelfTest
 
         try
         {
-            // ① 槽位绑过一个程序，但窗口已经关了 → 应该去启动它
-            var b = settings.Bindings.First(x => x.Slot == 3);
-            b.ExePath = @"C:\Windows\System32\notepad.exe";
-            b.DisplayName = "notepad.exe";
-            b.WindowIds.Clear();          // 模拟"程序没在运行"
+            /* ① 程序没在运行 → 应该去启动它。
+             * 拿"本进程的 exe"当样本：窗口枚举会排除本程序自己的窗口
+             * （见 WindowService.EnumerateTopLevel），所以一定命中"没在运行"分支。 */
+            string self = Environment.ProcessPath ?? "";
+            if (self.Length > 0)
+            {
+                bool ok = svc.ActivateExe(self, "t1");
+                Check("窗口不在时会去启动程序", ok && launched == self, $"launched={launched}");
+                lock (notes)
+                {
+                    Check("给出了「正在启动」的提示",
+                        notes.Any(n => n.Contains("正在启动")),
+                        string.Join(" | ", notes));
+                }
+            }
+            else
+            {
+                Check("取不到自身路径，跳过启动检查", true);
+            }
 
-            bool ok = svc.Activate(3);
-            Check("窗口不在时 Activate 返回成功（表示已去启动）", ok);
-            CheckEqual("确实调用了启动，且用的是绑定的 exe 路径",
-                launched, @"C:\Windows\System32\notepad.exe");
+            // ② 参数为空 → 不启动，提示"还没选要绑定的程序"
+            launched = "";
+            lock (notes) notes.Clear();
+            Check("空参数不会去启动程序", !svc.ActivateExe("", "t2") && launched.Length == 0);
             lock (notes)
             {
-                Check("给出了「正在启动」的提示",
-                    notes.Any(n => n.Contains("正在启动")),
+                Check("空参数给出「还没选」的提示",
+                    notes.Any(n => n.Contains("还没选要绑定的程序")),
                     string.Join(" | ", notes));
             }
 
-            // ② 槽位没绑过任何程序 → 不该去启动，应提示还未绑定
+            // ③ exe 不存在 → 不盲启动
             launched = "";
             lock (notes) notes.Clear();
-            bool ok2 = svc.Activate(7);
-            Check("空槽位不会去启动程序", !ok2 && launched.Length == 0);
-            lock (notes)
-            {
-                Check("空槽位给出「还没绑定」的提示",
-                    notes.Any(n => n.Contains("还没绑定")),
-                    string.Join(" | ", notes));
-            }
-
-            // ③ 有 ExePath 但文件不存在 → 也不该盲目启动
-            launched = "";
-            lock (notes) notes.Clear();
-            var b2 = settings.Bindings.First(x => x.Slot == 4);
-            b2.ExePath = @"C:\不存在的程序\xyz.exe";
-            b2.WindowIds.Clear();
-            bool ok3 = svc.Activate(4);
-            Check("exe 不存在时不去启动", !ok3 && launched.Length == 0);
-
-            // ④ 绑定里必须真的存了 exe 路径（否则启动无从谈起）
-            Check("绑定结构里有 ExePath 字段",
-                typeof(WinBinding).GetProperty("ExePath") != null);
+            Check("exe 不存在时不去启动",
+                !svc.ActivateExe(@"C:\不存在的程序\xyz.exe", "t3") && launched.Length == 0);
         }
         finally
         {
@@ -654,7 +653,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -673,7 +672,7 @@ public static partial class SelfTest
         Check("旧槽位 1 已移除", !cat.Items.Any(i => i.Id == "winbindActivate1"));
         Check("旧槽位 10 已移除", !cat.Items.Any(i => i.Id == "winbindActivate10"));
 
-        var svc = new Core.Actions.WindowBindingService(settings);
+        var svc = new WindowBindingService();
         var notes = new List<string>();
         svc.Notified += m => { lock (notes) notes.Add(m); };
 
@@ -764,7 +763,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -903,7 +902,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -105,7 +105,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
@@ -1261,7 +1261,7 @@ public static partial class SelfTest
             Settings = () => settings,
             Clipboard = new Core.Actions.ClipboardService(),
             Windows = new Core.Actions.WindowActions(),
-            WindowBindings = new Core.Actions.WindowBindingService(settings),
+            WindowBindings = new WindowBindingService(),
             Mouse = new Core.Actions.MouseService(),
             Notify = _ => { },
         };
