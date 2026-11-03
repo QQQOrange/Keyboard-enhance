@@ -28,6 +28,9 @@ public partial class HotstringView : UserControl
     /// <summary>刷新分组列表后要选中的组名（改名/新建后用它把选中状态带过去）。</summary>
     private string? _selectGroupAfterRefresh;
 
+    /// <summary>自动对齐前缀只做一次，避免迁移后再次触发。</summary>
+    private bool _prefixAlignedOnce;
+
     /* ---------------- 拖拽状态 ---------------- */
 
     /// <summary>按下左键时的位置（判断"是点击还是拖拽"）。</summary>
@@ -101,6 +104,8 @@ public partial class HotstringView : UserControl
 
     private void Refresh()
     {
+        AlignStalePrefixOnce();
+
         if (_host == null) return;
         RefreshGroups();
         RefreshList();
@@ -196,6 +201,57 @@ public partial class HotstringView : UserControl
             ShowEditor(false);
         }
     }
+
+    /// <summary>
+    /// 打开页面时自动对齐一次旧前缀。
+    ///
+    /// 场景：老版本改前缀只改设置、不改条目，于是配置里所有触发词都还带着旧符号
+    /// （;mail），而当前前缀已经是 / —— 列表按 / 去剥，剥不掉，每条前面都多出一个 ;。
+    ///
+    /// 只在**完全无歧义**时自动做：所有带符号前缀的条目用的都是同一个符号，
+    /// 且它和当前前缀不同。混合情况交给用户改前缀（改的时候会自动迁移）。
+    /// </summary>
+    private void AlignStalePrefixOnce()
+    {
+        if (_prefixAlignedOnce || _host == null) return;
+        _prefixAlignedOnce = true;
+
+        var opt = _host.Settings.Hotstring;
+        string current = opt.EffectivePrefix ?? "";
+        char? stale = null;
+        int count = 0;
+
+        foreach (var snippet in Entries)
+        {
+            string trigger = snippet.Trigger ?? "";
+            if (trigger.Length < 2) continue;
+
+            char first = trigger[0];
+            if (!IsPrefixSymbol(first)) continue;
+            if (current.Length > 0 && first == current[0]) continue;
+
+            if (stale == null) stale = first;
+            else if (stale != first) return;      // 新旧混着，不猜
+
+            count++;
+        }
+
+        if (stale == null || count == 0) return;
+
+        int moved = SnippetPrefixOps.Migrate(_host.Settings, stale.Value.ToString(), current);
+        if (moved == 0) return;
+
+        CoreLog.Info($"别名前缀自动对齐：{stale} → {current}，共 {moved} 条");
+        _host.SaveSettings();
+        _host.Notify(Loc.F("已把 {0} 条别名的旧前缀统一成「{1}」", moved, current));
+    }
+
+    /// <summary>这个字符像不像"前缀符号"（用来识别旧前缀，避免误改正文）。</summary>
+    private static bool IsPrefixSymbol(char c)
+        => c is ';' or '/' or '\\' or '.' or ',' or ':' or '\''
+              or '\'' or '"' or '~' or '!' or '@' or '#' or '$' or '%' or '^'
+              or '&' or '*' or '-' or '_' or '+' or '=' or '|' or '。' or '，'
+              or '；' or '、' or '：';
 
     // ---------------- 小工具 ----------------
 
