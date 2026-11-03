@@ -111,7 +111,8 @@ public partial class KeyCaptureWindow : Window
     /// 万一窗口没显示出来（透明窗口 + Owner 不可见时出现过），用户看到的就是
     /// "整个程序卡死、识别按键的页面也不出现"，而且没有任何日志。
     /// </summary>
-    public static void Capture(Action<CaptureResult> onCaptured, IEnumerable<int>? prefixKeys = null)
+    public static void Capture(Action<CaptureResult> onCaptured, IEnumerable<int>? prefixKeys = null,
+                              string? title = null)
     {
         if (KeyCaptureSink.Current != null)
         {
@@ -120,6 +121,7 @@ public partial class KeyCaptureWindow : Window
         }
 
         var dlg = new KeyCaptureWindow { PrefixKeys = prefixKeys == null ? new HashSet<int>() : new HashSet<int>(prefixKeys) };
+        if (!string.IsNullOrWhiteSpace(title)) dlg.Title = title!;
         dlg.Closed += (_, _) =>
         {
             try { onCaptured(new CaptureResult(dlg.CapturedCombo, dlg.CapturedKey, dlg.CapturedMods)); }

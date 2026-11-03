@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -136,14 +136,11 @@ public partial class SubLayerEditorWindow : Window
     {
         if (sender is not FrameworkElement { Tag: Row row }) return;
 
-        var capture = new KeyCaptureWindow
+        /* 非模态：模态窗一旦没显示出来，整个程序就会被那个看不见的窗口占住 ——
+         * 这类问题在别的页面上已经真实发生过（见 KeyCaptureWindow.Capture 的注释）。 */
+        KeyCaptureWindow.Capture(r =>
         {
-            Owner = this,
-            Title = Loc.T("按下要作为子层触发键的按键"),
-        };
-        if (capture.ShowDialog() != true) return;
-
-        string? combo = capture.CapturedCombo;
+        string? combo = r.Combo;
         if (string.IsNullOrWhiteSpace(combo)) return;
 
         // 捕获到的是 combo ID（caps_ctrl_k），取其中的键名部分
@@ -163,6 +160,7 @@ public partial class SubLayerEditorWindow : Window
         {
             row.Key = combo;
         }
+        }, title: Loc.T("按下要作为子层触发键的按键"));
     }
 
     private void OnAddClick(object sender, RoutedEventArgs e)
