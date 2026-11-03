@@ -2262,5 +2262,19 @@
   "· 这一层的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n": "- Bindings in this layer will be overwritten (action, args, URL, text, app, note);\n",
   "· 这一层默认是空的，所以这一层里你配的绑定会被清空；\n": "- This layer is empty by default, so bindings you added here will be cleared;\n",
   "· 其它层、触发键、宏、文本片段都不动；\n": "- Other layers, triggers, macros and snippets are untouched;\n",
-  "第 {0} 层已恢复默认设置": "Layer {0} reset to defaults"
+  "第 {0} 层已恢复默认设置": "Layer {0} reset to defaults",
+  "规则替换": "Rule substitutions",
+  "触发设置": "Trigger settings",
+  "符号形态": "Symbol form",
+  "触发方式": "Trigger mode",
+  "空格处理": "Space handling",
+  "列表显示": "List display",
+  "（新片段）": "(new snippet)",
+  "触发词不显示前缀符号；保存时会自动补回去。": "Prefix is hidden here; it is added back when saving.",
+  "还没有片段。点下面的「新增」建一条。": "No snippets yet. Click \"New\" below.",
+  "图层、触发键、子层、宏、窗口绑定、规则替换…（点开查看）": "Layers, triggers, sub-layers, macros, window bindings, rule substitutions… (click to expand)",
+  "⑧b 规则替换": "8b Rule substitutions",
+  "在「规则替换」页配一条：触发词 + 展开内容。之后在任意程序里打触发词再按空格，就会自动替换成那段内容。": "Add one on the Rule substitutions page: trigger + expansion. Then typing the trigger and pressing Space in any app replaces it.",
+  "规则替换不展开？检查前缀符号是否对得上、片段是否启用、以及「只在这些程序里展开」有没有限制。": "Not expanding? Check the prefix symbol, whether the snippet is enabled, and its per-app limit.",
+  "规则替换「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。": "Rule substitution \"{0}\" is defined more than once for the same app scope; only the last one expands."
 }

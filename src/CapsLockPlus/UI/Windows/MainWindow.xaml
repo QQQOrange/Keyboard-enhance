@@ -74,7 +74,7 @@
                             <TextBlock Text="&#xE8D2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="{loc:T '文本片段'}" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '规则替换'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>

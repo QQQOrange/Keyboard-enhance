@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -34,6 +34,12 @@ public partial class HotstringView : UserControl
     {
         public Snippet Snippet { get; init; } = new();
         public string KeyLabel { get; init; } = "";
+
+        /// <summary>列表左侧的小方块里显示的首字母。</summary>
+        public string Initial { get; init; } = "";
+
+        /// <summary>右侧显示的分组名（没分组就是空）。</summary>
+        public string GroupLabel { get; init; } = "";
         public string Preview { get; init; } = "";
         public override string ToString() => KeyLabel;
     }
@@ -120,6 +126,8 @@ public partial class HotstringView : UserControl
             {
                 Snippet = x,
                 KeyLabel = StripPrefix(x.Trigger, opt.EffectivePrefix),
+                Initial = InitialOf(x.Trigger, opt.EffectivePrefix),
+                GroupLabel = string.IsNullOrWhiteSpace(x.Group) ? "" : x.Group!.Trim(),
                 Preview = Shorten(opt.ShowNoteFirst && !string.IsNullOrWhiteSpace(x.Comment) ? x.Comment : x.Text, 56),
             })
             .ToList();
@@ -128,7 +136,7 @@ public partial class HotstringView : UserControl
         try
         {
             EntryList.ItemsSource = rows;
-            CountText.Text = Loc.F("{0} 条", rows.Count);
+            FilterCount.Text = Loc.F("共 {0} 条", rows.Count);
             EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             EntryList.SelectedItem = rows.FirstOrDefault(r => ReferenceEquals(r.Snippet, _editing));
             BuildGroupOptions();
@@ -137,6 +145,15 @@ public partial class HotstringView : UserControl
 
         if (EntryList.SelectedItem is Row row) LoadEditor(row.Snippet);
         else { _editing = null; ShowEditor(false); }
+    }
+
+    /// <summary>列表左侧小方块里的字：触发词去掉前缀后的首字符（大写）。</summary>
+    private static string InitialOf(string? trigger, string? prefix)
+    {
+        string s = StripPrefix(trigger, prefix);
+        if (s.Length == 0) return "?";
+        char c = char.ToUpperInvariant(s[0]);
+        return char.IsLetterOrDigit(c) ? c.ToString() : s[..1];
     }
 
     /// <summary>列表/编辑框里显示触发词时**去掉**前缀符号（;mail 只显示 mail）。</summary>
@@ -211,6 +228,7 @@ public partial class HotstringView : UserControl
         try
         {
             KeyBox.Text = StripPrefix(entry.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
+            EditTitle.Text = Loc.F("正在编辑：{0}", KeyBox.Text.Length == 0 ? Loc.T("（新片段）") : KeyBox.Text);
             ValueBox.Text = entry.Text ?? "";
             CommentBox.Text = entry.Comment ?? "";
             AppsBox.Text = entry.Apps ?? "";

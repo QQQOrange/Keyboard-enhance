@@ -6,202 +6,222 @@
     <Grid Margin="24,4,20,20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- ① 顶部说明 + 触发设置 -->
+        <!-- ① 页头：和 Qbar / 按键映射同一套版式（图标 + 标题 + 说明） -->
         <Border Grid.Row="0" Style="{StaticResource Card}" Padding="18,15" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Width="34" Height="36" CornerRadius="10"
+                        Background="{DynamicResource Brush.AccentSoft}" VerticalAlignment="Top">
+                    <TextBlock Text="&#xE8D2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                               Foreground="{DynamicResource Brush.Accent}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                    <TextBlock Style="{StaticResource Text.H3}" Text="{loc:T '打一小段触发词，自动变成一大段文字'}" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0"
+                               Text="{loc:T '打完触发词再按空格就替换（也可以关掉，改用 Caps+Tab 展开）。前缀符号只有一个，可以自己改。'}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ② 触发设置：标签在上、控件在下，和设置页一致 -->
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="18,14" Margin="0,0,0,14">
             <StackPanel>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Border Width="34" Height="36" CornerRadius="10" Background="{DynamicResource Brush.AccentSoft}">
-                        <TextBlock Text="&#xE8D2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
-                                   Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
-                    </Border>
-                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="{loc:T '打一小段触发词，自动变成一大段文字'}" Style="{StaticResource Text.H3}" />
-                        <TextBlock Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" TextWrapping="Wrap"
-                                   Text="{loc:T '打完触发词再按空格就替换（也可以关掉，改用 Caps+Tab 展开）。前缀符号只有一个，可以自己改。'}" />
-                    </StackPanel>
-                </Grid>
-
-                <Grid Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <TextBlock Text="{loc:T '前缀符号'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
-                        <TextBox x:Name="PrefixBox" Width="86" MaxLength="1" Style="{StaticResource TextBox.Base}"
+                <TextBlock Text="{loc:T '触发设置'}" Style="{StaticResource Text.Body}" />
+                <WrapPanel Margin="0,10,0,0">
+                    <StackPanel Margin="0,0,26,0">
+                        <TextBlock Text="{loc:T '前缀符号'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,5" />
+                        <TextBox x:Name="PrefixBox" Width="88" MaxLength="1" MinHeight="34"
+                                 VerticalContentAlignment="Center" Style="{StaticResource TextBox.Base}"
                                  TextChanged="OnPrefixChanged"
                                  ToolTip="{loc:T '只认这一个符号；留空表示不需要前缀，直接打触发词'}" />
                     </StackPanel>
 
-                    <CheckBox Grid.Column="1" x:Name="FullWidthBox" Margin="0,22,20,0"
-                              Content="{loc:T '用全角符号'}" Click="OnOptionsChanged"
-                              ToolTip="{loc:T '勾上后 / 会按 ／ 处理（中文输入法下就是这个）'}" />
+                    <StackPanel Margin="0,0,26,0">
+                        <TextBlock Text="{loc:T '符号形态'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
+                        <CheckBox x:Name="FullWidthBox" Content="{loc:T '用全角符号'}" Click="OnOptionsChanged"
+                                  ToolTip="{loc:T '勾上后 / 会按 ／ 处理（中文输入法下就是这个）'}" />
+                    </StackPanel>
 
-                    <CheckBox Grid.Column="2" x:Name="SpaceBox" Margin="0,22,20,0"
-                              Content="{loc:T '空格触发'}" Click="OnOptionsChanged"
-                              ToolTip="{loc:T '打完触发词按空格就替换；关掉则只认 Caps+Tab'}" />
+                    <StackPanel Margin="0,0,26,0">
+                        <TextBlock Text="{loc:T '触发方式'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
+                        <CheckBox x:Name="SpaceBox" Content="{loc:T '空格触发'}" Click="OnOptionsChanged"
+                                  ToolTip="{loc:T '打完触发词按空格就替换；关掉则只认 Caps+Tab'}" />
+                    </StackPanel>
 
-                    <CheckBox Grid.Column="3" x:Name="SwallowBox" Margin="0,22,20,0"
-                              Content="{loc:T '吞掉那个空格'}" Click="OnOptionsChanged"
-                              ToolTip="{loc:T '替换后不再多出一个空格'}" />
+                    <StackPanel Margin="0,0,26,0">
+                        <TextBlock Text="{loc:T '空格处理'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
+                        <CheckBox x:Name="SwallowBox" Content="{loc:T '吞掉那个空格'}" Click="OnOptionsChanged"
+                                  ToolTip="{loc:T '替换后不再多出一个空格'}" />
+                    </StackPanel>
 
-                    <CheckBox Grid.Column="4" x:Name="NoteFirstBox" HorizontalAlignment="Right" Margin="0,22,0,0"
-                              Content="{loc:T '列表优先显示备注'}" Click="OnOptionsChanged"
-                              ToolTip="{loc:T '备注就是列表里显示的名字；没写备注才显示触发词'}" />
-                </Grid>
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '列表显示'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
+                        <CheckBox x:Name="NoteFirstBox" Content="{loc:T '列表优先显示备注'}" Click="OnOptionsChanged"
+                                  ToolTip="{loc:T '备注就是列表里显示的名字；没写备注才显示触发词'}" />
+                    </StackPanel>
+                </WrapPanel>
             </StackPanel>
         </Border>
 
-        <!-- ② 三栏：分组 | 片段 | 编辑（没选中片段时编辑栏隐藏） -->
-        <Grid Grid.Row="1">
+        <!-- ③ 主体：左分组 / 中列表 / 右编辑 -->
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="190" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
+            <!-- 分组 -->
             <Border Grid.Column="0" Style="{StaticResource Card}" Padding="0" Margin="0,0,12,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0" Margin="16,14,16,8">
+                    <StackPanel Grid.Row="0" Margin="16,14,16,4">
                         <TextBlock Text="{loc:T '分组'}" Style="{StaticResource Text.H3}" />
                         <TextBlock Text="{loc:T '点一下只看这一组'}" Style="{StaticResource Text.Tertiary}"
                                    Margin="0,2,0,0" />
                     </StackPanel>
                     <ListBox Grid.Row="1" x:Name="GroupList" Background="Transparent" BorderThickness="0"
-                             Margin="8,0,8,10" SelectionChanged="OnGroupChanged">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="Padding" Value="10,7" />
-                                <Setter Property="Margin" Value="0,1" />
-                                <Setter Property="Cursor" Value="Hand" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ListBoxItem">
-                                            <Border x:Name="Bd" CornerRadius="9" Background="Transparent"
-                                                    Padding="{TemplateBinding Padding}">
-                                                <ContentPresenter />
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background"
-                                                            Value="{DynamicResource Brush.SurfaceAlt}" />
-                                                </Trigger>
-                                                <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background"
-                                                            Value="{DynamicResource Brush.AccentSoft}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-
+                             ItemContainerStyle="{StaticResource RowItem}" Margin="0,6,0,10"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="OnGroupChanged">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding Label}" FontSize="12.5" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               Foreground="{DynamicResource Brush.TextPrimary}" />
-                                    <Border Grid.Column="1" CornerRadius="8" Padding="7,1" Margin="6,0,0,0"
-                                            Background="{DynamicResource Brush.SurfaceAlt}" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Count}" FontSize="10.5"
-                                                   Foreground="{DynamicResource Brush.TextTertiary}" />
-                                    </Border>
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Grid>
-            </Border>
-
-            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <Grid Grid.Row="0" Margin="16,14,16,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{loc:T '全部片段'}" Style="{StaticResource Text.H3}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" x:Name="CountText" Text="" Style="{StaticResource Text.Tertiary}"
-                                   Margin="8,2,0,0" VerticalAlignment="Center" />
-                        <TextBox Grid.Column="2" x:Name="FilterBox" Width="160" Margin="0,0,8,0"
-                                 Style="{StaticResource TextBox.Base}" TextChanged="OnFilterChanged"
-                                 ToolTip="{loc:T '按触发词 / 备注 / 内容过滤'}" />
-                        <Button Grid.Column="3" Content="{loc:T '新增'}" Style="{StaticResource Button.Primary}"
-                                Padding="14,6" Click="OnAddClick" />
-                    </Grid>
-
-                    <Grid Grid.Row="1">
-                    <TextBlock x:Name="EmptyHint" Text="{loc:T '还没有片段。点右上角「新增」建一条。'}"
-                               Style="{StaticResource Text.Tertiary}" HorizontalAlignment="Center"
-                               VerticalAlignment="Center" Margin="0,0,0,40" Visibility="Collapsed" />
-                    <ListBox x:Name="EntryList" Background="Transparent" BorderThickness="0"
-                             Margin="10,0,10,12" SelectionChanged="OnSelectionChanged">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="6,5">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding KeyLabel}" FontSize="12.5" FontWeight="SemiBold"
-                                               VerticalAlignment="Center"
-                                               Foreground="{DynamicResource Brush.TextPrimary}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Preview}" Margin="10,0,0,0" FontSize="12"
+                                    <TextBlock Grid.Column="0" Text="&#xE8B7;"
+                                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                                               Foreground="{DynamicResource Brush.TextTertiary}"
+                                               VerticalAlignment="Center" Margin="8,0,8,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="12.5"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource Brush.TextPrimary}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Count}" FontSize="10.5"
+                                               VerticalAlignment="Center" Margin="6,0,8,0"
                                                Foreground="{DynamicResource Brush.TextTertiary}" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    </Grid>
                 </Grid>
             </Border>
 
+            <!-- 列表 -->
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="16,14,16,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="{loc:T '全部片段'}" Style="{StaticResource Text.H3}"
+                                   VerticalAlignment="Center" />
+
+                        <Grid Grid.Column="1" Margin="16,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="&#xE721;"
+                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                                       Foreground="{DynamicResource Brush.TextTertiary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}"
+                                     MinHeight="34" VerticalContentAlignment="Center"
+                                     TextChanged="OnFilterChanged" />
+                            <TextBlock Grid.Column="2" x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="64"
+                                       TextAlignment="Right" />
+                        </Grid>
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,10,0,0">
+                        <TextBlock x:Name="EmptyHint" Text="{loc:T '还没有片段。点下面的「新增」建一条。'}"
+                                   Style="{StaticResource Text.Tertiary}" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Visibility="Collapsed" TextWrapping="Wrap"
+                                   MaxWidth="260" TextAlignment="Center" />
+                        <ListBox x:Name="EntryList" Background="Transparent" BorderThickness="0"
+                                 ItemContainerStyle="{StaticResource RowItem}" Margin="0,0,0,4"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="OnSelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="120" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border Grid.Column="0" Width="20" Height="20" CornerRadius="5"
+                                                Margin="0,0,8,0" VerticalAlignment="Center"
+                                                Background="{DynamicResource Brush.AccentSoft}">
+                                            <TextBlock Text="{Binding Initial}" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Brush.Accent}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+
+                                        <TextBlock Grid.Column="1" Text="{Binding KeyLabel}" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource Brush.Accent}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Preview}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" Margin="8,0,8,0"
+                                                   Foreground="{DynamicResource Brush.TextSecondary}" />
+                                        <TextBlock Grid.Column="3" Text="{Binding GroupLabel}" VerticalAlignment="Center"
+                                                   Style="{StaticResource Text.Tertiary}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="16,8,16,14">
+                        <Button Content="{loc:T '新增'}" Style="{StaticResource Button.Primary}" Click="OnAddClick" />
+                        <Button x:Name="DeleteButton" Content="{loc:T '删除'}" Style="{StaticResource Button.Danger}"
+                                Margin="8,0,0,0" Click="OnDeleteClick" />
+                        <TextBlock Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
+                                   Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="380"
+                                   Text="{loc:T '触发词不显示前缀符号；保存时会自动补回去。'}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 编辑（没选片段时整栏隐藏） -->
             <Border Grid.Column="2" x:Name="EditorCard" Style="{StaticResource Card}" Padding="18,16"
                     Width="360" Margin="12,0,0,0" Visibility="Collapsed">
                 <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{loc:T '编辑片段'}" Style="{StaticResource Text.H3}" Margin="0,0,0,12" />
-                        <Button Grid.Column="1" x:Name="DeleteButton" Content="{loc:T '删除'}"
-                                Style="{StaticResource Button.Danger}" Padding="12,5" Click="OnDeleteClick" />
-                    </Grid>
+                    <TextBlock Text="{loc:T '编辑片段'}" Style="{StaticResource Text.H3}" />
+                    <TextBlock x:Name="EditTitle" Text="" Style="{StaticResource Text.Tertiary}"
+                               Margin="0,5,0,12" TextWrapping="Wrap" />
 
                     <TextBlock Text="{loc:T '触发词'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
-                    <TextBox x:Name="KeyBox" Style="{StaticResource TextBox.Base}" TextChanged="OnEditorChanged"
+                    <TextBox x:Name="KeyBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                             VerticalContentAlignment="Center" TextChanged="OnEditorChanged"
                              ToolTip="{loc:T '打完它再按空格就替换；只用字母/数字/符号'}" />
 
                     <TextBlock Text="{loc:T '替换成'}" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
@@ -211,16 +231,19 @@
 
                     <TextBlock Text="{loc:T '备注（列表里显示它）'}" Style="{StaticResource Text.Secondary}"
                                Margin="0,12,0,6" />
-                    <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" TextChanged="OnEditorChanged" />
+                    <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                             VerticalContentAlignment="Center" TextChanged="OnEditorChanged" />
 
                     <TextBlock Text="{loc:T '只在这些程序里展开（可选）'}" Style="{StaticResource Text.Secondary}"
                                Margin="0,12,0,6" />
-                    <TextBox x:Name="AppsBox" Style="{StaticResource TextBox.Base}" TextChanged="OnEditorChanged"
+                    <TextBox x:Name="AppsBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                             VerticalContentAlignment="Center" TextChanged="OnEditorChanged"
                              ToolTip="{loc:T '进程名，逗号分隔，例如 code.exe, notepad.exe；留空 = 所有程序'}" />
 
                     <TextBlock Text="{loc:T '分组'}" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
                     <ComboBox x:Name="GroupBox" IsEditable="True" Style="{StaticResource ComboBox.Base}"
-                              SelectionChanged="OnEditorChanged"
+                              SelectionChanged="OnEditorChanged" LostFocus="OnEditorChanged"
+                              KeyUp="OnEditorChanged"
                               ToolTip="{loc:T '可以选已有分组，也可以直接输入新名字'}" />
 
                     <CheckBox x:Name="EnabledBox" Content="{loc:T '启用这个片段'}" Margin="0,14,0,0"
