@@ -2243,5 +2243,7 @@
   "已设置：{0} → {1}": "Set: {0} -> {1}",
   "先填进程名，例如 Code.exe": "Enter a process name first, e.g. Code.exe",
   "先选一个层": "Pick a layer first",
-  "已回到基础层": "Back to the base layer"
+  "已回到基础层": "Back to the base layer",
+  "导出内容": "What to export",
+  "触发词、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）": "Triggers, expansions, notes, groups, app limits and the prefix settings (stored in Global, so appearance/behaviour settings come along)"
 }

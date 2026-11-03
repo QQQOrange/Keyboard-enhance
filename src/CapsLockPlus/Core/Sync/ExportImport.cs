@@ -84,6 +84,12 @@ public static class ExportImport
             Private: false, DefaultChecked: true),
 
 
+        /* 文本片段存在 Global 里（和历史结构有关），所以这一组导出的是 Global。
+         * 描述里必须写清楚"顺带带走别的东西"，否则用户只勾这一组会意外改掉外观。 */
+        new("snippets", "文本片段", "触发词、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）",
+            new[] { nameof(AppSettings.Global) },
+            Private: false, DefaultChecked: true),
+
         new("appearance", "外观与行为", "主题、Qbar 面板样式、鼠标速度、按键行为等",
             new[] { nameof(AppSettings.Qbar), nameof(AppSettings.Global) },
             Private: false, DefaultChecked: true),

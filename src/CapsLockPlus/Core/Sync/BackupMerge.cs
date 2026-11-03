@@ -56,6 +56,13 @@ public static class BackupMerge
 
         MergeLayers(ln, rn, ref added, ref replaced);
 
+        /* Global 里嵌着的两个数组也要合：
+         *   · Snippets —— 文本片段（触发词是天然主键）；
+         *   · AppLayers —— 按应用自动启用层（进程名是主键）。
+         * 以前漏了这两个，表现是"合并恢复之后片段和按应用层全没了"。 */
+        MergeNestedArray(ln, rn, "Global", "Snippets", "Trigger", ref added, ref replaced);
+        MergeNestedArray(ln, rn, "Global", "AppLayers", "Process", ref added, ref replaced);
+
         /* GitHub 令牌：**本机没有才取备份的**。
          *
          * 方向和其它字段相反，是刻意的：合并的语义是"本地独有的保留"，
@@ -98,6 +105,21 @@ public static class BackupMerge
         }
 
         MergeKeyed(la, ra, key, ref added, ref replaced);
+    }
+
+    /// <summary>合并 <c>root[outer][inner]</c> 这种嵌一层数组。</summary>
+    private static void MergeNestedArray(JsonObject local, JsonObject remote,
+        string outer, string inner, string key, ref int added, ref int replaced)
+    {
+        if (remote[outer] is not JsonObject ro || ro[inner] is not JsonArray) return;
+
+        if (local[outer] is not JsonObject lo)
+        {
+            local[outer] = JsonNodeTool.DeepClone(ro);
+            return;
+        }
+
+        MergeArray(lo, ro, inner, key, ref added, ref replaced);
     }
 
     /// <summary>按主键把远端数组合进本地数组。</summary>

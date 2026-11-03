@@ -1329,6 +1329,41 @@ public static partial class SelfTest
             e.Dispose();
         }
 
+        /* ---- 文本片段必须能被导出 / 合并恢复 ---- */
+        {
+            var sEx = DefaultSettings.Create();
+            sEx.Global.Snippets.Clear();
+            sEx.Global.Snippets.Add(new Snippet
+            {
+                Trigger = ";sig", Text = "张三\n13800000000", Comment = "签名", Group = "常用", Enabled = true,
+            });
+
+            var built = CapsLockPlus.Core.Sync.ExportImport.Build(sEx, new[] { "snippets" }, includeSecrets: false);
+            string json = built.Text;
+            Check("导出：包含文本片段分组", json.Contains("\"snippets\""), "");
+            Check("导出：片段内容在里面", json.Contains(";sig") && json.Contains("签名") && json.Contains("常用"),
+                "");
+
+            // 合并恢复：本机没有片段、备份里有 → 应该被合进来
+            var local = DefaultSettings.Create();
+            local.Global.Snippets.Clear();
+            var remote = DefaultSettings.Create();
+            remote.Global.Snippets.Clear();
+            remote.Global.Snippets.Add(new Snippet { Trigger = ";a", Text = "A", Group = "G" });
+            remote.Global.Snippets.Add(new Snippet { Trigger = ";b", Text = "B" });
+            remote.Global.AppLayers.Clear();
+            remote.Global.AppLayers.Add(new AppLayerRule { Process = "code.exe", LayerId = 2 });
+
+            var mergeResult = CapsLockPlus.Core.Sync.BackupMerge.Merge(local, remote);
+            var mergedSnip = mergeResult.Merged;
+            Check("合并恢复：片段被合进来 2 条", mergedSnip.Global.Snippets.Count == 2,
+                mergeResult.Added.ToString());
+            Check("合并恢复：分组和内容一起保留",
+                mergedSnip.Global.Snippets.Any(x => x.Trigger == ";a" && x.Group == "G" && x.Text == "A"), "");
+            Check("合并恢复：按应用层也被合进来",
+                mergedSnip.Global.AppLayers.Any(r => r.Process == "code.exe" && r.LayerId == 2), "");
+        }
+
         /* ---- 前缀符号自动推断（老配置 ;mail 不会被默认 / 拦掉） ---- */
         {
             var sSnip = DefaultSettings.Create();

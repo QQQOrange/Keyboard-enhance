@@ -131,6 +131,26 @@ public partial class BackupView : UserControl
         RefreshExportLock();   // 初始状态：非隐私组默认勾选，开关应可用
     }
 
+    /// <summary>全选（隐私组也选上，但界面会提示只能加密导出）。</summary>
+    private void OnSelectAllGroups(object sender, RoutedEventArgs e)
+    {
+        if (_groups.Count == 0) return;
+        foreach (var g in _groups) g.Checked = true;
+        GroupList.ItemsSource = null;
+        GroupList.ItemsSource = _groups;
+        RefreshExportLock();
+    }
+
+    /// <summary>全不选。</summary>
+    private void OnSelectNoneGroups(object sender, RoutedEventArgs e)
+    {
+        if (_groups.Count == 0) return;
+        foreach (var g in _groups) g.Checked = false;
+        GroupList.ItemsSource = null;
+        GroupList.ItemsSource = _groups;
+        RefreshExportLock();
+    }
+
     private static readonly Brush PrivateFg =
         new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5484D"));
 

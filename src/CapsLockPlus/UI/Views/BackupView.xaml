@@ -285,7 +285,16 @@
                                       Click="OnExportModeChanged" />
                         </Grid>
 
-                        <ItemsControl x:Name="GroupList" Margin="0,14,0,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <TextBlock Text="{loc:T '导出内容'}" Style="{StaticResource Text.Secondary}"
+                                       VerticalAlignment="Center" />
+                            <Button Content="{loc:T '全选'}" Style="{StaticResource Button.Ghost}"
+                                    Padding="10,4" Margin="12,0,0,0" Click="OnSelectAllGroups" />
+                            <Button Content="{loc:T '全不选'}" Style="{StaticResource Button.Ghost}"
+                                    Padding="10,4" Margin="6,0,0,0" Click="OnSelectNoneGroups" />
+                        </StackPanel>
+
+                        <ItemsControl x:Name="GroupList" Margin="0,8,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,0,0,6" Padding="12,10" CornerRadius="10"
