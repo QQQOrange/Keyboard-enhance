@@ -1385,6 +1385,42 @@ public static partial class SelfTest
                 string.Join("|", sG.Global.SnippetGroups));
         }
 
+        /* ---- 改前缀符号：已有别名要跟着搬（否则列表前面会多出旧前缀） ---- */
+        {
+            var s = DefaultSettings.Create();
+            s.Global.Snippets.Clear();
+            s.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a" });
+            s.Global.Snippets.Add(new Snippet { Trigger = ";sig", Text = "b" });
+            s.Global.Snippets.Add(new Snippet { Trigger = "/keep", Text = "c" });   // 已经是新前缀
+            s.Global.Snippets.Add(new Snippet { Trigger = "bare", Text = "d" });    // 裸词
+
+            int moved = SnippetPrefixOps.Migrate(s, ";", "/");
+            Check("改前缀：迁移了 3 条", moved == 3, moved.ToString());
+            Check("改前缀：;mail → /mail",
+                s.Global.Snippets[0].Trigger == "/mail", s.Global.Snippets[0].Trigger);
+            Check("改前缀：已是新前缀的不重复加",
+                s.Global.Snippets[2].Trigger == "/keep", s.Global.Snippets[2].Trigger);
+            Check("改前缀：裸词补上新前缀",
+                s.Global.Snippets[3].Trigger == "/bare", s.Global.Snippets[3].Trigger);
+
+            /* 清空前缀：应该把前缀剥掉，而不是留下 / */
+            SnippetPrefixOps.Migrate(s, "/", "");
+            Check("清空前缀：/mail → mail",
+                s.Global.Snippets[0].Trigger == "mail", s.Global.Snippets[0].Trigger);
+
+            /* 前缀没变：一条都不该动 */
+            int again = SnippetPrefixOps.Migrate(s, "", "");
+            Check("前缀没变：不迁移任何条目", again == 0, again.ToString());
+
+            /* 全角切换：; → ； */
+            var s2 = DefaultSettings.Create();
+            s2.Global.Snippets.Clear();
+            s2.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a" });
+            SnippetPrefixOps.Migrate(s2, ";", "；");
+            Check("全角前缀：;mail → ；mail",
+                s2.Global.Snippets[0].Trigger == "；mail", s2.Global.Snippets[0].Trigger);
+        }
+
         /* ---- Tab 做触发键：从第一毫秒就吞掉，自动重复也不漏 ---- */
         {
             var sT = DefaultSettings.Create();

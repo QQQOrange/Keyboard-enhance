@@ -648,10 +648,21 @@ public partial class HotstringView : UserControl
         if (_host == null || _suppress) return;
         var opt = _host.Settings.Hotstring;
 
+        /* 全角开关会改变"实际生效的前缀"（; ↔ ；），触发词里存的还是旧的那个 ——
+         * 和改前缀符号是同一个坑，这里一并迁移。 */
+        string oldPrefix = opt.EffectivePrefix ?? "";
+
         opt.FullWidth = FullWidthBox.IsChecked == true;
         opt.ExpandOnSpace = SpaceBox.IsChecked == true;
         opt.SwallowSpace = SwallowBox.IsChecked == true;
         opt.ShowNoteFirst = NoteFirstBox.IsChecked == true;
+
+        string newPrefix = opt.EffectivePrefix ?? "";
+        if (oldPrefix != newPrefix)
+        {
+            int moved = SnippetPrefixOps.Migrate(_host.Settings, oldPrefix, newPrefix);
+            if (moved > 0) CoreLog.Info($"切换全角符号：{oldPrefix} → {newPrefix}，已迁移 {moved} 条别名");
+        }
 
         _host.SaveSettings();
         RefreshList();
@@ -662,9 +673,21 @@ public partial class HotstringView : UserControl
     {
         if (_host == null || _suppress) return;
 
-        _host.Settings.Hotstring.Prefix = PrefixBox.Text ?? "";
+        string oldPrefix = _host.Settings.Hotstring.EffectivePrefix ?? "";
+        string newPrefix = PrefixBox.Text ?? "";
+
+        _host.Settings.Hotstring.Prefix = newPrefix;
+
+        /* 前缀是**存在每条触发词里**的（;mail）。改前缀时必须把已有条目一起搬，
+         * 否则列表按新前缀剥不掉 → 每条别名前面都多出一个旧前缀。 */
+        int moved = SnippetPrefixOps.Migrate(_host.Settings, oldPrefix, newPrefix);
+        if (moved > 0) CoreLog.Info($"改前缀符号：{oldPrefix} → {newPrefix}，已迁移 {moved} 条别名");
+
         _host.SaveSettings();
         Refresh();
+
+        /* 编辑区里的触发词也要跟着刷新（它显示的是剥掉前缀后的值）。 */
+        if (_editing != null) LoadEditor(_editing);
     }
 
     private void OnFilterChanged(object sender, TextChangedEventArgs e)
