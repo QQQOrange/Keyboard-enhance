@@ -75,6 +75,54 @@ public static class CrashGuard
         return unclean;
     }
 
+    /// <summary>
+    /// 上次异常退出时，把日志末尾一段另存成 crash-context 文件。
+    ///
+    /// 为什么不是"崩溃时写"：崩溃往往发生在写不了文件的时刻（磁盘/权限/栈已坏）。
+    /// **下次启动**时日志已经完整落盘了，这时拷一段最靠谱。
+    /// 只保留最近 <paramref name="keep"/> 份，避免越积越多。
+    /// </summary>
+    public static string? SaveContext(string dataDir, string logPath,
+        int tailLines = 200, int keep = 5)
+    {
+        try
+        {
+            if (!File.Exists(logPath)) return null;
+
+            string[] lines = File.ReadAllLines(logPath);
+            var tail = lines.Length <= tailLines ? lines : lines[^tailLines..];
+
+            string path = Path.Combine(dataDir,
+                $"crash-context-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
+            var text = new System.Text.StringBuilder();
+            text.AppendLine("=== 上次运行没有正常退出 ===");
+            text.AppendLine($"检测时间: {Now(null)}");
+            text.AppendLine($"日志文件: {logPath}（共 {lines.Length} 行，下面是最后 {tail.Length} 行）");
+            text.AppendLine();
+            foreach (string line in tail) text.AppendLine(line);
+            File.WriteAllText(path, text.ToString());
+
+            /* 只留最近几份：崩溃多的时候不能让数据目录被这些文件撑满。 */
+            var old = new DirectoryInfo(dataDir).GetFiles("crash-context-*.log")
+                .OrderByDescending(f => f.LastWriteTime)
+                .Skip(keep)
+                .ToList();
+            foreach (var f in old)
+            {
+                try { f.Delete(); } catch { }
+            }
+
+            CoreLog.Warn($"已保存崩溃现场：{Path.GetFileName(path)}");
+            return path;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "保存崩溃现场");
+            return null;
+        }
+    }
+
     /// <summary>正常退出时调用：删掉标记。异常一律吞掉。</summary>
     public static void MarkCleanExit(string dataDir)
     {

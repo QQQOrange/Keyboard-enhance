@@ -284,6 +284,9 @@ public sealed class AppHost : IDisposable
         bool unclean = !Core.CliFlags.IsDiagnostic(Environment.GetCommandLineArgs().Skip(1))
                        && Core.Health.CrashGuard.MarkRunning(AppPaths.DataDir);
 
+        /* 上一次没正常退出：把上一轮日志的尾巴另存一份，方便直接发给开发者。 */
+        if (unclean) Core.Health.CrashGuard.SaveContext(AppPaths.DataDir, CoreLog.LogPath);
+
         ResetIncompleteCustomKeys();
         if (ClearStaleNotes(Settings) > 0) SettingsStore.RequestSave(Settings);
 
@@ -304,6 +307,20 @@ public sealed class AppHost : IDisposable
 
         /* 上次异常退出：等托盘/OSD 就绪后再提示一句。
          * 不放进启动关键路径（通知失败也不影响功能），也只在真的异常时出现。 */
+        /* 启动 60 秒后回收一次工作集：这时启动期的临时对象都已释放，
+         * 回收才有意义（刚启动就收会把还要用的页面也赶出去）。 */
+        var trimTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+        trimTimer.Tick += (_, _) =>
+        {
+            trimTimer.Stop();
+
+            /* 只在"用户看不见界面"时回收：窗口开着的时候做压缩式 GC 会让输入卡一下，
+             * 省下来的那几十 MB 不值得拿手感去换。 */
+            if (_main is { IsVisible: true } && _main.WindowState != WindowState.Minimized) return;
+            TrimWorkingSet();
+        };
+        trimTimer.Start();
+
         if (unclean)
         {
             var tip = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -1112,6 +1129,32 @@ public sealed class AppHost : IDisposable
     /// <see cref="DefaultSettings.ResetLayerOne"/> —— 抽成静态是为了让自检
     /// 能直接验，不必为了一个纯数据操作起一整套宿主。
     /// </summary>
+    /// <summary>
+    /// 把工作集还给系统（内存"瘦身"）。
+    ///
+    /// .NET 启动后保留着大量已经用不到的页面；托盘常驻程序动辄 150 MB 看着不体面。
+    /// 这里只做**一次**主动回收（空闲 60 秒 + 最小化到托盘时），
+    /// 不做定时回收 —— 那会造成反复缺页，反而更卡。
+    /// </summary>
+    public void TrimWorkingSet()
+    {
+        try
+        {
+            /* 先做一次"压缩 + 回收"。
+             * 只调 SetProcessWorkingSetSize 是没用的：页面对象还活着，
+             * 系统把页面换出去、下次访问立刻又全换回来，内存数字也不会降。
+             * 这里是一次性动作（60 秒空闲 / 收进托盘），阻塞几十毫秒可以接受。 */
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+            using var p = System.Diagnostics.Process.GetCurrentProcess();
+            Native.TrimWorkingSet(p.Handle);
+            CoreLog.Info($"已回收工作集，当前 {p.WorkingSet64 / 1024 / 1024} MB");
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "回收工作集"); }
+    }
+
     /// <summary>把指定层恢复成默认（按键映射页的「恢复本页默认设置」用它）。</summary>
     public void ResetLayer(int layerId)
     {

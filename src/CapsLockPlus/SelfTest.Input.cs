@@ -1349,6 +1349,35 @@ public static partial class SelfTest
             }
         }
 
+        /* ---- 崩溃现场快照 ---- */
+        {
+            string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "clp-crashctx-" + Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(dir);
+            try
+            {
+                string log = System.IO.Path.Combine(dir, "app.log");
+                var lines = new System.Text.StringBuilder();
+                for (int i = 1; i <= 500; i++) lines.AppendLine($"[INFO] 第 {i} 行");
+                System.IO.File.WriteAllText(log, lines.ToString());
+
+                string? ctx = Core.Health.CrashGuard.SaveContext(dir, log, tailLines: 200, keep: 3);
+                Check("崩溃现场：生成了快照文件", ctx != null && System.IO.File.Exists(ctx), ctx ?? "(null)");
+                string body = ctx == null ? "" : System.IO.File.ReadAllText(ctx);
+                Check("崩溃现场：写明是异常退出", body.Contains("上次运行没有正常退出"), "");
+                Check("崩溃现场：只截取末尾（不含第 1 行）",
+                    !body.Contains("第 1 行") && body.Contains("第 500 行"), "");
+
+                for (int i = 0; i < 6; i++) Core.Health.CrashGuard.SaveContext(dir, log, 200, 3);
+                int kept = System.IO.Directory.GetFiles(dir, "crash-context-*.log").Length;
+                Check("崩溃现场：只保留最近 3 份", kept <= 3, kept.ToString());
+            }
+            finally
+            {
+                try { System.IO.Directory.Delete(dir, true); } catch { }
+            }
+        }
+
         /* ---- 「恢复本页默认设置」必须按层生效 ---- */
         {
             var sL = DefaultSettings.Create();

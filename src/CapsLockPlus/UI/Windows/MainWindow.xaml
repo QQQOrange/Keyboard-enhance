@@ -9,7 +9,8 @@
         Background="{DynamicResource Brush.WindowGradient}"
         FontFamily="{StaticResource Font.Ui}"
         UseLayoutRounding="True"
-        SnapsToDevicePixels="True">
+        SnapsToDevicePixels="True"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
 
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="56" ResizeBorderThickness="6" GlassFrameThickness="0"
@@ -74,7 +75,7 @@
                             <TextBlock Text="&#xE8D2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        FontSize="15" VerticalAlignment="Center"
                                        Foreground="{DynamicResource Brush.TextSecondary}" />
-                            <TextBlock Text="{loc:T '文本替换'}" Margin="11,0,0,0" VerticalAlignment="Center"
+                            <TextBlock Text="{loc:T '别名替换'}" Margin="11,0,0,0" VerticalAlignment="Center"
                                        Style="{StaticResource Text.Body}" />
                         </StackPanel>
                     </ListBoxItem>
@@ -205,10 +206,13 @@
                     <Button x:Name="PauseButton" Style="{StaticResource Button.Ghost}" Click="OnPauseClick"
                             Content="{loc:T '暂停'}" ToolTip="{loc:T '临时暂停所有按键增强热键'}" />
                     <Button Style="{StaticResource Button.Icon}" Click="OnThemeClick" Content="&#xE793;"
+                            AutomationProperties.Name="{loc:T '切换深浅色'}"
                             ToolTip="{loc:T '切换深浅色'}" Margin="2,0,0,0" />
                     <Button Style="{StaticResource Button.Icon}" Click="OnMinimizeClick" Content="&#xE921;"
+                            AutomationProperties.Name="{loc:T '最小化'}"
                             ToolTip="{loc:T '最小化'}" Margin="2,0,0,0" />
                     <Button Style="{StaticResource Button.Icon}" Click="OnCloseClick" Content="&#xE8BB;"
+                            AutomationProperties.Name="{loc:T '关闭到托盘'}"
                             ToolTip="{loc:T '关闭到托盘'}" Margin="2,0,0,0" />
                 </StackPanel>
             </Grid>

@@ -10,6 +10,18 @@ public partial class MainWindow : Window
 {
     private readonly AppHost _host;
     private readonly Dictionary<string, UserControl> _pages = new();
+
+    /// <summary>页面按"最近使用"排序（队尾最新）。用于限制缓存页数。</summary>
+    private readonly List<string> _pageOrder = new();
+
+    /// <summary>
+    /// 最多缓存几个页面。
+    ///
+    /// 12 个页面全建出来大约要几十 MB（每个都有自己的列表/绑定/画刷）；
+    /// 而用户通常只在 2～3 页之间来回。留 4 个既能秒切，又不至于把内存堆起来。
+    /// 被回收的页面会收到 Unloaded（停计时器、退订事件），下次点进来重建即可。
+    /// </summary>
+    private const int PageCacheLimit = 4;
     private string _current = "";
     private string? _pendingPage;
 
@@ -97,6 +109,13 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        /* 收进托盘这条路径（点 × 或 Alt+F4）也要回收内存 ——
+         * 之前只有标题栏按钮那条路径回收，UIA/系统关窗走的是这里。 */
+        if (!ShouldExitOnClose(_host.Settings.Global.CloseToTray, _host.Exiting))
+        {
+            _host.TrimWorkingSet();
+        }
+
         if (ShouldExitOnClose(_host.Settings.Global.CloseToTray, _host.Exiting))
         {
             /* 用户把「关闭时最小化到托盘」关掉了 —— 这是"点 × 就退出程序"的意思
@@ -159,8 +178,43 @@ public partial class MainWindow : Window
     }
 
     /// <summary>按需创建页面：只有真正打开过的页面才会构建可视化树，启动更快、内存更省。</summary>
+    /// <summary>把某页记到"最近使用"队尾。</summary>
+    private void TouchPage(string page)
+    {
+        _pageOrder.Remove(page);
+        _pageOrder.Add(page);
+    }
+
+    /// <summary>
+    /// 缓存页数超限时，回收最久没用的（当前页永远留着）。
+    /// 回收前手动发一次 Unloaded：页面被移除出可视树时，WPF 不一定发这个事件，
+    /// 而好几个页面靠它停计时器 / 退订宿主事件。
+    /// </summary>
+    private void TrimPageCache()
+    {
+        while (_pages.Count > PageCacheLimit)
+        {
+            string? victim = _pageOrder.FirstOrDefault(p => p != _current && _pages.ContainsKey(p));
+            if (victim == null) break;
+
+            var view = _pages[victim];
+            _pages.Remove(victim);
+            _pageOrder.Remove(victim);
+
+            try
+            {
+                if (view is FrameworkElement fe)
+                    fe.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+            }
+            catch (Exception ex) { Core.CoreLog.Swallow(ex, "回收页面缓存"); }
+
+            Core.CoreLog.Info($"页面缓存回收：{victim}（当前缓存 {_pages.Count} 页）");
+        }
+    }
+
     public UserControl GetPage(string page)
     {
+        TouchPage(page);
         if (_pages.TryGetValue(page, out var cached)) return cached;
 
         UserControl view = page switch
@@ -196,6 +250,9 @@ public partial class MainWindow : Window
         }
 
         _pages[page] = view;
+        _pages[page] = view;
+        TrimPageCache();
+
         return view;
     }
 
@@ -212,7 +269,7 @@ public partial class MainWindow : Window
         {
             "guide" => (Loc.T("快速上手"), Loc.T("3 分钟学会")),
             "keys" => (Loc.T("按键映射"), Loc.T("可视化编辑")),
-            "hotstrings" => (Loc.T("文本替换"), Loc.T("触发词 · 空格展开")),
+            "hotstrings" => (Loc.T("别名替换"), Loc.T("触发词 · 空格展开")),
             "qbar" => (Loc.T("Qbar 面板"), Loc.T("搜索 · 启动 · 计算")),
             "clipboard" => (Loc.T("剪贴板"), Loc.T("独立剪贴板")),
             "macros" => (Loc.T("宏"), Loc.T("录制并绑定")),
@@ -250,6 +307,31 @@ public partial class MainWindow : Window
         PageHost.Opacity = 1;
         PageHost.BeginAnimation(OpacityProperty, fade);
         UpdateStatus();
+    }
+
+    /// <summary>
+    /// 纯键盘操作：Ctrl+Tab / Ctrl+Shift+Tab 在页面之间来回切。
+    ///
+    /// 侧栏本身用 ↑/↓ 就能选（ListBox 自带），但焦点在输入框里时够不着侧栏，
+    /// 加一个全局切换键，键盘用户不用去摸鼠标。
+    /// </summary>
+    private void OnWindowPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Tab) return;
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0) return;
+
+        int count = NavList.Items.Count;
+        if (count == 0) return;
+
+        int current = NavList.SelectedIndex;
+        int step = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0 ? -1 : 1;
+        int next = ((current < 0 ? 0 : current) + step + count) % count;
+
+        NavList.SelectedIndex = next;
+        if (NavList.ItemContainerGenerator.ContainerFromIndex(next) is ListBoxItem item)
+            item.Focus();
+
+        e.Handled = true;
     }
 
     private void OnNavSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -368,7 +450,13 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object sender, RoutedEventArgs e)
     {
-        if (_host.Settings.Global.CloseToTray) Hide();
+        if (_host.Settings.Global.CloseToTray)
+        {
+            Hide();
+            /* 藏在托盘里时把工作集还给系统：这时候用户看不到界面，
+             * 下次打开慢几十毫秒完全感觉不到，但常驻内存能少一截。 */
+            _host.TrimWorkingSet();
+        }
         else Close();
     }
 

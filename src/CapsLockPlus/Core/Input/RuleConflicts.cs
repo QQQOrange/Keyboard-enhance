@@ -207,7 +207,7 @@ public static class RuleConflicts
             if (!triggersSeen.Add(key))
             {
                 list.Add(new Conflict(ConflictLevel.Warn,
-                    Loc.F("文本替换「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。", sn.Trigger),
+                    Loc.F("别名替换「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。", sn.Trigger),
                     ConflictTarget.Snippet));
             }
         }
