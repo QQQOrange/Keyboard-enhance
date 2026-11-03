@@ -1329,6 +1329,35 @@ public static partial class SelfTest
             e.Dispose();
         }
 
+        /* ---- 「恢复本页默认设置」必须按层生效 ---- */
+        {
+            var sL = DefaultSettings.Create();
+            var layer2 = sL.Layers.First(l => l.Id == 2);
+            layer2.Keys.Clear();
+            layer2.Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_q", Action = "typeText", Arg = "x" });
+            int layer3Before = sL.Layers.First(l => l.Id == 3).Keys.Count;
+            int layer1Before = sL.Layers.First(l => l.Id == 1).Keys.Count;
+
+            DefaultSettings.ResetLayer(sL, 3, sL.Global.HotkeyScheme);
+            Check("按层恢复：重置第 3 层不影响第 1 层",
+                sL.Layers.First(l => l.Id == 1).Keys.Count == layer1Before,
+                $"{sL.Layers.First(l => l.Id == 1).Keys.Count}/{layer1Before}");
+            Check("按层恢复：第 2 层的绑定没被动",
+                sL.Layers.First(l => l.Id == 2).Keys.Count == 1,
+                sL.Layers.First(l => l.Id == 2).Keys.Count.ToString());
+
+            DefaultSettings.ResetLayer(sL, 2, sL.Global.HotkeyScheme);
+            Check("按层恢复：第 2 层被清空", sL.Layers.First(l => l.Id == 2).Keys.Count == 0,
+                sL.Layers.First(l => l.Id == 2).Keys.Count.ToString());
+            Check("按层恢复：第 3 层仍然为空", sL.Layers.First(l => l.Id == 3).Keys.Count == layer3Before,
+                sL.Layers.First(l => l.Id == 3).Keys.Count.ToString());
+
+            DefaultSettings.ResetLayer(sL, 1, sL.Global.HotkeyScheme);
+            Check("按层恢复：第 1 层按方案重建（非空）",
+                sL.Layers.First(l => l.Id == 1).Keys.Count > 50,
+                sL.Layers.First(l => l.Id == 1).Keys.Count.ToString());
+        }
+
         /* ---- 文本片段必须能被导出 / 合并恢复 ---- */
         {
             var sEx = DefaultSettings.Create();
