@@ -2276,5 +2276,11 @@
   "⑧b 规则替换": "8b Rule substitutions",
   "在「规则替换」页配一条：触发词 + 展开内容。之后在任意程序里打触发词再按空格，就会自动替换成那段内容。": "Add one on the Rule substitutions page: trigger + expansion. Then typing the trigger and pressing Space in any app replaces it.",
   "规则替换不展开？检查前缀符号是否对得上、片段是否启用、以及「只在这些程序里展开」有没有限制。": "Not expanding? Check the prefix symbol, whether the snippet is enabled, and its per-app limit.",
-  "规则替换「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。": "Rule substitution \"{0}\" is defined more than once for the same app scope; only the last one expands."
+  "规则替换「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。": "Rule substitution \"{0}\" is defined more than once for the same app scope; only the last one expands.",
+  "文本替换": "Text substitutions",
+  "图层、触发键、子层、宏、窗口绑定、文本替换…（点开查看）": "Layers, triggers, sub-layers, macros, window bindings, text substitutions… (click to expand)",
+  "⑧b 文本替换": "8b Text substitutions",
+  "在「文本替换」页配一条：触发词 + 展开内容。之后在任意程序里打触发词再按空格，就会自动替换成那段内容。": "Add one on the Text substitutions page: trigger + expansion. Then typing the trigger and pressing Space in any app replaces it.",
+  "文本替换不展开？检查前缀符号是否对得上、片段是否启用、以及「只在这些程序里展开」有没有限制。": "Not expanding? Check the prefix symbol, whether the snippet is enabled, and its per-app limit.",
+  "文本替换「{0}」在相同的程序范围里定义了多次，只有最后一条会展开。": "Text substitution \"{0}\" is defined more than once for the same app scope; only the last one expands."
 }
