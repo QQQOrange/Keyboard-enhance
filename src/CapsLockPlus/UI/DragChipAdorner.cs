@@ -74,6 +74,38 @@ public sealed class DragChipAdorner : Adorner
         }
     }
 
+    /// <summary>
+    /// 取光标的"元素内坐标"。
+    ///
+    /// ⚠ 不能用 <c>Mouse.GetPosition</c>：DoDragDrop 期间跑的是 OLE 自己的消息循环，
+    /// WPF 的鼠标位置不会更新（实测拖到 +X 方向却返回 -568,-196），
+    /// 卡片就会飞到奇怪的地方 / 卡住不动。GetCursorPos 是系统级真值，任何循环里都准。
+    /// </summary>
+    public static Point CursorIn(UIElement element)
+    {
+        try
+        {
+            if (GetCursorPos(out POINT p))
+                return element.PointFromScreen(new Point(p.X, p.Y));
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "取光标位置");
+        }
+
+        return new Point(0, 0);
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT point);
+
     public void MoveTo(Point point)
     {
         _offset.X = point.X;

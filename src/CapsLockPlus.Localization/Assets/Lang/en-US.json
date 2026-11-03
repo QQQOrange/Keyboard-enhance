@@ -2398,5 +2398,12 @@
   "开启后下次启动会弹一次 UAC 确认。注意：管理员权限下部分机器（安全软件 / UIPI）会让键盘钩子收不到按键，热键会完全失效 —— 遇到这种情况请关掉它": "Asks for UAC once on next start. Note: with administrator rights some machines (security software / UIPI) deliver no keyboard hook events, which breaks hotkeys entirely — turn this off if that happens.",
   "主程序判定钩子失效": "main process decided the hook is dead",
   "钩子不可用": "hook unavailable",
-  "钩子漏键": "hook dropped keys"
+  "钩子漏键": "hook dropped keys",
+  "以普通权限重启": "Restart without elevation",
+  "热键没反应时点一下：关掉管理员模式并用普通权限重新启动": "If hotkeys don't respond, click here: turn off admin mode and restart normally",
+  "当前已经是普通权限": "Already running without elevation",
+  "重启": "Restart",
+  "以普通权限重启？\n\n· 会关闭「以管理员身份启动」；\n· 有些机器的管理员模式下键盘钩子收不到按键（热键全失效），普通权限才正常；\n· 重启后正在跑的任务会中断。": "Restart without elevation?\n\n· \"Run as administrator\" will be turned off;\n· on some machines the keyboard hook receives nothing in admin mode (hotkeys stop working);\n· running tasks will be interrupted.",
+  "键盘钩子失效了，热键暂时用不了：可以继续用，也可以稍后重启程序恢复": "The keyboard hook stopped working, so hotkeys are unavailable for now. You can keep using the app and restart it later.",
+  "重启失败：": "Restart failed: "
 }

@@ -1107,6 +1107,9 @@ public partial class SettingsView : UserControl
         AdminBadge.Visibility = admin ? Visibility.Visible : Visibility.Collapsed;
         AdminBadgeText.Text = admin ? Loc.T("管理员") : Loc.T("普通权限");
         if (RunAsAdminBox != null) RunAsAdminBox.IsChecked = _host?.Settings.Global.RunAsAdmin ?? false;
+        if (RestartUnelevatedButton != null)
+            RestartUnelevatedButton.Visibility = admin ? Visibility.Visible : Visibility.Collapsed;
+
         PermissionText.Text = admin
             ? Core.ElevationHelper.PermissionSummary()
               + "\n" + Loc.T("⚠ 如果你发现热键没反应（按 Tab 只会切换焦点），先把「以管理员身份启动」关掉再重启 —— 部分机器上管理员权限会让键盘钩子收不到按键。")
@@ -1623,6 +1626,26 @@ public partial class SettingsView : UserControl
         _host.ShowMainWindow("backup");
         if (Windows.MainWindow.Instance?.GetPage("backup") is BackupView backup)
             backup.BeginImport();
+    }
+
+    private void OnRestartUnelevatedClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        if (!Core.ElevationHelper.IsElevated)
+        {
+            _host.Notify(Loc.T("当前已经是普通权限"));
+            return;
+        }
+
+        if (!UI.Windows.AppDialog.Confirm(Window.GetWindow(this),
+                Loc.T("以普通权限重启？\n\n· 会关闭「以管理员身份启动」；\n· 有些机器的管理员模式下键盘钩子收不到按键（热键全失效），普通权限才正常；\n· 重启后正在跑的任务会中断。"),
+                Loc.T("以普通权限重启"), Windows.DialogKind.Question, okText: Loc.T("重启")))
+        {
+            return;
+        }
+
+        _host.RestartUnelevated();
     }
 
     private void OnOpenSettingsFile(object sender, RoutedEventArgs e)

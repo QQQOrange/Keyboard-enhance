@@ -398,11 +398,6 @@ public sealed class AppHost : IDisposable
     /// <summary>降级提示只弹一次。</summary>
     private bool _degradedNotified;
 
-    /// <summary>管理员模式下"钩子完全静默"的起点（0 = 还没开始计）。</summary>
-    private long _elevatedSilentSince;
-
-    /// <summary>本次运行是否已经因为管理员模式而降权重启过（只做一次）。</summary>
-    private bool _leftElevatedOnce;
 
     /// <summary>钩子自检连续失败次数。</summary>
     private int _probeFailures;
@@ -834,10 +829,17 @@ public sealed class AppHost : IDisposable
             /* 连续多次救不回来：这个进程里的钩子已经废了（实测同一时刻新进程的钩子完全正常）。
              * 与其让用户面对"热键时灵时不灵、触发键还漏键"，不如自己重启一次 ——
              * 新进程的钩子是好的，这是唯一被证据支持的恢复手段。 */
-            if (_probeFailures >= 4 && !_selfRestartTried)
+            /* ⚠ 以前这里会自动重启程序。用户明确反对："没事就重启，影响正常使用"。
+             *
+             * 现在改成**只提示、不重启**：钩子救不回来时，热键确实用不了，
+             * 但重启与否应该由用户决定 —— 托盘给出提示，用户自己在空闲时重启，
+             * 而不是打字打到一半窗口突然没了。
+             */
+            if (_probeFailures >= 4 && !_degradedNotified)
             {
-                _selfRestartTried = true;
-                RestartSelfForHookRecovery();
+                _degradedNotified = true;
+                CoreLog.Warn("钩子多次重装仍失效：不再自动重启（改为提示用户手动处理）");
+                Notify(Loc.T("键盘钩子失效了，热键暂时用不了：可以继续用，也可以稍后重启程序恢复"));
                 return;
             }
 
@@ -872,39 +874,6 @@ public sealed class AppHost : IDisposable
             return;
         }
 
-        /* ---- 管理员模式专项：钩子一个事件都收不到 ----
-         *
-         * 用户实测（日志为证）：以管理员运行时，键盘钩子"装得上但收不到任何按键"，
-         * Raw Input 却能收到 —— 这是 UIPI / 安全软件拦截提权进程全局钩子的结果。
-         * 此时所有热键都失效，用户看到的就是"按 Tab 一直跳、切层没用"。
-         *
-         * 判据很硬：有物理按键（raw）但钩子里 0 条，持续 6 秒，且当前是管理员。
-         * 处理：关掉管理员模式 + 立刻用普通权限重启一次，并明确告诉用户原因。
-         */
-        if (Core.ElevationHelper.IsElevated && !_leftElevatedOnce
-            && hookDelta == 0 && rawDelta > 0)
-        {
-            if (_elevatedSilentSince == 0) _elevatedSilentSince = Environment.TickCount64;
-            if (Environment.TickCount64 - _elevatedSilentSince >= 6000)
-            {
-                _leftElevatedOnce = true;
-                CoreLog.Warn("管理员模式下钩子收不到任何按键（Raw Input 正常）—— 判定为 UIPI/安全软件拦截提权进程的全局钩子，正在用普通权限重启");
-                try
-                {
-                    Settings.Global.RunAsAdmin = false;
-                    SaveSettings();
-                }
-                catch { }
-
-                Notify(Loc.T("管理员模式让热键失效了：正在用普通权限重启（已关闭「以管理员身份启动」）"));
-                RestartSelfForHookRecovery(force: true);
-                return;
-            }
-        }
-        else if (hookDelta > 0 || rawDelta > 0)
-        {
-            if (hookDelta > 0) _elevatedSilentSince = 0;
-        }
 
         /* 钩子一个都没收到：把 Raw Input 期间收到的键累加起来。
          *
@@ -1199,6 +1168,39 @@ public sealed class AppHost : IDisposable
     /// <see cref="DefaultSettings.ResetLayerOne"/> —— 抽成静态是为了让自检
     /// 能直接验，不必为了一个纯数据操作起一整套宿主。
     /// </summary>
+    /// <summary>
+    /// 以普通权限重启（**只在用户明确点击时**调用）。
+    ///
+    /// 为什么需要：管理员权限下，部分机器（安全软件 / UIPI）会让键盘钩子收不到任何按键，
+    /// 热键整体失效。这是权限边界，程序内部修不了 —— 只能回到普通权限。
+    ///
+    /// 为什么必须走 explorer：从提权进程直接 Process.Start 出来的子进程会**继承**提权令牌，
+    /// 只有让已经在普通权限下的 explorer 去拉起，才是真正的降权。
+    /// </summary>
+    public void RestartUnelevated()
+    {
+        try
+        {
+            Settings.Global.RunAsAdmin = false;   // 否则新实例又会自己提权回来
+            SaveSettings();
+
+            string? exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return;
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{exe}\"")
+            {
+                UseShellExecute = true,
+            });
+
+            CoreLog.Warn("用户选择以普通权限重启");
+            _dispatcher.BeginInvoke(() => ExitApp());
+        }
+        catch (Exception ex)
+        {
+            Notify(Loc.T("重启失败：") + ex.Message);
+        }
+    }
+
     /// <summary>
     /// 把工作集还给系统（内存"瘦身"）。
     ///

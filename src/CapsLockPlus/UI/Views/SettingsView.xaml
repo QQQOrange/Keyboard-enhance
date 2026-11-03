@@ -346,6 +346,14 @@
                                 </StackPanel>
                                 <TextBlock x:Name="PermissionText" Style="{StaticResource Text.Tertiary}"
                                            Margin="0,4,0,0" TextWrapping="Wrap" />
+
+                                <!-- 管理员模式下热键可能整体失效：给一个一键回到普通权限的出口。
+                                     注意这是**用户点击**才执行，程序自己不会擅自重启。 -->
+                                <Button x:Name="RestartUnelevatedButton" Content="{loc:T '以普通权限重启'}"
+                                        Style="{StaticResource Button.Base}" Padding="10,5" Margin="0,8,0,0"
+                                        HorizontalAlignment="Left" Click="OnRestartUnelevatedClick"
+                                        Visibility="Collapsed"
+                                        ToolTip="{loc:T '热键没反应时点一下：关掉管理员模式并用普通权限重新启动'}" />
                             </StackPanel>
 
                             <!--

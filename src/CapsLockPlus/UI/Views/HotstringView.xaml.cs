@@ -345,22 +345,42 @@ public partial class HotstringView : UserControl
         var snippet = _dragSnippet;
         _dragSnippet = null;
 
-        /* 拖拽时跟着鼠标的小卡片：只有文字，不带整行控件（拖动更轻）。 */
+        /* 拖拽卡片：
+         *   · 挂在**窗口**的装饰层上（挂在列表上会被列表边界裁掉，
+         *     鼠标一离开列表就"卡在边缘"，正是用户看到的卡顿感）；
+         *   · 位置由 60fps 的定时器从 Mouse.GetPosition 直接读取，
+         *     不再依赖 DragOver 事件 —— 那样只有在拖过目标控件时才会更新。
+         */
         string label = StripPrefix(snippet.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
         if (string.IsNullOrEmpty(label))
             label = Shorten(snippet.Comment, 24);
-        _dragAdorner = UI.DragChipAdorner.Show(EntryList, label,
-            new Point(now.X + 12, now.Y + 12));
 
+        /* 装饰层挂在**页面自己**身上：Window 本身没有 AdornerLayer，
+         * GetAdornerLayer(window) 返回 null —— 之前卡片压根没画出来就是这个原因。
+         *
+         * 位置更新用 GiveFeedback：DoDragDrop 期间是 OLE 自己的消息循环，
+         * WPF 的 DispatcherTimer 不会走，只有 GiveFeedback 会被持续触发。
+         * （这也就是用户看到的"卡片不动 / 到边界卡住"。） */
+        _dragAdorner = UI.DragChipAdorner.Show(this, label, UI.DragChipAdorner.CursorIn(this));
+
+        GiveFeedbackEventHandler follow = (_, args) =>
+        {
+            if (_dragAdorner != null)
+                _dragAdorner.MoveTo(UI.DragChipAdorner.CursorIn(this));
+        };
+
+        EntryList.GiveFeedback += follow;
         try
         {
             DragDrop.DoDragDrop(EntryList, payload, DragDropEffects.Move);
         }
         finally
         {
+            EntryList.GiveFeedback -= follow;
             _dragAdorner?.Remove();
             _dragAdorner = null;
             ClearDragHover();
+            Mouse.UpdateCursor();
         }
     }
 
@@ -385,12 +405,6 @@ public partial class HotstringView : UserControl
 
         e.Effects = DragDropEffects.Move;
         HighlightDragHover(target);
-
-        if (_dragAdorner != null)
-        {
-            var pos = e.GetPosition(EntryList);
-            _dragAdorner.MoveTo(new Point(pos.X + 12, pos.Y + 12));
-        }
 
         e.Handled = true;
     }
