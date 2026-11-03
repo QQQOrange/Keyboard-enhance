@@ -742,6 +742,11 @@ public partial class App : Application
         /* 收尾：把防抖中的设置落盘、把日志缓冲刷出去。
          * 顺序放在 Dispose 之后 —— Dispose 里可能还会写日志。 */
         try { SettingsStore.FlushPending(); } catch (Exception ex) { CoreLog.Warn("退出前保存设置失败：" + ex.Message); }
+        /* 标记"这次是正常退出" —— 必须放在**最后**：
+         * 退出同步最多可能卡 8 秒，用户在这期间强制结束进程的话，
+         * 那就是一次异常退出，不该被提前写下的"正常"标记掩盖。 */
+        try { Core.Health.CrashGuard.MarkCleanExit(Core.AppPaths.DataDir); } catch { }
+
         try { CoreLog.Flush(); CoreLog.Shutdown(); } catch { }   /* 预期内：清理动作，失败无副作用 */
 
         SingleInstance.Release();

@@ -275,6 +275,15 @@ public sealed class AppHost : IDisposable
          * ⚠ 这一句以前只挂在 ReloadAll()（托盘「重新加载配置」）里，
          * 而启动根本不走 ReloadAll —— 于是用户那条 caps_2→customKey 空壳记录
          * 在我加了清理逻辑之后**依然**每次重启都还在。必须在启动路径上也调一次。 */
+        /* 先看上次有没有正常退出。
+         * 崩溃 / 被任务管理器结束后，用户看到的只是"热键好像不管用了"，
+         * 而日志里到底有没有线索全靠运气 —— 这个标记能直接告诉他"上次是异常退出"。 */
+        /* 诊断模式（--selftest / --render / --dump-bindings …）都是跑完就 Environment.Exit，
+         * 它们写下的标记没人去清 —— 那样下次正常启动就会虚假地提示"上次没有正常退出"。
+         * 所以诊断模式下不参与这套标记。 */
+        bool unclean = !Core.CliFlags.IsDiagnostic(Environment.GetCommandLineArgs().Skip(1))
+                       && Core.Health.CrashGuard.MarkRunning(AppPaths.DataDir);
+
         ResetIncompleteCustomKeys();
         if (ClearStaleNotes(Settings) > 0) SettingsStore.RequestSave(Settings);
 
@@ -292,6 +301,19 @@ public sealed class AppHost : IDisposable
 
         Engine.Start(installHook: !hookHostReady);
         if (Settings.Global.ShowTrayIcon) CreateTray();
+
+        /* 上次异常退出：等托盘/OSD 就绪后再提示一句。
+         * 不放进启动关键路径（通知失败也不影响功能），也只在真的异常时出现。 */
+        if (unclean)
+        {
+            var tip = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            tip.Tick += (_, _) =>
+            {
+                tip.Stop();
+                Notify(Loc.T("上次没有正常退出。如果热键或剪贴板异常，去「测试」页看诊断。"));
+            };
+            tip.Start();
+        }
         _clipboard.Start();
         _watchdog.Start();
         EnsureWakeWindow();
@@ -1682,6 +1704,7 @@ public sealed class AppHost : IDisposable
             }
             catch (Exception ex) { CoreLog.Warn("重启失败：" + ex.Message); }
         }
+        Core.Health.CrashGuard.MarkCleanExit(AppPaths.DataDir);
         Application.Current.Shutdown();
     }
 

@@ -1329,6 +1329,26 @@ public static partial class SelfTest
             e.Dispose();
         }
 
+        /* ---- 异常退出标记（CrashGuard） ---- */
+        {
+            string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "clp-crash-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Check("异常退出：首次启动不算异常", !Core.Health.CrashGuard.MarkRunning(dir), "");
+                Check("异常退出：标记文件已写入", System.IO.File.Exists(Core.Health.CrashGuard.FlagPath(dir)), "");
+                Check("异常退出：没正常退出时下次能识别", Core.Health.CrashGuard.MarkRunning(dir), "");
+
+                Core.Health.CrashGuard.MarkCleanExit(dir);
+                Check("异常退出：标记已删除", !System.IO.File.Exists(Core.Health.CrashGuard.FlagPath(dir)), "");
+                Check("异常退出：正常退出后再次启动是干净的", !Core.Health.CrashGuard.MarkRunning(dir), "");
+            }
+            finally
+            {
+                try { System.IO.Directory.Delete(dir, true); } catch { }
+            }
+        }
+
         /* ---- 「恢复本页默认设置」必须按层生效 ---- */
         {
             var sL = DefaultSettings.Create();

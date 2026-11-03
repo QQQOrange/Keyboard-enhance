@@ -121,7 +121,8 @@ public partial class QbarSettingsView : UserControl
             "search" => Loc.T("用 {q} 代表关键词。例如 https://www.bing.com/search?q={q}。关键字填 default 表示默认搜索。"),
             "run" => Loc.T("填程序路径或命令，例如 C:\\Windows\\notepad.exe 或 notepad.exe。"),
             "web" => Loc.T("填完整网址，例如 https://github.com。"),
-            "hotstring" => Loc.T("在任意地方输入关键字后按 Caps+Tab，会被替换成这里的内容。"),
+            "hotstring" => Loc.T("在任意地方输入关键字后按 Caps+Tab，会被替换成这里的内容。") +
+                           Loc.T("（想打完触发词自动展开，用侧栏的「文本替换」。）"),
             _ => "",
         };
         ValueLabel.Text = _tab switch
