@@ -24,8 +24,23 @@ namespace CapsLockPlus.Core.Input;
 /// </summary>
 public static class KeyCaptureSink
 {
+    private static Action<int, bool>? _current;
+
     /// <summary>当前打开着的捕获窗；没有窗口时为 null。</summary>
-    public static Action<int, bool>? Current;
+    public static Action<int, bool>? Current
+    {
+        get => _current;
+        set
+        {
+            bool wasOpen = _current != null;
+            _current = value;
+            bool isOpen = value != null;
+            if (wasOpen != isOpen) Changed?.Invoke(isOpen);
+        }
+    }
+
+    /// <summary>捕获窗打开/关闭（true=开始录键）。宿主模式要据此暂停"吞键"。</summary>
+    public static event Action<bool>? Changed;
 
     /// <summary>
     /// 把一次 Raw Input 按键送给捕获窗。

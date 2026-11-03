@@ -158,6 +158,13 @@ public sealed class AppHost : IDisposable
             };
             StartHookTrafficWatch();
             StartHookProbe();
+
+            /* 诊断：完整启动完成后再跑捕获窗自检。 */
+            if (Core.CaptureSelfTest.Requested)
+            {
+                Core.CaptureSelfTest.Requested = false;
+                _dispatcher.BeginInvoke(new Action(Core.CaptureSelfTest.RunInApp));
+            }
         }
         else
             _deviceTracker.Dispose();
@@ -342,6 +349,9 @@ public sealed class AppHost : IDisposable
     /// <summary>本次运行是否已经尝试过"重启自己救钩子"。</summary>
     private bool _selfRestartTried;
 
+    /// <summary>发给宿主的管理命令（CAPTURE 1/0 之类）。</summary>
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> _hookHostCommands = new();
+
     /// <summary>钩子宿主进程（最小进程，只装钩子跑热键）。</summary>
     private System.Diagnostics.Process? _hookHost;
 
@@ -491,6 +501,38 @@ public sealed class AppHost : IDisposable
     /// 启动钩子宿主进程并等它 READY（最多 2.5 秒）。
     /// 详见 <see cref="Core.HookHost"/>：宿主是最小进程，不受本进程 GC 停顿影响。
     /// </summary>
+    /// <summary>给宿主发一条管理命令（宿主连上来后按序写入）。</summary>
+    private void SendHookHostCommand(string command) => _hookHostCommands.Enqueue(command);
+
+    /// <summary>
+    /// 宿主的控制通道（本进程是服务端，宿主是客户端）。
+    /// 目前只用来通知"开始/结束录键"：录键期间宿主不能吞键，否则触发键录不到。
+    /// </summary>
+    private void StartHookHostControlPipe(string pipeName)
+    {
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    using var server = new System.IO.Pipes.NamedPipeServerStream(
+                        pipeName + "-cmd", System.IO.Pipes.PipeDirection.Out, 1,
+                        System.IO.Pipes.PipeTransmissionMode.Byte,
+                        System.IO.Pipes.PipeOptions.None);
+                    server.WaitForConnection();
+                    using var w = new System.IO.StreamWriter(server, System.Text.Encoding.UTF8) { AutoFlush = true };
+                    while (server.IsConnected)
+                    {
+                        if (_hookHostCommands.TryDequeue(out string? cmd)) w.WriteLine(cmd);
+                        else Thread.Sleep(30);
+                    }
+                }
+                catch { Thread.Sleep(500); }
+            }
+        });
+    }
+
     private bool StartHookHost()
     {
         /* 自检 / 渲染 / 诊断模式不拉宿主：这些模式跑完就退，
@@ -543,9 +585,15 @@ public sealed class AppHost : IDisposable
                         {
                             var p3 = line.Split('\t');
                             if (p3.Length >= 3 && int.TryParse(p3[1], out int k) && p3[2] == "1")
+                            {
+                                KeyCaptureSink.Push(k, true);
                                 _dispatcher.BeginInvoke(() => Engine.ApplyRemoteKey(k, true));
+                            }
                             else if (p3.Length >= 3 && int.TryParse(p3[1], out int k2))
+                            {
+                                KeyCaptureSink.Push(k2, false);
                                 _dispatcher.BeginInvoke(() => Engine.ApplyRemoteKey(k2, false));
+                            }
                             continue;
                         }
                         if (line.StartsWith("TRIG\t", StringComparison.Ordinal))
@@ -600,6 +648,16 @@ public sealed class AppHost : IDisposable
                     });
                 }
             });
+
+            StartHookHostControlPipe(pipeName);
+
+            /* 录键期间：本进程引擎与宿主都停止吞键，并把宿主的按键喂进捕获窗。 */
+            KeyCaptureSink.Changed += open =>
+            {
+                Engine.CaptureMode = open;
+                SendHookHostCommand(open ? "CAPTURE 1" : "CAPTURE 0");
+                CoreLog.Info(open ? "开始录键：已通知宿主暂停吞键" : "结束录键：宿主恢复吞键");
+            };
 
             if (ready.Wait(2500))
             {

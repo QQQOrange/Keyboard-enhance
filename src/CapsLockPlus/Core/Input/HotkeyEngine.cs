@@ -331,6 +331,14 @@ public sealed class HotkeyEngine : IDisposable
     private int _remoteLayer = -1;
     private string? _remoteTriggerKey;
 
+    /// <summary>
+    /// 捕获模式：正在录「要发送的键」或「绑定哪个键」时置 true。
+    ///
+    /// 这时**任何键都不许吞** —— 否则用户想录 Caps/Tab 这类触发键时，
+    /// 键在宿主那儿就被吞掉了，捕获窗永远等不到它。按键仍然照常上报（KeySeen）。
+    /// </summary>
+    public bool CaptureMode { get; set; }
+
     /// <summary>宿主回传：某个键被按下了（只用于界面显示）。</summary>
     internal void ApplyRemoteKey(int vk, bool down)
     {
@@ -1247,6 +1255,13 @@ public sealed class HotkeyEngine : IDisposable
 
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
+        /* 捕获模式：只上报、不吞键。 */
+        if (CaptureMode)
+        {
+            if (!injected && KeySeen != null) { try { KeySeen(vk, down, ActiveLayer); } catch { } }
+            return false;
+        }
+
         if (injected && !AcceptInjectedForTest) return false;   // 自己注入的按键放行
 
         _lastKeyActivity = DateTime.Now;

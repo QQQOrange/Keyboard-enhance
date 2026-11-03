@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Threading;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -123,7 +124,13 @@ public partial class KeyCaptureWindow : Window
 
             /* 第二条来源：Raw Input（不受钩子超时影响）。
              * 订阅之后即使钩子死了，按键也照样进来。 */
-            KeyCaptureSink.Current = (vk, down) => Dispatcher.BeginInvoke(() => HandleKey(vk, down));
+            KeyCaptureSink.Current = (vk, down) =>
+            {
+                RawHits++;
+                if (Environment.GetEnvironmentVariable("CLP_CAPTURE_LOG") == "1")
+                    CoreLog.Info($"[捕获] raw vk=0x{vk:X2} down={down}");
+                Dispatcher.BeginInvoke(() => HandleKey(vk, down));
+            };
 
             _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
             if (_hook == IntPtr.Zero)
@@ -142,9 +149,23 @@ public partial class KeyCaptureWindow : Window
             // 先播种一次初始状态，之后完全靠事件维护。
             SeedModifiers();
             UpdateModifierBadges();
+
+            /* 3 秒还没收到任何按键：把"三路来源各自收到几次"写进日志，并给用户一句人话。
+             * 这条日志是下次排查的抓手 —— 哪一路是 0，问题就在哪一路。 */
+            _noInputTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            _noInputTimer.Tick += (_, _) =>
+            {
+                _noInputTimer!.Stop();
+                if (HookHits + RawHits + WpfHits > 0) return;
+                CoreLog.Warn($"录键 3 秒没收到任何按键：钩子={HookHits} RawInput={RawHits} 窗口事件={WpfHits} " +
+                             $"（管理员={Core.ElevationHelper.IsElevated}）");
+                DetailText.Text = Loc.T("还没收到按键。可以再按一次；如果一直没反应，把日志发给我们（日志里记了三路来源的计数）。");
+            };
+            _noInputTimer.Start();
         };
         Closed += (_, _) =>
         {
+            _noInputTimer?.Stop();
             KeyCaptureSink.Current = null;
             if (_hook != IntPtr.Zero)
             {
@@ -157,6 +178,8 @@ public partial class KeyCaptureWindow : Window
     /* ---------------- 三路输入汇合到这里 ---------------- */
 
     /// <summary>上一次处理的按键，用来给多路来源去重（同一个物理按键会被钩子 + Raw Input + WPF 各送一次）。</summary>
+    private DispatcherTimer? _noInputTimer;
+
     private int _lastVk;
     private bool _lastDown;
     private long _lastTick;
@@ -180,6 +203,9 @@ public partial class KeyCaptureWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        WpfHits++;
+        if (Environment.GetEnvironmentVariable("CLP_CAPTURE_LOG") == "1")
+            CoreLog.Info($"[捕获] wpf key={e.Key}");
         e.Handled = true;
         // Alt 在 WPF 里走 Key.System，真正的键在 SystemKey 上
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -191,6 +217,7 @@ public partial class KeyCaptureWindow : Window
 
     private void OnPreviewKeyUp(object sender, KeyEventArgs e)
     {
+        WpfHits++;
         e.Handled = true;
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         int vk = KeyInterop.VirtualKeyFromKey(key);
@@ -224,6 +251,12 @@ public partial class KeyCaptureWindow : Window
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
+        if (nCode >= 0)
+        {
+            HookHits++;
+            if (Environment.GetEnvironmentVariable("CLP_CAPTURE_LOG") == "1")
+                CoreLog.Info("[捕获] hook 事件");
+        }
         if (nCode < 0) return CallNextHookEx(_hook, nCode, wParam, lParam);
 
         int msg = (int)wParam;
@@ -237,6 +270,17 @@ public partial class KeyCaptureWindow : Window
             ? (IntPtr)1
             : CallNextHookEx(_hook, nCode, wParam, lParam);
     }
+
+    /* ---- 三路来源计数器（--capture-test 诊断用） ---- */
+
+    /// <summary>低级钩子收到的事件数。</summary>
+    internal int HookHits { get; set; }
+
+    /// <summary>Raw Input 送进来的事件数。</summary>
+    internal int RawHits { get; private set; }
+
+    /// <summary>窗口内 PreviewKey 事件数。</summary>
+    internal int WpfHits { get; private set; }
 
     /// <summary>
     /// 三路输入（低级钩子 / Raw Input / WPF 预览）汇合后的唯一处理点。

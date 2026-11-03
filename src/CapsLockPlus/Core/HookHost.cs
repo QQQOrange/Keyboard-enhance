@@ -83,6 +83,28 @@ internal static class HookHost
             try { lock (pipeGate) writer?.WriteLine($"TRIG\t{(held ? 1 : 0)}\t{engine.ActiveLayer}\t{engine.ActiveTriggerKey ?? ""}"); } catch { }
         };
 
+        /* 控制通道（主程序 → 宿主）：CAPTURE 1/0 —— 录键期间宿主必须停止吞键，
+         * 否则用户想录 Caps/Tab 这类触发键会永远录不到。 */
+        _ = new Thread(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    using var cmd = new NamedPipeClientStream(".", pipeName + "-cmd", PipeDirection.In);
+                    cmd.Connect(2000);
+                    using var reader2 = new StreamReader(cmd, Encoding.UTF8);
+                    string? cmdLine;
+                    while ((cmdLine = reader2.ReadLine()) != null)
+                    {
+                        if (cmdLine.StartsWith("CAPTURE", StringComparison.Ordinal))
+                            engine!.CaptureMode = cmdLine.EndsWith("1", StringComparison.Ordinal);
+                    }
+                }
+                catch { Thread.Sleep(500); }
+            }
+        }) { IsBackground = true, Name = "HookHost.Ctl" };
+
         /* 配置改动靠**文件修改时间**发现：主程序每次保存都会重写 settings.json，
          * 这里每秒看一眼有没有变，变了就重读。比再开一条控制管道简单也更稳。 */
         DateTime settingsStamp = SafeStamp();

@@ -107,6 +107,14 @@ public partial class App : Application
             return;
         }
 
+        /* `--capture-test`：打开自定义按键捕获窗并自检三路输入来源（诊断"按什么都没反应"）。 */
+        if (Core.CliFlags.Has(e.Args, "--capture-test"))
+        {
+            /* 不能提前退出：捕获窗要复现的是"完整程序 + 宿主模式"下的输入链路，
+             * 所以让它照常启动（引擎、Raw Input、钩子宿主都就位），启动完成后再自检。 */
+            Core.CaptureSelfTest.Requested = true;
+        }
+
         /* `--hooktest`：只装钩子、自己敲两下数回调。
          * 排查"钩子句柄在、却一个事件都收不到"时用它 —— 这条路径不包含任何界面。 */
         if (Core.CliFlags.Has(e.Args, "--hooktest"))
