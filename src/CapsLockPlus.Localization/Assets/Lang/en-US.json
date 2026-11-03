@@ -2387,5 +2387,16 @@
   "别名 · 空格展开": "Alias · expand on space",
   "别名、展开内容、备注、分组、限定程序，以及前缀符号等设置": "Aliases, expansions, notes, groups, app limits and the prefix settings",
   "在「别名替换」页配一条：别名 + 展开内容。之后在任意程序里打这个别名再按空格，就会自动替换成那段内容。": "Add one on the Alias substitutions page: alias + expansion. Then typing that alias and pressing Space in any app replaces it.",
-  "别名、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）": "Aliases, expansions, notes, groups, app limits and the prefix settings (stored in Global, so appearance/behaviour settings come along)"
+  "别名、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）": "Aliases, expansions, notes, groups, app limits and the prefix settings (stored in Global, so appearance/behaviour settings come along)",
+  "选一个分组": "Pick a group",
+  "从现有分组里选一个": "Pick an existing group",
+  "可以直接输入新组名；也可以点右边的「选择…」从已有分组里挑": "Type a new group name here, or use \"Choose…\" to pick an existing one",
+  "换一个分组 = 把这条别名移过去；也可以把列表里的别名直接拖到左边的分组上。": "Changing the group moves this alias; you can also drag aliases from the list onto a group.",
+  "「全部」只是查看全部别名，不能作为分组；要取消分组请拖到「未分组」": "\"All\" is just a view, not a group; drop onto \"Ungrouped\" to clear the group.",
+  "⚠ 如果你发现热键没反应（按 Tab 只会切换焦点），先把「以管理员身份启动」关掉再重启 —— 部分机器上管理员权限会让键盘钩子收不到按键。": "⚠ If hotkeys stop working (Tab only moves focus), turn off \"Run as administrator\" and restart — on some machines an elevated process does not receive keyboard hook events.",
+  "管理员模式让热键失效了：正在用普通权限重启（已关闭「以管理员身份启动」）": "Administrator mode broke the hotkeys; restarting without elevation (\"Run as administrator\" turned off).",
+  "开启后下次启动会弹一次 UAC 确认。注意：管理员权限下部分机器（安全软件 / UIPI）会让键盘钩子收不到按键，热键会完全失效 —— 遇到这种情况请关掉它": "Asks for UAC once on next start. Note: with administrator rights some machines (security software / UIPI) deliver no keyboard hook events, which breaks hotkeys entirely — turn this off if that happens.",
+  "主程序判定钩子失效": "main process decided the hook is dead",
+  "钩子不可用": "hook unavailable",
+  "钩子漏键": "hook dropped keys"
 }

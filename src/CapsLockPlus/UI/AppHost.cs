@@ -398,6 +398,12 @@ public sealed class AppHost : IDisposable
     /// <summary>降级提示只弹一次。</summary>
     private bool _degradedNotified;
 
+    /// <summary>管理员模式下"钩子完全静默"的起点（0 = 还没开始计）。</summary>
+    private long _elevatedSilentSince;
+
+    /// <summary>本次运行是否已经因为管理员模式而降权重启过（只做一次）。</summary>
+    private bool _leftElevatedOnce;
+
     /// <summary>钩子自检连续失败次数。</summary>
     private int _probeFailures;
 
@@ -864,6 +870,40 @@ public sealed class AppHost : IDisposable
             _rawSinceHook = 0;
             _hookSilentSince = 0;
             return;
+        }
+
+        /* ---- 管理员模式专项：钩子一个事件都收不到 ----
+         *
+         * 用户实测（日志为证）：以管理员运行时，键盘钩子"装得上但收不到任何按键"，
+         * Raw Input 却能收到 —— 这是 UIPI / 安全软件拦截提权进程全局钩子的结果。
+         * 此时所有热键都失效，用户看到的就是"按 Tab 一直跳、切层没用"。
+         *
+         * 判据很硬：有物理按键（raw）但钩子里 0 条，持续 6 秒，且当前是管理员。
+         * 处理：关掉管理员模式 + 立刻用普通权限重启一次，并明确告诉用户原因。
+         */
+        if (Core.ElevationHelper.IsElevated && !_leftElevatedOnce
+            && hookDelta == 0 && rawDelta > 0)
+        {
+            if (_elevatedSilentSince == 0) _elevatedSilentSince = Environment.TickCount64;
+            if (Environment.TickCount64 - _elevatedSilentSince >= 6000)
+            {
+                _leftElevatedOnce = true;
+                CoreLog.Warn("管理员模式下钩子收不到任何按键（Raw Input 正常）—— 判定为 UIPI/安全软件拦截提权进程的全局钩子，正在用普通权限重启");
+                try
+                {
+                    Settings.Global.RunAsAdmin = false;
+                    SaveSettings();
+                }
+                catch { }
+
+                Notify(Loc.T("管理员模式让热键失效了：正在用普通权限重启（已关闭「以管理员身份启动」）"));
+                RestartSelfForHookRecovery();
+                return;
+            }
+        }
+        else if (hookDelta > 0 || rawDelta > 0)
+        {
+            if (hookDelta > 0) _elevatedSilentSince = 0;
         }
 
         /* 钩子一个都没收到：把 Raw Input 期间收到的键累加起来。

@@ -4,6 +4,8 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Settings;
 
@@ -25,6 +27,20 @@ public partial class HotstringView : UserControl
 
     /// <summary>刷新分组列表后要选中的组名（改名/新建后用它把选中状态带过去）。</summary>
     private string? _selectGroupAfterRefresh;
+
+    /* ---------------- 拖拽状态 ---------------- */
+
+    /// <summary>按下左键时的位置（判断"是点击还是拖拽"）。</summary>
+    private Point _dragStartPoint;
+
+    /// <summary>按下左键时命中的别名（拖拽源）。</summary>
+    private Snippet? _dragSnippet;
+
+    /// <summary>当前高亮的分组行（拖拽经过时）。</summary>
+    private ListBoxItem? _dragHoverItem;
+
+    /// <summary>跟着鼠标走的拖拽小卡片。</summary>
+    private UI.DragChipAdorner? _dragAdorner;
 
     /// <summary>分组行的 Group：null = 全部；"" = 未分组；其它 = 组名。</summary>
     private sealed class GroupRow
@@ -217,20 +233,6 @@ public partial class HotstringView : UserControl
 
     private Window? Owner => Window.GetWindow(this);
 
-    private void BuildGroupOptions()
-    {
-        string current = (GroupBox.Text ?? "").Trim();
-
-        _suppress = true;
-        try
-        {
-            GroupBox.Items.Clear();
-            foreach (var g in AllGroups()) GroupBox.Items.Add(g);
-            GroupBox.Text = current;
-        }
-        finally { _suppress = false; }
-    }
-
     private void ShowEditor(bool show)
     {
         EditorCard.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
@@ -266,7 +268,6 @@ public partial class HotstringView : UserControl
             EnabledBox.IsChecked = entry.Enabled;
             StatusText.Text = "";
 
-            BuildGroupOptions();
             GroupBox.Text = entry.Group ?? "";
         }
         finally { _suppress = false; }
@@ -293,6 +294,215 @@ public partial class HotstringView : UserControl
         _host.SaveSettings();
         RefreshGroups();
         return name;
+    }
+
+    /* ---------------- 分组选择弹层 ---------------- */
+
+    private void OnPickGroupClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var items = new List<string> { "" };
+        items.AddRange(AllGroups().Where(g => g.Length > 0));
+
+        GroupPickerList.ItemsSource = items;
+        GroupPickerList.SelectedItem = items.FirstOrDefault(g =>
+            string.Equals(g, GroupBox.Text?.Trim() ?? "", StringComparison.CurrentCultureIgnoreCase));
+
+        GroupPicker.IsOpen = true;
+    }
+
+    private void OnGroupPickerPicked(object sender, MouseButtonEventArgs e)
+    {
+        if (GroupPickerList.SelectedItem is not string picked) return;
+
+        GroupPicker.IsOpen = false;
+        GroupBox.Text = picked;
+        GroupBox.CaretIndex = GroupBox.Text.Length;
+        SaveEditorFields();
+    }
+
+    /* ---------------- 拖拽：把别名拖到分组上 ---------------- */
+
+    private void OnEntryMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragStartPoint = e.GetPosition(EntryList);
+        _dragSnippet = null;
+
+        var item = ItemsControl.ContainerFromElement(EntryList, e.OriginalSource as DependencyObject) as ListBoxItem;
+        if (item?.DataContext is Row row) _dragSnippet = row.Snippet;
+    }
+
+    private void OnEntryMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragSnippet == null) return;
+        if (e.LeftButton != MouseButtonState.Pressed) return;
+
+        Point now = e.GetPosition(EntryList);
+        if (Math.Abs(now.X - _dragStartPoint.X) < 8 && Math.Abs(now.Y - _dragStartPoint.Y) < 8) return;
+
+        var payload = new DataObject("clp/snippet", _dragSnippet);
+        var snippet = _dragSnippet;
+        _dragSnippet = null;
+
+        /* 拖拽时跟着鼠标的小卡片：只有文字，不带整行控件（拖动更轻）。 */
+        string label = StripPrefix(snippet.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
+        if (string.IsNullOrEmpty(label))
+            label = Shorten(snippet.Comment, 24);
+        _dragAdorner = UI.DragChipAdorner.Show(EntryList, label,
+            new Point(now.X + 12, now.Y + 12));
+
+        try
+        {
+            DragDrop.DoDragDrop(EntryList, payload, DragDropEffects.Move);
+        }
+        finally
+        {
+            _dragAdorner?.Remove();
+            _dragAdorner = null;
+            ClearDragHover();
+        }
+    }
+
+    private void OnGroupDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent("clp/snippet"))
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        var target = FindGroupRowAt(e.GetPosition(GroupList));
+        if (target is not { IsReal: true } && target is not { Group: "" })
+        {
+            /* 「全部」只是个视图，不接受放下。 */
+            ClearDragHover();
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        HighlightDragHover(target);
+
+        if (_dragAdorner != null)
+        {
+            var pos = e.GetPosition(EntryList);
+            _dragAdorner.MoveTo(new Point(pos.X + 12, pos.Y + 12));
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnGroupDragLeave(object sender, DragEventArgs e)
+    {
+        ClearDragHover();
+    }
+
+    private void OnGroupDrop(object sender, DragEventArgs e)
+    {
+        ClearDragHover();
+
+        if (e.Data.GetData("clp/snippet") is not Snippet snippet) return;
+
+        var target = FindGroupRowAt(e.GetPosition(GroupList));
+        if (target == null) return;
+
+        if (target.Group is null)
+        {
+            /* 全部：不当作分组，只提示一句。 */
+            _host?.Notify(Loc.T("「全部」只是查看全部别名，不能作为分组；要取消分组请拖到「未分组」"));
+            return;
+        }
+
+        MoveTo(snippet, target.Group);
+        FlashGroupRow(target);
+        e.Handled = true;
+    }
+
+    /// <summary>找出某个坐标下的分组行（没有就是 null）。</summary>
+    private GroupRow? FindGroupRowAt(Point point)
+    {
+        var hit = GroupList.InputHitTest(point) as DependencyObject;
+        var item = ItemsControl.ContainerFromElement(GroupList, hit) as ListBoxItem;
+        return item?.DataContext as GroupRow;
+    }
+
+    /// <summary>拖拽经过时把目标分组"抬起来"一点 + 加底色。</summary>
+    private void HighlightDragHover(GroupRow row)
+    {
+        if (GroupList.ItemContainerGenerator.ContainerFromItem(row) is not ListBoxItem item) return;
+        if (ReferenceEquals(item, _dragHoverItem)) return;
+
+        ClearDragHover();
+        _dragHoverItem = item;
+
+        item.Background = (Brush)FindResource("Brush.AccentSoft");
+        item.RenderTransformOrigin = new Point(0.5, 0.5);
+        var scale = new ScaleTransform(1, 1);
+        item.RenderTransform = scale;
+
+        var grow = new DoubleAnimation(1, 1.03, TimeSpan.FromMilliseconds(120))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+    }
+
+    private void ClearDragHover()
+    {
+        if (_dragHoverItem == null) return;
+
+        var item = _dragHoverItem;
+        _dragHoverItem = null;
+
+        var fade = new DoubleAnimation(1.03, 1, TimeSpan.FromMilliseconds(120))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        if (item.RenderTransform is ScaleTransform scale)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, fade);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, fade);
+        }
+
+        var brush = new SolidColorBrush(Colors.Transparent);
+        item.Background = brush;
+    }
+
+    /// <summary>放下之后给目标分组一个"闪一下"的反馈。</summary>
+    private void FlashGroupRow(GroupRow row)
+    {
+        if (GroupList.ItemContainerGenerator.ContainerFromItem(row) is not ListBoxItem item) return;
+
+        var brush = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.Accent")).Color)
+        {
+            Opacity = 0.55,
+        };
+        item.Background = brush;
+
+        var fade = new DoubleAnimation(0.55, 0, TimeSpan.FromMilliseconds(420))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        fade.Completed += (_, _) => item.Background = Brushes.Transparent;
+        brush.BeginAnimation(SolidColorBrush.OpacityProperty, fade);
+    }
+
+    /// <summary>保存编辑区里的字段（供弹层选择后调用）。</summary>
+    private void SaveEditorFields()
+    {
+        if (_host == null || _editing == null) return;
+
+        _editing.Group = GroupBox.Text?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(_editing.Group))
+            SnippetGroupOps.Add(_host.Settings, _editing.Group);
+
+        _host.SaveSettings();
+        RefreshList();
+        RefreshGroups();
     }
 
     private void OnNewGroupClick(object sender, RoutedEventArgs e)
@@ -488,6 +698,8 @@ public partial class HotstringView : UserControl
         _editing.Comment = CommentBox.Text ?? "";
         _editing.Apps = AppsBox.Text?.Trim() ?? "";
         _editing.Group = GroupBox.Text?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(_editing.Group))
+            SnippetGroupOps.Add(_host.Settings, _editing.Group);   // 手打的新组名立刻登记，侧栏马上出现
         _editing.Enabled = EnabledBox.IsChecked == true;
 
         _host.SaveSettings();
@@ -496,6 +708,7 @@ public partial class HotstringView : UserControl
          * 以前这里调 Refresh()：它会重建分组下拉的选项、再把文本赋回输入框，
          * 于是用户在下拉框里打字打到一半就被清掉 —— 表现就是"分组改不了"。 */
         RefreshList();
+        RefreshGroups();
         EditTitle.Text = Loc.F("正在编辑：{0}",
             StripPrefix(_editing.Trigger, _host.Settings.Hotstring.EffectivePrefix));
         StatusText.Text = Loc.T("已保存");
@@ -522,6 +735,12 @@ public partial class HotstringView : UserControl
 
         _editing = entry;
         Refresh();
+
+        /* ⚠ Refresh() 里的 SyncEditorToSelection 只在"选中的不是当前编辑项"时才 LoadEditor，
+         * 而这里 _editing 已经等于新条目 —— 于是编辑区永远不显示，
+         * 用户点了「新增」只看列表多一行、右边空空。必须显式打开一次。 */
+        LoadEditor(entry);
+
         KeyBox.Focus();
         KeyBox.CaretIndex = KeyBox.Text.Length;
     }

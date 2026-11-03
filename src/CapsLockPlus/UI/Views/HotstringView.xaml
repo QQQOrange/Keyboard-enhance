@@ -109,7 +109,10 @@
                              Margin="10,6,10,12"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              SelectionChanged="OnGroupChanged"
-                             ContextMenuOpening="OnGroupContextMenuOpening">
+                             ContextMenuOpening="OnGroupContextMenuOpening"
+                             AllowDrop="True"
+                             DragEnter="OnGroupDragOver" DragOver="OnGroupDragOver"
+                             DragLeave="OnGroupDragLeave" Drop="OnGroupDrop">
                         <!-- 菜单挂在**每个列表项**上：WPF 只有在事件源元素自己带 ContextMenu 时才会
                              抛 ContextMenuOpening 并打开菜单；挂在 ListBox 上是不会冒泡触发的。 -->
                         <ListBox.ItemContainerStyle>
@@ -202,7 +205,9 @@
                                  Margin="0,0,0,4"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  SelectionChanged="OnSelectionChanged"
-                                 ContextMenuOpening="OnEntryContextMenuOpening">
+                                 ContextMenuOpening="OnEntryContextMenuOpening"
+                                 PreviewMouseLeftButtonDown="OnEntryMouseDown"
+                                 PreviewMouseMove="OnEntryMouseMove">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource RowItem}">
                                     <Setter Property="ContextMenu">
@@ -289,18 +294,45 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <ComboBox Grid.Column="0" x:Name="GroupBox" IsEditable="True"
-                                  Style="{StaticResource ComboBox.Base}"
-                                  SelectionChanged="OnEditorChanged" LostFocus="OnEditorChanged"
-                                  KeyUp="OnEditorChanged"
-                                  ToolTip="{loc:T '可以选已有分组，也可以直接输入新名字'}" />
-                        <Button Grid.Column="1" Content="{loc:T '新建…'}" Style="{StaticResource Button.Base}"
+
+                        <!-- 用 TextBox 而不是可编辑 ComboBox：下拉框在失焦时会把用户手打的新组名
+                             还原成"选中的那一项"，这正是"分组改不了"的来源。 -->
+                        <TextBox Grid.Column="0" x:Name="GroupBox" Style="{StaticResource TextBox.Base}"
+                                 MinHeight="36" VerticalContentAlignment="Center"
+                                 TextChanged="OnEditorChanged"
+                                 ToolTip="{loc:T '可以直接输入新组名；也可以点右边的「选择…」从已有分组里挑'}" />
+
+                        <Button Grid.Column="1" Content="{loc:T '选择…'}" Style="{StaticResource Button.Base}"
+                                Padding="9,5" Margin="6,0,0,0" Click="OnPickGroupClick"
+                                ToolTip="{loc:T '从现有分组里选一个'}" />
+                        <Button Grid.Column="2" Content="{loc:T '新建…'}" Style="{StaticResource Button.Base}"
                                 Padding="9,5" Margin="6,0,0,0" Click="OnNewGroupClick"
                                 ToolTip="{loc:T '新建一个分组'}" />
                     </Grid>
                     <TextBlock Style="{StaticResource Text.Tertiary}" Margin="0,5,0,0" TextWrapping="Wrap"
-                               Text="{loc:T '换一个分组 = 把这条别名移过去。'}" />
+                               Text="{loc:T '换一个分组 = 把这条别名移过去；也可以把列表里的别名直接拖到左边的分组上。'}" />
+
+                    <!-- 分组选择弹层 -->
+                    <Popup x:Name="GroupPicker" StaysOpen="False" AllowsTransparency="True"
+                           Placement="Bottom" PlacementTarget="{Binding ElementName=GroupBox}">
+                        <Border Background="{DynamicResource Brush.SurfaceAlt}"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
+                                CornerRadius="10" Padding="5" Margin="8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.32" Color="#000000" />
+                            </Border.Effect>
+                            <StackPanel MinWidth="180">
+                                <TextBlock Text="{loc:T '选一个分组'}" Style="{StaticResource Text.Tertiary}"
+                                           Margin="9,6,9,4" />
+                                <ListBox x:Name="GroupPickerList" Background="Transparent" BorderThickness="0"
+                                         ItemContainerStyle="{StaticResource RowItem}" MaxHeight="220"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         PreviewMouseLeftButtonUp="OnGroupPickerPicked" />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
 
                     <CheckBox x:Name="EnabledBox" Content="{loc:T '启用这个别名'}" Margin="0,14,0,0"
                               Click="OnEditorChanged" />

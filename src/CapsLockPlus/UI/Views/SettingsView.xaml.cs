@@ -1107,7 +1107,10 @@ public partial class SettingsView : UserControl
         AdminBadge.Visibility = admin ? Visibility.Visible : Visibility.Collapsed;
         AdminBadgeText.Text = admin ? Loc.T("管理员") : Loc.T("普通权限");
         if (RunAsAdminBox != null) RunAsAdminBox.IsChecked = _host?.Settings.Global.RunAsAdmin ?? false;
-        PermissionText.Text = Core.ElevationHelper.PermissionSummary();
+        PermissionText.Text = admin
+            ? Core.ElevationHelper.PermissionSummary()
+              + "\n" + Loc.T("⚠ 如果你发现热键没反应（按 Tab 只会切换焦点），先把「以管理员身份启动」关掉再重启 —— 部分机器上管理员权限会让键盘钩子收不到按键。")
+            : Core.ElevationHelper.PermissionSummary();
         RefreshAdminState();
     }
 

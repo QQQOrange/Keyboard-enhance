@@ -356,7 +356,7 @@
                             -->
                             <CheckBox Grid.Column="1" x:Name="RunAsAdminBox" Style="{StaticResource ToggleSwitch}"
                                       VerticalAlignment="Center" Click="OnRunAsAdminChanged"
-                                      ToolTip="{loc:T '开启后下次启动会弹一次 UAC 确认；关闭则一直以普通权限运行'}" />
+                                      ToolTip="{loc:T '开启后下次启动会弹一次 UAC 确认。注意：管理员权限下部分机器（安全软件 / UIPI）会让键盘钩子收不到按键，热键会完全失效 —— 遇到这种情况请关掉它'}" />
                         </Grid>
 
                         <!--
