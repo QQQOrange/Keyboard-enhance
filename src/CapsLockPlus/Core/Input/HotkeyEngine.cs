@@ -24,7 +24,7 @@ namespace CapsLockPlus.Core.Input;
 ///   * 组合键支持长按自动重复（移动 / 选择光标时手感更顺）；
 ///   * 状态机可被界面实时暂停 / 恢复。
 /// </summary>
-public sealed class HotkeyEngine : IDisposable
+public sealed partial class HotkeyEngine : IDisposable
 {
     private readonly KeyboardHook _hook = new();
     private readonly ActionQueue _queue;
@@ -1310,6 +1310,12 @@ public sealed class HotkeyEngine : IDisposable
         if (!Enabled || Suspended) return false;                // 暂停状态
 
         var settings = _settings();
+
+        /* ---- 0.4 文本片段：打完触发词按空格就替换 ----
+         *
+         * 放在触发键判定之前、但内部会跳过"按住触发键"的情形——
+         * 用户按住 Caps 时按空格可能是在用层里的绑定，不能被这里抢走。 */
+        if (!injected && HandleHotstringKey(settings, vk, down)) return true;
 
         /* ---- 0.5 在判定触发键之前，先记录修饰键的按下状态 ----
          *

@@ -120,6 +120,62 @@ public sealed class Snippet
 }
 
 
+/// <summary>
+/// 文本片段的全局设置。
+/// </summary>
+public sealed class HotstringOptions
+{
+    /// <summary>
+    /// 触发前缀符号（**只有一个**）。空字符串 = 不需要前缀，直接打触发词。
+    ///
+    /// 以前是"好几个符号都认"，实际用起来很别扭：打到句末的逗号、问号
+    /// 都可能把后面的词凑成一个片段。现在只有一个，用户自己定。
+    /// </summary>
+    public string Prefix { get; set; } = "/";
+
+    /// <summary>用全角符号（把 <see cref="Prefix"/> 按全角输出，如 "/" → "／"）。</summary>
+    public bool FullWidth { get; set; }
+
+    /// <summary>打完触发词再按空格就替换（推荐）；关掉则只认触发键（Caps+Tab）。</summary>
+    public bool ExpandOnSpace { get; set; } = true;
+
+    /// <summary>替换掉那个空格（true）还是保留它（false）。</summary>
+    public bool SwallowSpace { get; set; } = true;
+
+    /// <summary>列表里优先显示备注（没备注才显示触发词）。</summary>
+    public bool ShowNoteFirst { get; set; } = true;
+
+    /// <summary>实际生效的前缀字符（考虑全角设置）。</summary>
+    public string EffectivePrefix => FullWidth ? ToFullWidthOrSelf(Prefix) : (Prefix ?? "");
+
+    /// <summary>把半角符号换成全角（只处理常见 ASCII 符号）。</summary>
+    public static string ToFullWidthOrSelf(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (char c in s) sb.Append(ToFullWidthOrSelf(c));
+        return sb.ToString();
+    }
+
+    public static char ToFullWidthOrSelf(char c) => c switch
+    {
+        '/' => '／',
+        '\\' => '＼',
+        ',' => '，',
+        '.' => '．',
+        ';' => '；',
+        ':' => '：',
+        '=' => '＝',
+        '-' => '－',
+        '?' => '？',
+        '!' => '！',
+        '+' => '＋',
+        '#' => '＃',
+        '@' => '＠',
+        _ => c,
+    };
+}
+
 public sealed class QEntry
 {
     /// <summary>
@@ -146,6 +202,17 @@ public sealed class QEntry
 
     public string Key { get; set; } = "";
     public string Value { get; set; } = "";
+
+    /// <summary>
+    /// 分组（文本片段用）。空 = 未分组。
+    ///
+    /// 片段多了以后列表会长得没法看，同一个主题（"地址""账号""常用语"）放一组，
+    /// 列表里按组显示、组内按触发词排序。
+    /// </summary>
+    public string Group { get; set; } = "";
+
+    /// <summary>是否启用（文本片段用；关掉就只是留在列表里不参与替换）。</summary>
+    public bool Enabled { get; set; } = true;
     public string Comment { get; set; } = "";
 
     /// <summary>
@@ -896,6 +963,9 @@ public sealed class AppSettings
     public List<QEntry> Run { get; set; } = new();
     public List<QEntry> Web { get; set; } = new();
     public List<QEntry> HotStrings { get; set; } = new();
+
+    /// <summary>文本片段的全局设置（前缀符号、全/半角、空格触发）。</summary>
+    public HotstringOptions Hotstring { get; set; } = new();
 
     /// <summary>触发键列表（可多个；每个绑定一层）。</summary>
     public List<TriggerKey> Triggers { get; set; } = new();

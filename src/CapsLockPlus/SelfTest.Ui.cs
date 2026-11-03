@@ -1058,7 +1058,7 @@ public static partial class SelfTest
             string.Join(",", order));
         Check("导航顺序表第一项是「快速上手」", order[0] == "guide", order[0]);
         Check("导航顺序表最后一项是「关于」", order[^1] == "about", order[^1]);
-        Check("导航顺序表是 11 项（与侧栏一致）", order.Length == 11,
+        Check("导航顺序表是 12 项（与侧栏一致）", order.Length == 12,
             $"{order.Length} 项");
 
         /* 托盘提示必须写明能双击 —— 托盘图标本身没有任何可见提示，

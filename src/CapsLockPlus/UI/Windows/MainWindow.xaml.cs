@@ -139,7 +139,7 @@ public partial class MainWindow : Window
     /// </summary>
     internal static readonly string[] NavOrderForTest =
     {
-        "guide", "keys", "qbar", "clipboard", "macros",
+        "guide", "keys", "hotstrings", "qbar", "clipboard", "macros",
         "layers", "backup", "settings", "test", "help", "about",
     };
 
@@ -166,6 +166,7 @@ public partial class MainWindow : Window
         UserControl view = page switch
         {
             "keys" => new KeysView(),
+            "hotstrings" => new HotstringView(),
             "qbar" => new QbarSettingsView(),
             "clipboard" => new ClipboardView(),
             "macros" => new MacrosView(),
@@ -182,6 +183,7 @@ public partial class MainWindow : Window
         {
             case GuideView g: g.Initialize(_host); break;
             case KeysView k: k.Initialize(_host); break;
+            case HotstringView hs: hs.Initialize(_host); break;
             case QbarSettingsView q: q.Initialize(_host); break;
             case ClipboardView c: c.Initialize(_host); break;
             case MacrosView m: m.Initialize(_host); break;
