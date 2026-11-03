@@ -1287,6 +1287,29 @@ public static partial class SelfTest
             e.Dispose();
         }
 
+        /* ---- 录键窗口必须真的显示成一个窗口 ----
+         *
+         * 用户报"点『按下要发送的键』什么都不出现"。实测发现窗口是 1×1082：
+         * 屏幕中间一条 1 像素的缝 —— 分层窗口 + SizeToContent=Height 被量成了这样。
+         * 这类"窗口在、但只有一个像素"的问题肉眼极难发现，必须用断言钉住。 */
+        {
+            var cap = new UI.Windows.KeyCaptureWindow();
+            try
+            {
+                cap.Show();
+                cap.UpdateLayout();
+                DoEvents(30);
+                Check("录键窗口的宽度正常（不是被量成 1 像素）",
+                    cap.ActualWidth >= 200, $"w={cap.ActualWidth:F0} h={cap.ActualHeight:F0}");
+                Check("录键窗口的高度正常",
+                    cap.ActualHeight >= 120, $"w={cap.ActualWidth:F0} h={cap.ActualHeight:F0}");
+            }
+            finally
+            {
+                try { cap.Close(); } catch { }
+            }
+        }
+
         /* ---- 未完成的「自定义按键」不能在重启后还留着 ----
          *
          * 用户报：只在分类里点了「自定义按键」、没设要发送的键，退出重进后那个键

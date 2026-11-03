@@ -1,6 +1,7 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using CapsLockPlus.Core;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -60,6 +61,21 @@ public partial class UpdatePromptWindow : Window
                     ? Loc.T("没有填写 GitHub 个人访问令牌，这一版不能自动下载。点下面的地址用浏览器下载：")
                     : Loc.T("这一版没有与你系统匹配的安装包，程序里不自动下载。点下面的地址到下载页自己挑一个："));
         }
+
+        /* 兜底：这是一个"分层窗口 + SizeToContent + CenterScreen"的组合，
+         * 个别机器上会被量成 1 像素宽（录键窗口就因此变成了一条缝，用户完全看不见）。
+         * 窗口显示出来后检查一次，宽度异常就改成固定尺寸并摆到屏幕中间。 */
+        Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (ActualWidth >= 200) return;
+            CoreLog.Warn($"更新提示窗宽度异常（{ActualWidth:F0}px），改用固定尺寸");
+            SizeToContent = SizeToContent.Manual;
+            Width = 520;
+            Height = Math.Min(620, SystemParameters.WorkArea.Height - 80);
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = (SystemParameters.WorkArea.Width - Width) / 2;
+            Top = (SystemParameters.WorkArea.Height - Height) / 2;
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     /// <summary>

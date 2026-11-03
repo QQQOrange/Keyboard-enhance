@@ -114,27 +114,126 @@ public partial class KeyCaptureWindow : Window
     public static void Capture(Action<CaptureResult> onCaptured, IEnumerable<int>? prefixKeys = null,
                               string? title = null)
     {
-        if (KeyCaptureSink.Current != null)
+        /* 上一次的窗口如果还活着（可能用户没看见它），先关掉。
+         * 不能直接 return —— 那会让"再点一次"永远没反应，正是用户报的现象。 */
+        if (_open != null)
         {
-            CoreLog.Info("已经有捕获窗在等待按键，忽略这次重复打开");
+            CoreLog.Warn("上一次的捕获窗还在（可能没显示出来），先关掉再开新的");
+            try { _open.Close(); } catch { }
+            _open = null;
+        }
+
+        bool plain = Environment.GetEnvironmentVariable("CLP_CAPTURE_PLAIN") == "1";
+        KeyCaptureWindow dlg;
+        try
+        {
+            dlg = Create(plain);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error($"创建捕获窗失败：{ex.Message}");
+            AppDialog.Error(null, Loc.F("打开录键窗口失败：{0}", ex.Message), Loc.T("自定义按键"));
             return;
         }
 
-        var dlg = new KeyCaptureWindow { PrefixKeys = prefixKeys == null ? new HashSet<int>() : new HashSet<int>(prefixKeys) };
-        if (!string.IsNullOrWhiteSpace(title)) dlg.Title = title!;
-        dlg.Closed += (_, _) =>
+        KeyCaptureWindow Create(bool usePlain)
         {
-            try { onCaptured(new CaptureResult(dlg.CapturedCombo, dlg.CapturedKey, dlg.CapturedMods)); }
-            catch (Exception ex) { CoreLog.Swallow(ex, "捕获键回调"); }
+            var w = new KeyCaptureWindow(usePlain)
+            {
+                PrefixKeys = prefixKeys == null ? new HashSet<int>() : new HashSet<int>(prefixKeys),
+            };
+            if (!string.IsNullOrWhiteSpace(title)) w.Title = title!;
+            return w;
+        }
+
+        void Wire(KeyCaptureWindow w)
+        {
+            w.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_open, w)) _open = null;
+                try { onCaptured(new CaptureResult(w.CapturedCombo, w.CapturedKey, w.CapturedMods)); }
+                catch (Exception ex) { CoreLog.Swallow(ex, "捕获键回调"); }
+            };
+        }
+
+        try
+        {
+            Wire(dlg);
+            CoreLog.Info($"打开键位捕获窗（非模态，plain={plain}）");
+            dlg.Show();
+            dlg.Activate();
+            _open = dlg;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error($"显示捕获窗失败：{ex.Message}");
+            AppDialog.Error(null, Loc.F("打开录键窗口失败：{0}", ex.Message), Loc.T("自定义按键"));
+            return;
+        }
+
+        /* 400ms 后确认它真的显示出来了。没显示就换朴素窗口重开一次 ——
+         * 分层窗口在个别机器上"窗口在、内容不画"，用户看到的就是"没反应"。 */
+        var check = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        check.Tick += (_, _) =>
+        {
+            check.Stop();
+
+            /* 只看 IsVisible —— 尺寸在 SizeToContent 下可能还没算好（曾经因为尺寸为 0
+             * 误判"没显示出来"，把刚打开的窗口关掉重开，用户会觉得窗口一闪就没了）。 */
+            bool ok = dlg.IsVisible;
+            CoreLog.Info($"捕获窗属性：SizeToContent={dlg.SizeToContent} Width={dlg.Width} Height={dlg.Height} " +
+                         $"WindowStyle={dlg.WindowStyle} 透明={dlg.AllowsTransparency}");
+            CoreLog.Info($"捕获窗状态：IsVisible={dlg.IsVisible} " +
+                         $"尺寸={dlg.ActualWidth:F0}x{dlg.ActualHeight:F0} 位置=({dlg.Left:F0},{dlg.Top:F0}) " +
+                         $"焦点={dlg.IsKeyboardFocusWithinForTest()}");
+            if (ok) return;
+
+            CoreLog.Warn("捕获窗没显示出来，改用朴素窗口重开");
+            try { dlg.Close(); } catch { }
+            try
+            {
+                var plainWin = Create(true);
+                Wire(plainWin);
+                plainWin.Show();
+                plainWin.Activate();
+                _open = plainWin;
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error($"朴素捕获窗也失败：{ex.Message}");
+                AppDialog.Error(null,
+                    Loc.T("录键窗口打不开。请把日志里「捕获窗状态」那几行发给我们。"),
+                    Loc.T("自定义按键"));
+            }
         };
-        CoreLog.Info("打开键位捕获窗（非模态）");
-        dlg.Show();
-        dlg.Activate();
+        check.Start();
     }
 
-    public KeyCaptureWindow()
+    /// <summary>诊断用：窗口有没有拿到键盘焦点。</summary>
+    internal bool IsKeyboardFocusWithinForTest() => IsKeyboardFocusWithin;
+
+    /// <summary>当前打开的捕获窗（用于处理"上一次没关掉"的情况）。</summary>
+    private static KeyCaptureWindow? _open;
+
+    /// <summary>
+    /// <paramref name="plain"/>=true 时用不透明窗口。
+    ///
+    /// 为什么需要：这个窗口是 `AllowsTransparency=True` 的分层窗口 —— 观感好，
+    /// 但在个别显卡/驱动组合上会"窗口在、内容不画"，用户看到的就是"点了没反应、
+    /// 录制页面不出现"。所以自动兜底：透明窗没显示出来就换成朴素窗口重开一次。
+    /// </summary>
+    public KeyCaptureWindow(bool plain = false)
     {
         InitializeComponent();
+
+        if (plain)
+        {
+            AllowsTransparency = false;
+            WindowStyle = WindowStyle.SingleBorderWindow;
+            ResizeMode = ResizeMode.NoResize;
+            Background = (Brush)FindResource("Brush.Surface");
+            CoreLog.Info("捕获窗改用朴素窗口（不透明）");
+        }
         _proc = HookCallback;
 
         /* 第三条来源：WPF 自己的预览事件。

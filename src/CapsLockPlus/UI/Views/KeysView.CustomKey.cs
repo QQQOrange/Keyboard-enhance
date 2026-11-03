@@ -129,39 +129,22 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
 
-        var spec = CurrentCustomSpec();
+        /* 统一走 KeyCaptureWindow.Capture：
+         *   · 非模态 —— 不会因为"看不见的模态窗"把整个程序卡死；
+         *   · 上一次没关掉的窗口会先被收掉，不会出现"再点一次没反应"；
+         *   · 窗口没显示出来会自动换朴素窗口重开，并把状态写进日志。 */
+        UI.Windows.KeyCaptureWindow.Capture(
+            r =>
+            {
+                CoreLog.Info($"自定义按键：捕获结果=[{r.Combo ?? "(空)"}]");
+                if (string.IsNullOrEmpty(r.Combo)) return;
 
-        /* 用 Show() 而不是 ShowDialog()：
-         * ShowDialog 会阻塞界面线程，一旦窗口因为任何原因没显示出来（透明窗口 + Owner 不可见
-         * 时出现过），用户看到的就是"整个程序卡死、识别按键的页面也不出现"。
-         * 非模态没有这个风险：窗口没出来也只是没出来，主界面照样能动。
-         * 捕获结果通过 Closed 读回。 */
-        var dlg = new UI.Windows.KeyCaptureWindow
-        {
-            PrefixKeys = TriggerPrefixKeys(),
-        };
-        CoreLog.Info("自定义按键：打开捕获窗（非模态）");
-        dlg.Closed += (_, _) =>
-        {
-            string? captured = dlg.CapturedCombo;
-            CoreLog.Info($"自定义按键：捕获窗关闭，结果=[{captured ?? "(空)"}]");
-            if (string.IsNullOrEmpty(captured)) return;
-
-            var latest = CurrentCustomSpec();
-            latest.Key = captured;
-            SaveCustomSpec(latest);
-            ShowBindStatus(Loc.F("已设置要发送的键：{0}", CustomKeyRunner.ComboDisplay(captured)));
-        };
-        dlg.Show();
-        dlg.Activate();
-        return;
-
-        /* 存**完整组合键**（含修饰键），发送时原样重放。
-         * 这里刻意不碰 _layer / _selectedKey：捕获的是"要发出去的键"，
-         * 跟"当前在编辑键盘上的哪个键"是两件事。 */
-        spec.Key = dlg.CapturedCombo;
-        SaveCustomSpec(spec);
-        ShowBindStatus(Loc.F("已设置要发送的键：{0}", CustomKeyRunner.ComboDisplay(spec.Key)));
+                var latest = CurrentCustomSpec();
+                latest.Key = r.Combo!;
+                SaveCustomSpec(latest);
+                ShowBindStatus(Loc.F("已设置要发送的键：{0}", CustomKeyRunner.ComboDisplay(latest.Key)));
+            },
+            TriggerPrefixKeys());
     }
 
     /// <summary>当前配置的触发键（捕获时要告诉捕获窗口，免得把前缀键录成目标键）。</summary>

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
@@ -461,6 +461,12 @@ public partial class KeysView : UserControl
         foreach (ComboBoxItem tb in CategoryBoxType.Items)
         {
             if (tb.Tag as string == info?.Category) { CategoryBoxType.SelectedItem = tb; break; }
+        }
+        /* 自定义按键面板里的那个分类下拉也要同步 ——
+         * 少它一个，切到这个键时分类显示为空（见用户反馈"分类里面是空的"）。 */
+        foreach (ComboBoxItem cb in CategoryBoxCustom.Items)
+        {
+            if (cb.Tag as string == info?.Category) { CategoryBoxCustom.SelectedItem = cb; break; }
         }
 
         _suppressEvents = false;

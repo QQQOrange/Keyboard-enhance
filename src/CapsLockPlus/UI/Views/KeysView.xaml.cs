@@ -493,6 +493,7 @@ public partial class KeysView : UserControl
         string? keepWin = (CategoryBoxWinBind.SelectedItem as ComboBoxItem)?.Tag as string;
         string? keepWeb = (CategoryBoxWeb.SelectedItem as ComboBoxItem)?.Tag as string;
         string? keepType = (CategoryBoxType.SelectedItem as ComboBoxItem)?.Tag as string;
+        string? keepCustom = (CategoryBoxCustom.SelectedItem as ComboBoxItem)?.Tag as string;
 
         /* 隐藏动作（openUrl / runProgram）不参与分类列表：
          * 它们只为老配置的绑定保留执行能力，不该再出现在界面上。 */
@@ -525,6 +526,9 @@ public partial class KeysView : UserControl
         Restore(CategoryBoxWinBind, keepWin);
         Restore(CategoryBoxWeb, keepWeb);
         Restore(CategoryBoxType, keepType);
+        /* 「自定义按键」面板里还有第五个分类下拉。少了这一行，
+         * 一进这个面板分类就是空的（用户看到的就是"分类里面是空的"）。 */
+        Restore(CategoryBoxCustom, keepCustom);
 
         static void Restore(ComboBox box, string? tag) => SelectTag(box, tag, fallbackFirst: true);
 
