@@ -28,7 +28,7 @@
 
                 <Button Grid.Column="1" Content="{loc:T '恢复本页默认设置'}" Style="{StaticResource Button.Base}"
                         Margin="16,0,0,0" Click="OnResetClick"
-                        ToolTip="{loc:T '只把「按键映射」这一页的基础层绑定恢复成默认；层、触发键、宏、片段都不动'}" />
+                        ToolTip="{loc:T '只把「按键映射」这一页的基础层绑定恢复成默认；层、触发键、宏、别名都不动'}" />
             </Grid>
         </Border>
 

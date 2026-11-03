@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using CapsLockPlus.Core;
@@ -14,6 +14,13 @@ public static class WindowChrome
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+
+    /* Win11 起可以单独指定标题栏 / 边框 / 标题文字的颜色。
+     * 不指定的话，深色模式是**纯黑**、浅色模式是**纯白** —— 跟应用里
+     * #1A1E27 / #F5F8FC 这样的皮肤颜色放在一起就是"一条突兀的横杠"。 */
+    private const int DWMWA_BORDER_COLOR = 34;
+    private const int DWMWA_CAPTION_COLOR = 35;
+    private const int DWMWA_TEXT_COLOR = 36;
 
     public enum BackdropType
     {
@@ -38,11 +45,40 @@ public static class WindowChrome
 
             int type = (int)backdrop;
             DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref type, sizeof(int));
+
+            /* 标题栏颜色跟皮肤走：用「比正文稍亮/稍暗一档」的 SurfaceAlt，
+             * 既不纯黑也不纯白，和对话框正文是同一条色阶。 */
+            if (ThemeColor("Brush.SurfaceAlt") is int caption)
+                DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
+            if (ThemeColor("Brush.Border") is int border)
+                DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref border, sizeof(int));
+            if (ThemeColor("Brush.TextPrimary") is int text)
+                DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ref text, sizeof(int));
         }
         catch (Exception ex)
         {
             CoreLog.Warn("设置窗口外观失败：" + ex.Message);
         }
+    }
+
+    /// <summary>从主题里取一个颜色，转成 DWM 要的 COLORREF（0x00BBGGRR）。</summary>
+    private static int? ThemeColor(string brushKey)
+    {
+        try
+        {
+            if (System.Windows.Application.Current?.TryFindResource(brushKey)
+                is System.Windows.Media.SolidColorBrush brush)
+            {
+                var c = brush.Color;
+                return c.R | (c.G << 8) | (c.B << 16);
+            }
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "读取主题颜色");
+        }
+
+        return null;
     }
 
     public static void EnableRounded(Window window)

@@ -257,7 +257,7 @@
                     <!-- 规则分享 -->
                     <StackPanel>
                         <TextBlock Text="{loc:T '规则分享'}" Style="{StaticResource Text.Body}" />
-                        <TextBlock Text="{loc:T '导出基础改键、文本片段、双击动作、组合键、按应用层（不含层内绑定）。把别人的分享码粘进来即可导入，只添加缺失项。'}"
+                        <TextBlock Text="{loc:T '导出基础改键、别名替换、双击动作、组合键、按应用层（不含层内绑定）。把别人的分享码粘进来即可导入，只添加缺失项。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
                         <TextBox x:Name="ShareBox" Margin="0,8,0,0" MinHeight="72" AcceptsReturn="True"
                                  TextWrapping="Wrap" Style="{StaticResource TextBox.Base}" />

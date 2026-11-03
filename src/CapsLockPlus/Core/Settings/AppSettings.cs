@@ -346,6 +346,15 @@ public sealed class GlobalOptions
     public List<Snippet> Snippets { get; set; } = new();
 
     /// <summary>
+    /// 别名替换的分组名（用户手动建的）。
+    ///
+    /// 以前分组是从片段身上"推"出来的 —— 空分组根本存不下来，
+    /// 于是用户没法"先建个组再往里放"。现在单独存一份，
+    /// 与片段里实际用到的组名取并集显示。
+    /// </summary>
+    public List<string> SnippetGroups { get; set; } = new();
+
+    /// <summary>
     /// 双击动作：任意键连按两次触发一个动作。默认空，不影响任何现有行为。
     /// </summary>
     public List<KeyGesture> KeyGestures { get; set; } = new();

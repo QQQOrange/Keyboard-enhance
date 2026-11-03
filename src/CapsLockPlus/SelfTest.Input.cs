@@ -1349,6 +1349,18 @@ public static partial class SelfTest
             }
         }
 
+        /* ---- 别名替换的分组列表 ---- */
+        {
+            var sG = DefaultSettings.Create();
+            sG.Global.SnippetGroups = new List<string> { " 常用 ", "常用", "", "  ", "账号", "账号" };
+            SettingsStore.Normalize(sG);
+
+            Check("分组列表：去掉空白项", sG.Global.SnippetGroups.Count == 2,
+                string.Join("|", sG.Global.SnippetGroups));
+            Check("分组列表：去重且去空白", sG.Global.SnippetGroups.SequenceEqual(new[] { "常用", "账号" }),
+                string.Join("|", sG.Global.SnippetGroups));
+        }
+
         /* ---- 崩溃现场快照 ---- */
         {
             string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(),

@@ -738,6 +738,15 @@ public static class SettingsStore
         s.Run ??= new List<QEntry>();
         s.Web ??= new List<QEntry>();
         s.HotStrings ??= new List<QEntry>();
+
+        /* 别名替换的分组：去掉空白项、去重（忽略大小写），保持用户顺序。 */
+        s.Global.SnippetGroups ??= new List<string>();
+        var seenGroups = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+        s.Global.SnippetGroups = s.Global.SnippetGroups
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Where(seenGroups.Add)
+            .ToList();
         s.Triggers ??= new List<TriggerKey>();
         s.Layers ??= new List<LayerOptions>();
         s.Macros ??= new List<Macro>();

@@ -300,6 +300,15 @@ public static class RenderTools
             count++;
         }
 
+        /* 右键菜单样式（`CLP_RENDER_MENU=1` 时额外出一张）。
+         * 菜单是 Popup，主窗口截图里没有它，所以单独渲染。 */
+        if (Environment.GetEnvironmentVariable("CLP_RENDER_MENU") == "1")
+        {
+            main.Navigate("hotstrings");
+            Pump(200);
+            RenderMenuShot(outDir);
+        }
+
         main.Close();
 
         /* 亮度横条。
@@ -651,6 +660,65 @@ public static class RenderTools
         };
         timer.Start();
         Dispatcher.PushFrame(frame);
+    }
+
+    /// <summary>
+    /// 出图：右键菜单的样式（诊断用，`CLP_RENDER_MENU=1 --render` 才会跑）。
+    ///
+    /// 菜单是 Popup，不在主窗口的视觉树里，所以主窗口截图拍不到它 ——
+    /// 这里单独对一个 ContextMenu 做 RenderTargetBitmap。
+    /// </summary>
+    private static void RenderMenuShot(string outDir)
+    {
+        try
+        {
+            var menu = new System.Windows.Controls.ContextMenu();
+
+            menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "重命名分组…" });
+            menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "删除分组" });
+            menu.Items.Add(new System.Windows.Controls.Separator());
+
+            var move = new System.Windows.Controls.MenuItem { Header = "移到分组" };
+            move.Items.Add(new System.Windows.Controls.MenuItem { Header = "常用", IsCheckable = true, IsChecked = true });
+            move.Items.Add(new System.Windows.Controls.MenuItem { Header = "账号", IsCheckable = true });
+            move.Items.Add(new System.Windows.Controls.MenuItem { Header = "未分组", IsCheckable = true });
+            move.Items.Add(new System.Windows.Controls.Separator());
+            move.Items.Add(new System.Windows.Controls.MenuItem { Header = "新建分组…" });
+            menu.Items.Add(move);
+            menu.Items.Add(new System.Windows.Controls.Separator());
+            menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "删除这个别名" });
+
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Absolute;
+            menu.HorizontalOffset = 200;
+            menu.VerticalOffset = 200;
+            menu.IsOpen = true;
+            Pump(400);
+
+            menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            menu.Arrange(new Rect(menu.DesiredSize));
+            menu.UpdateLayout();
+            Pump(150);
+
+            int w = Math.Max(1, (int)Math.Ceiling(menu.ActualWidth));
+            int h = Math.Max(1, (int)Math.Ceiling(menu.ActualHeight));
+
+            /* 留一圈边距给阴影，否则会被裁掉。 */
+            var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                w + 28, h + 28, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            bmp.Render(menu);
+
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+            using var fs = System.IO.File.Create(Path.Combine(outDir, "menu.png"));
+            encoder.Save(fs);
+
+            menu.IsOpen = false;
+            CoreLog.Info($"菜单截图已保存：menu.png（{w}x{h}）");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("渲染菜单截图失败：" + ex.Message);
+        }
     }
 
     private static void Save(Window window, string path)

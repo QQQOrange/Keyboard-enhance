@@ -3,17 +3,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus.UI.Views;
 
 /// <summary>
-/// 「文本片段」页面：三栏布局 —— 左分组、中间全部片段、右边编辑。
+/// 「别名替换」页：三栏 —— 左分组、中列表、右编辑。
 ///
-/// 数据源是 <see cref="GlobalOptions.Snippets"/>（就是真正参与展开的那一份），
-/// 以前它和「文字替换」两套并存，用户根本分不清编辑哪个才会生效 —— 现在只有这一个入口。
-/// 没选中片段时右侧编辑栏整块隐藏。
+/// 数据源是 <see cref="GlobalOptions.Snippets"/>（真正参与展开的那一份）。
+/// 分组既可以从设置里的 <see cref="GlobalOptions.SnippetGroups"/> 手动新建，
+/// 也会自动收进别名身上已经用到的组名 —— 以前只能"先有别名才有组"，
+/// 用户没法先建一个空分组再往里放东西。
 /// </summary>
 public partial class HotstringView : UserControl
 {
@@ -27,6 +29,7 @@ public partial class HotstringView : UserControl
         public string? Group { get; init; }
         public string Label { get; init; } = "";
         public int Count { get; init; }
+        public bool IsReal => Group is { Length: > 0 };
         public override string ToString() => Label;
     }
 
@@ -35,7 +38,7 @@ public partial class HotstringView : UserControl
         public Snippet Snippet { get; init; } = new();
         public string KeyLabel { get; init; } = "";
 
-        /// <summary>列表左侧的小方块里显示的首字母。</summary>
+        /// <summary>列表左侧小方块里的首字母。</summary>
         public string Initial { get; init; } = "";
 
         /// <summary>右侧显示的分组名（没分组就是空）。</summary>
@@ -67,35 +70,48 @@ public partial class HotstringView : UserControl
 
     private List<Snippet> Entries => _host?.Settings.Global.Snippets ?? new List<Snippet>();
 
+    private List<string> CustomGroups => _host?.Settings.Global.SnippetGroups ?? new List<string>();
+
     private string? CurrentGroup => (GroupList.SelectedItem as GroupRow)?.Group;
+
+    /// <summary>所有分组：手动建的 ∪ 别名里用到的，去重排序。</summary>
+    private List<string> AllGroups()
+    {
+        return CustomGroups
+            .Concat(Entries.Select(x => x.Group?.Trim())!)
+            .Where(g => !string.IsNullOrWhiteSpace(g))
+            .Select(g => g!)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(g => g, StringComparer.CurrentCulture)
+            .ToList();
+    }
+
+    // ---------------- 刷新 ----------------
 
     private void Refresh()
     {
         if (_host == null) return;
+        RefreshGroups();
+        RefreshList();
+        SyncEditorToSelection();
+    }
 
-        var opt = _host.Settings.Hotstring;
-        string filter = FilterBox.Text?.Trim() ?? "";
+    private void RefreshGroups()
+    {
+        if (_host == null) return;
+
         string? keepGroup = CurrentGroup;
-
         var all = Entries.ToList();
+        var groups = AllGroups();
 
-        var groups = all.Select(x => x.Group?.Trim())
-            .Where(g => !string.IsNullOrEmpty(g))
-            .Distinct(StringComparer.CurrentCulture)
-            .OrderBy(g => g, StringComparer.CurrentCulture)
-            .ToList();
-
-        var groupRows = new List<GroupRow>
-        {
-            new() { Group = null, Label = Loc.T("全部"), Count = all.Count },
-        };
-        groupRows.AddRange(groups.Select(g => new GroupRow
+        var rows = new List<GroupRow> { new() { Group = null, Label = Loc.T("全部"), Count = all.Count } };
+        rows.AddRange(groups.Select(g => new GroupRow
         {
             Group = g,
-            Label = g!,
-            Count = all.Count(x => string.Equals(x.Group?.Trim(), g, StringComparison.CurrentCulture)),
+            Label = g,
+            Count = all.Count(x => string.Equals(x.Group?.Trim(), g, StringComparison.CurrentCultureIgnoreCase)),
         }));
-        groupRows.Add(new GroupRow
+        rows.Add(new GroupRow
         {
             Group = "",
             Label = Loc.T("未分组"),
@@ -105,18 +121,26 @@ public partial class HotstringView : UserControl
         _suppress = true;
         try
         {
-            GroupList.ItemsSource = groupRows;
-            GroupList.SelectedItem = groupRows.FirstOrDefault(g => g.Group == keepGroup) ?? groupRows[0];
+            GroupList.ItemsSource = rows;
+            GroupList.SelectedItem = rows.FirstOrDefault(g => g.Group == keepGroup) ?? rows[0];
         }
         finally { _suppress = false; }
+    }
 
+    private void RefreshList()
+    {
+        if (_host == null) return;
+
+        var opt = _host.Settings.Hotstring;
+        string filter = FilterBox.Text?.Trim() ?? "";
         string? group = CurrentGroup;
+        var all = Entries.ToList();
 
         var rows = all
             .Where(x => group == null
                         || (group.Length == 0
                             ? string.IsNullOrWhiteSpace(x.Group)
-                            : string.Equals(x.Group?.Trim(), group, StringComparison.CurrentCulture)))
+                            : string.Equals(x.Group?.Trim(), group, StringComparison.CurrentCultureIgnoreCase)))
             .Where(x => string.IsNullOrWhiteSpace(filter)
                         || (x.Trigger?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
                         || (x.Comment?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
@@ -139,15 +163,25 @@ public partial class HotstringView : UserControl
             FilterCount.Text = Loc.F("共 {0} 条", rows.Count);
             EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             EntryList.SelectedItem = rows.FirstOrDefault(r => ReferenceEquals(r.Snippet, _editing));
-            BuildGroupOptions();
         }
         finally { _suppress = false; }
-
-        if (EntryList.SelectedItem is Row row) LoadEditor(row.Snippet);
-        else { _editing = null; ShowEditor(false); }
     }
 
-    /// <summary>列表左侧小方块里的字：触发词去掉前缀后的首字符（大写）。</summary>
+    private void SyncEditorToSelection()
+    {
+        if (EntryList.SelectedItem is Row row)
+        {
+            if (!ReferenceEquals(row.Snippet, _editing)) LoadEditor(row.Snippet);
+        }
+        else
+        {
+            _editing = null;
+            ShowEditor(false);
+        }
+    }
+
+    // ---------------- 小工具 ----------------
+
     private static string InitialOf(string? trigger, string? prefix)
     {
         string s = StripPrefix(trigger, prefix);
@@ -156,7 +190,7 @@ public partial class HotstringView : UserControl
         return char.IsLetterOrDigit(c) ? c.ToString() : s[..1];
     }
 
-    /// <summary>列表/编辑框里显示触发词时**去掉**前缀符号（;mail 只显示 mail）。</summary>
+    /// <summary>列表/编辑框里显示触发词时去掉前缀符号（;mail 只显示 mail）。</summary>
     private static string StripPrefix(string? trigger, string? prefix)
     {
         if (string.IsNullOrEmpty(trigger)) return "";
@@ -180,21 +214,17 @@ public partial class HotstringView : UserControl
         return s.Length <= max ? s : s[..max] + "…";
     }
 
+    private Window? Owner => Window.GetWindow(this);
+
     private void BuildGroupOptions()
     {
         string current = (GroupBox.Text ?? "").Trim();
-
-        var groups = Entries.Select(x => x.Group?.Trim())
-            .Where(g => !string.IsNullOrEmpty(g))
-            .Distinct(StringComparer.CurrentCulture)
-            .OrderBy(g => g, StringComparer.CurrentCulture)
-            .ToList();
 
         _suppress = true;
         try
         {
             GroupBox.Items.Clear();
-            foreach (var g in groups) GroupBox.Items.Add(g);
+            foreach (var g in AllGroups()) GroupBox.Items.Add(g);
             GroupBox.Text = current;
         }
         finally { _suppress = false; }
@@ -228,18 +258,186 @@ public partial class HotstringView : UserControl
         try
         {
             KeyBox.Text = StripPrefix(entry.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
-            EditTitle.Text = Loc.F("正在编辑：{0}", KeyBox.Text.Length == 0 ? Loc.T("（新片段）") : KeyBox.Text);
+            EditTitle.Text = Loc.F("正在编辑：{0}", KeyBox.Text.Length == 0 ? Loc.T("（新别名）") : KeyBox.Text);
             ValueBox.Text = entry.Text ?? "";
             CommentBox.Text = entry.Comment ?? "";
             AppsBox.Text = entry.Apps ?? "";
-            GroupBox.Text = entry.Group ?? "";
             EnabledBox.IsChecked = entry.Enabled;
             StatusText.Text = "";
+
+            BuildGroupOptions();
+            GroupBox.Text = entry.Group ?? "";
         }
         finally { _suppress = false; }
     }
 
-    /* ---------------- 事件 ---------------- */
+    // ---------------- 分组管理 ----------------
+
+    /// <summary>新建分组，返回组名；用户取消返回 null。</summary>
+    private string? AskNewGroup()
+    {
+        string? name = UI.Windows.TextPromptWindow.Ask(Owner,
+            Loc.T("新建分组"),
+            Loc.T("起一个名字，之后右键列表里的别名即可「移到分组」。"));
+
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        name = name.Trim();
+        if (CustomGroups.Any(g => string.Equals(g, name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            _host?.Notify(Loc.F("分组「{0}」已经存在", name));
+            return name;
+        }
+
+        CustomGroups.Add(name);
+        _host?.SaveSettings();
+        RefreshGroups();
+        return name;
+    }
+
+    private void OnNewGroupClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        string? name = AskNewGroup();
+        if (name == null) return;
+
+        // 建完直接选中它，用户马上就能看到"空分组"
+        if (GroupList.ItemsSource is List<GroupRow> rows)
+        {
+            var target = rows.FirstOrDefault(g =>
+                string.Equals(g.Group, name, StringComparison.CurrentCultureIgnoreCase));
+            if (target != null) GroupList.SelectedItem = target;
+        }
+    }
+
+    /// <summary>
+    /// 分组右键菜单（Shift+F10 / 菜单键也走这里 —— 所以用 ContextMenuOpening，
+    /// 而不是只绑鼠标事件）。
+    /// </summary>
+    private void OnGroupContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (_host == null) return;
+
+        GroupRow? row = null;
+
+        if (e.CursorLeft >= 0)
+        {
+            /* 鼠标右键：判断点在哪个分组上（点在空白处就不弹）。 */
+            var hit = GroupList.InputHitTest(new Point(e.CursorLeft, e.CursorTop)) as DependencyObject;
+            var item = ItemsControl.ContainerFromElement(GroupList, hit) as ListBoxItem;
+            row = item?.DataContext as GroupRow;
+        }
+        else
+        {
+            /* 键盘：对当前选中的分组操作。 */
+            row = GroupList.SelectedItem as GroupRow;
+        }
+
+        if (row is not { IsReal: true })
+        {
+            e.Handled = true;
+            return;
+        }
+
+        GroupList.SelectedItem = row;
+
+        var menu = new ContextMenu();
+
+        var rename = new MenuItem { Header = Loc.T("重命名分组…") };
+        rename.Click += (_, _) => RenameGroup(row.Group!);
+        menu.Items.Add(rename);
+
+        var del = new MenuItem { Header = Loc.T("删除分组") };
+        del.Click += (_, _) => DeleteGroup(row.Group!, row.Count);
+        menu.Items.Add(del);
+
+        /* 手动打开：ContextMenuOpening 里给元素赋 ContextMenu 有时不生效
+         * （服务只看事件源元素上挂的菜单），直接 IsOpen 最可靠，
+         * 而且鼠标和 Shift+F10 走的是同一条路径。 */
+        menu.PlacementTarget = GroupList;
+        menu.Placement = e.CursorLeft >= 0
+            ? System.Windows.Controls.Primitives.PlacementMode.MousePoint
+            : System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private void RenameGroup(string oldName)
+    {
+        if (_host == null) return;
+
+        string? name = UI.Windows.TextPromptWindow.Ask(Owner,
+            Loc.T("重命名分组"),
+            Loc.T("改名之后，这个组里的别名会一起跟过去。"), oldName);
+
+        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name.Trim();
+        if (string.Equals(name, oldName, StringComparison.Ordinal)) return;
+        if (AllGroups().Any(g => string.Equals(g, name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            _host.Notify(Loc.F("分组「{0}」已经存在", name));
+            return;
+        }
+
+        int i = CustomGroups.FindIndex(g =>
+            string.Equals(g, oldName, StringComparison.CurrentCultureIgnoreCase));
+        if (i >= 0) CustomGroups[i] = name;
+        else CustomGroups.Add(name);
+
+        foreach (var s in Entries.Where(x =>
+                     string.Equals(x.Group?.Trim(), oldName, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            s.Group = name;
+        }
+
+        _host.SaveSettings();
+        Refresh();
+        _host.Notify(Loc.F("分组已改名为「{0}」", name));
+    }
+
+    private void DeleteGroup(string name, int count)
+    {
+        if (_host == null) return;
+
+        string question = count > 0
+            ? Loc.F("删除分组「{0}」？\n\n这个分组里有 {1} 个别名，它们会回到「未分组」，不会被删除。", name, count)
+            : Loc.F("删除分组「{0}」？", name);
+
+        if (!UI.Windows.AppDialog.ConfirmDanger(Owner, question, Loc.T("删除分组"),
+                okText: Loc.T("删除"))) return;
+
+        CustomGroups.RemoveAll(g => string.Equals(g, name, StringComparison.CurrentCultureIgnoreCase));
+        foreach (var s in Entries.Where(x =>
+                     string.Equals(x.Group?.Trim(), name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            s.Group = "";
+        }
+
+        _host.SaveSettings();
+        Refresh();
+        _host.Notify(Loc.F("已删除分组「{0}」", name));
+    }
+
+    private void MoveTo(Snippet snippet, string group)
+    {
+        if (_host == null) return;
+
+        snippet.Group = group ?? "";
+        if (!string.IsNullOrWhiteSpace(group) &&
+            !CustomGroups.Any(g => string.Equals(g, group, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            CustomGroups.Add(group);
+        }
+
+        _host.SaveSettings();
+        Refresh();
+        _host.Notify(string.IsNullOrWhiteSpace(group)
+            ? Loc.T("已移到「未分组」")
+            : Loc.F("已移到「{0}」", group));
+    }
+
+    // ---------------- 事件 ----------------
 
     private void OnOptionsChanged(object sender, RoutedEventArgs e)
     {
@@ -252,16 +450,14 @@ public partial class HotstringView : UserControl
         opt.ShowNoteFirst = NoteFirstBox.IsChecked == true;
 
         _host.SaveSettings();
-        Refresh();
+        RefreshList();
+        if (_editing != null) LoadEditor(_editing);
     }
 
     private void OnPrefixChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppress) return;
 
-        /* 前缀符号换了，已有触发词要不要跟着改？
-         * 不改：用户可能本来就有多种前缀。这里只影响"哪些触发词会被认"，
-         * 列表上会立刻按新前缀过滤，看得到效果。 */
         _host.Settings.Hotstring.Prefix = PrefixBox.Text ?? "";
         _host.SaveSettings();
         Refresh();
@@ -270,13 +466,14 @@ public partial class HotstringView : UserControl
     private void OnFilterChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppress) return;
-        Refresh();
+        RefreshList();
     }
 
     private void OnGroupChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_host == null || _suppress) return;
-        Refresh();
+        RefreshList();
+        SyncEditorToSelection();
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -306,7 +503,13 @@ public partial class HotstringView : UserControl
         _editing.Enabled = EnabledBox.IsChecked == true;
 
         _host.SaveSettings();
-        Refresh();
+
+        /* 只刷新列表，**不要**重建编辑区。
+         * 以前这里调 Refresh()：它会重建分组下拉的选项、再把文本赋回输入框，
+         * 于是用户在下拉框里打字打到一半就被清掉 —— 表现就是"分组改不了"。 */
+        RefreshList();
+        EditTitle.Text = Loc.F("正在编辑：{0}",
+            StripPrefix(_editing.Trigger, _host.Settings.Hotstring.EffectivePrefix));
         StatusText.Text = Loc.T("已保存");
     }
 
@@ -319,10 +522,18 @@ public partial class HotstringView : UserControl
         {
             Trigger = prefix,
             Text = "",
-            Comment = Loc.T("新片段"),
+            Comment = Loc.T("新别名"),
             Group = CurrentGroup ?? "",
             Enabled = true,
         };
+
+        string group = entry.Group ?? "";
+        if (group.Length > 0 &&
+            !CustomGroups.Any(g => string.Equals(g, group, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            CustomGroups.Add(group);
+        }
+
         Entries.Add(entry);
         _host.SaveSettings();
 
@@ -335,10 +546,93 @@ public partial class HotstringView : UserControl
     private void OnDeleteClick(object sender, RoutedEventArgs e)
     {
         if (_host == null || _editing == null) return;
+        DeleteSnippet(_editing);
+    }
 
-        Entries.Remove(_editing);
+    private void DeleteSnippet(Snippet snippet)
+    {
+        if (_host == null) return;
+
+        Entries.Remove(snippet);
         _host.SaveSettings();
-        _editing = null;
+        if (ReferenceEquals(_editing, snippet)) _editing = null;
         Refresh();
+    }
+
+    /// <summary>列表里别名的右键菜单：移到分组 / 删除（Shift+F10 同样可用）。</summary>
+    private void OnEntryContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (_host == null) return;
+
+        Row? row = null;
+
+        if (e.CursorLeft >= 0)
+        {
+            var hit = EntryList.InputHitTest(new Point(e.CursorLeft, e.CursorTop)) as DependencyObject;
+            var item = ItemsControl.ContainerFromElement(EntryList, hit) as ListBoxItem;
+            row = item?.DataContext as Row;
+        }
+        else
+        {
+            row = EntryList.SelectedItem as Row;
+        }
+
+        if (row == null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        EntryList.SelectedItem = row;
+
+        var menu = new ContextMenu();
+
+        var move = new MenuItem { Header = Loc.T("移到分组") };
+        foreach (string g in AllGroups())
+        {
+            string target = g;
+            var mi = new MenuItem
+            {
+                Header = target,
+                IsCheckable = true,
+                IsChecked = string.Equals(row.Snippet.Group?.Trim(), target,
+                    StringComparison.CurrentCultureIgnoreCase),
+            };
+            mi.Click += (_, _) => MoveTo(row.Snippet, target);
+            move.Items.Add(mi);
+        }
+
+        if (move.Items.Count > 0) move.Items.Add(new Separator());
+
+        var ungrouped = new MenuItem
+        {
+            Header = Loc.T("未分组"),
+            IsCheckable = true,
+            IsChecked = string.IsNullOrWhiteSpace(row.Snippet.Group),
+        };
+        ungrouped.Click += (_, _) => MoveTo(row.Snippet, "");
+        move.Items.Add(ungrouped);
+
+        var create = new MenuItem { Header = Loc.T("新建分组…") };
+        create.Click += (_, _) =>
+        {
+            string? name = AskNewGroup();
+            if (name != null) MoveTo(row.Snippet, name);
+        };
+        move.Items.Add(create);
+
+        menu.Items.Add(move);
+        menu.Items.Add(new Separator());
+
+        var del = new MenuItem { Header = Loc.T("删除这个别名") };
+        del.Click += (_, _) => DeleteSnippet(row.Snippet);
+        menu.Items.Add(del);
+
+        menu.PlacementTarget = EntryList;
+        menu.Placement = e.CursorLeft >= 0
+            ? System.Windows.Controls.Primitives.PlacementMode.MousePoint
+            : System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+        e.Handled = true;
     }
 }

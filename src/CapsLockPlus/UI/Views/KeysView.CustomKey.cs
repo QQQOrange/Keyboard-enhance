@@ -362,11 +362,11 @@ public partial class KeysView : UserControl
         string text = _layerId == 1
             ? Loc.F("把第 {0} 层「{1}」恢复成默认设置？\n", _layerId, layerName) +
               Loc.T("· 这一层的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n") +
-              Loc.T("· 你自己新增的组合键会保留；其它 9 层、触发键、宏、文本片段都不动；\n") +
+              Loc.T("· 你自己新增的组合键会保留；其它 9 层、触发键、宏、别名替换都不动；\n") +
               Loc.T("· 这一步不能撤销。")
             : Loc.F("把第 {0} 层「{1}」恢复成默认设置？\n", _layerId, layerName) +
               Loc.T("· 这一层默认是空的，所以这一层里你配的绑定会被清空；\n") +
-              Loc.T("· 其它层、触发键、宏、文本片段都不动；\n") +
+              Loc.T("· 其它层、触发键、宏、别名替换都不动；\n") +
               Loc.T("· 这一步不能撤销。");
 
         if (!AppDialog.ConfirmDanger(Window.GetWindow(this), text,
