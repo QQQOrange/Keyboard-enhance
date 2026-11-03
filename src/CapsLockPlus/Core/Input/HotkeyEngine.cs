@@ -1463,8 +1463,23 @@ public sealed partial class HotkeyEngine : IDisposable
 
             /* 文本片段：只有"真的会打出去"的键才计入缓冲区。
              * 带 Ctrl/Alt/Win 的是命令，不是输入，直接断开。 */
-            if (_ctrlDown || _laltDown || _lwinDown || _rwinDown) _snippetBuffer.Clear();
-            else ObserveSnippet(settings, vk);
+            if (_ctrlDown || _laltDown || _lwinDown || _rwinDown)
+            {
+                _snippetBuffer.Clear();
+            }
+            else
+            {
+                ObserveSnippet(settings, vk);
+                if (_snippetSpaceSwallowed)
+                {
+                    /* 这次空格已经被"片段展开"用掉了：吞掉它，
+                     * 否则展开出来的文字后面会多一个空格，还会把触发词补回去。 */
+                    _snippetSpaceSwallowed = false;
+                    _swallowedDown[vk] = 0;          // 记一笔，抬起时跟着吞
+                    _swallowedUp[vk] = 0;
+                    return true;
+                }
+            }
 
             return false;
         }
@@ -2065,10 +2080,40 @@ public sealed partial class HotkeyEngine : IDisposable
     /// </summary>
     private void ObserveSnippet(AppSettings s, int vk)
     {
-        var list = s.Global.Snippets;
-        if (list == null || list.Count == 0)
+        var all = s.Global.Snippets;
+        if (all == null || all.Count == 0)
         {
             _snippetBuffer.Clear();
+            return;
+        }
+
+        /* 只认一个前缀符号（用户可改、可清空、可切全角）。
+         * 过滤放在匹配之前：既实现"只认一个符号"，又不影响匹配器本身的语义。 */
+        var opt = s.Hotstring ?? new HotstringOptions();
+        string prefix = opt.EffectivePrefix;
+        var list = string.IsNullOrEmpty(prefix)
+            ? all
+            : all.Where(x => x.Trigger != null && x.Trigger.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+
+        if (list.Count == 0)
+        {
+            _snippetBuffer.Clear();
+            return;
+        }
+
+        /* 空格触发：打完触发词**再按空格**才替换（默认）。 */
+        if (opt.ExpandOnSpace && vk == 0x20)
+        {
+            string typed = _snippetBuffer.ToString();
+            var ready = SnippetMatcher.Match(list, typed, ForegroundProcess);
+            if (ready == null)
+            {
+                _snippetBuffer.Clear();
+                return;                     // 没命中 → 空格照常输入
+            }
+
+            ExpandSnippet(ready);
+            _snippetSpaceSwallowed = true;  // 通知调用方把这次空格吞掉
             return;
         }
 
@@ -2093,6 +2138,9 @@ public sealed partial class HotkeyEngine : IDisposable
         /* 有更长的候选（例如配了 ;m 和 ;mail，现在命中 ;m）就先别展开：
          * 等 120ms，用户接着打 'a' 就说明他要的是 ;mail。
          * 没有更长的候选时立刻展开 —— 常规场景保持"打完就变"的手感。 */
+        /* 空格触发模式：命中先攒着，等空格；不在这里展开。 */
+        if (opt.ExpandOnSpace) return;
+
         if (SnippetMatcher.HasLongerCandidate(list, _snippetBuffer.ToString(), ForegroundProcess))
         {
             _snippetPending = hit;
@@ -2106,6 +2154,9 @@ public sealed partial class HotkeyEngine : IDisposable
 
     /// <summary>等长候选时的等待窗口。</summary>
     public const int SnippetWaitMs = 120;
+
+    /// <summary>这次空格是否已经被"片段展开"消费掉（调用方据此吞键）。</summary>
+    private bool _snippetSpaceSwallowed;
 
     private Snippet? _snippetPending;
     private DateTime _snippetPendingAt;

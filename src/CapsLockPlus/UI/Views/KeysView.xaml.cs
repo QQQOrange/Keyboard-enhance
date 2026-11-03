@@ -461,6 +461,7 @@ public partial class KeysView : UserControl
     {
         _host = host;
         BuildKeyboard();
+        RefreshAppLayerCard();
         Refresh();
         // 从层管理页跳过来时，AppHost 会记住目标层，这里应用它
         host.ApplyPendingKeysLayer(this);

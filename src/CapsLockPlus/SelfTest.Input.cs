@@ -1028,6 +1028,8 @@ public static partial class SelfTest
         var s1 = DefaultSettings.Create();
         foreach (var t in s1.Triggers) t.Enabled = false;
         s1.Global.Snippets.Clear();
+        s1.Hotstring.Prefix = ";";           // 这些用例的触发词以 ; 开头
+        s1.Hotstring.ExpandOnSpace = false;  // 立即展开（空格触发另有专门用例）
         s1.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
 
         var q1 = new ActionQueue();
@@ -1042,10 +1044,41 @@ public static partial class SelfTest
         DoEvents(120);
         CheckEqual("片段：多字符触发词能命中", e1.SnippetMatchesForTest, 1);
 
+        /* ---- 空格触发模式：打完触发词不展开，按空格才展开 ----
+         *
+         * 这是用户要的手感：`;mail` 打完还在，按空格才变成邮箱。 */
+        {
+            var sSpace = DefaultSettings.Create();
+            foreach (var t in sSpace.Triggers) t.Enabled = false;
+            sSpace.Global.Snippets.Clear();
+            sSpace.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
+            sSpace.Hotstring.Prefix = ";";
+            sSpace.Hotstring.ExpandOnSpace = true;
+
+            var qSpace = new ActionQueue();
+            var eSpace = new HotkeyEngine(qSpace, () => sSpace, (_, _) => true);
+            foreach (int vk in new[] { 0xBA, 'M', 'A', 'I', 'L' })
+            {
+                eSpace.SimulateKey(vk, true);
+                eSpace.SimulateKey(vk, false);
+            }
+            DoEvents(120);
+            Check("片段（空格触发）：打完触发词还不展开", eSpace.SnippetMatchesForTest == 0,
+                eSpace.SnippetMatchesForTest.ToString());
+
+            eSpace.SimulateKey(0x20, true);      // 空格
+            eSpace.SimulateKey(0x20, false);
+            DoEvents(200);
+            Check("片段（空格触发）：按空格才展开", eSpace.SnippetMatchesForTest == 1,
+                eSpace.SnippetMatchesForTest.ToString());
+        }
+
         // 反例：只打到一半不能命中
         var s1b = DefaultSettings.Create();
         foreach (var t in s1b.Triggers) t.Enabled = false;
         s1b.Global.Snippets.Clear();
+        s1b.Hotstring.Prefix = ";";           // 这些用例的触发词以 ; 开头
+        s1b.Hotstring.ExpandOnSpace = false;  // 立即展开（空格触发另有专门用例）
         s1b.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
         var q1b = new ActionQueue();
         var e1b = new HotkeyEngine(q1b, () => s1b, (_, _) => true);

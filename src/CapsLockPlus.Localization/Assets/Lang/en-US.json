@@ -2233,5 +2233,15 @@
   "启用这个片段": "Enable this snippet",
   "新片段": "New snippet",
   "已保存": "Saved",
-  "{0} 条": "{0} items"
+  "{0} 条": "{0} items",
+  "只在这些程序里展开（可选）": "Only expand in these apps (optional)",
+  "进程名，逗号分隔，例如 code.exe, notepad.exe；留空 = 所有程序": "Process names, comma separated, e.g. code.exe, notepad.exe; empty = all apps",
+  "全部": "All",
+  "未分组": "Ungrouped",
+  "还没有规则": "No rules yet",
+  "{0} 条规则": "{0} rule(s)",
+  "已设置：{0} → {1}": "Set: {0} -> {1}",
+  "先填进程名，例如 Code.exe": "Enter a process name first, e.g. Code.exe",
+  "先选一个层": "Pick a layer first",
+  "已回到基础层": "Back to the base layer"
 }

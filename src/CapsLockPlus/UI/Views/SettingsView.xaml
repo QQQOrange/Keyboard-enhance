@@ -116,7 +116,7 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 按应用自动启用层：只叠加，不接管 -->
-                    <StackPanel x:Name="AppLayerSection" Background="Transparent">
+                    <StackPanel x:Name="AppLayerSection" Background="Transparent" Visibility="Collapsed">
                         <TextBlock Text="{loc:T '按应用自动启用层'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '切到这些程序时自动叠加它绑定的层：只接管该层绑过的组合，其余按键照常输入。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
@@ -162,7 +162,7 @@
                     <Border Style="{StaticResource Divider}" />
 
                     <!-- 文本片段 -->
-                    <StackPanel x:Name="SnippetSection" Background="Transparent">
+                    <StackPanel x:Name="SnippetSection" Background="Transparent" Visibility="Collapsed">
                         <TextBlock Text="{loc:T '文本片段'}" Style="{StaticResource Text.Body}" />
                         <TextBlock Text="{loc:T '输入触发词后自动展开成一段文字。触发词须以 ; / . 等符号开头（不能是字母数字），且必须落在词首。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />

@@ -862,6 +862,19 @@ public sealed class AppHost : IDisposable
         if (layer == Engine.AppLayerId) return;
 
         Engine.AppLayerId = layer;
+
+        /* 切层要有明确反馈：用户按下的键突然变成另一套功能，
+         * 没有提示会以为是键盘坏了。 */
+        if (layer > 0)
+        {
+            var layerName = Settings.Layers.FirstOrDefault(l => l.Id == layer)?.Name;
+            Notify($"已切到 {LayerName.Display(layer, layerName)}");
+        }
+        else
+        {
+            Notify("已回到基础层");
+        }
+
         CoreLog.Info(layer > 0
             ? $"按应用启用叠加层：{process} → 第 {layer} 层（只接管该层绑过的组合）"
             : $"离开按应用叠加层：{process}");

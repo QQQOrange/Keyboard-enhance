@@ -117,6 +117,9 @@ public sealed class Snippet
     public string Apps { get; set; } = "";
 
     public string Comment { get; set; } = "";
+
+    /// <summary>分组（空 = 未分组）。</summary>
+    public string Group { get; set; } = "";
 }
 
 
