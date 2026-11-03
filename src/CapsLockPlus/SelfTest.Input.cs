@@ -1361,6 +1361,27 @@ public static partial class SelfTest
                 string.Join("|", sG.Global.SnippetGroups));
         }
 
+        /* ---- 钩子吞不住键时：引擎不演层、不乱吞 ---- */
+        {
+            var sH = DefaultSettings.Create();
+            var engine = new HotkeyEngine(new ActionQueue("SelfTest.Swallow"), () => sH, (_, _) => true)
+            {
+                EnterLayerImmediatelyForTest = true,
+            };
+
+            /* 默认配置里 CapsLock 才是触发键，用 Tab 测不出来。 */
+            engine.SwallowUnavailable = true;
+            Check("吞不住时：触发键不被吞", !engine.SimulateKey(VK.CapsLock, true), "");
+            Check("吞不住时：不会进层", engine.ActiveLayer <= 1, engine.ActiveLayer.ToString());
+            engine.SimulateKey(VK.CapsLock, false);
+            Check("吞不住时：状态保持干净", !engine.IsTriggerHeld, "");
+
+            engine.SwallowUnavailable = false;
+            Check("恢复后：触发键又被吞了", engine.SimulateKey(VK.CapsLock, true), "");
+            engine.SimulateKey(VK.CapsLock, false);
+            engine.Dispose();
+        }
+
         /* ---- 分组的增删改（SnippetGroupOps） ---- */
         {
             var s = DefaultSettings.Create();

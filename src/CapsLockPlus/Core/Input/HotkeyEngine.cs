@@ -322,6 +322,18 @@ public sealed partial class HotkeyEngine : IDisposable
     /// <summary>是否正处于某个触发键的按住状态。</summary>
     public bool IsTriggerHeld => _triggerHeld || _remoteTriggerHeld;
 
+    /// <summary>
+    /// 钩子已经吞不住键了（被系统摘掉 / 装不上）。
+    ///
+    /// 这时**不能再演"层"**：按键本来就漏给前台了，我们还切层的话，
+    /// 用户按 Tab 会一边跳焦点一边被当成"按住触发键"，松开后层还卡着。
+    /// 置位期间引擎对触发键完全不介入，按键全部原样放行。
+    /// </summary>
+    public volatile bool SwallowUnavailable;
+
+    /// <summary>外部强制丢弃当前触发键会话（钩子失效、恢复后调用）。</summary>
+    public void ResetForRecovery(string reason) => ResetTriggerState(reason);
+
     /* ---- 宿主模式的显示镜像 ----
      *
      * 钩子在宿主进程里时，本进程看不到按键，界面（测试页）会一片空白。
@@ -1310,6 +1322,18 @@ public sealed partial class HotkeyEngine : IDisposable
         if (!Enabled || Suspended) return false;                // 暂停状态
 
         var settings = _settings();
+
+        /* ---- 0.2 钩子吞不住键：完全不介入 ----
+         *
+         * 这是"Tab 一直往后跳 + 松开后层卡住"的兜底：
+         * 钩子一旦被系统摘掉，我们根本挡不住按键，就不该再假装能挡。
+         * 把残留的触发键会话清掉，之后所有按键原样放行 —— 用户的键盘
+         * 至少是"正常键盘"，而不是"随便按一下就触发层里功能"的坏键盘。 */
+        if (SwallowUnavailable)
+        {
+            if (_triggerHeld || _layerActive) ResetTriggerState("钩子不可用");
+            return false;
+        }
 
         /* ---- 0.5 在判定触发键之前，先记录修饰键的按下状态 ----
          *

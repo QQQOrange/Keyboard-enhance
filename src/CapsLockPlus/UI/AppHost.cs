@@ -858,6 +858,9 @@ public sealed class AppHost : IDisposable
         if (hookDelta > 0)
         {
             /* 钩子在工作，全部清零。 */
+            /* 恢复：让宿主重新开始吞键（它可能被我们之前的 SWALLOW 0 停过）。 */
+            if (Engine.SwallowUnavailable) Engine.SwallowUnavailable = false;
+            if (_hookHostReady) SendHookHostCommand("SWALLOW 1");
             _rawSinceHook = 0;
             _hookSilentSince = 0;
             return;
@@ -872,8 +875,8 @@ public sealed class AppHost : IDisposable
 
         long now = Environment.TickCount64;
         if (_hookSilentSince == 0) _hookSilentSince = now;
-        if (_rawSinceHook < 12) return;
-        if (now - _hookSilentSince < 8000) return;
+        if (_rawSinceHook < 6) return;
+        if (now - _hookSilentSince < 3000) return;
 
         /* 只在"真实硬件按键被漏"时重装，而且一场会话最多两次：
          * 远程桌面 / 注入工具的按键根本进不了钩子，但它们不算进这里（不是物理设备）。 */
@@ -889,7 +892,34 @@ public sealed class AppHost : IDisposable
                      $"判定钩子被系统摘掉，正在重装（第 {_hookHeals} 次）");
         _rawSinceHook = 0;
         _hookSilentSince = 0;
-        Engine.RestartHook();
+
+        /* 吞不住了：先停止"演层"，把残留触发键会话清掉。
+         * 否则这段时间里用户按 Tab 会一直漏、松开后层还挂着。 */
+        Engine.SwallowUnavailable = true;
+        Engine.ResetForRecovery("钩子漏键");
+        if (_hookHostReady) SendHookHostCommand("SWALLOW 0");
+
+        if (_hookHostReady)
+        {
+            /* 钩子在宿主进程里 —— 主程序 RestartHook() 装的是**自己**的钩子，
+             * 用户日志里"一直重装、一直没用"就是这么来的。让宿主自己重装。 */
+            SendHookHostCommand("REHOOK");
+        }
+        else
+        {
+            Engine.RestartHook();
+        }
+
+        /* 连着两次都救不回来：干脆放弃宿主，由本进程接管（能吞一个是一个）。 */
+        if (_hookHeals >= 2 && _hookHostReady)
+        {
+            CoreLog.Warn("宿主重装两次仍漏键，改由本进程装钩子");
+            _hookHostReady = false;
+            Engine.HookDelegatedToHost = false;
+            Engine.Start(installHook: true);
+            Engine.SwallowUnavailable = false;
+        }
+
         _lastHookCount = Engine.KeyEventCount;
         _lastRawCount = Interlocked.Read(ref _rawKeyCount);
     }
