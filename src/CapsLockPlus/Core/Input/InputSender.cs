@@ -450,14 +450,19 @@ public static class InputSender
          * 那会把用户当时前台窗口的输入语言改掉，等于测试干扰了桌面。 */
         IntPtr typing = original;
         bool switched = false;
-        if (!DryRun && ImeGuard.IsComposing(original))
-        {
-            IntPtr english = ImeGuard.EnglishLayout;
-            if (english == IntPtr.Zero) return false;
-            if (!ImeGuard.SwitchTo(target, english, LayoutSwitchTimeoutMs)) return false;
-            typing = english;
-            switched = true;
-        }
+
+        /* ⚠ 输入法开着时，**不再**去切目标窗口的输入语言。
+         *
+         * 老做法是 WM_INPUTLANGCHANGEREQUEST → 切到英文布局 → 敲字 → 切回来。
+         * 问题是：切换是异步的，目标程序一旦不理会（或切回失败），
+         * 用户就被**永久留在英文布局**上 —— 用户的原话是"输入法也被变了"。
+         * 这比"字没打出来"更烦人，而且用户往往不知道去哪儿改回来。
+         *
+         * 现在：输入法开着就直接走 Unicode 注入（不经过布局和输入法，
+         * 中文/emoji 都能落字，也不会动用户的输入法状态）。
+         * TryTextAsKeys 返回 false，上层会自动退回 TextUnicode。 */
+        if (!DryRun && ImeGuard.IsComposing(original) && !ForceKeyTyping)
+            return false;
 
         try
         {
@@ -536,6 +541,14 @@ public static class InputSender
 
         return true;
     }
+
+    /// <summary>
+    /// 是否强制用"真实按键"输入文本（会临时切换目标的输入语言）。
+    ///
+    /// 默认 false：输入法开着时改走 Unicode 注入，绝不碰用户的输入法。
+    /// 只有在"目标程序不认 Unicode 注入"（个别游戏、老式控件）时才需要打开。
+    /// </summary>
+    public static bool ForceKeyTyping { get; set; }
 
     /// <summary>切换输入语言的等待上限。切换是异步的，要轮询到真正生效。</summary>
     private const int LayoutSwitchTimeoutMs = 200;

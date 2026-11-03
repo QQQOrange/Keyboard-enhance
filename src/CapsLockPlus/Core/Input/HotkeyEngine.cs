@@ -401,6 +401,34 @@ public sealed partial class HotkeyEngine : IDisposable
     /// </summary>
     public string ActiveSubLayer => _subLayerKeyDown;
 
+    /// <summary>最近一次执行的动作签名 + 时间，用于去重（防"两个钩子各执行一次"）。</summary>
+    private readonly Dictionary<string, DateTime> _lastActionAt = new();
+
+    private bool IsDuplicateAction(string action, string arg)
+    {
+        string key = action + "\u0000" + arg;
+        lock (_lastActionAt)
+        {
+            if (_lastActionAt.TryGetValue(key, out var at) &&
+                (DateTime.Now - at).TotalMilliseconds < 150)
+            {
+                return true;
+            }
+
+            _lastActionAt[key] = DateTime.Now;
+
+            if (_lastActionAt.Count > 64)
+            {
+                var stale = new List<string>();
+                foreach (var (k, v) in _lastActionAt)
+                    if ((DateTime.Now - v).TotalSeconds > 5) stale.Add(k);
+                foreach (string k in stale) _lastActionAt.Remove(k);
+            }
+
+            return false;
+        }
+    }
+
     /// <summary>
     /// 「按应用自动启用」的叠加层 id（0 = 没有）。
     ///
@@ -573,8 +601,25 @@ public sealed partial class HotkeyEngine : IDisposable
         // 连续量重复与触发键无关，先跑它
         CheckContinuousRepeat();
 
+        /* ---- 层卡住看门狗 ----
+         *
+         * 万一松手事件丢了（钩子被摘、切桌面、另一个程序抢焦点），层会一直挂着。
+         * 而层里的语义是"没绑定的键也吞掉"，用户感受到的就是**整个键盘失灵**，
+         * 只能退出程序。这里兜底：长时间完全没有按键活动就把触发键会话清掉。
+         *
+         * 3 分钟是刻意选的：正常人不会按住触发键空等 3 分钟，
+         * 中途思考、读屏幕都不会触发（一有按键就顺延）。 */
+
         // 没有任何"按住"迹象时退回空闲周期，避免空转耗电
         RelaxHoldTickIfIdle();
+
+        if ((_triggerHeld || _layerActive) &&
+            (DateTime.Now - _lastKeyActivity).TotalSeconds > 30)
+        {
+            CoreLog.Warn("层已经 30 秒没有任何按键活动，判定为抬起事件丢失，自动复位");
+            ResetTriggerState("层长时间无操作");
+            return;
+        }
 
         if (!_triggerHeld) return;
 
@@ -956,6 +1001,24 @@ public sealed partial class HotkeyEngine : IDisposable
 
     internal bool FeedFromRaw(int vk, bool down, long hookCount, long nowMs)
     {
+        /* ---- 宿主模式：本进程**一个键都不许喂** ----
+         *
+         * 钩子、吞键判定、层状态全在宿主进程里，动作由宿主通过管道转发过来。
+         * 本进程只负责"执行动作"和"显示状态"。
+         *
+         * 这里以前没有拦截，后果是必然的：宿主模式下本进程自己的钩子计数恒为 0，
+         * 于是 `_missedStreak` 一路累加、10 秒后 `ShouldUseRawFallback` 必然成立
+         * —— 本进程开始用 Raw Input 喂自己的引擎，并且顺手 `RestartHook()` 又装了
+         * **第二个低级钩子**。此时同一次按键会走两条独立的链：
+         *   · 宿主：按键 → 宿主的层状态 → 转发动作 → 本进程执行；
+         *   · 本进程：Raw Input → 本进程的层状态（另一份，且已被 ApplyRemote* 
+         *     和这条自己的输入流搅乱）→ 直接执行动作。
+         * 两份层状态一旦不同步，同一个键就会解析成**两个不同的绑定** ——
+         * 用户看到的正是"按 Tab+T，QQ 和 WorkBuddy 一起打开"。
+         *
+         * 所以宿主模式下必须先退出，重装钩子的事交给 REHOOK 命令。 */
+        if (HookDelegatedToHost) return false;
+
         /* 先数「钩子漏掉了几个键」：偶尔漏一个键是正常的（钩子被摘的那一刻、
          * 注入事件被上游钩子吃掉一次），连续漏掉 3 个才说明它真的不在链上了。
          * 以前单个键就接管，启动期一次误判就会把热键切到「吞不掉」的模式。 */
@@ -1023,6 +1086,11 @@ public sealed partial class HotkeyEngine : IDisposable
     /// <summary>重装钩子（自愈用）。</summary>
     public void RestartHook()
     {
+        /* 宿主模式下钩子**不在本进程**：在这里 Restart 只会装出第二个钩子，
+         * 于是同一按键被两个引擎各执行一次（历史上"按一下打开两个程序"的事故）。
+         * 要在宿主里重装，主程序发 REHOOK 命令给宿主。 */
+        if (HookDelegatedToHost) return;
+
         _hook.Restart();
 
         /* ⚠ 这里**不能**刷新「钩子活着」的时间锚。
@@ -2318,6 +2386,18 @@ public sealed partial class HotkeyEngine : IDisposable
             return true;
         }
 
+        /* ---- 安全阀：Esc 永远退出层 ----
+         *
+         * 层里"没绑定的键也吞掉"，一旦状态卡住，用户会觉得整个键盘失灵，
+         * 只能退出程序。给一个一定能按到的出口：Esc。
+         * 吞掉它（不发给前台），避免 Esc 在游戏/对话框里触发别的行为。 */
+        if (vk == VK.Escape)
+        {
+            CoreLog.Info("层里按了 Esc：退出层");
+            ResetTriggerState("按 Esc 退出层");
+            return true;
+        }
+
         string? keyName = KeyName.NameOf(vk);
 
         /* 不认识的键（键名表里没有）→ 同样吞掉。
@@ -2429,6 +2509,17 @@ public sealed partial class HotkeyEngine : IDisposable
         _swallowedDown.TryAdd(vk, 0);
         OweUp(vk);
         _usedCombo = true;
+
+        /* 同一个动作在 150ms 内重复请求 → 丢弃。
+         *
+         * 防御的是"同一时刻有两个钩子/两套引擎"这类事故：一个按键被两边各执行一次，
+         * 用户看到的就是"按一下冒出来两个 QQ"。
+         * 连续量动作（音量/亮度）和可重复动作（方向键）不参与去重，它们本来就是高频的。 */
+        if (!IsContinuous(action) && !IsRepeatable(action) && IsDuplicateAction(action, arg))
+        {
+            CoreLog.Info($"动作去重：{action}（150ms 内重复请求，已忽略）");
+            return true;
+        }
 
         _queue.Post(() =>
         {

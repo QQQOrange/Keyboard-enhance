@@ -153,8 +153,13 @@ public sealed class AppHost : IDisposable
 
                 /* 兜底：钩子长时间收不到按键时（远程桌面 / 注入输入），
                  * 由 Raw Input 把按键喂给引擎，否则所有热键一起失灵。
-                 * 钩子正常工作时这条路自动关闭（见 ShouldUseRawFallback）。 */
-                Engine.FeedFromRaw(vk, down);
+                 * 钩子正常工作时这条路自动关闭（见 ShouldUseRawFallback）。
+                 *
+                 * ⚠ 宿主模式下本进程没有钩子，`_hook.KeyEventCount` 恒为 0，
+                 * 兜底的"静默 10 秒"判据必然成立 —— 一旦喂进来，本进程就会用
+                 * 自己那份层状态再执行一遍动作，和宿主转发的动作撞车
+                 * （同一个键开出两个不同程序）。所以宿主模式下这条路必须关掉。 */
+                if (!_hookHostReady) Engine.FeedFromRaw(vk, down);
             };
             StartHookTrafficWatch();
             StartHookProbe();
@@ -915,12 +920,9 @@ public sealed class AppHost : IDisposable
          *
          * 现在：只让持有钩子的一侧重装（REHOOK），吞键始终保持开启。
          * 真的救不回来时，下面的探测/回退会把钩子搬到本进程，而不是"自废武功"。 */
-        if (_hookHostReady) SendHookHostCommand("REHOOK");
-
         if (_hookHostReady)
         {
-            /* 钩子在宿主进程里 —— 主程序 RestartHook() 装的是**自己**的钩子，
-             * 用户日志里"一直重装、一直没用"就是这么来的。让宿主自己重装。 */
+            /* 钩子在宿主进程里 —— 让宿主自己重装。 */
             SendHookHostCommand("REHOOK");
         }
         else
@@ -931,7 +933,15 @@ public sealed class AppHost : IDisposable
         /* 连着两次都救不回来：干脆放弃宿主，由本进程接管（能吞一个是一个）。 */
         if (_hookHeals >= 2 && _hookHostReady)
         {
-            CoreLog.Warn("宿主重装两次仍漏键，改由本进程装钩子");
+            /* ⚠ 必须先杀掉宿主再自己装钩子。
+             *
+             * 否则同一时刻会有**两个**低层钩子、两套引擎在跑：
+             * 同一个按键被两边各执行一次（打开两个 QQ、两个 WorkBuddy），
+             * 吞键也各吞一半 —— 用户看到的就是"按一下触发一堆、然后键盘全废"。
+             * 这是 4.5.9x 一个真实事故的直接原因。 */
+            CoreLog.Warn("宿主重装两次仍漏键，改由本进程装钩子（先停掉宿主，避免两个钩子）");
+            try { _hookHost?.Kill(); } catch { }
+            _hookHost = null;
             _hookHostReady = false;
             Engine.HookDelegatedToHost = false;
             Engine.Start(installHook: true);

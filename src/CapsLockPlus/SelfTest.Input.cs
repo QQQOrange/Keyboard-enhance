@@ -1150,6 +1150,30 @@ public static partial class SelfTest
         e4.Dispose();
         q4.Dispose();
 
+        // ---- 4.5 宿主模式：本进程绝不能再喂 Raw Input ----
+        /* 回归：宿主负责装钩子、判层、转发动作；本进程只执行。
+         * 以前本进程的钩子计数恒为 0，"静默 10 秒"判据必然成立 → Raw Input 兜底
+         * 自己再跑一遍引擎，用另一份层状态执行同一个键 —— 一个键会开出两个程序
+         * （用户原话：按 Tab+T，QQ 和 WorkBuddy 一起打开）。 */
+        var sHost = DefaultSettings.Create();
+        foreach (var t in sHost.Triggers) t.Enabled = false;
+        var qHost = new ActionQueue();
+        int hostFired = 0;
+        var eHost = new HotkeyEngine(qHost, () => sHost,
+            (_, _) => { Interlocked.Increment(ref hostFired); return true; })
+        {
+            HookDelegatedToHost = true,
+        };
+        eHost.SeedHookSeenAtForTest(Environment.TickCount64 - 60_000);   // 模拟"钩子静默一分钟"
+        bool fedDown = eHost.FeedFromRaw(0x51, true, 0, Environment.TickCount64);
+        bool fedUp = eHost.FeedFromRaw(0x51, false, 0, Environment.TickCount64);
+        Check("宿主模式：Raw Input 不再把按键喂给本进程", !fedDown && !fedUp);
+        Thread.Sleep(150);
+        CheckEqual("宿主模式：本进程不执行任何动作（不会重复开程序）",
+            Volatile.Read(ref hostFired), 0);
+        eHost.Dispose();
+        qHost.Dispose();
+
         // ---- 5. 表达式：大整数精确、`**` 与 `^` 同义、round 四舍五入 ----
         Check("算式：2^50 精确", ExpressionEvaluator.TryEvaluate("2^50", out var v50, out _)
             && ExpressionEvaluator.Format(v50) == "1125899906842624",
