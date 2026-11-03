@@ -146,6 +146,11 @@ public sealed class AppHost : IDisposable
                  * （那条钩子会把整条输入链拖住，见 SelectionWatcher.Start 的注释）。 */
                 _selectionWatcher?.NotifyKey(vk, down);
 
+                /* 正在等用户按键的窗口（自定义按键捕获）也接这条路：
+                 * 它原来只靠临时装的低级钩子，而钩子被系统摘掉时一个键都收不到 ——
+                 * 表现就是「点开『按下要发送的键』按什么都没反应」。Raw Input 不受影响。 */
+                KeyCaptureSink.Push(vk, down);
+
                 /* 兜底：钩子长时间收不到按键时（远程桌面 / 注入输入），
                  * 由 Raw Input 把按键喂给引擎，否则所有热键一起失灵。
                  * 钩子正常工作时这条路自动关闭（见 ShouldUseRawFallback）。 */

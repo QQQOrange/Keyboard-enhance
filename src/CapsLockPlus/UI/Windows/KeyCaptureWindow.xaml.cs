@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -104,6 +104,16 @@ public partial class KeyCaptureWindow : Window
     {
         InitializeComponent();
         _proc = HookCallback;
+
+        /* 第三条来源：WPF 自己的预览事件。
+         *
+         * 窗口是模态 + Topmost + 打开即激活，只要它还拿着键盘焦点，
+         * 每个按键都会先走 PreviewKeyDown —— 这条路**不依赖任何全局钩子**，
+         * 所以钩子被系统摘掉时它照样能用。 */
+        PreviewKeyDown += OnPreviewKeyDown;
+        PreviewKeyUp += OnPreviewKeyUp;
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) Keyboard.Focus(this); };
+
         Loaded += (_, _) =>
         {
             /* PrefixKeys 是 init 属性，对象初始化器在构造函数**之后**才赋值，
@@ -111,28 +121,81 @@ public partial class KeyCaptureWindow : Window
              * 修饰键要排除：右 Alt 之类被设成触发键时仍按修饰键语义处理。 */
             _prefixEligible = PrefixKeys.Where(v => v != 0 && !IsModifier(v)).ToHashSet();
 
+            /* 第二条来源：Raw Input（不受钩子超时影响）。
+             * 订阅之后即使钩子死了，按键也照样进来。 */
+            KeyCaptureSink.Current = (vk, down) => Dispatcher.BeginInvoke(() => HandleKey(vk, down));
+
             _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
             if (_hook == IntPtr.Zero)
             {
-                PromptText.Text = Loc.T("无法安装键盘钩子");
-                DetailText.Text = Loc.T("请检查是否有安全软件拦截全局钩子。");
-                CoreLog.Warn($"自定义按键捕获：钩子安装失败（错误码 {Marshal.GetLastWin32Error()}）");
+                /* 不再把这当成"功能不可用"：钩子只是三路来源之一，
+                 * 另外两路（Raw Input / WPF 预览）足够覆盖普通按键。
+                 * 提示要如实说清"现在还能用"，否则用户会以为坏了。 */
+                PromptText.Text = Loc.T("等待按键…");
+                DetailText.Text = Loc.T("全局钩子没装上（可能被安全软件拦截），已改用窗口内捕获——功能正常。");
+                CoreLog.Warn($"自定义按键捕获：钩子安装失败（错误码 {Marshal.GetLastWin32Error()}），改用 Raw Input + 窗口内捕获");
             }
             Activate();
             Focus();
+            Keyboard.Focus(this);
             // 用户可能是"已经按着 Ctrl 才点开对话框"，那几个 down 事件我们没收到，
-            // 先播种一次初始状态，之后完全靠钩子事件维护。
+            // 先播种一次初始状态，之后完全靠事件维护。
             SeedModifiers();
             UpdateModifierBadges();
         };
         Closed += (_, _) =>
         {
+            KeyCaptureSink.Current = null;
             if (_hook != IntPtr.Zero)
             {
                 UnhookWindowsHookEx(_hook);
                 _hook = IntPtr.Zero;
             }
         };
+    }
+
+    /* ---------------- 三路输入汇合到这里 ---------------- */
+
+    /// <summary>上一次处理的按键，用来给多路来源去重（同一个物理按键会被钩子 + Raw Input + WPF 各送一次）。</summary>
+    private int _lastVk;
+    private bool _lastDown;
+    private long _lastTick;
+    private bool _closed;
+
+    /// <summary>
+    /// 一帧内同一个 (vk, 方向) 的重复事件直接丢掉。
+    ///
+    /// 阈值取 40ms：真实自动重复最快约 30ms 一次，而三路来源之间相差不到 5ms，
+    /// 所以既能吃掉重复，又不会把用户的第二次按键当成重复。
+    /// </summary>
+    private bool Duplicate(int vk, bool down)
+    {
+        long now = Environment.TickCount64;
+        if (vk == _lastVk && down == _lastDown && now - _lastTick < 40) return true;
+        _lastVk = vk;
+        _lastDown = down;
+        _lastTick = now;
+        return false;
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        // Alt 在 WPF 里走 Key.System，真正的键在 SystemKey 上
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        int vk = KeyInterop.VirtualKeyFromKey(key);
+        if (vk == 0) return;
+        if (e.IsRepeat) return;
+        HandleKey(vk, true);
+    }
+
+    private void OnPreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        int vk = KeyInterop.VirtualKeyFromKey(key);
+        if (vk == 0) return;
+        HandleKey(vk, false);
     }
 
     /// <summary>
@@ -169,18 +232,32 @@ public partial class KeyCaptureWindow : Window
         if (!down && !up) return CallNextHookEx(_hook, nCode, wParam, lParam);
 
         var data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-        int vk = (int)data.vkCode;
+        // 吞掉按键：捕获期间这些键不该漏给前台（Alt+Tab / Win 之类会当场切走窗口）
+        return HandleKey((int)data.vkCode, down)
+            ? (IntPtr)1
+            : CallNextHookEx(_hook, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// 三路输入（低级钩子 / Raw Input / WPF 预览）汇合后的唯一处理点。
+    /// 返回值 = 是否吞掉这个按键（只有钩子那一路用得到）。
+    /// </summary>
+    private bool HandleKey(int vk, bool down)
+    {
+        if (_closed || vk == 0) return false;
+        if (Duplicate(vk, down)) return true;
 
         // Esc 取消
         if (down && vk == VK_ESC)
         {
+            _closed = true;
             Dispatcher.BeginInvoke(() =>
             {
                 CapturedCombo = null;
                 DialogResult = false;
                 Close();
             });
-            return (IntPtr)1;
+            return true;
         }
 
         if (IsModifier(vk))
@@ -214,7 +291,7 @@ public partial class KeyCaptureWindow : Window
                     }
                 });
             }
-            return (IntPtr)1;
+            return true;
         }
 
         /* 触发键（层前缀）必须在这里拦下来。
@@ -263,7 +340,7 @@ public partial class KeyCaptureWindow : Window
                 _prefixVk = 0;
                 _prefixUsed = false;
             }
-            return (IntPtr)1;
+            return true;
         }
 
         if (down)
@@ -296,10 +373,11 @@ public partial class KeyCaptureWindow : Window
                 ConfirmButton.IsEnabled = true;
             });
 
-            return (IntPtr)1;
+            return true;
         }
 
-        return CallNextHookEx(_hook, nCode, wParam, lParam);
+        // 非修饰键抬起：不吞（否则某些程序收不到 up，会"粘键"）
+        return false;
     }
 
     private static string BuildCombo(KeyModifiers mods, string? key)
