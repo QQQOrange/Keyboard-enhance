@@ -208,18 +208,19 @@ public partial class LayersView : UserControl
     {
         if (_host == null) return;
 
-        // 捕获一个新键作为触发键
-        var dlg = new KeyCaptureWindow { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
+        // 捕获一个新键作为触发键（非模态：窗口万一没弹出来，程序也不会卡死）
+        KeyCaptureWindow.Capture(r =>
+        {
+        if (string.IsNullOrEmpty(r.Combo)) return;
 
         // 触发键必须是单键（不带修饰键），否则语义混乱
-        if (dlg.CapturedMods != Core.Input.KeyModifiers.None)
+        if (r.Mods != Core.Input.KeyModifiers.None)
         {
             _host.Notify(Loc.T("触发键不能带修饰键，请直接按一个键"));
             return;
         }
 
-        string key = dlg.CapturedKey ?? dlg.CapturedCombo;
+        string key = r.Key ?? r.Combo!;
         if (_host.Settings.Triggers.Any(t =>
                 t.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))
         {
@@ -245,6 +246,7 @@ public partial class LayersView : UserControl
         _host.SaveSettings();
         Reload();
         _host.Notify(Loc.F("已添加触发键 {0} → 第 {1} 层", KeyName.Display(key), layerId));
+        });
     }
 
     private void OnDeleteTrigger(object sender, RoutedEventArgs e)
@@ -282,15 +284,16 @@ public partial class LayersView : UserControl
     {
         if (_host == null || _editing == null) return;
 
-        var dlg = new KeyCaptureWindow { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
-        if (dlg.CapturedMods != Core.Input.KeyModifiers.None)
+        KeyCaptureWindow.Capture(r =>
+        {
+        if (string.IsNullOrEmpty(r.Combo)) return;
+        if (r.Mods != Core.Input.KeyModifiers.None)
         {
             _host.Notify(Loc.T("触发键不能带修饰键，请直接按一个键"));
             return;
         }
 
-        string key = dlg.CapturedKey ?? dlg.CapturedCombo;
+        string key = r.Key ?? r.Combo!;
         if (_host.Settings.Triggers.Any(t =>
                 !ReferenceEquals(t, _editing) &&
                 t.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))
@@ -303,6 +306,7 @@ public partial class LayersView : UserControl
         _host.SaveSettings();
         BindEditor();
         ReloadLayers();
+        });
     }
 
     private void OnTriggerLayerChanged(object sender, SelectionChangedEventArgs e)

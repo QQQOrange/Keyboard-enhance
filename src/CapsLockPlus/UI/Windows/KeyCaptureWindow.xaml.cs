@@ -101,6 +101,35 @@ public partial class KeyCaptureWindow : Window
     /// <summary>是否捕获到了组合键（含修饰键才算组合）。</summary>
     public bool IsCombo => CapturedMods != KeyModifiers.None;
 
+    /// <summary>捕获结果（非模态回调用）。</summary>
+    public readonly record struct CaptureResult(string? Combo, string? Key, Core.Input.KeyModifiers Mods);
+
+    /// <summary>
+    /// 统一的"录一个键"入口：**非模态**打开，结果通过回调返回。
+    ///
+    /// 为什么不建议直接 new + ShowDialog：ShowDialog 会阻塞界面线程，
+    /// 万一窗口没显示出来（透明窗口 + Owner 不可见时出现过），用户看到的就是
+    /// "整个程序卡死、识别按键的页面也不出现"，而且没有任何日志。
+    /// </summary>
+    public static void Capture(Action<CaptureResult> onCaptured, IEnumerable<int>? prefixKeys = null)
+    {
+        if (KeyCaptureSink.Current != null)
+        {
+            CoreLog.Info("已经有捕获窗在等待按键，忽略这次重复打开");
+            return;
+        }
+
+        var dlg = new KeyCaptureWindow { PrefixKeys = prefixKeys == null ? new HashSet<int>() : new HashSet<int>(prefixKeys) };
+        dlg.Closed += (_, _) =>
+        {
+            try { onCaptured(new CaptureResult(dlg.CapturedCombo, dlg.CapturedKey, dlg.CapturedMods)); }
+            catch (Exception ex) { CoreLog.Swallow(ex, "捕获键回调"); }
+        };
+        CoreLog.Info("打开键位捕获窗（非模态）");
+        dlg.Show();
+        dlg.Activate();
+    }
+
     public KeyCaptureWindow()
     {
         InitializeComponent();
@@ -178,6 +207,15 @@ public partial class KeyCaptureWindow : Window
     /* ---------------- 三路输入汇合到这里 ---------------- */
 
     /// <summary>上一次处理的按键，用来给多路来源去重（同一个物理按键会被钩子 + Raw Input + WPF 各送一次）。</summary>
+    /// <summary>
+    /// 非模态打开时（Recommend：不用 ShowDialog），<c>DialogResult</c> 一设就抛
+    /// InvalidOperationException。这里统一兜住 —— 调用方看 CapturedCombo 就够了。
+    /// </summary>
+    private void TrySetResult(bool value)
+    {
+        try { DialogResult = value; } catch (InvalidOperationException) { /* 非模态 */ }
+    }
+
     private DispatcherTimer? _noInputTimer;
 
     private int _lastVk;
@@ -298,7 +336,7 @@ public partial class KeyCaptureWindow : Window
             Dispatcher.BeginInvoke(() =>
             {
                 CapturedCombo = null;
-                DialogResult = false;
+                TrySetResult(false);
                 Close();
             });
             return true;
@@ -468,14 +506,14 @@ public partial class KeyCaptureWindow : Window
             PromptText.Text = Loc.T("先按一个组合键");
             return;
         }
-        DialogResult = true;
+        TrySetResult(true);
         Close();
     }
 
     private void OnCancel(object sender, RoutedEventArgs e)
     {
         CapturedCombo = null;
-        DialogResult = false;
+        TrySetResult(false);
         Close();
     }
 }

@@ -1,10 +1,11 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.UI.Windows;
@@ -27,10 +28,14 @@ public partial class KeysView : UserControl
     /// </summary>
     private void EnsureCustomKeyAction()
     {
-        if (_host == null) return;
-        var binding = FindInCurrentLayer(CurrentCombo());
-        if (binding != null && binding.Action == "customKey") return;
-        EnsureActionForCategory("customKey");
+        /* ⚠ 这里**不能**落盘。
+         *
+         * 以前只要在分类里点一下「自定义按键」，就把当前键的动作改成了 customKey
+         * 并存进配置 —— 用户还没设"要发送的键"、也没绑应用，等于什么都没配好，
+         * 但重启后这个键还是显示「自定义按键」，看起来像"没设置成功却记住了"。
+         *
+         * 正确语义：**只有真正设置了参数（键/应用）才算选了这个动作**，
+         * 参数由 SaveCustomSpec 落盘。这里只负责把面板显示出来。 */
     }
 
     /// <summary>当前键的「自定义按键」参数（没绑这一类就返回空参数）。</summary>
@@ -125,12 +130,31 @@ public partial class KeysView : UserControl
         if (_host == null) return;
 
         var spec = CurrentCustomSpec();
+
+        /* 用 Show() 而不是 ShowDialog()：
+         * ShowDialog 会阻塞界面线程，一旦窗口因为任何原因没显示出来（透明窗口 + Owner 不可见
+         * 时出现过），用户看到的就是"整个程序卡死、识别按键的页面也不出现"。
+         * 非模态没有这个风险：窗口没出来也只是没出来，主界面照样能动。
+         * 捕获结果通过 Closed 读回。 */
         var dlg = new UI.Windows.KeyCaptureWindow
         {
-            Owner = Window.GetWindow(this),
             PrefixKeys = TriggerPrefixKeys(),
         };
-        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
+        CoreLog.Info("自定义按键：打开捕获窗（非模态）");
+        dlg.Closed += (_, _) =>
+        {
+            string? captured = dlg.CapturedCombo;
+            CoreLog.Info($"自定义按键：捕获窗关闭，结果=[{captured ?? "(空)"}]");
+            if (string.IsNullOrEmpty(captured)) return;
+
+            var latest = CurrentCustomSpec();
+            latest.Key = captured;
+            SaveCustomSpec(latest);
+            ShowBindStatus(Loc.F("已设置要发送的键：{0}", CustomKeyRunner.ComboDisplay(captured)));
+        };
+        dlg.Show();
+        dlg.Activate();
+        return;
 
         /* 存**完整组合键**（含修饰键），发送时原样重放。
          * 这里刻意不碰 _layer / _selectedKey：捕获的是"要发出去的键"，

@@ -794,13 +794,14 @@ public partial class MacrosView : UserControl
         if (_host == null || _editing == null) return;
         if (_selectedStep < 0 || _selectedStep >= _editing.Steps.Count) return;
 
-        var dlg = new KeyCaptureWindow { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
-
-        _editing.Steps[_selectedStep].Key = dlg.CapturedCombo;
-        _host.SaveSettings();
-        BindStepEditor();
-        RefreshSteps(keepSelection: true);
+        KeyCaptureWindow.Capture(r =>
+        {
+            if (string.IsNullOrEmpty(r.Combo)) return;
+            _editing.Steps[_selectedStep].Key = r.Combo!;
+            _host.SaveSettings();
+            BindStepEditor();
+            RefreshSteps(keepSelection: true);
+        });
     }
 
     // ---------------- 调整顺序 ----------------
@@ -1138,11 +1139,12 @@ public partial class MacrosView : UserControl
     {
         if (_editing == null) return;
 
-        // 用捕获窗口拿一个键（支持组合键），Esc 取消
-        var dlg = new KeyCaptureWindow { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.CapturedCombo)) return;
-
-        AddStep(new MacroStep { Kind = kind, Key = dlg.CapturedCombo });
+        // 用捕获窗口拿一个键（支持组合键），Esc 取消。非模态：窗口没弹出来也不会卡死
+        KeyCaptureWindow.Capture(r =>
+        {
+            if (string.IsNullOrEmpty(r.Combo)) return;
+            AddStep(new MacroStep { Kind = kind, Key = r.Combo! });
+        });
     }
 
     // ---------------- 简单输入框 ----------------

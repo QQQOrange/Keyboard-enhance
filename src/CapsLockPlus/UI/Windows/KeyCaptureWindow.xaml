@@ -4,7 +4,7 @@
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
         Title="{loc:T '自定义按键'}" Width="470" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Topmost="True"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" Topmost="True"
         ResizeMode="NoResize" FontFamily="{StaticResource Font.Ui}">
 
     <Grid Margin="14">

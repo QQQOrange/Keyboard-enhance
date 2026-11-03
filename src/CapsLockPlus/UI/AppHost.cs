@@ -1067,9 +1067,74 @@ public sealed class AppHost : IDisposable
         SaveSettings();
     }
 
+    /// <summary>
+    /// 清理"只选了『自定义按键』分类、但从没设置过"的绑定。
+    ///
+    /// 这类绑定的动作是 customKey，但既没有要发送的键、也没有目标程序 ——
+    /// 按下去什么都不会发生。以前它会被原样保存，重启后那个键还显示「自定义按键」，
+    /// 用户看到的就是"我没设置成功，它怎么记住了"。
+    ///
+    /// 现在开机统一改回「无操作」，并写一条日志（可追溯，不会静默改数据）。
+    /// </summary>
+    internal static int ResetIncompleteCustomKeys(Core.Settings.AppSettings s)
+    {
+        int fixedCount = 0;
+        try
+        {
+            foreach (var layer in s.Layers)
+            {
+                foreach (var b in layer.Keys)
+                {
+                    if (!IsIncompleteAction(b)) continue;
+
+                    b.Action = "doNothing";
+                    b.Arg = "";
+                    fixedCount++;
+                }
+            }
+
+            if (fixedCount > 0)
+                CoreLog.Warn($"清理了 {fixedCount} 个未完成的自定义按键绑定（没有设过要发送的键），已恢复为「无操作」");
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "清理未完成的自定义按键"); }
+        return fixedCount;
+    }
+
+    /// <summary>
+    /// 这个绑定是不是"选了动作、但内容没填"的空壳。
+    ///
+    /// 这一类动作（输入文本 / 窗口绑定 / 自定义按键 / 直达网址·文件夹·文件）有个共同点：
+    /// 光选分类不填参数，按下去什么都不会发生。而编辑器在"选分类"的那一刻就把动作写进配置了，
+    /// 于是重启后那个键还显示着「自定义按键」「输入文本」……用户看到的就是
+    /// "我根本没设置成功，它怎么记住了"。
+    /// </summary>
+    internal static bool IsIncompleteAction(Core.Settings.KeyBinding b)
+    {
+        switch (b.Action)
+        {
+            case "customKey":
+                return string.IsNullOrWhiteSpace(Core.Actions.CustomKeySpec.FromArg(b.Arg).Key);
+            case "typeText":
+            case "winBind":
+            case "webPage":
+            case "openFolder":
+            case "openFile":
+                return string.IsNullOrWhiteSpace(b.Arg);
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>启动时清理，并在真的改动过时落盘。</summary>
+    private void ResetIncompleteCustomKeys()
+    {
+        if (ResetIncompleteCustomKeys(Settings) > 0) SettingsStore.RequestSave(Settings);
+    }
+
     public void ReloadAll()
     {
         Settings = SettingsStore.Load();
+        ResetIncompleteCustomKeys();
         ThemeManager.Apply(ThemeManager.Parse(Settings.Global.Theme));
         // 主题一变就作废 Qbar 的样式缓存，否则已打开的面板还留着旧配色
         _qbar?.InvalidateStyle();

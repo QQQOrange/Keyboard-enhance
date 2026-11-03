@@ -1287,6 +1287,38 @@ public static partial class SelfTest
             e.Dispose();
         }
 
+        /* ---- 未完成的「自定义按键」不能在重启后还留着 ----
+         *
+         * 用户报：只在分类里点了「自定义按键」、没设要发送的键，退出重进后那个键
+         * 还显示「自定义按键」。现在启动会把它改回「无操作」；真的设过键的要保留。 */
+        {
+            var s4 = DefaultSettings.Create();
+            s4.Layers[0].Keys.Clear();
+            s4.Layers[0].Keys.Add(new Core.Settings.KeyBinding
+            {
+                Combo = "caps_j", Action = "customKey", Arg = "",
+            });
+            s4.Layers[0].Keys.Add(new Core.Settings.KeyBinding
+            {
+                Combo = "caps_k", Action = "customKey",
+                Arg = new Core.Actions.CustomKeySpec { Key = "ctrl+shift+k", AppPath = "notepad.exe" }.ToArg(),
+            });
+
+            // 输入文本 / 窗口绑定 这类"选了动作没填内容"的同样要清理
+            s4.Layers[0].Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_l", Action = "typeText", Arg = "" });
+            s4.Layers[0].Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_m", Action = "webPage", Arg = "" });
+            s4.Layers[0].Keys.Add(new Core.Settings.KeyBinding { Combo = "caps_n", Action = "typeText", Arg = "你好" });
+
+            int fixedN = CapsLockPlus.UI.AppHost.ResetIncompleteCustomKeys(s4);
+            var byCombo = s4.Layers[0].Keys.ToDictionary(b => b.Combo, b => b);
+            Check("未完成的参数型动作共清理 3 个", fixedN == 3, fixedN.ToString());
+            Check("空的输入文本被清理", byCombo["caps_l"].Action == "doNothing", byCombo["caps_l"].Action);
+            Check("空的直达网址被清理", byCombo["caps_m"].Action == "doNothing", byCombo["caps_m"].Action);
+            Check("有内容的输入文本保留", byCombo["caps_n"].Action == "typeText", byCombo["caps_n"].Action);
+            Check("未完成的绑定恢复为「无操作」", byCombo["caps_j"].Action == "doNothing", byCombo["caps_j"].Action);
+            Check("真的设过键的绑定保留", byCombo["caps_k"].Action == "customKey", byCombo["caps_k"].Action);
+        }
+
         /* 只漏一两个键时不能接管（启动期/偶发漏键就接管会把热键切到"吞不掉"的模式） */
         {
             var s3 = DefaultSettings.Create();

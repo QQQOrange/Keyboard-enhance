@@ -565,7 +565,11 @@ public static partial class SelfTest
                     angleTracks = false;
             }
 
-            Check("补间过程中取到过中间帧（是补间，不是瞬变）", sawMiddle);
+            /* 采样可能因为机器卡一下而错过中间值（实测偶发）：
+             * 这时用"重绘次数"兜底判断——补间至少会画好几帧，一帧到位只会画一次。 */
+            int repaints = osd.IconRepaintsForTest - repaintsBefore;
+            Check("补间过程中取到过中间帧（是补间，不是瞬变）", sawMiddle || repaints >= 3,
+                $"sawMiddle={sawMiddle} repaints={repaints} p={osd.IconProgressForTest:F3}");
             Check("补间最终停在 100%", reachedEnd, $"p={osd.IconProgressForTest:F3}");
             Check("补间中放射线边变长边旋转（角度始终 = 360°×进度）", angleTracks,
                 $"p={osd.IconProgressForTest:F3} angle={osd.SunSpinAngleForTest:F2}");
