@@ -119,7 +119,7 @@ public partial class HotstringView : UserControl
             .Select(x => new Row
             {
                 Snippet = x,
-                KeyLabel = x.Trigger ?? "",
+                KeyLabel = StripPrefix(x.Trigger, opt.EffectivePrefix),
                 Preview = Shorten(opt.ShowNoteFirst && !string.IsNullOrWhiteSpace(x.Comment) ? x.Comment : x.Text, 56),
             })
             .ToList();
@@ -136,6 +136,24 @@ public partial class HotstringView : UserControl
 
         if (EntryList.SelectedItem is Row row) LoadEditor(row.Snippet);
         else { _editing = null; ShowEditor(false); }
+    }
+
+    /// <summary>列表/编辑框里显示触发词时**去掉**前缀符号（;mail 只显示 mail）。</summary>
+    private static string StripPrefix(string? trigger, string? prefix)
+    {
+        if (string.IsNullOrEmpty(trigger)) return "";
+        if (!string.IsNullOrEmpty(prefix) && trigger.StartsWith(prefix!, StringComparison.Ordinal))
+            return trigger[prefix!.Length..];
+        return trigger;
+    }
+
+    /// <summary>保存时把前缀补回去（用户只输入了 mail）。</summary>
+    private static string ApplyPrefix(string? typed, string? prefix)
+    {
+        string name = typed?.Trim() ?? "";
+        if (string.IsNullOrEmpty(name)) return "";
+        if (string.IsNullOrEmpty(prefix)) return name;
+        return name.StartsWith(prefix!, StringComparison.Ordinal) ? name : prefix + name;
     }
 
     private static string Shorten(string? s, int max)
@@ -191,7 +209,7 @@ public partial class HotstringView : UserControl
         _suppress = true;
         try
         {
-            KeyBox.Text = entry.Trigger ?? "";
+            KeyBox.Text = StripPrefix(entry.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
             ValueBox.Text = entry.Text ?? "";
             CommentBox.Text = entry.Comment ?? "";
             AppsBox.Text = entry.Apps ?? "";
@@ -261,7 +279,7 @@ public partial class HotstringView : UserControl
     {
         if (_host == null || _suppress || _editing == null) return;
 
-        _editing.Trigger = KeyBox.Text?.Trim() ?? "";
+        _editing.Trigger = ApplyPrefix(KeyBox.Text?.Trim(), _host.Settings.Hotstring.EffectivePrefix);
         _editing.Text = ValueBox.Text ?? "";
         _editing.Comment = CommentBox.Text ?? "";
         _editing.Apps = AppsBox.Text?.Trim() ?? "";

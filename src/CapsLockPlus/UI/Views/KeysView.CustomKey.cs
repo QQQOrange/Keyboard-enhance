@@ -356,16 +356,16 @@ public partial class KeysView : UserControl
 
         // 不是 const：文本要在**当前语言**下拼，编译期定不下来
         string text =
-            Loc.T("把基础层的按键全部恢复成默认值？\n") +
-            Loc.T("· 你在这一层改过的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n") +
-            Loc.T("· 你自己新增的组合键会保留，其它 9 层完全不动；\n") +
+            Loc.T("把「按键映射」这一页恢复成默认设置？\n") +
+            Loc.T("· 基础层的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n") +
+            Loc.T("· 你自己新增的组合键会保留；其它 9 层、触发键、宏、文本片段都不动；\n") +
             Loc.T("· 这一步不能撤销。");
 
         if (!AppDialog.ConfirmDanger(Window.GetWindow(this), text,
-                Loc.T("恢复默认按键"), okText: Loc.T("恢复默认"))) return;
+                Loc.T("恢复本页默认设置"), okText: Loc.T("恢复默认"))) return;
 
         _host.ApplyHotkeyScheme(_host.Settings.Global.HotkeyScheme);
         Refresh();
-        _host.Notify(Loc.T("按键映射已恢复默认"));
+        _host.Notify(Loc.T("按键映射已恢复本页默认设置"));
     }
 }

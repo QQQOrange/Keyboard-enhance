@@ -1600,6 +1600,22 @@ public partial class SettingsView : UserControl
         }
     }
 
+    /// <summary>
+    /// 「数据与维护 → 导入」：直接复用「同步与备份」页那套导入流程
+    /// （选文件 → 解密/密码 → 确认 → 应用 → 结果提示）。
+    ///
+    /// 为什么不在这里另写一套：导入涉及密码重试、分组提示、悬空宏检查，
+    /// 两份实现迟早会走偏。统一到一处，用户在哪个页面点都是同一个行为。
+    /// </summary>
+    private void OnImportClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        _host.ShowMainWindow("backup");
+        if (Windows.MainWindow.Instance?.GetPage("backup") is BackupView backup)
+            backup.BeginImport();
+    }
+
     private void OnOpenSettingsFile(object sender, RoutedEventArgs e)
     {
         try

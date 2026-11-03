@@ -639,8 +639,9 @@
                     <TextBlock x:Name="DataPathText" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
                                Margin="0,6,0,14" />
                     <WrapPanel>
-                        <Button Content="{loc:T '从旧版 CapsLock+ 导入设置'}" Style="{StaticResource Button.Base}"
-                                Margin="0,0,8,8" Click="OnImportLegacy" />
+                        <Button Content="{loc:T '导入'}" Style="{StaticResource Button.Base}"
+                                Margin="0,0,8,8" Click="OnImportClick"
+                                ToolTip="{loc:T '导入导出的配置（.clpconf）或备份文件；旧版 CapsLock+ 的 settings.ini 也能直接选'}" />
                         <Button Content="{loc:T '打开设置文件'}" Style="{StaticResource Button.Base}" Margin="0,0,8,8"
                                 Click="OnOpenSettingsFile" />
                         <Button Content="{loc:T '打开日志'}" Style="{StaticResource Button.Base}" Margin="0,0,8,8"

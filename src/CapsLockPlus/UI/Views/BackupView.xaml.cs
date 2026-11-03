@@ -740,6 +740,9 @@ public partial class BackupView : UserControl
 
     // ---------------- 导入 ----------------
 
+    /// <summary>供其它页面调用：直接走同一套导入流程。</summary>
+    internal void BeginImport() => OnImportClick(this, new RoutedEventArgs());
+
     private void OnImportClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
@@ -756,6 +759,15 @@ public partial class BackupView : UserControl
             InitialDirectory = SyncService.BackupDir,
         };
         if (dlg.ShowDialog() != true) return;
+
+        /* 旧版 CapsLock+ 的 settings.ini 也允许从这里选。
+         * 以前它是个单独的按钮（"从旧版导入"），现在合并成「导入」一个入口，
+         * 用户不必再判断"我这份文件该点哪个按钮"。 */
+        if (dlg.FileName.EndsWith(".ini", StringComparison.OrdinalIgnoreCase))
+        {
+            ImportLegacyIni(dlg.FileName);
+            return;
+        }
 
         try
         {
@@ -836,6 +848,47 @@ public partial class BackupView : UserControl
             ShowImportResult(Loc.T("导入失败：") + ex.Message, false);
             _host.Notify(Loc.T("导入失败：") + ex.Message);
             AppDialog.Error(Window.GetWindow(this), ex.Message, Loc.T("导入失败"));
+        }
+    }
+
+    /// <summary>旧版 CapsLock+ 的 settings.ini 导入（保留能力，但不再是单独按钮）。</summary>
+    private void ImportLegacyIni(string path)
+    {
+        if (_host == null) return;
+
+        try
+        {
+            var result = LegacyIniImporter.Import(path);
+            int total = result.Keys + result.Search + result.Run + result.Web + result.HotStrings;
+            if (total == 0)
+            {
+                ShowImportResult(Loc.T("这个 .ini 里没有可导入的设置（按键 / 搜索 / 程序 / 网址 / 热字串都是 0 项）。"), false);
+                return;
+            }
+
+            string counts = Loc.F("即将导入：按键 {0} 项 / 搜索 {1} 条 / 程序 {2} 个 / 网址 {3} 个 / 文字替换 {4} 条。",
+                result.Keys, result.Search, result.Run, result.Web, result.HotStrings);
+            string warn = Loc.T("注意：导入会整份替换当前的按键、搜索、程序、网址与热字串（宏、层和触发键不受影响），且不能撤销。确定继续吗？");
+            if (!AppDialog.Confirm(Window.GetWindow(this), counts + warn, Loc.T("导入旧版设置"),
+                    okText: Loc.T("导入")))
+                return;
+
+            _host.Settings = result.Settings;
+            _host.SaveSettings();
+            _host.ReloadAll();
+
+            string msg = Loc.F("导入完成：按键 {0} 项 / 搜索 {1} 条 / 程序 {2} 个 / 网址 {3} 个 / 文字替换 {4} 条。",
+                result.Keys, result.Search, result.Run, result.Web, result.HotStrings);
+            if (result.Warnings.Count > 0)
+                msg += Loc.T("\n\n以下项目需要手动确认：\n") + string.Join("\n", result.Warnings.Take(8));
+
+            ShowImportResult(msg, true);
+            _host.Notify(Loc.F("已从旧版设置导入 {0} 项", total));
+        }
+        catch (Exception ex)
+        {
+            ShowImportResult(Loc.T("导入失败：") + ex.Message, false);
+            AppDialog.Error(Window.GetWindow(this), ex.Message, Loc.T("导入旧版设置"));
         }
     }
 

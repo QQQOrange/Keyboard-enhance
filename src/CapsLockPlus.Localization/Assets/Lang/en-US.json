@@ -2245,5 +2245,15 @@
   "先选一个层": "Pick a layer first",
   "已回到基础层": "Back to the base layer",
   "导出内容": "What to export",
-  "触发词、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）": "Triggers, expansions, notes, groups, app limits and the prefix settings (stored in Global, so appearance/behaviour settings come along)"
+  "触发词、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）": "Triggers, expansions, notes, groups, app limits and the prefix settings (stored in Global, so appearance/behaviour settings come along)",
+  "恢复本页默认设置": "Reset this page to defaults",
+  "只把「按键映射」这一页的基础层绑定恢复成默认；层、触发键、宏、片段都不动": "Reset only the base-layer bindings on this page; layers, triggers, macros and snippets are untouched",
+  "把「按键映射」这一页恢复成默认设置？\n": "Reset the Keys page to its defaults?\n",
+  "· 基础层的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n": "- Base-layer bindings will be overwritten (action, args, URL, text, app, note);\n",
+  "· 你自己新增的组合键会保留；其它 9 层、触发键、宏、文本片段都不动；\n": "- Custom combos you added are kept; the other 9 layers, triggers, macros and snippets are untouched;\n",
+  "按键映射已恢复本页默认设置": "Keys page reset to its defaults",
+  "导入导出的配置（.clpconf）或备份文件；旧版 CapsLock+ 的 settings.ini 也能直接选": "Import an exported config (.clpconf) or a backup file; legacy CapsLock+ settings.ini is also accepted",
+  "这个 .ini 里没有可导入的设置（按键 / 搜索 / 程序 / 网址 / 热字串都是 0 项）。": "This .ini has nothing to import (keys / search / apps / URLs / snippets are all 0).",
+  "导入完成：按键 {0} 项 / 搜索 {1} 条 / 程序 {2} 个 / 网址 {3} 个 / 文字替换 {4} 条。": "Import done: {0} keys / {1} searches / {2} apps / {3} URLs / {4} snippets.",
+  "已从旧版设置导入 {0} 项": "Imported {0} items from legacy settings"
 }
