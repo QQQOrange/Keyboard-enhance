@@ -1361,6 +1361,44 @@ public static partial class SelfTest
                 string.Join("|", sG.Global.SnippetGroups));
         }
 
+        /* ---- Tab 做触发键：从第一毫秒就吞掉，自动重复也不漏 ---- */
+        {
+            var sT = DefaultSettings.Create();
+            sT.Triggers.Add(new TriggerKey { Key = "tab", LayerId = 2, HoldMs = 200 });
+            var engine = new HotkeyEngine(new ActionQueue("SelfTest.Tab"), () => sT, (_, _) => true)
+            {
+                EnterLayerImmediatelyForTest = true,
+            };
+
+            Check("Tab：按下即被吞（不会漏给前台）", engine.SimulateKey(0x09, true), "");
+            Check("Tab：已进入第 2 层", engine.ActiveLayer == 2, engine.ActiveLayer.ToString());
+
+            /* 按住不放：系统会持续发 down（自动重复）。这些必须全部被吞。 */
+            bool allSwallowed = true;
+            for (int i = 0; i < 5; i++)
+                allSwallowed &= engine.SimulateKey(0x09, true);
+            Check("Tab：按住期间 5 次自动重复全部被吞", allSwallowed, "");
+
+            long tapsBefore = engine.TapReplayCountForTest;
+            engine.SimulateKey(0x09, false);
+            Check("Tab：进过层，松手不补发 Tab", engine.TapReplayCountForTest == tapsBefore,
+                $"{engine.TapReplayCountForTest}");
+            Check("Tab：松手后回到基础层", engine.ActiveLayer <= 1, engine.ActiveLayer.ToString());
+            engine.Dispose();
+        }
+
+        /* ---- 宿主回传的按键要计数（健康检查用） ---- */
+        {
+            var sR = DefaultSettings.Create();
+            var engine = new HotkeyEngine(new ActionQueue("SelfTest.Remote"), () => sR, (_, _) => true);
+            long before = engine.RemoteKeyCount;
+            engine.ApplyRemoteKey(0x41, true);
+            engine.ApplyRemoteKey(0x41, false);
+            Check("宿主回传：按下+抬起各计一次", engine.RemoteKeyCount == before + 2,
+                (engine.RemoteKeyCount - before).ToString());
+            engine.Dispose();
+        }
+
         /* ---- 钩子吞不住键时：引擎不演层、不乱吞 ---- */
         {
             var sH = DefaultSettings.Create();

@@ -351,9 +351,23 @@ public sealed partial class HotkeyEngine : IDisposable
     /// </summary>
     public bool CaptureMode { get; set; }
 
-    /// <summary>宿主回传：某个键被按下了（只用于界面显示）。</summary>
+    /// <summary>
+    /// 宿主回传的按键计数。
+    ///
+    /// ⚠ 宿主模式下**本进程没有钩子**，<see cref="KeyEventCount"/> 永远是 0。
+    /// 健康检查如果拿它判断"钩子还活着没有"，就会永远判定"钩子死了" ——
+    /// 进而发 SWALLOW 0 让宿主停止吞键：Tab 立刻恢复成原生 Tab、层也进不去。
+    /// 这正是"更新后还是不行、甚至更糟"的原因。
+    /// </summary>
+    private long _remoteKeyCount;
+
+    /// <summary>宿主回传的按键累计数（宿主模式下用它判断钩子健康度）。</summary>
+    public long RemoteKeyCount => Interlocked.Read(ref _remoteKeyCount);
+
+    /// <summary>宿主回传：某个键被按下了（界面显示 + 健康度统计）。</summary>
     internal void ApplyRemoteKey(int vk, bool down)
     {
+        Interlocked.Increment(ref _remoteKeyCount);
         try { KeySeen?.Invoke(vk, down, ActiveLayer); } catch { }
     }
 

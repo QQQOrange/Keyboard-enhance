@@ -857,7 +857,9 @@ public sealed class AppHost : IDisposable
     private void CheckHookTraffic()
     {
         long raw = Interlocked.Read(ref _rawKeyCount);
-        long hook = Engine.KeyEventCount;
+        /* 宿主模式下钩子在**宿主进程**里，本进程的 KeyEventCount 恒为 0 ——
+         * 必须用宿主回传的计数，否则会误判"钩子被摘"，把吞键整个关掉。 */
+        long hook = _hookHostReady ? Engine.RemoteKeyCount : Engine.KeyEventCount;
         long rawDelta = raw - _lastRawCount;
         long hookDelta = hook - _lastHookCount;
         _lastRawCount = raw;
@@ -866,11 +868,13 @@ public sealed class AppHost : IDisposable
         if (hookDelta > 0)
         {
             /* 钩子在工作，全部清零。 */
-            /* 恢复：让宿主重新开始吞键（它可能被我们之前的 SWALLOW 0 停过）。 */
+            /* 钩子确实在工作：清掉一切"怀疑"状态。
+             * 也顺手让宿主恢复吞键 —— 老版本可能给它发过 SWALLOW 0。 */
             if (Engine.SwallowUnavailable) Engine.SwallowUnavailable = false;
             if (_hookHostReady) SendHookHostCommand("SWALLOW 1");
             _rawSinceHook = 0;
             _hookSilentSince = 0;
+            _hookHeals = 0;
             return;
         }
 
@@ -902,11 +906,16 @@ public sealed class AppHost : IDisposable
         _rawSinceHook = 0;
         _hookSilentSince = 0;
 
-        /* 吞不住了：先停止"演层"，把残留触发键会话清掉。
-         * 否则这段时间里用户按 Tab 会一直漏、松开后层还挂着。 */
-        Engine.SwallowUnavailable = true;
-        Engine.ResetForRecovery("钩子漏键");
-        if (_hookHostReady) SendHookHostCommand("SWALLOW 0");
+        /* ⚠ 这里**绝不能**把吞键关掉。
+         *
+         * 4.5.92 曾在这里发 SWALLOW 0 + SwallowUnavailable=true。而宿主模式的
+         * 计数以前恒为 0，健康检查必然误判 → 一打字就"钩子死了" → 主动关掉吞键：
+         * Tab 立刻恢复成原生 Tab、层永远进不去。用户感受到的就是
+         * "怎么改都还是 Tab 一直跳"，而且日志里连原因都看不到。
+         *
+         * 现在：只让持有钩子的一侧重装（REHOOK），吞键始终保持开启。
+         * 真的救不回来时，下面的探测/回退会把钩子搬到本进程，而不是"自废武功"。 */
+        if (_hookHostReady) SendHookHostCommand("REHOOK");
 
         if (_hookHostReady)
         {
