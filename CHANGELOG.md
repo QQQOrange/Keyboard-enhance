@@ -1,3 +1,45 @@
+## v4.5.76 — 空壳「自定义按键」为什么一直清不掉（根因）
+
+### 现象
+
+按键映射 → 第 2 层 → 数字 2：曾经想改成「自定义按键」，但按 F2 没录成功、也没确定。
+之后**无论更新/重启多少次**，点这个键都还是显示「自定义按键 + 按下要发送的键」，且没有具体键。
+
+### 根因
+
+清理逻辑 4.5.73 就写了，但挂在 `ReloadAll()`（托盘「重新加载配置」）里，
+而**程序启动根本不走 ReloadAll**（启动是 `App.xaml.cs` 里直接 `SettingsStore.Load()` →
+`new AppHost(settings)`）。所以那段清理代码从来没被执行过一次。
+
+用新加的 `--dump-bindings` 直接看你的真实配置，一条就露馅了：
+
+```text
+--- 第 2 层「第 2 层」
+  caps_2   action=customKey   arg=[]   <<<< 未完成（空壳动作）
+```
+
+### 修复
+
+- `AppHost.Start()` 第一件事就调用清理；`ReloadAll()` 里也保留（托盘重载同样生效）。
+- 清理只针对**真正没配好**的：`customKey` 没有要发送的键、`typeText`/`winBind`/
+  `webPage`/`openFolder`/`openFile` 参数为空 —— 改成「无操作」并写一条日志。
+  配置完整的（例如 `caps_3` 的 `ctrl+alt+w`）**原样保留**。
+- 新增 `--dump-bindings`：把每一层、每个子层的绑定原样打印到
+  `Data\logs\bindings.txt`，以后这类"配置里到底存了什么"的问题一眼就能看。
+
+### 在你的真实配置上实测
+
+```text
+[WARN] 清理了 4 个未完成的自定义按键绑定（没有设过要发送的键），已恢复为「无操作」
+
+第 2 层：caps_2  action=doNothing      ← 修好
+        caps_3  action=customKey [{"Key":"ctrl+alt+w",...}]   ← 保留
+第 3 层：caps_i  action=doNothing      ← 另一个空壳也清了
+未完成的空壳动作合计: 0
+```
+
+`--selftest`：**2886 项全过**。
+
 ## v4.5.75 — 找到真凶：录键窗口被量成 1 像素
 
 ### 「点『按下要发送的键』什么都不出现」的真正原因

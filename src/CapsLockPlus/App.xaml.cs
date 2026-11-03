@@ -107,6 +107,13 @@ public partial class App : Application
             return;
         }
 
+        /* `--dump-bindings`：把每一层的按键绑定原样打印出来（排查"录键没成功却被记住"）。 */
+        if (Core.CliFlags.Has(e.Args, "--dump-bindings"))
+        {
+            Core.BindingDump.Run();
+            return;
+        }
+
         /* `--capture-test`：打开自定义按键捕获窗并自检三路输入来源（诊断"按什么都没反应"）。 */
         if (Core.CliFlags.Has(e.Args, "--capture-test"))
         {
