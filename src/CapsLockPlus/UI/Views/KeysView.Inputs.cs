@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
@@ -505,8 +505,7 @@ public partial class KeysView : UserControl
         if (_host == null) return;
         var b = FindInCurrentLayer(CurrentCombo());
         if (b == null) return;
-        b.Arg = "";
-        b.Action = "doNothing";
+        CapsLockPlus.UI.AppHost.ClearBinding(b);
         _host.SaveSettings();
         RefreshWinBindPanel();
         BuildKeyboard();
@@ -672,8 +671,9 @@ public partial class KeysView : UserControl
         var binding = FindInCurrentLayer(CurrentCombo());
         if (binding != null)
         {
-            binding.Action = "doNothing";
-            binding.Arg = "";
+            /* 备注也一起清 —— 备注就是"这个绑定叫什么"，
+             * 绑定清了还留着它，用户看到的就是"文字没了，备注还在"。 */
+            CapsLockPlus.UI.AppHost.ClearBinding(binding);
             _host.SaveSettings();
         }
         SelectKey(_selectedKey);

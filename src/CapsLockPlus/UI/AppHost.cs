@@ -276,6 +276,7 @@ public sealed class AppHost : IDisposable
          * 而启动根本不走 ReloadAll —— 于是用户那条 caps_2→customKey 空壳记录
          * 在我加了清理逻辑之后**依然**每次重启都还在。必须在启动路径上也调一次。 */
         ResetIncompleteCustomKeys();
+        if (ClearStaleNotes(Settings) > 0) SettingsStore.RequestSave(Settings);
 
         /* 先起"钩子宿主"：它是个最小进程（不建界面、不做同步），装钩子的可靠性
          * 远高于本进程 —— 完整进程的 GC 停顿会把钩子回调拖过系统的 300ms 限制，
@@ -1106,6 +1107,51 @@ public sealed class AppHost : IDisposable
         }
         catch (Exception ex) { CoreLog.Swallow(ex, "清理未完成的自定义按键"); }
         return fixedCount;
+    }
+
+    /// <summary>
+    /// 清除一个键的绑定：动作、参数、**备注**一起清。
+    ///
+    /// 备注（<see cref="KeyBinding.Note"/>）是"这个绑定叫什么"的说明 ——
+    /// 绑定都清了还留着备注，用户看到的就是"文字没了，备注还在"。
+    /// </summary>
+    internal static void ClearBinding(Core.Settings.KeyBinding b)
+    {
+        b.Action = "doNothing";
+        b.Arg = "";
+        b.Note = null;
+    }
+
+    /// <summary>
+    /// 清理"没有动作却还留着备注"的绑定（历史数据：旧版「清除绑定」只清动作和参数）。
+    /// </summary>
+    internal static int ClearStaleNotes(Core.Settings.AppSettings s)
+    {
+        int cleared = 0;
+        try
+        {
+            foreach (var layer in s.Layers)
+            {
+                foreach (var b in layer.Keys) if (ClearOne(b)) cleared++;
+                foreach (var sub in layer.EffectiveSubLayers)
+                    foreach (var b in sub.Keys) if (ClearOne(b)) cleared++;
+            }
+
+            if (cleared > 0)
+                CoreLog.Warn($"清理了 {cleared} 个「没有动作却还留着备注」的绑定");
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "清理残留备注"); }
+        return cleared;
+
+        static bool ClearOne(Core.Settings.KeyBinding b)
+        {
+            if (string.IsNullOrWhiteSpace(b.Note)) return false;
+            if (b.Action is not (null or "doNothing")) return false;
+            if (!string.IsNullOrWhiteSpace(b.Arg)) return false;
+
+            b.Note = null;
+            return true;
+        }
     }
 
     /// <summary>

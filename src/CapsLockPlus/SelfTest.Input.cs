@@ -1287,6 +1287,37 @@ public static partial class SelfTest
             e.Dispose();
         }
 
+        /* ---- 「清除绑定」必须把备注一起清掉 ----
+         *
+         * 用户报：给键设了「输入文本 + 备注」，点「清除绑定」后再进输入文本页，
+         * 文字没了但备注还在。原因就是清除时只清了 Action/Arg，没清 Note。 */
+        {
+            var bind = new Core.Settings.KeyBinding
+            {
+                Combo = "caps_g", Action = "typeText", Arg = "hello", Note = "我的备注",
+            };
+            CapsLockPlus.UI.AppHost.ClearBinding(bind);
+            Check("清除绑定后动作变「无操作」", bind.Action == "doNothing", bind.Action);
+            Check("清除绑定后参数被清空", string.IsNullOrEmpty(bind.Arg), bind.Arg ?? "(null)");
+            Check("清除绑定后备注被清空", string.IsNullOrWhiteSpace(bind.Note), bind.Note ?? "(null)");
+
+            // 历史数据：旧版清除只清了动作，备注留着 —— 启动清理要把它们收掉
+            var s5 = DefaultSettings.Create();
+            s5.Layers[0].Keys.Clear();
+            s5.Layers[0].Keys.Add(new Core.Settings.KeyBinding
+            {
+                Combo = "caps_g", Action = "doNothing", Arg = "", Note = "残留备注",
+            });
+            s5.Layers[0].Keys.Add(new Core.Settings.KeyBinding
+            {
+                Combo = "caps_h", Action = "doNothing", Arg = "", Note = null,
+            });
+            int clearedNotes = CapsLockPlus.UI.AppHost.ClearStaleNotes(s5);
+            Check("残留备注被清掉 1 条", clearedNotes == 1, clearedNotes.ToString());
+            Check("残留备注的内容真的没了",
+                string.IsNullOrWhiteSpace(s5.Layers[0].Keys.First(k => k.Combo == "caps_g").Note));
+        }
+
         /* ---- 录键窗口必须真的显示成一个窗口 ----
          *
          * 用户报"点『按下要发送的键』什么都不出现"。实测发现窗口是 1×1082：
