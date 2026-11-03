@@ -506,7 +506,7 @@ public sealed class AppHost : IDisposable
     ///   · 每次运行最多一次，且 15 分钟内不重复（用数据目录里的时间戳文件防抖），
     ///     否则一旦环境持续异常就会无限重启。
     /// </summary>
-    private void RestartSelfForHookRecovery()
+    private void RestartSelfForHookRecovery(bool force = false)
     {
         try
         {
@@ -517,7 +517,7 @@ public sealed class AppHost : IDisposable
             }
 
             string stamp = System.IO.Path.Combine(Core.AppPaths.DataDir, "hook-self-restart.txt");
-            try
+            if (!force) try
             {
                 if (System.IO.File.Exists(stamp) &&
                     DateTime.Now - System.IO.File.GetLastWriteTime(stamp) < TimeSpan.FromMinutes(15))
@@ -897,7 +897,7 @@ public sealed class AppHost : IDisposable
                 catch { }
 
                 Notify(Loc.T("管理员模式让热键失效了：正在用普通权限重启（已关闭「以管理员身份启动」）"));
-                RestartSelfForHookRecovery();
+                RestartSelfForHookRecovery(force: true);
                 return;
             }
         }
