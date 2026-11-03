@@ -278,6 +278,13 @@ public sealed class AppHost : IDisposable
         ResetIncompleteCustomKeys();
         if (ClearStaleNotes(Settings) > 0) SettingsStore.RequestSave(Settings);
 
+        /* 前缀符号改成"只认一个"之后，老配置（;mail 之类）要自动迁就一下。 */
+        if (InferSnippetPrefix(Settings) is char inferred)
+        {
+            SettingsStore.RequestSave(Settings);
+            CoreLog.Info($"文本片段：按已有触发词把前缀符号设为「{inferred}」");
+        }
+
         /* 先起"钩子宿主"：它是个最小进程（不建界面、不做同步），装钩子的可靠性
          * 远高于本进程 —— 完整进程的 GC 停顿会把钩子回调拖过系统的 300ms 限制，
          * 导致钩子被静默摘掉（实测根因）。拿不到 READY 就退回自己装钩子。 */
@@ -1120,6 +1127,37 @@ public sealed class AppHost : IDisposable
         }
         catch (Exception ex) { CoreLog.Swallow(ex, "清理未完成的自定义按键"); }
         return fixedCount;
+    }
+
+    /// <summary>
+    /// 按已有触发词**推断**前缀符号。
+    ///
+    /// 为什么需要：前缀从"任意符号都认"改成"只认一个"以后，默认值是 `/`，
+    /// 而老用户的触发词多半是 `;mail` 这种 —— 升级后突然全都不展开了。
+    /// 这里在启动时看一眼：现有触发词都以同一个符号开头、而当前前缀对不上，
+    /// 就把前缀改成那个符号（并写日志），用户不用手动改。
+    /// </summary>
+    internal static char? InferSnippetPrefix(Core.Settings.AppSettings s)
+    {
+        var snippets = s.Global?.Snippets;
+        if (snippets == null || snippets.Count == 0) return null;
+
+        string prefix = s.Hotstring?.Prefix ?? "";
+        if (prefix.Length > 0 && snippets.Any(x => x.Trigger?.StartsWith(prefix, StringComparison.Ordinal) == true))
+            return null;                                  // 当前前缀能用，不动
+
+        var common = snippets
+            .Select(x => x.Trigger?.TrimStart() is { Length: > 0 } t ? t[0] : '\0')
+            .Where(c => c != '\0' && !char.IsLetterOrDigit(c))
+            .GroupBy(c => c)
+            .OrderByDescending(g => g.Count())
+            .FirstOrDefault();
+
+        if (common == null) return null;
+        if (common.Key.ToString() == prefix) return null;
+
+        s.Hotstring.Prefix = common.Key.ToString();
+        return common.Key;
     }
 
     /// <summary>

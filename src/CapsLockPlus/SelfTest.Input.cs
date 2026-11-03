@@ -1329,6 +1329,26 @@ public static partial class SelfTest
             e.Dispose();
         }
 
+        /* ---- 前缀符号自动推断（老配置 ;mail 不会被默认 / 拦掉） ---- */
+        {
+            var sSnip = DefaultSettings.Create();
+            sSnip.Global.Snippets.Clear();
+            sSnip.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
+            sSnip.Global.Snippets.Add(new Snippet { Trigger = ";tel", Text = "123" });
+            sSnip.Hotstring.Prefix = "/";
+
+            char? inferred = CapsLockPlus.UI.AppHost.InferSnippetPrefix(sSnip);
+            Check("前缀推断：认出了 ;", inferred == ';', inferred?.ToString() ?? "(null)");
+            Check("前缀推断：写回设置", sSnip.Hotstring.Prefix == ";", sSnip.Hotstring.Prefix);
+
+            var sOk = DefaultSettings.Create();
+            sOk.Global.Snippets.Clear();
+            sOk.Global.Snippets.Add(new Snippet { Trigger = "/sig", Text = "x" });
+            sOk.Hotstring.Prefix = "/";
+            Check("前缀推断：已经对得上就不动", CapsLockPlus.UI.AppHost.InferSnippetPrefix(sOk) == null,
+                sOk.Hotstring.Prefix);
+        }
+
         /* ---- 文本片段：前缀 + 空格触发 的匹配规则 ---- */
         {
             var opt = new Core.Settings.HotstringOptions { Prefix = "/" };
