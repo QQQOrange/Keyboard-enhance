@@ -1,3 +1,54 @@
+## v4.5.97 — 按一下键莫名打开 QQ 和 WorkBuddy：宿主模式下跑了两条输入链
+
+### 现象
+
+用户按 `Tab` 再按 `T`，结果 QQ、WorkBuddy 连着被打开，微信也跟着启动。
+日志里同一个瞬间是这样：
+
+```
+06:49:07.510 动作：typeText 421127199512020853      ← T（第 2 层，正常）
+06:49:07.585 动作：winBind D://software//QQ.exe      ← 不该发生
+06:49:07.627 动作：winBind ...\WorkBuddy.exe        ← 不该发生
+06:49:07.660 动作：winBind ...\WorkBuddy.exe        ← 又一遍
+06:49:07.695/724  同上，共 4 次
+06:49:07.895 自定义按键：已启动 ...\Weixin.exe      ← 不该发生
+```
+
+### 根因
+
+4.5.68 把钩子搬进独立宿主进程后，`HookDelegatedToHost` 只被用来**显示状态**，
+没有任何一处真正拿它做拦截。于是宿主模式下主进程照样：
+
+1. `Engine.FeedFromRaw(vk, down)` 无条件执行 —— 而主进程自己的
+   `_hook.KeyEventCount` 在宿主模式下**恒为 0**，`_missedStreak` 一路累加，
+   10 秒后 `ShouldUseRawFallback` 必然成立（日志里的
+   "键盘钩子已经 10 秒没收到任何按键，改由 Raw Input 触发热键" 就是它）；
+2. 兜底启动时还会 `RestartHook()`，于是主进程**又装了一个低级钩子**
+   （日志 "钩子线程 tid=36016 安装结果=0x1051149"）。
+
+结果同一次按键走两条独立的链：
+
+- 宿主：按键 → 宿主的层状态 → `ACT` 转发 → 主进程执行；
+- 主进程：Raw Input → 主进程的另一份层状态 → 直接执行。
+
+两份层状态必然不同步（一份来自真实按键，一份被 `ApplyRemote*` 搅过），
+所以同一个键解析成**两个不同的绑定** —— 一个键开出两个程序。
+
+### 修复
+
+- `HotkeyEngine.FeedFromRaw`：宿主模式直接返回，本进程一个键都不喂；
+- `HotkeyEngine.RestartHook`：宿主模式不再装钩子（重装走 `REHOOK` 交给宿主）；
+- `AppHost` 的 Raw Input 回调：`_hookHostReady` 时不调用 `FeedFromRaw`；
+- 顺手去掉健康检查里重复发送的 `REHOOK`。
+
+宿主真的失联时的接管路径不变：健康检查重装两次仍漏键 → 杀掉宿主 →
+`HookDelegatedToHost = false` → 本进程接管钩子。
+
+### 自检
+
+新增 2 项回归（`SelfTest.Input.cs` 4.5 节）：宿主模式下 `FeedFromRaw` 不得喂键、
+不得执行任何动作。全套 2939 项通过、0 失败。
+
 ## v4.5.96 — 终于找到「Tab 一直跳、切不了层」的真凶：我们自己的健康检查
 
 ### 真凶（这是 4.5.92 引入的回归）
