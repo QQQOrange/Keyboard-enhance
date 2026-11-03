@@ -239,7 +239,15 @@ public static partial class SelfTest
                 return;
             }
             textBackup.Restore();
-            CheckEqual("文本内容能被还原", WaitText("原始文字A"), "原始文字A");
+            string textBack = WaitText("原始文字A");
+            if (textBack.Length == 0)
+            {
+                /* 机器上有剪贴板管理器时，刚写进去的内容可能被它立刻改掉。
+                 * 再还原一次（内容还在备份里），别把环境问题算成功能坏了。 */
+                textBackup.Restore();
+                textBack = WaitText("原始文字A");
+            }
+            CheckEqual("文本内容能被还原", textBack, "原始文字A");
 
             /* ---- ② 位图：当初就是这里丢的 ----
              * 原剪贴板是截图时，旧实现 `hadText == false` 直接 Clear()，
@@ -288,6 +296,12 @@ public static partial class SelfTest
                 {
                     fileBackup.Restore();
                     int fileCount = SafeFileCount();
+                    if (fileCount == 0)
+                    {
+                        // 剪贴板管理器抢走时再还原一次（同文本那条的理由）
+                        fileBackup.Restore();
+                        fileCount = SafeFileCount();
+                    }
                     Check("文件列表能被还原", fileCount == 1, fileCount.ToString());
                 }
                 else

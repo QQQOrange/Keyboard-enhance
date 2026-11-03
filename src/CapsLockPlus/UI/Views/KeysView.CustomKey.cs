@@ -82,6 +82,8 @@ public partial class KeysView : UserControl
         var spec = CurrentCustomSpec();
 
         _suppressEvents = true;
+        BuildCustomKeyPickList();
+        CustomKeyPickBox.SelectedIndex = -1;
         CustomAppBox.Text = spec.AppPath;
         CustomAdminBox.IsChecked = spec.RunAsAdmin;
         CustomMainWindowBox.IsChecked = spec.BringFront;
@@ -122,6 +124,89 @@ public partial class KeysView : UserControl
             : Loc.T("还差：") + (hasKey ? "" : Loc.T("「要发送的键」"))
               + (!hasKey && string.IsNullOrWhiteSpace(spec.AppPath) ? Loc.T(" 和 ") : "")
               + (string.IsNullOrWhiteSpace(spec.AppPath) ? Loc.T("「绑定应用」") : "");
+    }
+
+    /// <summary>
+    /// 填「从列表选键」下拉：字母 / 数字 / 功能键 / 编辑键 / 符号 / 小键盘。
+    ///
+    /// 为什么要有这条路：用捕获窗"按一下就录"在多数机器上没问题，但只要有一处
+    /// 输入链路出岔子（钩子被摘、按键被别的程序抢），用户就完全没法设键 ——
+    /// 而这些键的名字本来就是确定的，直接列出来让他点，永远不会失败。
+    /// </summary>
+    private void BuildCustomKeyPickList()
+    {
+        if (CustomKeyPickBox == null) return;
+        if (CustomKeyPickBox.Items.Count > 0) return;   // 只建一次
+
+        void Group(string title)
+        {
+            // 分组标题：不可选、灰一点
+            CustomKeyPickBox.Items.Add(new ComboBoxItem
+            {
+                Content = title,
+                IsEnabled = false,
+                Foreground = (Brush)FindResource("Brush.TextTertiary"),
+            });
+        }
+
+        void Item(string name)
+        {
+            if (KeyName.VkOf(name) is not int vk || vk == 0) return;
+            CustomKeyPickBox.Items.Add(new ComboBoxItem
+            {
+                Content = KeyName.Display(name),
+                Tag = name,
+            });
+        }
+
+        Group(Loc.T("字母键"));
+        foreach (char c in "abcdefghijklmnopqrstuvwxyz") Item(c.ToString());
+
+        Group(Loc.T("数字键"));
+        foreach (char c in "1234567890") Item(c.ToString());
+
+        Group(Loc.T("功能键"));
+        for (int i = 1; i <= 12; i++) Item("f" + i);
+
+        Group(Loc.T("编辑与方向键"));
+        foreach (var name in new[]
+                 {
+                     "up", "down", "left", "right", "home", "end", "pageup", "pagedown",
+                     "insert", "delete", "backspace", "enter", "tab", "esc", "space",
+                 })
+            Item(name);
+
+        Group(Loc.T("符号键"));
+        foreach (var name in new[]
+                 {
+                     "minus", "equal", "leftSquareBracket", "rightSquareBracket", "backslash",
+                     "semicolon", "quote", "comma", "dot", "slash",
+                 })
+            Item(name);
+
+        Group(Loc.T("小键盘"));
+        for (int i = 0; i <= 9; i++) Item("numpad" + i);
+    }
+
+    /// <summary>从列表里挑了一个键（和按一下捕获等价）。</summary>
+    private void OnCustomKeyPick(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppressEvents) return;
+        if (CustomKeyPickBox.SelectedItem is not ComboBoxItem { Tag: string name }) return;
+
+        _suppressEvents = true;
+        try
+        {
+            var spec = CurrentCustomSpec();
+            spec.Key = name;
+            SaveCustomSpec(spec);
+            ShowBindStatus(Loc.F("已设置要发送的键：{0}", CustomKeyRunner.ComboDisplay(name)));
+        }
+        finally
+        {
+            CustomKeyPickBox.SelectedIndex = -1;
+            _suppressEvents = false;
+        }
     }
 
     /// <summary>捕获"要发送的键"。</summary>

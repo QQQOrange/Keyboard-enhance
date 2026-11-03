@@ -635,6 +635,18 @@
                                                        Foreground="{DynamicResource Brush.Accent}" />
                                         </Border>
                                     </StackPanel>
+
+                                    <!-- 不想按键盘、或者按键被别的程序抢走时，直接从列表里挑 -->
+                                    <ComboBox x:Name="CustomKeyPickBox" Style="{StaticResource ComboBox.Base}"
+                                              Margin="0,8,0,0" MaxDropDownHeight="380"
+                                              SelectionChanged="OnCustomKeyPick"
+                                              ToolTip="{loc:T '也可以不按键：直接从列表里挑字母键、数字键、功能键、方向键等已有按键'}">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="Padding" Value="10,5" />
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
+                                    </ComboBox>
                                 </StackPanel>
 
                                 <StackPanel x:Name="NoteGroupCustom" Grid.Column="2">

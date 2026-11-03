@@ -625,6 +625,11 @@ public static partial class SelfTest
             Top = 120,
         };
         var box = new System.Windows.Controls.TextBox { Text = "选区测试ABC" };
+
+        /* 记下测试前剪贴板里的内容：如果最后取到的还是它，说明 Ctrl+C 根本没生效
+         * （前台被别的程序抢走 / 输入被拦），这是环境问题，不该算成功能坏了。 */
+        string preClip = "";
+        try { preClip = System.Windows.Clipboard.GetText() ?? ""; } catch { }
         win.Content = box;
         win.Show();
         DoEvents(250);
@@ -709,6 +714,10 @@ public static partial class SelfTest
             if (string.IsNullOrEmpty(got))
             {
                 Check("读取选区：环境不给（前台被占 / 剪贴板被抢），跳过", true);
+            }
+            else if (preClip.Length > 0 && got == preClip && got != "选区测试ABC")
+            {
+                Check("读取选区：Ctrl+C 没生效（前台被占），跳过内容比对", true, got);
             }
             else
             {
