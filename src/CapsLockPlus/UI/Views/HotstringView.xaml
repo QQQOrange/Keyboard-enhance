@@ -78,10 +78,61 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="{loc:T '分组'}" Style="{StaticResource Text.H3}"
-                               Margin="16,14,16,8" />
+                    <StackPanel Grid.Row="0" Margin="16,14,16,8">
+                        <TextBlock Text="{loc:T '分组'}" Style="{StaticResource Text.H3}" />
+                        <TextBlock Text="{loc:T '点一下只看这一组'}" Style="{StaticResource Text.Tertiary}"
+                                   Margin="0,2,0,0" />
+                    </StackPanel>
                     <ListBox Grid.Row="1" x:Name="GroupList" Background="Transparent" BorderThickness="0"
-                             Margin="8,0,8,10" SelectionChanged="OnGroupChanged" />
+                             Margin="8,0,8,10" SelectionChanged="OnGroupChanged">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="10,7" />
+                                <Setter Property="Margin" Value="0,1" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd" CornerRadius="9" Background="Transparent"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background"
+                                                            Value="{DynamicResource Brush.SurfaceAlt}" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background"
+                                                            Value="{DynamicResource Brush.AccentSoft}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Label}" FontSize="12.5" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource Brush.TextPrimary}" />
+                                    <Border Grid.Column="1" CornerRadius="8" Padding="7,1" Margin="6,0,0,0"
+                                            Background="{DynamicResource Brush.SurfaceAlt}" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Count}" FontSize="10.5"
+                                                   Foreground="{DynamicResource Brush.TextTertiary}" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Grid>
             </Border>
 
@@ -109,7 +160,11 @@
                                 Padding="14,6" Click="OnAddClick" />
                     </Grid>
 
-                    <ListBox Grid.Row="1" x:Name="EntryList" Background="Transparent" BorderThickness="0"
+                    <Grid Grid.Row="1">
+                    <TextBlock x:Name="EmptyHint" Text="{loc:T '还没有片段。点右上角「新增」建一条。'}"
+                               Style="{StaticResource Text.Tertiary}" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" Margin="0,0,0,40" Visibility="Collapsed" />
+                    <ListBox x:Name="EntryList" Background="Transparent" BorderThickness="0"
                              Margin="10,0,10,12" SelectionChanged="OnSelectionChanged">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -128,6 +183,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    </Grid>
                 </Grid>
             </Border>
 

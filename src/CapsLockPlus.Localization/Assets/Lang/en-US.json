@@ -2255,5 +2255,12 @@
   "导入导出的配置（.clpconf）或备份文件；旧版 CapsLock+ 的 settings.ini 也能直接选": "Import an exported config (.clpconf) or a backup file; legacy CapsLock+ settings.ini is also accepted",
   "这个 .ini 里没有可导入的设置（按键 / 搜索 / 程序 / 网址 / 热字串都是 0 项）。": "This .ini has nothing to import (keys / search / apps / URLs / snippets are all 0).",
   "导入完成：按键 {0} 项 / 搜索 {1} 条 / 程序 {2} 个 / 网址 {3} 个 / 文字替换 {4} 条。": "Import done: {0} keys / {1} searches / {2} apps / {3} URLs / {4} snippets.",
-  "已从旧版设置导入 {0} 项": "Imported {0} items from legacy settings"
+  "已从旧版设置导入 {0} 项": "Imported {0} items from legacy settings",
+  "点一下只看这一组": "Click a group to filter",
+  "还没有片段。点右上角「新增」建一条。": "No snippets yet. Click \"New\" on the right.",
+  "把第 {0} 层「{1}」恢复成默认设置？\n": "Reset layer {0} \"{1}\" to defaults?\n",
+  "· 这一层的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n": "- Bindings in this layer will be overwritten (action, args, URL, text, app, note);\n",
+  "· 这一层默认是空的，所以这一层里你配的绑定会被清空；\n": "- This layer is empty by default, so bindings you added here will be cleared;\n",
+  "· 其它层、触发键、宏、文本片段都不动；\n": "- Other layers, triggers, macros and snippets are untouched;\n",
+  "第 {0} 层已恢复默认设置": "Layer {0} reset to defaults"
 }

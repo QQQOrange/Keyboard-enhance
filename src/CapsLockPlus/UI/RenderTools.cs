@@ -24,7 +24,7 @@ public static class RenderTools
     private static readonly string[] Pages =
     {
         // 「bindings」页已移除：窗口绑定并入按键映射，作为动作处理
-        "guide", "keys", "layers", "macros", "qbar",
+        "guide", "keys", "hotstrings", "layers", "macros", "qbar",
         "clipboard", "backup", "settings", "test", "help", "about",
     };
 

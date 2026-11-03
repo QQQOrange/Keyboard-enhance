@@ -1441,6 +1441,25 @@ public static class DefaultSettings
     ///     s.Keys，新预设被彻底丢掉。
     /// 症状就是"点了恢复默认，键盘上什么都没变，重启也没变"。
     /// </summary>
+    /// <summary>
+    /// 把**指定层**恢复成默认。
+    ///
+    /// 第 1 层：按内置方案重建（就是原来的 <see cref="ResetLayerOne"/>）；
+    /// 其它层：默认配置里那些层本来就是空的，所以"恢复默认"= 清空该层绑定。
+    /// 子层（Ctrl/Alt/Shift/Win 子层）有自己的编辑入口，这里不动。
+    /// </summary>
+    public static void ResetLayer(AppSettings s, int layerId, string scheme)
+    {
+        if (layerId <= 1)
+        {
+            ResetLayerOne(s, scheme);
+            return;
+        }
+
+        var layer = s.Layers.FirstOrDefault(l => l.Id == layerId);
+        layer?.Keys.Clear();
+    }
+
     public static void ResetLayerOne(AppSettings s, string scheme)
     {
         s.Global.HotkeyScheme = scheme;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -129,6 +129,7 @@ public partial class HotstringView : UserControl
         {
             EntryList.ItemsSource = rows;
             CountText.Text = Loc.F("{0} 条", rows.Count);
+            EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             EntryList.SelectedItem = rows.FirstOrDefault(r => ReferenceEquals(r.Snippet, _editing));
             BuildGroupOptions();
         }

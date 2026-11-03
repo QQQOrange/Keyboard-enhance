@@ -1090,6 +1090,13 @@ public sealed class AppHost : IDisposable
     /// <see cref="DefaultSettings.ResetLayerOne"/> —— 抽成静态是为了让自检
     /// 能直接验，不必为了一个纯数据操作起一整套宿主。
     /// </summary>
+    /// <summary>把指定层恢复成默认（按键映射页的「恢复本页默认设置」用它）。</summary>
+    public void ResetLayer(int layerId)
+    {
+        DefaultSettings.ResetLayer(Settings, layerId, Settings.Global.HotkeyScheme);
+        SaveSettings();
+    }
+
     public void ApplyHotkeyScheme(string scheme)
     {
         DefaultSettings.ResetLayerOne(Settings, scheme);

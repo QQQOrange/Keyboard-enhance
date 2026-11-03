@@ -354,18 +354,26 @@ public partial class KeysView : UserControl
     {
         if (_host == null) return;
 
-        // 不是 const：文本要在**当前语言**下拼，编译期定不下来
-        string text =
-            Loc.T("把「按键映射」这一页恢复成默认设置？\n") +
-            Loc.T("· 基础层的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n") +
-            Loc.T("· 你自己新增的组合键会保留；其它 9 层、触发键、宏、文本片段都不动；\n") +
-            Loc.T("· 这一步不能撤销。");
+        var layerObj = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
+        string layerName = LayerName.Display(_layerId, layerObj?.Name);
+
+        /* 按钮叫「恢复本页默认设置」，而"本页"看的是**当前选中的层** ——
+         * 用户在第 2 层点它，就该只重置第 2 层。第 1 层有内置方案，其它层默认是空的。 */
+        string text = _layerId == 1
+            ? Loc.F("把第 {0} 层「{1}」恢复成默认设置？\n", _layerId, layerName) +
+              Loc.T("· 这一层的绑定会被覆盖（功能、参数、网址、文本、程序、备注）；\n") +
+              Loc.T("· 你自己新增的组合键会保留；其它 9 层、触发键、宏、文本片段都不动；\n") +
+              Loc.T("· 这一步不能撤销。")
+            : Loc.F("把第 {0} 层「{1}」恢复成默认设置？\n", _layerId, layerName) +
+              Loc.T("· 这一层默认是空的，所以这一层里你配的绑定会被清空；\n") +
+              Loc.T("· 其它层、触发键、宏、文本片段都不动；\n") +
+              Loc.T("· 这一步不能撤销。");
 
         if (!AppDialog.ConfirmDanger(Window.GetWindow(this), text,
-                Loc.T("恢复本页默认设置"), okText: Loc.T("恢复默认"))) return;
+                Loc.T("恢复本页默认设置"), okText: Loc.T("恢复本页默认设置"))) return;
 
-        _host.ApplyHotkeyScheme(_host.Settings.Global.HotkeyScheme);
+        _host.ResetLayer(_layerId);
         Refresh();
-        _host.Notify(Loc.T("按键映射已恢复本页默认设置"));
+        _host.Notify(Loc.F("第 {0} 层已恢复默认设置", _layerId));
     }
 }
