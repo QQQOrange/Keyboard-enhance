@@ -68,6 +68,8 @@ public partial class SubLayerEditorWindow : Window
     {
         InitializeComponent();
 
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
+
         TitleText.Text = string.IsNullOrWhiteSpace(layerName)
             ? Loc.T("层内子层设置")
             : Loc.F("「{0}」的层内子层", layerName);

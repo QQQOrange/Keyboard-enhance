@@ -61,6 +61,35 @@ public static class WindowChrome
         }
     }
 
+    /// <summary>当前是不是深色主题（跟系统走时按系统实际明暗算）。</summary>
+    public static bool IsDarkTheme()
+        => ThemeManager.Current == ThemeManager.Mode.Dark
+           || (ThemeManager.Current == ThemeManager.Mode.System && ThemeManager.IsDarkSystem);
+
+    /// <summary>
+    /// 让一个普通窗口（对话框）的标题栏跟随主题。
+    ///
+    /// 只做两件事：HWND 建好后调一次 <see cref="Apply"/>；主题切换时再调一次。
+    /// 用 AttachTo 而不是让每个对话框自己写 —— 以前只有 AppDialog 做了，
+    /// 其它弹窗在深色界面里顶着一根白条，非常突兀。
+    /// </summary>
+    public static void AttachTo(Window window)
+    {
+        try
+        {
+            window.SourceInitialized += (_, _)
+                => Apply(window, IsDarkTheme(), BackdropType.None);
+
+            void OnThemeChanged(bool dark) => Apply(window, dark, BackdropType.None);
+            ThemeManager.ThemeChanged += OnThemeChanged;
+            window.Closed += (_, _) => ThemeManager.ThemeChanged -= OnThemeChanged;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "对话框标题栏跟随主题");
+        }
+    }
+
     /// <summary>从主题里取一个颜色，转成 DWM 要的 COLORREF（0x00BBGGRR）。</summary>
     private static int? ThemeColor(string brushKey)
     {

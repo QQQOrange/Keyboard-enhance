@@ -14,6 +14,8 @@ public partial class OnboardingWindow : Window
     {
         _host = host;
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
         PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) OnSkip(this, e); };
         ShowStep(0);
     }

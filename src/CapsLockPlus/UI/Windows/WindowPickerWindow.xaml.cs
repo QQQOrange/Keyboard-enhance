@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -92,6 +92,8 @@ public partial class WindowPickerWindow : Window
         _renderOffScreen = renderOffScreen;
 
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
         FitToVirtualScreen();          // 先摆好尺寸再显示，避免一帧小窗闪过
         _kbdProc = KeyboardCallback;
         Loaded += OnLoaded;

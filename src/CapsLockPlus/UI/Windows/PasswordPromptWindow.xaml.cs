@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Input;
 using CapsLockPlus.Core.Settings;
 
@@ -24,6 +24,8 @@ public partial class PasswordPromptWindow : Window
     public PasswordPromptWindow()
     {
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
         Loaded += (_, _) => PassBox.Focus();
     }
 

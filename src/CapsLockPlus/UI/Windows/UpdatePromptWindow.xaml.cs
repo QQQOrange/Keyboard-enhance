@@ -37,6 +37,8 @@ public partial class UpdatePromptWindow : Window
         _host = host;
         _info = info;
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
         TitleText.Text = Loc.F("发现新版本 {0}", info.Version);
         SubText.Text = Loc.F("当前 {0}", UpdateService.CurrentVersion) +
                        (info.SizeText.Length > 0 ? Loc.F("　·　{0}", info.SizeText) : "");

@@ -1361,6 +1361,40 @@ public static partial class SelfTest
                 string.Join("|", sG.Global.SnippetGroups));
         }
 
+        /* ---- 分组的增删改（SnippetGroupOps） ---- */
+        {
+            var s = DefaultSettings.Create();
+            s.Global.Snippets.Clear();
+            s.Global.SnippetGroups.Clear();
+
+            s.Global.Snippets.Add(new Snippet { Trigger = ";a", Text = "A", Group = "常用" });
+            s.Global.Snippets.Add(new Snippet { Trigger = ";b", Text = "B", Group = "账号" });
+            s.Global.Snippets.Add(new Snippet { Trigger = ";c", Text = "C" });
+
+            Check("分组：新建空分组成功", SnippetGroupOps.Add(s, "工作"), "");
+            Check("分组：重复新建被忽略", !SnippetGroupOps.Add(s, " 工作 "), "");
+            Check("分组：全部列表含手动建的与用到的",
+                SnippetGroupOps.All(s).SequenceEqual(new[] { "工作", "常用", "账号" }) ||
+                SnippetGroupOps.All(s).OrderBy(x => x).SequenceEqual(new[] { "常用", "工作", "账号" }.OrderBy(x => x)),
+                string.Join("|", SnippetGroupOps.All(s)));
+
+            int moved = SnippetGroupOps.Rename(s, "账号", "邮箱");
+            Check("分组：改名把别名一起带过去",
+                moved == 1 && s.Global.Snippets.First(x => x.Trigger == ";b").Group == "邮箱", moved.ToString());
+            Check("分组：改名后旧名不再出现", !SnippetGroupOps.All(s).Contains("账号"),
+                string.Join("|", SnippetGroupOps.All(s)));
+
+            int back = SnippetGroupOps.Delete(s, "邮箱");
+            Check("分组：删除分组把别名退回未分组",
+                back == 1 && string.IsNullOrEmpty(s.Global.Snippets.First(x => x.Trigger == ";b").Group),
+                back.ToString());
+            Check("分组：删除分组不会删别名", s.Global.Snippets.Count == 3,
+                s.Global.Snippets.Count.ToString());
+
+            SnippetGroupOps.Move(s, s.Global.Snippets.First(x => x.Trigger == ";c"), "工作");
+            Check("分组：移动会顺带登记分组", SnippetGroupOps.All(s).Any(g => g == "工作"), "");
+        }
+
         /* ---- 崩溃现场快照 ---- */
         {
             string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(),

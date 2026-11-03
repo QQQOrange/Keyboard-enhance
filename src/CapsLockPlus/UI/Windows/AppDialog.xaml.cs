@@ -37,6 +37,11 @@ public partial class AppDialog : Window
     private AppDialog()
     {
         InitializeComponent();
+
+        /* 标题栏跟随主题。
+         * 注意：Create() 里那次 Apply 是在 Show 之前调的，那时 HWND 还没建，
+         * 等于什么都没做 —— 必须在 SourceInitialized 之后再调一次。 */
+        Theme.WindowChrome.AttachTo(this);
     }
 
     /// <summary>弹一个只有一个按钮的提示，返回时用户已经读过。</summary>

@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -13,6 +13,8 @@ public partial class ClipboardHistoryWindow : Window
     {
         _host = host;
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
         FilterBox.ToolTip = Loc.T("输入关键字筛选");
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Input;
 using CapsLockPlus.Core.Settings;
@@ -22,6 +22,8 @@ public partial class NewPasswordWindow : Window
     public NewPasswordWindow(string title = "设置启动密码", string? hint = null)
     {
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
 
         Title = Loc.T(title);
         HeaderText.Text = Loc.T(title);

@@ -30,6 +30,8 @@ public partial class RestoreWindow : Window
     public RestoreWindow(AppHost? host)
     {
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
         _host = host;
         BackupList.ItemsSource = _rows;
         Loaded += async (_, _) => await LoadAsync().ConfigureAwait(true);

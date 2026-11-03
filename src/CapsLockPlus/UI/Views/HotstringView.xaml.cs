@@ -23,6 +23,9 @@ public partial class HotstringView : UserControl
     private Snippet? _editing;
     private bool _suppress;
 
+    /// <summary>刷新分组列表后要选中的组名（改名/新建后用它把选中状态带过去）。</summary>
+    private string? _selectGroupAfterRefresh;
+
     /// <summary>分组行的 Group：null = 全部；"" = 未分组；其它 = 组名。</summary>
     private sealed class GroupRow
     {
@@ -76,15 +79,7 @@ public partial class HotstringView : UserControl
 
     /// <summary>所有分组：手动建的 ∪ 别名里用到的，去重排序。</summary>
     private List<string> AllGroups()
-    {
-        return CustomGroups
-            .Concat(Entries.Select(x => x.Group?.Trim())!)
-            .Where(g => !string.IsNullOrWhiteSpace(g))
-            .Select(g => g!)
-            .Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .OrderBy(g => g, StringComparer.CurrentCulture)
-            .ToList();
-    }
+        => _host == null ? new List<string>() : SnippetGroupOps.All(_host.Settings);
 
     // ---------------- 刷新 ----------------
 
@@ -100,7 +95,8 @@ public partial class HotstringView : UserControl
     {
         if (_host == null) return;
 
-        string? keepGroup = CurrentGroup;
+        string? keepGroup = _selectGroupAfterRefresh ?? CurrentGroup;
+        _selectGroupAfterRefresh = null;
         var all = Entries.ToList();
         var groups = AllGroups();
 
@@ -123,6 +119,11 @@ public partial class HotstringView : UserControl
         {
             GroupList.ItemsSource = rows;
             GroupList.SelectedItem = rows.FirstOrDefault(g => g.Group == keepGroup) ?? rows[0];
+
+            /* 「全部 / 未分组」不是真分组，改名和删除对它们没有意义。 */
+            bool real = (GroupList.SelectedItem as GroupRow)?.IsReal == true;
+            RenameGroupButton.IsEnabled = real;
+            DeleteGroupButton.IsEnabled = real;
         }
         finally { _suppress = false; }
     }
@@ -283,14 +284,13 @@ public partial class HotstringView : UserControl
         if (string.IsNullOrWhiteSpace(name)) return null;
 
         name = name.Trim();
-        if (CustomGroups.Any(g => string.Equals(g, name, StringComparison.CurrentCultureIgnoreCase)))
+        if (!SnippetGroupOps.Add(_host!.Settings, name))
         {
-            _host?.Notify(Loc.F("分组「{0}」已经存在", name));
+            _host.Notify(Loc.F("分组「{0}」已经存在", name));
             return name;
         }
 
-        CustomGroups.Add(name);
-        _host?.SaveSettings();
+        _host.SaveSettings();
         RefreshGroups();
         return name;
     }
@@ -317,22 +317,18 @@ public partial class HotstringView : UserControl
     /// </summary>
     private void OnGroupContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (_host == null) return;
+        if (_host == null
+            || e.Source is not FrameworkElement source
+            || source.ContextMenu is not ContextMenu menu)
+        {
+                e.Handled = true;
+            return;
+        }
 
         GroupRow? row = null;
 
-        if (e.CursorLeft >= 0)
-        {
-            /* 鼠标右键：判断点在哪个分组上（点在空白处就不弹）。 */
-            var hit = GroupList.InputHitTest(new Point(e.CursorLeft, e.CursorTop)) as DependencyObject;
-            var item = ItemsControl.ContainerFromElement(GroupList, hit) as ListBoxItem;
-            row = item?.DataContext as GroupRow;
-        }
-        else
-        {
-            /* 键盘：对当前选中的分组操作。 */
-            row = GroupList.SelectedItem as GroupRow;
-        }
+        /* 事件源就是被右键的那个列表项（键盘下是当前项）。 */
+        row = source.DataContext as GroupRow;
 
         if (row is not { IsReal: true })
         {
@@ -342,7 +338,7 @@ public partial class HotstringView : UserControl
 
         GroupList.SelectedItem = row;
 
-        var menu = new ContextMenu();
+        menu.Items.Clear();
 
         var rename = new MenuItem { Header = Loc.T("重命名分组…") };
         rename.Click += (_, _) => RenameGroup(row.Group!);
@@ -352,15 +348,18 @@ public partial class HotstringView : UserControl
         del.Click += (_, _) => DeleteGroup(row.Group!, row.Count);
         menu.Items.Add(del);
 
-        /* 手动打开：ContextMenuOpening 里给元素赋 ContextMenu 有时不生效
-         * （服务只看事件源元素上挂的菜单），直接 IsOpen 最可靠，
-         * 而且鼠标和 Shift+F10 走的是同一条路径。 */
-        menu.PlacementTarget = GroupList;
-        menu.Placement = e.CursorLeft >= 0
-            ? System.Windows.Controls.Primitives.PlacementMode.MousePoint
-            : System.Windows.Controls.Primitives.PlacementMode.Bottom;
-        menu.IsOpen = true;
-        e.Handled = true;
+        /* 菜单已经挂在控件上（XAML 里那个空 ContextMenu），
+         * WPF 会在本方法返回后自己打开 —— 这里不要再手动 IsOpen。 */
+    }
+
+    private void OnRenameGroupClick(object sender, RoutedEventArgs e)
+    {
+        if (GroupList.SelectedItem is GroupRow { IsReal: true } row) RenameGroup(row.Group!);
+    }
+
+    private void OnDeleteGroupClick(object sender, RoutedEventArgs e)
+    {
+        if (GroupList.SelectedItem is GroupRow { IsReal: true } row) DeleteGroup(row.Group!, row.Count);
     }
 
     private void RenameGroup(string oldName)
@@ -374,24 +373,15 @@ public partial class HotstringView : UserControl
         if (string.IsNullOrWhiteSpace(name)) return;
         name = name.Trim();
         if (string.Equals(name, oldName, StringComparison.Ordinal)) return;
-        if (AllGroups().Any(g => string.Equals(g, name, StringComparison.CurrentCultureIgnoreCase)))
+
+        if (SnippetGroupOps.Rename(_host.Settings, oldName, name) < 0)
         {
             _host.Notify(Loc.F("分组「{0}」已经存在", name));
             return;
         }
 
-        int i = CustomGroups.FindIndex(g =>
-            string.Equals(g, oldName, StringComparison.CurrentCultureIgnoreCase));
-        if (i >= 0) CustomGroups[i] = name;
-        else CustomGroups.Add(name);
-
-        foreach (var s in Entries.Where(x =>
-                     string.Equals(x.Group?.Trim(), oldName, StringComparison.CurrentCultureIgnoreCase)))
-        {
-            s.Group = name;
-        }
-
         _host.SaveSettings();
+        _selectGroupAfterRefresh = name;
         Refresh();
         _host.Notify(Loc.F("分组已改名为「{0}」", name));
     }
@@ -407,12 +397,7 @@ public partial class HotstringView : UserControl
         if (!UI.Windows.AppDialog.ConfirmDanger(Owner, question, Loc.T("删除分组"),
                 okText: Loc.T("删除"))) return;
 
-        CustomGroups.RemoveAll(g => string.Equals(g, name, StringComparison.CurrentCultureIgnoreCase));
-        foreach (var s in Entries.Where(x =>
-                     string.Equals(x.Group?.Trim(), name, StringComparison.CurrentCultureIgnoreCase)))
-        {
-            s.Group = "";
-        }
+        SnippetGroupOps.Delete(_host.Settings, name);
 
         _host.SaveSettings();
         Refresh();
@@ -423,12 +408,7 @@ public partial class HotstringView : UserControl
     {
         if (_host == null) return;
 
-        snippet.Group = group ?? "";
-        if (!string.IsNullOrWhiteSpace(group) &&
-            !CustomGroups.Any(g => string.Equals(g, group, StringComparison.CurrentCultureIgnoreCase)))
-        {
-            CustomGroups.Add(group);
-        }
+        SnippetGroupOps.Move(_host.Settings, snippet, group);
 
         _host.SaveSettings();
         Refresh();
@@ -471,7 +451,15 @@ public partial class HotstringView : UserControl
 
     private void OnGroupChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_host == null || _suppress) return;
+        if (_host == null) return;
+
+        if (GroupList.SelectedItem is GroupRow row)
+        {
+            RenameGroupButton.IsEnabled = row.IsReal;
+            DeleteGroupButton.IsEnabled = row.IsReal;
+        }
+
+        if (_suppress) return;
         RefreshList();
         SyncEditorToSelection();
     }
@@ -527,12 +515,7 @@ public partial class HotstringView : UserControl
             Enabled = true,
         };
 
-        string group = entry.Group ?? "";
-        if (group.Length > 0 &&
-            !CustomGroups.Any(g => string.Equals(g, group, StringComparison.CurrentCultureIgnoreCase)))
-        {
-            CustomGroups.Add(group);
-        }
+        if (!string.IsNullOrWhiteSpace(entry.Group)) SnippetGroupOps.Add(_host.Settings, entry.Group);
 
         Entries.Add(entry);
         _host.SaveSettings();
@@ -562,20 +545,17 @@ public partial class HotstringView : UserControl
     /// <summary>列表里别名的右键菜单：移到分组 / 删除（Shift+F10 同样可用）。</summary>
     private void OnEntryContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (_host == null) return;
+        if (_host == null
+            || e.Source is not FrameworkElement source
+            || source.ContextMenu is not ContextMenu menu)
+        {
+                e.Handled = true;
+            return;
+        }
 
         Row? row = null;
 
-        if (e.CursorLeft >= 0)
-        {
-            var hit = EntryList.InputHitTest(new Point(e.CursorLeft, e.CursorTop)) as DependencyObject;
-            var item = ItemsControl.ContainerFromElement(EntryList, hit) as ListBoxItem;
-            row = item?.DataContext as Row;
-        }
-        else
-        {
-            row = EntryList.SelectedItem as Row;
-        }
+        row = source.DataContext as Row;
 
         if (row == null)
         {
@@ -585,7 +565,7 @@ public partial class HotstringView : UserControl
 
         EntryList.SelectedItem = row;
 
-        var menu = new ContextMenu();
+        menu.Items.Clear();
 
         var move = new MenuItem { Header = Loc.T("移到分组") };
         foreach (string g in AllGroups())
@@ -628,11 +608,5 @@ public partial class HotstringView : UserControl
         del.Click += (_, _) => DeleteSnippet(row.Snippet);
         menu.Items.Add(del);
 
-        menu.PlacementTarget = EntryList;
-        menu.Placement = e.CursorLeft >= 0
-            ? System.Windows.Controls.Primitives.PlacementMode.MousePoint
-            : System.Windows.Controls.Primitives.PlacementMode.Bottom;
-        menu.IsOpen = true;
-        e.Handled = true;
     }
 }

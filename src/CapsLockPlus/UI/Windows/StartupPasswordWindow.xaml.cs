@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Input;
 
@@ -33,6 +33,8 @@ public partial class StartupPasswordWindow : Window
         string? okText = null, string? cancelText = null)
     {
         InitializeComponent();
+
+        Theme.WindowChrome.AttachTo(this);   // 标题栏跟随主题
 
         _verify = verify ?? throw new ArgumentNullException(nameof(verify));
 

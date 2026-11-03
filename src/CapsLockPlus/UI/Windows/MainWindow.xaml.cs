@@ -269,7 +269,7 @@ public partial class MainWindow : Window
         {
             "guide" => (Loc.T("快速上手"), Loc.T("3 分钟学会")),
             "keys" => (Loc.T("按键映射"), Loc.T("可视化编辑")),
-            "hotstrings" => (Loc.T("别名替换"), Loc.T("触发词 · 空格展开")),
+            "hotstrings" => (Loc.T("别名替换"), Loc.T("别名 · 空格展开")),
             "qbar" => (Loc.T("Qbar 面板"), Loc.T("搜索 · 启动 · 计算")),
             "clipboard" => (Loc.T("剪贴板"), Loc.T("独立剪贴板")),
             "macros" => (Loc.T("宏"), Loc.T("录制并绑定")),

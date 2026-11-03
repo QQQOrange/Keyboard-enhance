@@ -2370,5 +2370,22 @@
   "别名替换不展开？检查前缀符号是否对得上、别名是否启用、以及「只在这些程序里展开」有没有限制。": "Not expanding? Check the prefix symbol, whether the alias is enabled, and its per-app limit.",
   "导出基础改键、别名替换、双击动作、组合键、按应用层（不含层内绑定）。": "Export base remaps, alias substitutions, double-tap actions, combos and per-app layers (excluding in-layer bindings).",
   "导出基础改键、别名替换、双击动作、组合键、按应用层（不含层内绑定）。把别人的分享码粘进来即可导入，只添加缺失项。": "Export base remaps, alias substitutions, double-tap actions, combos and per-app layers (excluding in-layer bindings). Paste someone's share code to import it; only missing items are added.",
-  "新建分组…": "New group…"
+  "新建分组…": "New group…",
+  "打一个别名，自动变成一大段文字": "Type an alias, get a full block of text",
+  "打完别名再按空格就替换（也可以关掉，改用 Caps+Tab 展开）。前缀符号只有一个，可以自己改。": "Type the alias and press Space to expand (you can turn this off and use Caps+Tab instead). There is a single prefix symbol, and you can change it.",
+  "别名设置": "Alias settings",
+  "只认这一个符号；留空表示不需要前缀，直接打别名": "Only this symbol counts; leave it empty to type aliases without a prefix",
+  "展开方式": "Expansion",
+  "空格展开": "Expand on Space",
+  "打完别名按空格就替换；关掉则只认 Caps+Tab": "Pressing Space after the alias expands it; turn off to use Caps+Tab only",
+  "重命名": "Rename",
+  "别名不显示前缀符号；保存时会自动补回去。选中文字后按 Caps+Tab 的替换在「Qbar 面板 → 文字替换」。": "The prefix is hidden here and added back on save. Caps+Tab replacement of selected text lives in Qbar → Text replacement.",
+  "别名": "Alias",
+  "新建…": "New…",
+  "新建一个分组": "Create a new group",
+  "换一个分组 = 把这条别名移过去。": "Choosing another group moves this alias there.",
+  "别名 · 空格展开": "Alias · expand on space",
+  "别名、展开内容、备注、分组、限定程序，以及前缀符号等设置": "Aliases, expansions, notes, groups, app limits and the prefix settings",
+  "在「别名替换」页配一条：别名 + 展开内容。之后在任意程序里打这个别名再按空格，就会自动替换成那段内容。": "Add one on the Alias substitutions page: alias + expansion. Then typing that alias and pressing Space in any app replaces it.",
+  "别名、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）": "Aliases, expansions, notes, groups, app limits and the prefix settings (stored in Global, so appearance/behaviour settings come along)"
 }
