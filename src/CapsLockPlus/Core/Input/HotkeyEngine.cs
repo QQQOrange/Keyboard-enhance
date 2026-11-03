@@ -1311,12 +1311,6 @@ public sealed partial class HotkeyEngine : IDisposable
 
         var settings = _settings();
 
-        /* ---- 0.4 文本片段：打完触发词按空格就替换 ----
-         *
-         * 放在触发键判定之前、但内部会跳过"按住触发键"的情形——
-         * 用户按住 Caps 时按空格可能是在用层里的绑定，不能被这里抢走。 */
-        if (!injected && HandleHotstringKey(settings, vk, down)) return true;
-
         /* ---- 0.5 在判定触发键之前，先记录修饰键的按下状态 ----
          *
          * 组合触发键（Ctrl+Shift+K）需要知道"此刻按住了哪些修饰键"。
@@ -1467,19 +1461,7 @@ public sealed partial class HotkeyEngine : IDisposable
             {
                 _snippetBuffer.Clear();
             }
-            else
-            {
-                ObserveSnippet(settings, vk);
-                if (_snippetSpaceSwallowed)
-                {
-                    /* 这次空格已经被"片段展开"用掉了：吞掉它，
-                     * 否则展开出来的文字后面会多一个空格，还会把触发词补回去。 */
-                    _snippetSpaceSwallowed = false;
-                    _swallowedDown[vk] = 0;          // 记一笔，抬起时跟着吞
-                    _swallowedUp[vk] = 0;
-                    return true;
-                }
-            }
+            else ObserveSnippet(settings, vk);
 
             return false;
         }

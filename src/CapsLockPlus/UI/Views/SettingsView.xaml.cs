@@ -200,10 +200,18 @@ public partial class SettingsView : UserControl
     {
         if (sender is not FrameworkElement fe || fe.Tag is not ConflictTarget target) return;
 
-        // 层内绑定不在这一页，交给主窗口换页
-        if (target == ConflictTarget.Layer)
+        /* 这几块内容已经不在「设置」页了（各自搬到了独立页面），
+         * 点冲突项应该**跳到对应页面**，而不是在一段隐藏区域里滚动。 */
+        string? page = target switch
         {
-            _host?.ShowMainWindow("layers");
+            ConflictTarget.Layer => "layers",
+            ConflictTarget.Snippet => "hotstrings",
+            ConflictTarget.AppLayer => "keys",
+            _ => null,
+        };
+        if (page != null)
+        {
+            _host?.ShowMainWindow(page);
             return;
         }
 
@@ -211,8 +219,6 @@ public partial class SettingsView : UserControl
         {
             ConflictTarget.BaseRemap => RemapSection,
             ConflictTarget.Gesture => GestureSection,
-            ConflictTarget.Snippet => SnippetSection,
-            ConflictTarget.AppLayer => AppLayerSection,
             _ => null,
         });
     }

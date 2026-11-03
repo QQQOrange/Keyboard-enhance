@@ -1384,52 +1384,6 @@ public static partial class SelfTest
                 sOk.Hotstring.Prefix);
         }
 
-        /* ---- 文本片段：前缀 + 空格触发 的匹配规则 ---- */
-        {
-            var opt = new Core.Settings.HotstringOptions { Prefix = "/" };
-            var list = new List<Core.Settings.QEntry>
-            {
-                new() { Key = "clp", Value = "CapsLock+" },
-                new() { Key = "c", Value = "短的那个" },
-                new() { Key = "off", Value = "关掉的", Enabled = false },
-            };
-
-            bool ok1 = Core.Input.HotkeyEngine.TryMatchHotstring("/clp", opt, list,
-                out int del1, out string rep1, out _);
-            Check("文本片段：/clp 能命中", ok1, rep1);
-            Check("文本片段：要删的字符数 = 前缀+触发词", del1 == 4, del1.ToString());
-            Check("文本片段：替换成配置的内容", rep1 == "CapsLock+", rep1);
-
-            bool ok2 = Core.Input.HotkeyEngine.TryMatchHotstring("/c", opt, list,
-                out int del2, out string rep2, out _);
-            Check("文本片段：短触发词也命中", ok2, rep2);
-            Check("文本片段：删 2 个字符", del2 == 2, del2.ToString());
-
-            Check("文本片段：没打前缀不命中",
-                !Core.Input.HotkeyEngine.TryMatchHotstring("clp", opt, list, out _, out _, out _));
-
-            Check("文本片段：禁用的不命中",
-                !Core.Input.HotkeyEngine.TryMatchHotstring("/off", opt, list, out _, out _, out _));
-
-            var optNone = new Core.Settings.HotstringOptions { Prefix = "" };
-            Check("文本片段：可以不要求前缀",
-                Core.Input.HotkeyEngine.TryMatchHotstring("clp", optNone, list, out _, out _, out _));
-
-            // 最长匹配优先
-            var list2 = new List<Core.Settings.QEntry>
-            {
-                new() { Key = "ab", Value = "短的" },
-                new() { Key = "abc", Value = "长的" },
-            };
-            Core.Input.HotkeyEngine.TryMatchHotstring("/abc", opt, list2, out int del3, out string rep3, out _);
-            Check("文本片段：同时命中取最长的", rep3 == "长的" && del3 == 4, rep3 + "/" + del3);
-
-            // 全角前缀
-            var optFull = new Core.Settings.HotstringOptions { Prefix = "/", FullWidth = true };
-            Check("文本片段：全角前缀生效", optFull.EffectivePrefix == "／", optFull.EffectivePrefix);
-            Check("文本片段：全角前缀也能命中",
-                Core.Input.HotkeyEngine.TryMatchHotstring("／clp", optFull, list, out _, out _, out _));
-        }
 
         /* ---- 「清除绑定」必须把备注一起清掉 ----
          *
