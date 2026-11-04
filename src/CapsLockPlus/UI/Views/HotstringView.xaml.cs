@@ -90,6 +90,7 @@ public partial class HotstringView : UserControl
         SortBox.Items.Add(Loc.T("按触发词"));
         SortBox.Items.Add(Loc.T("按最近使用"));
         SortBox.Items.Add(Loc.T("按使用次数"));
+        SortBox.Items.Add(Loc.T("自定义顺序"));
         SortBox.SelectedIndex = 0;
     }
 
@@ -207,6 +208,9 @@ public partial class HotstringView : UserControl
         {
             EntryList.ItemsSource = rows;
             FilterCount.Text = Loc.F("共 {0} 条", rows.Count);
+            CleanupButton.Visibility = _unusedOnly && rows.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
             /* 空状态要说清"为什么空"：是没建过，还是筛选没命中，还是这个分组空着。
@@ -790,6 +794,8 @@ public partial class HotstringView : UserControl
                    .ThenBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase),
         2 => source.OrderByDescending(x => x.UseCount)
                    .ThenBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase),
+        3 => source.OrderBy(x => x.Order)
+                   .ThenBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase),
         _ => source.OrderBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase),
     };
 
@@ -1002,6 +1008,61 @@ public partial class HotstringView : UserControl
         menu.Items.Add(move);
     }
 
+    /* ---------------- 自定义顺序：列表内拖放重排 ---------------- */
+
+    private Row? FindRowAt(Point point)
+    {
+        var hit = EntryList.InputHitTest(point) as DependencyObject;
+        var item = ItemsControl.ContainerFromElement(EntryList, hit) as ListBoxItem;
+        return item?.DataContext as Row;
+    }
+
+    private void OnEntryListDragOver(object sender, DragEventArgs e)
+    {
+        /* 只有「自定义顺序」时才把"拖进列表"当作重排；
+         * 其他排序下拖动是"移到分组"，由左侧分组列表处理。 */
+        if (_sortMode != 3 || !e.Data.GetDataPresent("clp/snippet"))
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void OnEntryListDrop(object sender, DragEventArgs e)
+    {
+        if (_host == null || _sortMode != 3) return;
+        if (e.Data.GetData("clp/snippet") is not Snippet dragged) return;
+
+        var target = FindRowAt(e.GetPosition(EntryList));
+
+        /* 以"当前显示顺序"为基准重排，再按顺序重新编号。 */
+        var ordered = SortSnippets(_host.Settings.Global.Snippets, 3).ToList();
+        ordered.Remove(dragged);
+
+        int index = target == null ? ordered.Count : ordered.IndexOf(target.Snippet);
+        if (index < 0) index = ordered.Count;
+
+        /* 落在目标行的下半部分 → 插到它后面。 */
+        if (target != null &&
+            EntryList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem container &&
+            e.GetPosition(container).Y > container.ActualHeight / 2)
+        {
+            index++;
+        }
+
+        ordered.Insert(Math.Clamp(index, 0, ordered.Count), dragged);
+
+        for (int i = 0; i < ordered.Count; i++) ordered[i].Order = i;
+
+        _host.SaveSettings();
+        Refresh();
+        e.Handled = true;
+    }
+
     /// <summary>把一批别名移到同一个分组。</summary>
     private void MoveMany(List<Snippet> snippets, string group)
     {
@@ -1060,6 +1121,35 @@ public partial class HotstringView : UserControl
         KeyBox.Focus();
         KeyBox.CaretIndex = KeyBox.Text.Length;
         _host.Notify(Loc.F("已复制为「{0}」", candidate));
+    }
+
+    /// <summary>一键删除所有"从未展开过"的别名（先确认）。</summary>
+    private void OnCleanupClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var unused = _host.Settings.Global.Snippets.Where(x => x.UseCount <= 0).ToList();
+        if (unused.Count == 0)
+        {
+            _host.Notify(Loc.T("没有从未使用的别名"));
+            return;
+        }
+
+        if (!UI.Windows.AppDialog.Confirm(Owner,
+                Loc.F("删除 {0} 条从未使用过的别名？\n\n删除后不可撤销（可以在「同步与备份」里找回旧备份）。", unused.Count),
+                Loc.T("清理未使用"),
+                Windows.DialogKind.Warn,
+                okText: Loc.T("删除")))
+        {
+            return;
+        }
+
+        foreach (var snippet in unused) _host.Settings.Global.Snippets.Remove(snippet);
+        _editing = null;
+        _host.SaveSettings();
+        Refresh();
+
+        _host.Notify(Loc.F("已删除 {0} 条从未使用的别名", unused.Count));
     }
 
     /// <summary>导出"当前分组"的别名（全部视图 = 导出全部）。</summary>

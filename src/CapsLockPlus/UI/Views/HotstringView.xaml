@@ -232,7 +232,8 @@
                                  SelectionChanged="OnSelectionChanged"
                                  ContextMenuOpening="OnEntryContextMenuOpening"
                                  PreviewMouseLeftButtonDown="OnEntryMouseDown"
-                                 PreviewMouseMove="OnEntryMouseMove">
+                                 PreviewMouseMove="OnEntryMouseMove"
+                                   AllowDrop="True" DragOver="OnEntryListDragOver" Drop="OnEntryListDrop">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource RowItem}">
                                     <Setter Property="ContextMenu">
@@ -288,6 +289,9 @@
                         <Button x:Name="ImportButton" Content="{loc:T '导入'}" Style="{StaticResource Button.Ghost}"
                                 Margin="8,0,0,0" Click="OnImportClick"
                                 ToolTip="{loc:T '从 JSON 文件导入别名（合并，不会删掉已有的）'}" />
+                        <Button x:Name="CleanupButton" Content="{loc:T '清理未使用'}" Style="{StaticResource Button.Ghost}"
+                                Margin="8,0,0,0" Click="OnCleanupClick" Visibility="Collapsed"
+                                ToolTip="{loc:T '删除所有从未展开过的别名（会先确认）'}" />
                         <Button x:Name="ExportButton" Content="{loc:T '导出'}" Style="{StaticResource Button.Ghost}"
                                 Margin="6,0,0,0" Click="OnExportClick"
                                 ToolTip="{loc:T '把全部别名导出成 JSON，换机器时用得上'}" />

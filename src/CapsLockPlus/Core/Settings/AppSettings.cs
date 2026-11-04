@@ -127,6 +127,14 @@ public sealed class Snippet
     /// <summary>最近一次展开的时间（从未用过就是 null）。</summary>
     public DateTime? LastUsed { get; set; }
 
+    /// <summary>
+    /// 自定义排序位置（越小越靠前）。
+    ///
+    /// 只有把列表按「自定义顺序」排时才用它；默认全部为 0，
+    /// 此时退回按触发词排 —— 老配置不需要迁移。
+    /// </summary>
+    public int Order { get; set; }
+
     public string Comment { get; set; } = "";
 
     /// <summary>分组（空 = 未分组）。</summary>
