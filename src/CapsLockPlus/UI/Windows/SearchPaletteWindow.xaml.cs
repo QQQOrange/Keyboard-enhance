@@ -1,0 +1,110 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using CapsLockPlus.Core;
+using CapsLockPlus.Core.Search;
+
+namespace CapsLockPlus.UI.Windows;
+
+/// <summary>
+/// 全局搜索面板（Ctrl+K）。
+///
+/// 设计取舍：
+///   · 只做**导航**，不执行动作 —— 搜索框里回车就"打开程序"太容易误触；
+///   · 空查询时列出页面和前几条别名，直接回车就是"打开上次想看的地方"；
+///   · 全部键盘可操作：↑↓ 选择、Enter 打开、Esc 关闭。
+/// </summary>
+public partial class SearchPaletteWindow : Window
+{
+    private readonly List<GlobalHit> _all;
+    private List<GlobalHit> _view = new();
+
+    /// <summary>用户选中的结果；取消则为 null。</summary>
+    public GlobalHit? Selected { get; private set; }
+
+    private SearchPaletteWindow(List<GlobalHit> all)
+    {
+        InitializeComponent();
+
+        _all = all;
+        HintText.Text = Loc.T("↑↓ 选择 · Enter 打开 · Esc 关闭");
+
+        SourceInitialized += (_, _) => Theme.WindowChrome.AttachTo(this);
+
+        Loaded += (_, _) =>
+        {
+            QueryBox.Focus();
+            Refresh("");
+        };
+    }
+
+    /// <summary>打开面板并等用户选择；取消返回 null。</summary>
+    public static GlobalHit? Pick(Window? owner, List<GlobalHit> all)
+    {
+        var window = new SearchPaletteWindow(all) { Owner = owner };
+        window.ShowDialog();
+        return window.Selected;
+    }
+
+    private void Refresh(string query)
+    {
+        _view = GlobalSearch.Query(_all, query);
+        ResultList.ItemsSource = _view;
+
+        if (_view.Count > 0) ResultList.SelectedIndex = 0;
+
+        HintText.Text = _view.Count == 0
+            ? Loc.T("没有匹配的结果")
+            : Loc.T("↑↓ 选择 · Enter 打开 · Esc 关闭");
+    }
+
+    private void OnQueryChanged(object sender, TextChangedEventArgs e) => Refresh(QueryBox.Text);
+
+    private void OnQueryKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Escape:
+                Close();
+                e.Handled = true;
+                break;
+
+            case Key.Enter:
+                Accept();
+                e.Handled = true;
+                break;
+
+            case Key.Down:
+                Move(1);
+                e.Handled = true;
+                break;
+
+            case Key.Up:
+                Move(-1);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void Move(int step)
+    {
+        if (_view.Count == 0) return;
+
+        int index = ResultList.SelectedIndex + step;
+        if (index < 0) index = _view.Count - 1;
+        if (index >= _view.Count) index = 0;
+
+        ResultList.SelectedIndex = index;
+        ResultList.ScrollIntoView(ResultList.SelectedItem);
+    }
+
+    private void Accept()
+    {
+        if (ResultList.SelectedItem is not GlobalHit hit) return;
+
+        Selected = hit;
+        Close();
+    }
+
+    private void OnResultDoubleClick(object sender, MouseButtonEventArgs e) => Accept();
+}

@@ -1124,6 +1124,20 @@ public sealed class AppHost : IDisposable
     /// 现在每次保存都触发 <see cref="SettingsChanged"/>，
     /// 各页面自行决定要不要刷新 —— 速查表因此能即时更新。
     /// </summary>
+    /// <summary>
+    /// 全局搜索选中某条别名时，把触发词放这儿；
+    /// 别名页加载后取走并选中 —— 跨页面选中最省事的做法。
+    /// </summary>
+    public string? PendingAliasTrigger { get; set; }
+
+    /// <summary>取走"待选中的别名"（取一次就清空）。</summary>
+    public string? TakePendingAlias()
+    {
+        string? trigger = PendingAliasTrigger;
+        PendingAliasTrigger = null;
+        return trigger;
+    }
+
     public void SaveSettings()
     {
         /* 防抖 400ms：参数框是逐字符触发，以前每敲一个字就序列化 + 加密 + 三次磁盘操作。

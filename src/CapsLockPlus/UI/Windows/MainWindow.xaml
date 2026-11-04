@@ -203,6 +203,11 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center"
                             WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="SearchButton" Style="{StaticResource Button.Ghost}" Click="OnSearchClick"
+                            Content="{loc:T '搜索'}" Margin="0,0,6,0"
+                            AutomationProperties.Name="{loc:T '搜索'}"
+                            ToolTip="{loc:T '全局搜索（Ctrl+K）：页面、别名、触发键、按键绑定'}" />
+
                     <Button x:Name="PauseButton" Style="{StaticResource Button.Ghost}" Click="OnPauseClick"
                             Content="{loc:T '暂停'}" ToolTip="{loc:T '临时暂停所有按键增强热键'}" />
                     <Button Style="{StaticResource Button.Icon}" Click="OnThemeClick" Content="&#xE793;"

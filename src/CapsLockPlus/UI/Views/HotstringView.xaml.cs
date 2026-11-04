@@ -128,6 +128,7 @@ public partial class HotstringView : UserControl
     private void Refresh()
     {
         AlignStalePrefixOnce();
+        FocusPendingAlias();
 
         if (_host == null) return;
         RefreshGroups();
@@ -707,6 +708,23 @@ public partial class HotstringView : UserControl
         _host.Notify(string.IsNullOrWhiteSpace(group)
             ? Loc.T("已移到「未分组」")
             : Loc.F("已移到「{0}」", group));
+    }
+
+    /// <summary>全局搜索跳过来时，选中指定的那条别名。</summary>
+    private void FocusPendingAlias()
+    {
+        string? trigger = _host?.TakePendingAlias();
+        if (string.IsNullOrEmpty(trigger)) return;
+
+        var snippet = Entries.FirstOrDefault(x =>
+            string.Equals((x.Trigger ?? "").Trim(), trigger, StringComparison.CurrentCultureIgnoreCase));
+        if (snippet == null) return;
+
+        _editing = snippet;
+        RefreshList();
+        LoadEditor(snippet);
+
+        if (EntryList.SelectedItem is Row row) EntryList.ScrollIntoView(row);
     }
 
     /// <summary>当前选中的别名（多选时是全部；没选中时退回编辑区那一条）。</summary>

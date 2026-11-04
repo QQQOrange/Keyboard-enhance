@@ -250,7 +250,6 @@ public partial class MainWindow : Window
         }
 
         _pages[page] = view;
-        _pages[page] = view;
         TrimPageCache();
 
         return view;
@@ -317,6 +316,15 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnWindowPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        /* Ctrl+K：全局搜索（页面 / 别名 / 触发键 / 绑定）。 */
+        if (e.Key == System.Windows.Input.Key.K &&
+            (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+        {
+            OpenSearchPalette();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != System.Windows.Input.Key.Tab) return;
         if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0) return;
 
@@ -332,6 +340,34 @@ public partial class MainWindow : Window
             item.Focus();
 
         e.Handled = true;
+    }
+
+    private void OnSearchClick(object sender, RoutedEventArgs e) => OpenSearchPalette();
+
+    /// <summary>打开 Ctrl+K 搜索面板；选中结果后跳转（别名会顺带选中那一条）。</summary>
+    private void OpenSearchPalette()
+    {
+        var hits = CapsLockPlus.Core.Search.GlobalSearch.Build(_host.Settings, Loc.T);
+        var picked = SearchPaletteWindow.Pick(this, hits);
+        if (picked == null) return;
+
+        if (picked.AliasTrigger != null)
+            _host.PendingAliasTrigger = picked.AliasTrigger;
+
+        if (picked.Page != null)
+        {
+            ShowPage(picked.Page);
+
+            /* 左侧导航高亮跟着走，不然标题变了导航还停在旧项。 */
+            foreach (var item in NavList.Items)
+            {
+                if (item is ListBoxItem li && li.Tag is string tag && tag == picked.Page)
+                {
+                    NavList.SelectedItem = li;
+                    break;
+                }
+            }
+        }
     }
 
     private void OnNavSelectionChanged(object sender, SelectionChangedEventArgs e)

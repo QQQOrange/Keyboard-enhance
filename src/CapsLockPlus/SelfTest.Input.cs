@@ -1411,6 +1411,31 @@ public static partial class SelfTest
             Check("前缀检测：新旧混着时不猜", SnippetPrefixOps.DetectStale(s.Global.Snippets, "=", out _) == null, "");
         }
 
+        /* ---- 全局搜索 ---- */
+        {
+            var s = DefaultSettings.Create();
+            s.Hotstring.Prefix = "/";
+            s.Global.Snippets.Clear();
+            s.Global.Snippets.Add(new Snippet { Trigger = "/mail", Text = "a@b.com", Comment = "常用邮箱" });
+            s.Global.Snippets.Add(new Snippet { Trigger = "/tel", Text = "123", Comment = "手机号" });
+
+            var hits = CapsLockPlus.Core.Search.GlobalSearch.Build(s, x => x);
+            Check("搜索：索引里有页面", hits.Any(h => h.Kind == "页面"), "");
+            Check("搜索：索引里有别名", hits.Count(h => h.Kind == "别名") == 2, "");
+            Check("搜索：别名显示不带前缀", hits.Any(h => h.Kind == "别名" && h.Title == "mail"), "");
+
+            var q1 = CapsLockPlus.Core.Search.GlobalSearch.Query(hits, "mail");
+            Check("搜索：按别名前缀命中", q1.Count > 0 && q1[0].Title == "mail", q1.FirstOrDefault()?.Title ?? "空");
+            Check("搜索：结果指向别名页", q1[0].Page == "hotstrings", q1[0].Page ?? "null");
+            Check("搜索：带回触发词供选中", q1[0].AliasTrigger == "/mail", q1[0].AliasTrigger ?? "null");
+
+            var q2 = CapsLockPlus.Core.Search.GlobalSearch.Query(hits, "设置");
+            Check("搜索：按页面名命中", q2.Any(h => h.Page == "settings"), "");
+
+            Check("搜索：无匹配返回空", CapsLockPlus.Core.Search.GlobalSearch.Query(hits, "zzzz不存在的词").Count == 0, "");
+            Check("搜索：空查询给默认列表", CapsLockPlus.Core.Search.GlobalSearch.Query(hits, "").Count > 0, "");
+        }
+
         /* ---- 别名体检 ---- */
         {
             var s = DefaultSettings.Create();
