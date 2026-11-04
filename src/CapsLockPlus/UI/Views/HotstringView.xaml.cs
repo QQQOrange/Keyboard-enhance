@@ -66,6 +66,10 @@ public partial class HotstringView : UserControl
         /// <summary>右侧显示的分组名（没分组就是空）。</summary>
         public string GroupLabel { get; init; } = "";
         public string Preview { get; init; } = "";
+
+        /// <summary>停用的别名整行压暗，一眼能看出来（不用点进去看勾选）。</summary>
+        public double Opacity => Snippet.Enabled ? 1.0 : 0.45;
+
         public override string ToString() => KeyLabel;
     }
 
@@ -171,7 +175,7 @@ public partial class HotstringView : UserControl
             .Select(x => new Row
             {
                 Snippet = x,
-                KeyLabel = StripPrefix(x.Trigger, opt.EffectivePrefix),
+                KeyLabel = SnippetPrefixOps.Strip(x.Trigger, opt.EffectivePrefix),
                 Initial = InitialOf(x.Trigger, opt.EffectivePrefix),
                 GroupLabel = string.IsNullOrWhiteSpace(x.Group) ? "" : x.Group!.Trim(),
                 Preview = Shorten(opt.ShowNoteFirst && !string.IsNullOrWhiteSpace(x.Comment) ? x.Comment : x.Text, 56),
@@ -184,6 +188,15 @@ public partial class HotstringView : UserControl
             EntryList.ItemsSource = rows;
             FilterCount.Text = Loc.F("共 {0} 条", rows.Count);
             EmptyHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            /* 空状态要说清"为什么空"：是没建过，还是筛选没命中，还是这个分组空着。
+             * 统一一句"还没有别名"会让用户以为数据丢了。 */
+            EmptyHint.Text = rows.Count != 0 ? "" :
+                filter.Length > 0
+                    ? Loc.F("没有匹配「{0}」的别名。", filter)
+                    : (group is { Length: > 0 } g
+                        ? Loc.F("「{0}」这个分组还空着。可以把别名拖进来，或右键「移到分组」。", g)
+                        : Loc.T("还没有别名。点下面的「新增」建一条。"));
             EntryList.SelectedItem = rows.FirstOrDefault(r => ReferenceEquals(r.Snippet, _editing));
         }
         finally { _suppress = false; }
@@ -216,26 +229,11 @@ public partial class HotstringView : UserControl
         if (_prefixAlignedOnce || _host == null) return;
         _prefixAlignedOnce = true;
 
-        var opt = _host.Settings.Hotstring;
-        string current = opt.EffectivePrefix ?? "";
-        char? stale = null;
-        int count = 0;
+        string current = _host.Settings.Hotstring.EffectivePrefix ?? "";
 
-        foreach (var snippet in Entries)
-        {
-            string trigger = snippet.Trigger ?? "";
-            if (trigger.Length < 2) continue;
-
-            char first = trigger[0];
-            if (!IsPrefixSymbol(first)) continue;
-            if (current.Length > 0 && first == current[0]) continue;
-
-            if (stale == null) stale = first;
-            else if (stale != first) return;      // 新旧混着，不猜
-
-            count++;
-        }
-
+        /* 新旧符号混着的时候 DetectStale 会返回 null —— 那种情况不猜，
+         * 交给用户改一次前缀（改前缀一定会整批迁移）。 */
+        char? stale = SnippetPrefixOps.DetectStale(Entries, current, out int count);
         if (stale == null || count == 0) return;
 
         int moved = SnippetPrefixOps.Migrate(_host.Settings, stale.Value.ToString(), current);
@@ -246,39 +244,14 @@ public partial class HotstringView : UserControl
         _host.Notify(Loc.F("已把 {0} 条别名的旧前缀统一成「{1}」", moved, current));
     }
 
-    /// <summary>这个字符像不像"前缀符号"（用来识别旧前缀，避免误改正文）。</summary>
-    private static bool IsPrefixSymbol(char c)
-        => c is ';' or '/' or '\\' or '.' or ',' or ':' or '\''
-              or '\'' or '"' or '~' or '!' or '@' or '#' or '$' or '%' or '^'
-              or '&' or '*' or '-' or '_' or '+' or '=' or '|' or '。' or '，'
-              or '；' or '、' or '：';
-
     // ---------------- 小工具 ----------------
 
     private static string InitialOf(string? trigger, string? prefix)
     {
-        string s = StripPrefix(trigger, prefix);
+        string s = SnippetPrefixOps.Strip(trigger, prefix);
         if (s.Length == 0) return "?";
         char c = char.ToUpperInvariant(s[0]);
         return char.IsLetterOrDigit(c) ? c.ToString() : s[..1];
-    }
-
-    /// <summary>列表/编辑框里显示触发词时去掉前缀符号（;mail 只显示 mail）。</summary>
-    private static string StripPrefix(string? trigger, string? prefix)
-    {
-        if (string.IsNullOrEmpty(trigger)) return "";
-        if (!string.IsNullOrEmpty(prefix) && trigger.StartsWith(prefix!, StringComparison.Ordinal))
-            return trigger[prefix!.Length..];
-        return trigger;
-    }
-
-    /// <summary>保存时把前缀补回去（用户只输入了 mail）。</summary>
-    private static string ApplyPrefix(string? typed, string? prefix)
-    {
-        string name = typed?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name)) return "";
-        if (string.IsNullOrEmpty(prefix)) return name;
-        return name.StartsWith(prefix!, StringComparison.Ordinal) ? name : prefix + name;
     }
 
     private static string Shorten(string? s, int max)
@@ -316,13 +289,14 @@ public partial class HotstringView : UserControl
         _suppress = true;
         try
         {
-            KeyBox.Text = StripPrefix(entry.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
+            KeyBox.Text = SnippetPrefixOps.Strip(entry.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
             EditTitle.Text = Loc.F("正在编辑：{0}", KeyBox.Text.Length == 0 ? Loc.T("（新别名）") : KeyBox.Text);
             ValueBox.Text = entry.Text ?? "";
             CommentBox.Text = entry.Comment ?? "";
             AppsBox.Text = entry.Apps ?? "";
             EnabledBox.IsChecked = entry.Enabled;
             StatusText.Text = "";
+            StatusText.Foreground = (Brush)FindResource("Brush.TextTertiary");
 
             GroupBox.Text = entry.Group ?? "";
         }
@@ -407,7 +381,7 @@ public partial class HotstringView : UserControl
          *   · 位置由 60fps 的定时器从 Mouse.GetPosition 直接读取，
          *     不再依赖 DragOver 事件 —— 那样只有在拖过目标控件时才会更新。
          */
-        string label = StripPrefix(snippet.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
+        string label = SnippetPrefixOps.Strip(snippet.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
         if (string.IsNullOrEmpty(label))
             label = Shorten(snippet.Comment, 24);
 
@@ -786,7 +760,27 @@ public partial class HotstringView : UserControl
     {
         if (_host == null || _suppress || _editing == null) return;
 
-        _editing.Trigger = ApplyPrefix(KeyBox.Text?.Trim(), _host.Settings.Hotstring.EffectivePrefix);
+        /* 编辑区可能指向一条"已经不在配置里"的条目：
+         * 同步恢复覆盖了配置、或者这条在别处被删掉了。
+         * 继续往里写只会改到一个游离对象，存进去也会在下一次刷新时消失 ——
+         * 用户感受就是"改了没反应"。这里先核对一次，找不到就收起编辑区。 */
+        if (!Entries.Any(x => ReferenceEquals(x, _editing)))
+        {
+            var again = Entries.FirstOrDefault(x =>
+                string.Equals(x.Trigger, _editing.Trigger, StringComparison.OrdinalIgnoreCase));
+
+            if (again == null)
+            {
+                _editing = null;
+                ShowEditor(false);
+                RefreshList();
+                return;
+            }
+
+            LoadEditor(again);
+        }
+
+        _editing.Trigger = SnippetPrefixOps.Apply(KeyBox.Text, _host.Settings.Hotstring.EffectivePrefix);
         _editing.Text = ValueBox.Text ?? "";
         _editing.Comment = CommentBox.Text ?? "";
         _editing.Apps = AppsBox.Text?.Trim() ?? "";
@@ -803,8 +797,130 @@ public partial class HotstringView : UserControl
         RefreshList();
         RefreshGroups();
         EditTitle.Text = Loc.F("正在编辑：{0}",
-            StripPrefix(_editing.Trigger, _host.Settings.Hotstring.EffectivePrefix));
-        StatusText.Text = Loc.T("已保存");
+            SnippetPrefixOps.Strip(_editing.Trigger, _host.Settings.Hotstring.EffectivePrefix));
+
+        /* 触发词撞车：两条同触发词时只有其中一条会命中，用户很难自己发现。 */
+        bool duplicate = _editing.Trigger.Length > 0 && Entries.Any(x =>
+            !ReferenceEquals(x, _editing) &&
+            string.Equals((x.Trigger ?? "").Trim(), _editing.Trigger.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+        if (duplicate)
+        {
+            StatusText.Text = Loc.T("⚠ 这个触发词和另一条别名重复，只有其中一条会生效");
+            StatusText.Foreground = (Brush)FindResource("Brush.Warning");
+        }
+        else
+        {
+            StatusText.Text = Loc.T("已保存");
+            StatusText.Foreground = (Brush)FindResource("Brush.TextTertiary");
+        }
+    }
+
+    /// <summary>复制一条别名（触发词自动加序号，避免撞车）。</summary>
+    private void DuplicateSnippet(Snippet source)
+    {
+        if (_host == null) return;
+
+        string prefix = _host.Settings.Hotstring.EffectivePrefix ?? "";
+        string baseName = SnippetPrefixOps.Strip(source.Trigger, prefix);
+        if (baseName.Length == 0) baseName = Loc.T("副本");
+
+        string candidate = baseName + "2";
+        int n = 2;
+        while (Entries.Any(x => string.Equals(SnippetPrefixOps.Strip(x.Trigger, prefix), candidate,
+                                               StringComparison.CurrentCultureIgnoreCase)))
+        {
+            n++;
+            candidate = baseName + n;
+        }
+
+        var copy = new Snippet
+        {
+            Trigger = SnippetPrefixOps.Apply(candidate, prefix),
+            Text = source.Text,
+            Comment = source.Comment,
+            Group = source.Group,
+            Apps = source.Apps,
+            Enabled = source.Enabled,
+        };
+
+        Entries.Add(copy);
+        _host.SaveSettings();
+        _editing = copy;
+        Refresh();
+        LoadEditor(copy);
+        KeyBox.Focus();
+        KeyBox.CaretIndex = KeyBox.Text.Length;
+        _host.Notify(Loc.F("已复制为「{0}」", candidate));
+    }
+
+    /// <summary>导出全部别名到一个 JSON 文件。</summary>
+    private void OnExportClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = Loc.T("导出别名"),
+            Filter = Loc.T("别名文件 (*.json)|*.json"),
+            FileName = "keyboard-enhance-aliases.json",
+            DefaultExt = ".json",
+        };
+
+        if (dlg.ShowDialog(Owner) != true) return;
+
+        try
+        {
+            System.IO.File.WriteAllText(dlg.FileName,
+                SnippetPortable.Export(_host.Settings.Global.Snippets),
+                new System.Text.UTF8Encoding(false));
+
+            _host.Notify(Loc.F("已导出 {0} 条别名", Entries.Count));
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("导出别名失败", ex);
+            _host.Notify(Loc.T("导出失败：") + ex.Message);
+        }
+    }
+
+    /// <summary>从 JSON 文件导入别名（合并，不删除本地已有条目）。</summary>
+    private void OnImportClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = Loc.T("导入别名"),
+            Filter = Loc.T("别名文件 (*.json)|*.json|所有文件 (*.*)|*.*"),
+            CheckFileExists = true,
+        };
+
+        if (dlg.ShowDialog(Owner) != true) return;
+
+        List<SnippetPortable.Entry>? parsed;
+        try
+        {
+            parsed = SnippetPortable.Parse(System.IO.File.ReadAllText(dlg.FileName));
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("读取别名文件失败", ex);
+            _host.Notify(Loc.T("读取失败：") + ex.Message);
+            return;
+        }
+
+        if (parsed == null)
+        {
+            _host.Notify(Loc.T("这个文件不是有效的别名文件（需要 JSON）"));
+            return;
+        }
+
+        var result = SnippetPortable.Import(parsed, _host.Settings.Global.Snippets);
+        _host.SaveSettings();
+        Refresh();
+
+        _host.Notify(Loc.F("导入完成：新增 {0} 条，更新 {1} 条", result.Added, result.Updated));
     }
 
     private void OnAddClick(object sender, RoutedEventArgs e)
@@ -914,6 +1030,11 @@ public partial class HotstringView : UserControl
         move.Items.Add(create);
 
         menu.Items.Add(move);
+
+        var dup = new MenuItem { Header = Loc.T("复制一个副本") };
+        dup.Click += (_, _) => DuplicateSnippet(row.Snippet);
+        menu.Items.Add(dup);
+
         menu.Items.Add(new Separator());
 
         var del = new MenuItem { Header = Loc.T("删除这个别名") };

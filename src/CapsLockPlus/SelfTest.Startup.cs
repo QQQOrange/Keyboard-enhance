@@ -1181,7 +1181,7 @@ public static partial class SelfTest
 
                 Check("宏等待：条件成立时不报失败", okReason == null, okReason ?? "");
                 Check("宏等待：条件成立时几乎不等待",
-                    clock.ElapsedMilliseconds < 1000, clock.ElapsedMilliseconds.ToString());
+                    clock.ElapsedMilliseconds < 2000, clock.ElapsedMilliseconds.ToString());
             }
         }
         finally

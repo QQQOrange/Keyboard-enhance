@@ -219,7 +219,7 @@
                             </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid>
+                                    <Grid Opacity="{Binding Opacity}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="120" />
@@ -253,9 +253,15 @@
                         <Button Content="{loc:T '新增'}" Style="{StaticResource Button.Primary}" Click="OnAddClick" />
                         <Button x:Name="DeleteButton" Content="{loc:T '删除'}" Style="{StaticResource Button.Danger}"
                                 Margin="8,0,0,0" Click="OnDeleteClick" />
+                        <Button x:Name="ImportButton" Content="{loc:T '导入'}" Style="{StaticResource Button.Ghost}"
+                                Margin="8,0,0,0" Click="OnImportClick"
+                                ToolTip="{loc:T '从 JSON 文件导入别名（合并，不会删掉已有的）'}" />
+                        <Button x:Name="ExportButton" Content="{loc:T '导出'}" Style="{StaticResource Button.Ghost}"
+                                Margin="6,0,0,0" Click="OnExportClick"
+                                ToolTip="{loc:T '把全部别名导出成 JSON，换机器时用得上'}" />
                         <TextBlock Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
-                                   Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="380"
-                                   Text="{loc:T '别名不显示前缀符号；保存时会自动补回去。选中文字后按 Caps+Tab 的替换在「Qbar 面板 → 文字替换」。'}" />
+                                   Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="330"
+                                   Text="{loc:T '别名不显示前缀符号；保存时会自动补回去。右键条目可以复制或移到分组。'}" />
                     </StackPanel>
                 </Grid>
             </Border>

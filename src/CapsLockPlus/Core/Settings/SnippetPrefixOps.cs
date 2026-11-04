@@ -14,6 +14,61 @@ namespace CapsLockPlus.Core.Settings;
 /// </summary>
 public static class SnippetPrefixOps
 {
+    /// <summary>这个字符像不像"前缀符号"（用来识别旧前缀，避免误改正文）。</summary>
+    public static bool IsSymbol(char c)
+        => c is ';' or '/' or '\\' or '.' or ',' or ':' or '\''
+              or '\'' or '"' or '~' or '!' or '@' or '#' or '$' or '%' or '^'
+              or '&' or '*' or '-' or '_' or '+' or '=' or '|' or '。' or '，'
+              or '；' or '、' or '：';
+
+    /// <summary>列表/编辑框里显示触发词时去掉前缀（;mail 只显示 mail）。</summary>
+    public static string Strip(string? trigger, string? prefix)
+    {
+        if (string.IsNullOrEmpty(trigger)) return "";
+        if (!string.IsNullOrEmpty(prefix) && trigger!.StartsWith(prefix!, StringComparison.Ordinal))
+            return trigger[prefix!.Length..];
+        return trigger;
+    }
+
+    /// <summary>保存时把前缀补回去（用户只输入了 mail）。</summary>
+    public static string Apply(string? typed, string? prefix)
+    {
+        string name = typed?.Trim() ?? "";
+        if (name.Length == 0) return "";
+        if (string.IsNullOrEmpty(prefix)) return name;
+        return name.StartsWith(prefix!, StringComparison.Ordinal) ? name : prefix + name;
+    }
+
+    /// <summary>
+    /// 找出"和当前前缀不一致、但看起来是旧前缀"的那个符号。
+    ///
+    /// 只在**完全无歧义**时返回：所有带符号前缀的条目用的都是同一个符号。
+    /// 混着新旧符号（用户手动改过一半）时返回 null，交给用户改一次前缀。
+    /// </summary>
+    public static char? DetectStale(IEnumerable<Snippet> snippets, string? currentPrefix, out int count)
+    {
+        count = 0;
+        char? stale = null;
+        string current = currentPrefix ?? "";
+
+        foreach (var snippet in snippets)
+        {
+            string trigger = (snippet.Trigger ?? "").Trim();
+            if (trigger.Length < 2) continue;
+
+            char first = trigger[0];
+            if (!IsSymbol(first)) continue;
+            if (current.Length > 0 && first == current[0]) continue;
+
+            if (stale == null) stale = first;
+            else if (stale != first) { count = 0; return null; }
+
+            count++;
+        }
+
+        return count == 0 ? null : stale;
+    }
+
     /// <summary>
     /// 把所有片段的触发词从 <paramref name="oldPrefix"/> 换成 <paramref name="newPrefix"/>。
     /// 返回实际改动的条数。

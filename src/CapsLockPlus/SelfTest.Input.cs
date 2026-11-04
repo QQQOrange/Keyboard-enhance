@@ -1385,6 +1385,54 @@ public static partial class SelfTest
                 string.Join("|", sG.Global.SnippetGroups));
         }
 
+        /* ---- 前缀工具（视图与存储共用同一套实现） ---- */
+        {
+            Check("前缀工具：剥掉 ;", SnippetPrefixOps.Strip(";mail", ";") == "mail", SnippetPrefixOps.Strip(";mail", ";"));
+            Check("前缀工具：不带前缀原样返回", SnippetPrefixOps.Strip("mail", ";") == "mail", "");
+            Check("前缀工具：补前缀", SnippetPrefixOps.Apply("mail", ";") == ";mail", "");
+            Check("前缀工具：已有前缀不重复补", SnippetPrefixOps.Apply(";mail", ";") == ";mail", "");
+            Check("前缀工具：空文本补前缀还是空", SnippetPrefixOps.Apply("  ", ";") == "", "");
+            Check("前缀工具：识别常见符号", SnippetPrefixOps.IsSymbol(';') && SnippetPrefixOps.IsSymbol('；'), "");
+            Check("前缀工具：字母不算符号", !SnippetPrefixOps.IsSymbol('m'), "");
+
+            var s = DefaultSettings.Create();
+            s.Global.Snippets.Clear();
+            s.Global.Snippets.Add(new Snippet { Trigger = ";a" });
+            s.Global.Snippets.Add(new Snippet { Trigger = ";b" });
+            s.Global.Snippets.Add(new Snippet { Trigger = "/c" });
+            Check("前缀检测：全旧前缀时认出来", SnippetPrefixOps.DetectStale(s.Global.Snippets, "/", out int n1) == ';' && n1 == 2,
+                n1.ToString());
+            /* 当前前缀既不是 ; 也不是 / 时，两条都算"旧前缀"，且互不相同 → 不猜。 */
+            Check("前缀检测：新旧混着时不猜", SnippetPrefixOps.DetectStale(s.Global.Snippets, "=", out _) == null, "");
+        }
+
+        /* ---- 别名导入导出 ---- */
+        {
+            var src = new List<Snippet>
+            {
+                new() { Trigger = ";mail", Text = "a@b.com", Comment = "邮箱", Group = "工作", Apps = "code.exe" },
+                new() { Trigger = ";tel", Text = "123", Comment = "电话", Group = "", Enabled = false },
+            };
+
+            string json = SnippetPortable.Export(src);
+            Check("导出：包含触发词", json.Contains(";mail"), "");
+            Check("导出：中文不转义", json.Contains("邮箱"), "");
+
+            var parsed = SnippetPortable.Parse(json);
+            Check("导入：能解析回来", parsed != null && parsed.Count == 2, parsed?.Count.ToString() ?? "null");
+
+            var target = new List<Snippet> { new() { Trigger = ";mail", Text = "旧内容", Group = "旧分组" } };
+            var result = SnippetPortable.Import(parsed!, target);
+            Check("导入：新增 1 条", result.Added == 1, result.Added.ToString());
+            Check("导入：更新 1 条", result.Updated == 1, result.Updated.ToString());
+            Check("导入：同触发词内容被覆盖", target[0].Text == "a@b.com", target[0].Text);
+            Check("导入：导入文件里的分组生效", target[0].Group == "工作", target[0].Group);
+            Check("导入：不删除本地条目", target.Count == 2, target.Count.ToString());
+
+            Check("导入：坏文件返回 null", SnippetPortable.Parse("{ not json") == null, "");
+            Check("导入：空文件返回 null", SnippetPortable.Parse("") == null, "");
+        }
+
         /* ---- 改前缀符号：已有别名要跟着搬（否则列表前面会多出旧前缀） ---- */
         {
             var s = DefaultSettings.Create();
