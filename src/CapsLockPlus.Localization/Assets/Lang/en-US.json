@@ -2540,5 +2540,6 @@
   "将加入 {0} 项：": "Will add {0} item(s):",
   "已有、会跳过 {0} 项：": "Already present, skipped ({0}):",
   "添加这 {0} 项": "Add these {0} items",
-  "没有可添加的内容": "Nothing to add"
+  "没有可添加的内容": "Nothing to add",
+  "{0} = 本层触发键\n长按它进入这一层；短按执行短按动作": "{0} is the trigger key for this layer\nHold it to enter the layer; a short press runs the tap action"
 }

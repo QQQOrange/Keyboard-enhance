@@ -211,17 +211,23 @@
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                         Margin="14,0,0,0">
                                 <Border Width="12" Height="12" CornerRadius="3"
-                                        Background="{DynamicResource Brush.Accent}"
-                                        BorderBrush="{DynamicResource Brush.AccentHover}" BorderThickness="1"
-                                        VerticalAlignment="Center" />
-                                <TextBlock Text="{loc:T '已绑定'}" Style="{StaticResource Text.Tertiary}"
-                                           Margin="5,0,12,0" VerticalAlignment="Center" />
-                                <Border Width="12" Height="12" CornerRadius="3"
-                                        Background="{DynamicResource Brush.AccentSoft}"
-                                        BorderBrush="{DynamicResource Brush.AccentSoftBorder}" BorderThickness="1"
-                                        VerticalAlignment="Center" />
-                                <TextBlock Text="{loc:T '未绑定'}" Style="{StaticResource Text.Tertiary}"
-                                           Margin="5,0,0,0" VerticalAlignment="Center" />
+                                                Background="{DynamicResource Brush.Accent}"
+                                                BorderBrush="{DynamicResource Brush.AccentHover}" BorderThickness="1"
+                                                VerticalAlignment="Center" />
+                                        <TextBlock Text="{loc:T '已绑定'}" Style="{StaticResource Text.Tertiary}"
+                                                   Margin="5,0,12,0" VerticalAlignment="Center" />
+                                        <Border Width="12" Height="12" CornerRadius="3"
+                                                Background="{DynamicResource Brush.TriggerKey}"
+                                                BorderBrush="{DynamicResource Brush.TriggerKeyBorder}" BorderThickness="1"
+                                                VerticalAlignment="Center" />
+                                        <TextBlock Text="{loc:T '触发键'}" Style="{StaticResource Text.Tertiary}"
+                                                   Margin="5,0,12,0" VerticalAlignment="Center" />
+                                        <Border Width="12" Height="12" CornerRadius="3"
+                                                Background="{DynamicResource Brush.AccentSoft}"
+                                                BorderBrush="{DynamicResource Brush.AccentSoftBorder}" BorderThickness="1"
+                                                VerticalAlignment="Center" />
+                                        <TextBlock Text="{loc:T '未绑定'}" Style="{StaticResource Text.Tertiary}"
+                                                   Margin="5,0,0,0" VerticalAlignment="Center" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>

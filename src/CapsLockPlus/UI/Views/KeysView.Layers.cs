@@ -74,14 +74,25 @@ public partial class KeysView : UserControl
 
         /* 三种视觉状态，一眼可分但**对比不过分**：
          *
-         *   触发键（本层）  → 深蓝实心 + 白字 + ★
+         *   触发键（本层）  → 橙色底 + 橙字（主题自适应，白天浅杏、夜间深琥珀）
          *   已绑定功能      → 深蓝实心 + 白字
          *   未绑定          → 浅蓝底 + 灰蓝字
          *
          * 未绑定用浅蓝而不是纯白：纯白键帽和深蓝键帽并排时对比太硬，
          * 满屏键帽看着刺眼。浅蓝能"退到背景里"，深蓝才自然跳出来。 */
         Brush background, borderBrush, textBrush, subTextBrush;
-        if (isTrigger || isBound)
+        if (isTrigger)
+        {
+            /* 触发键用**橙色系**，和"已绑定"的蓝色一眼分开。
+             * 以前只是蓝底 + 键名前加个 ★，星号挤在缩小的键名里根本看不清；
+             * 整块换色比加符号直观得多，也不占额外空间。
+             * 颜色都走主题资源，白天浅杏底、夜间深琥珀底。 */
+            background = (Brush)FindResource("Brush.TriggerKey");
+            borderBrush = (Brush)FindResource("Brush.TriggerKeyBorder");
+            textBrush = (Brush)FindResource("Brush.TriggerKeyText");
+            subTextBrush = (Brush)FindResource("Brush.TriggerKeyText");
+        }
+        else if (isBound)
         {
             background = (Brush)FindResource("Brush.Accent");
             borderBrush = (Brush)FindResource("Brush.AccentHover");
@@ -116,7 +127,7 @@ public partial class KeysView : UserControl
             Background = background,
             BorderBrush = borderBrush,
             ToolTip = isTrigger
-                ? Loc.F("★ {0} = 本层触发键\n长按它进入这一层；短按执行短按动作", label)
+                ? Loc.F("{0} = 本层触发键\n长按它进入这一层；短按执行短按动作", label)
                 : isBound ? $"{label} → {actionTitle}" : Loc.F("{0}（未绑定）", label),
         };
 
@@ -126,9 +137,11 @@ public partial class KeysView : UserControl
         if (isSelected)
         {
             border.BorderThickness = new Thickness(2);
-            border.BorderBrush = isBound || isTrigger
-                ? (Brush)FindResource("Brush.Surface")
-                : (Brush)FindResource("Brush.Accent");
+            border.BorderBrush = isTrigger
+                ? (Brush)FindResource("Brush.TriggerKeyBorder")
+                : isBound
+                    ? (Brush)FindResource("Brush.Surface")
+                    : (Brush)FindResource("Brush.Accent");
         }
 
         var stack = new StackPanel
@@ -148,11 +161,12 @@ public partial class KeysView : UserControl
              * 所以顺序反过来：先功能名（大字、占两行），再键名（小字）。
              * 键帽加高到 52px 才装得下。 */
 
-            // ① 分类标识（小字，最上面，告诉用户"这是哪一类功能"）
+            // ① 分类标识（小字，最上面）。触发键这里直接写"触发键"，比星号清楚。
             stack.Children.Add(new TextBlock
             {
-                Text = Shorten(actionCategory, 4),
+                Text = isTrigger ? Loc.T("触发键") : Shorten(actionCategory, 4),
                 FontSize = 6.5,
+                FontWeight = isTrigger ? FontWeights.Bold : FontWeights.Normal,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.NoWrap,
@@ -179,7 +193,7 @@ public partial class KeysView : UserControl
             // ③ 键名：缩小放在最下面
             stack.Children.Add(new TextBlock
             {
-                Text = isTrigger ? "★" + label : label,
+                Text = label,
                 FontSize = 6.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
@@ -194,7 +208,7 @@ public partial class KeysView : UserControl
             /* ===== 未绑定：只显示键名，居中大字 ===== */
             stack.Children.Add(new TextBlock
             {
-                Text = isTrigger ? "★" + label : label,
+                Text = label,
                 FontSize = label.Length switch
                 {
                     <= 1 => 12,

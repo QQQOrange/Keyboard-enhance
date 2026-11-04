@@ -156,6 +156,24 @@ public static partial class SelfTest
     ///
     /// 自检会临时改写剪贴板，结束时把用户原来的内容还回去（用同一套快照机制）。
     /// </summary>
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetClipboardSequenceNumber();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetOpenClipboardWindow();
+
+    /// <summary>当前是否有别的窗口正独占剪贴板（OpenClipboard 未释放）。</summary>
+    private static bool ClipboardBusy()
+    {
+        try { return GetOpenClipboardWindow() != IntPtr.Zero; } catch { return false; }
+    }
+
+    /// <summary>剪贴板序号：任何程序改动内容都会变。</summary>
+    private static uint ClipboardSeq()
+    {
+        try { return GetClipboardSequenceNumber(); } catch { return 0; }
+    }
+
     private static void TestClipboardBackup()
     {
         var userBackup = Core.Text.ClipboardBackup.Capture();
@@ -266,11 +284,28 @@ public static partial class SelfTest
                     imageBackup.Restore();
                     /* 剪贴板是所有程序共享的：被别的程序长时间占住时，"读不到图片"可能只是
                  * 读不到（不是被顶掉）。这种情况按环境限制跳过，别报假失败。 */
-                string? looksEmpty = ClipboardHasImageOrNull();
-                if (looksEmpty != null && SafeFormats().Contains("被占用")) looksEmpty = null;
-                if (looksEmpty == null)
+                /* 剪贴板是全系统共享的：别的程序（截图工具、剪贴板增强）随时可能把它换掉。
+                 *
+                 * 所以这里不能"读一次就判死刑"：
+                 *   ① 先重试几次，避开瞬时占用；
+                 *   ② 记录还原后的剪贴板序号，读的时候序号变了说明**别人**动过它 ——
+                 *      按环境限制跳过，否则自检会随机报一个假失败（实测复现过一次）。 */
+                uint seqAfter = ClipboardSeq();
+
+                string? looksEmpty = null;
+                for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    Check("（环境限制）剪贴板被占用，跳过图片还原验证", true);
+                    looksEmpty = ClipboardHasImageOrNull();
+                    if (looksEmpty == null || looksEmpty == "yes") break;
+                    Thread.Sleep(40);
+                }
+
+                bool hijacked = ClipboardSeq() != seqAfter;
+
+                if (looksEmpty == null ||
+                    (looksEmpty != "yes" && (hijacked || SafeFormats().Contains("被占用"))))
+                {
+                    Check("（环境限制）剪贴板被别的程序占用/改写，跳过图片还原验证", true);
                 }
                 else
                 {
@@ -348,10 +383,17 @@ public static partial class SelfTest
         Check("空文本复制直接拒绝", !clip.CopyTextToSystem(""));
         if (ClipboardPaster.TrySetText(""))
         {
-            bool copied = clip.CopyTextToSystem("selftest-copy-slot");
-            Check("复制到系统剪贴板返回成功", copied);
-            /* 剪贴板是所有程序共享的：别的程序（输入法、剪贴板工具）可能在同一瞬间占住它，
-             * 单次读取会读到空串或旧内容，变成一条假失败。多读几次再判。 */
+            /* 写剪贴板本身也可能失败：别的程序（输入法、剪贴板工具、截图工具）
+             * 会用 OpenClipboard 短暂独占它，这时 CopyTextToSystem 直接返回 false。
+             * 这类失败是环境噪声，不是功能坏了 —— 先重试，仍失败再按环境限制跳过。 */
+            bool copied = false;
+            for (int i = 0; i < 5 && !copied; i++)
+            {
+                copied = clip.CopyTextToSystem("selftest-copy-slot");
+                if (!copied) System.Threading.Thread.Sleep(80);
+            }
+
+            uint seqBefore = ClipboardSeq();
             string got = "";
             for (int i = 0; i < 8; i++)
             {
@@ -359,7 +401,22 @@ public static partial class SelfTest
                 if (got == "selftest-copy-slot") break;
                 System.Threading.Thread.Sleep(60);
             }
-            Check("系统剪贴板里确实是那段文字", got == "selftest-copy-slot", got);
+
+            bool takenOver = ClipboardSeq() != seqBefore;
+
+            if (!copied && (takenOver || ClipboardBusy()))
+            {
+                Check("（环境限制）剪贴板被别的程序占用，跳过复制验证", true);
+            }
+            else
+            {
+                Check("复制到系统剪贴板返回成功", copied);
+
+                if (got != "selftest-copy-slot" && takenOver)
+                    Check("（环境限制）剪贴板被别的程序改写，跳过内容校验", true);
+                else
+                    Check("系统剪贴板里确实是那段文字", got == "selftest-copy-slot", got);
+            }
         }
         else
         {

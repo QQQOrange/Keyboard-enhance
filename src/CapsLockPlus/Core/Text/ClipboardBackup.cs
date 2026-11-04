@@ -31,6 +31,15 @@ internal sealed class ClipboardBackup
     /// <summary>原本剪贴板就是空的。</summary>
     private bool _wasEmpty;
 
+    /// <summary>
+    /// 截图快照（已在抓取时冻结）。
+    ///
+    /// 为什么单独存：位图在剪贴板里是"延迟渲染"的 —— 只拿到格式名/裸 DIB 流时，
+    /// 原属主一旦释放，写回去经常变成"格式在、内容空"。
+    /// 抓取时就把像素拷成 BitmapSource 并 Freeze，还原才能稳定。
+    /// </summary>
+    private System.Windows.Media.Imaging.BitmapSource? _image;
+
     /// <summary>抓取时出了意外 —— 这时绝不能去动剪贴板。</summary>
     private bool _failed;
 
@@ -72,6 +81,25 @@ internal sealed class ClipboardBackup
                 {
                     /* 单个格式取不到不影响其它格式 */
                 }
+            }
+
+            /* 位图单独物化一次，覆盖掉 copy 里的裸 DIB 项。 */
+            try
+            {
+                if (Clipboard.ContainsImage())
+                {
+                    var img = Clipboard.GetImage();
+                    if (img != null)
+                    {
+                        if (img.CanFreeze) img.Freeze();
+                        b._image = img;
+                        copy.SetData(DataFormats.Bitmap, img, true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Warn("[剪贴板] 位图快照失败：" + ex.Message);
             }
 
             b._data = copy;
@@ -116,7 +144,16 @@ internal sealed class ClipboardBackup
         {
             try
             {
-                if (_data != null) Clipboard.SetDataObject(_data, copy: true);
+                if (_image != null)
+                {
+                    /* 有位图时用 SetDataObject（同时带回文字等格式）；
+                     * 只 SetImage 会把同一份剪贴板里的文字格式冲掉。 */
+                    var data = new DataObject();
+                    data.SetData(DataFormats.Bitmap, _image, true);
+                    if (!string.IsNullOrEmpty(_text)) data.SetText(_text!);
+                    Clipboard.SetDataObject(data, copy: true);
+                }
+                else if (_data != null) Clipboard.SetDataObject(_data, copy: true);
                 else if (_text != null) Clipboard.SetText(_text);
                 else if (_wasEmpty) Clipboard.Clear();
                 return;
