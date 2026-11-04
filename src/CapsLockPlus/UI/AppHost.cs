@@ -211,6 +211,12 @@ public sealed class AppHost : IDisposable
         // 而且要把引擎关键字传下去：qbar:<引擎> 动作绑定到按键后，
         // 按下去弹出的 Qbar 要**默认用那个引擎**搜索。
         /* 兜底接管后按键吞不掉：提示一次，避免用户以为"长按 Tab 一边切层一边跳焦点"是 bug。 */
+        /* 别名展开时记一次使用次数：只请求防抖保存，不打断当前输入。 */
+        Engine.SnippetUsed += () =>
+        {
+            try { SettingsStore.RequestSave(Settings); } catch { }
+        };
+
         Engine.RawFallbackDegraded += () => _dispatcher.BeginInvoke(() =>
         {
             if (_degradedNotified) return;

@@ -116,6 +116,17 @@ public sealed class Snippet
     /// </summary>
     public string Apps { get; set; } = "";
 
+    /// <summary>
+    /// 这条别名被展开过多少次。
+    ///
+    /// 用途：找出"设了但从来没用过"的条目 —— 别名攒多了以后，
+    /// 光看列表分不清哪些还在用、哪些是当年试了一下就放着的。
+    /// </summary>
+    public int UseCount { get; set; }
+
+    /// <summary>最近一次展开的时间（从未用过就是 null）。</summary>
+    public DateTime? LastUsed { get; set; }
+
     public string Comment { get; set; } = "";
 
     /// <summary>分组（空 = 未分组）。</summary>

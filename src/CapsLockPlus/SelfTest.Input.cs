@@ -1071,6 +1071,11 @@ public static partial class SelfTest
             DoEvents(200);
             Check("片段（空格触发）：按空格才展开", eSpace.SnippetMatchesForTest == 1,
                 eSpace.SnippetMatchesForTest.ToString());
+
+            /* 使用统计：展开一次就记一次，并留下时间。 */
+            var used = sSpace.Global.Snippets.FirstOrDefault(x => x.Trigger == ";mail");
+            Check("使用统计：展开后计数为 1", used?.UseCount == 1, used?.UseCount.ToString() ?? "null");
+            Check("使用统计：记下了最近使用时间", used?.LastUsed != null, used?.LastUsed?.ToString() ?? "null");
         }
 
         // 反例：只打到一半不能命中
@@ -1434,6 +1439,33 @@ public static partial class SelfTest
             clean.Global.Snippets.Clear();
             clean.Global.Snippets.Add(new Snippet { Trigger = "/mail", Text = "a", Group = "工作" });
             Check("体检：干净的配置没有问题", SnippetAudit.Run(clean).Count == 0, "");
+
+            /* 自动修复：前缀、分组、重复触发词 */
+            {
+                var fixMe = DefaultSettings.Create();
+                fixMe.Hotstring.Prefix = "/";
+                fixMe.Global.SnippetGroups.Clear();
+                fixMe.Global.Snippets.Clear();
+                fixMe.Global.Snippets.Add(new Snippet { Trigger = ";a", Text = "1", Group = "工作" });
+                fixMe.Global.Snippets.Add(new Snippet { Trigger = "/dup", Text = "2" });
+                fixMe.Global.Snippets.Add(new Snippet { Trigger = "/dup", Text = "3" });
+
+                var fix = SnippetAudit.Fix(fixMe);
+
+                Check("自动修复：改了 1 条前缀", fix.PrefixFixed == 1, fix.PrefixFixed.ToString());
+                Check("自动修复：登记了 1 个分组", fix.GroupsRegistered == 1, fix.GroupsRegistered.ToString());
+                Check("自动修复：重命名了 1 条重复", fix.TriggersRenamed == 1, fix.TriggersRenamed.ToString());
+                Check("自动修复：前缀换成当前", fixMe.Global.Snippets[0].Trigger == "/a",
+                    fixMe.Global.Snippets[0].Trigger);
+                Check("自动修复：重复的加了序号",
+                    fixMe.Global.Snippets[2].Trigger == "/dup2", fixMe.Global.Snippets[2].Trigger);
+                Check("自动修复：分组已登记", fixMe.Global.SnippetGroups.Contains("工作"), "");
+
+                /* 修完再体检，"能修的那三类"应该归零。 */
+                var left = SnippetAudit.Run(fixMe);
+                Check("自动修复：修完不再报这三类",
+                    !left.Any(x => x.Title is "前缀不对" or "分组未登记" or "触发词重复"), "");
+            }
 
             Check("体检：描述文本带条目", SnippetAudit.Describe(issues).Contains("触发词重复"), "");
         }

@@ -83,6 +83,86 @@ public static class SnippetAudit
         return issues;
     }
 
+    /// <summary>自动修复的结果计数。</summary>
+    public readonly record struct FixResult(int PrefixFixed, int GroupsRegistered, int TriggersRenamed)
+    {
+        public int Total => PrefixFixed + GroupsRegistered + TriggersRenamed;
+    }
+
+    /// <summary>
+    /// 修掉"能确定怎么修"的那几类问题：
+    ///   · 前缀不对 → 换成当前前缀；
+    ///   · 分组未登记 → 登记进去；
+    ///   · 触发词重复 → 后面几条加序号（mail → mail2 → mail3…）。
+    ///
+    /// **不修**需要人判断的：空内容（不知道该填什么）、没有触发词、带空格的触发词。
+    /// 修完调用方要保存 + 刷新。
+    /// </summary>
+    public static FixResult Fix(AppSettings settings)
+    {
+        var snippets = settings.Global.Snippets;
+        string prefix = settings.Hotstring?.EffectivePrefix ?? "";
+
+        int prefixFixed = 0, groupsAdded = 0, renamed = 0;
+
+        var groups = new HashSet<string>(
+            (settings.Global.SnippetGroups ??= new List<string>())
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Select(g => g.Trim()),
+            StringComparer.CurrentCultureIgnoreCase);
+
+        /* ① 前缀不对：把开头的旧符号换成当前前缀（当前前缀为空时直接去掉）。 */
+        foreach (var snippet in snippets)
+        {
+            string trigger = (snippet.Trigger ?? "").Trim();
+            if (trigger.Length < 2) continue;
+            if (!SnippetPrefixOps.IsSymbol(trigger[0])) continue;
+            if (prefix.Length > 0 && trigger[0] == prefix[0]) continue;
+
+            string rest = trigger[1..];
+            if (rest.Length == 0 || !char.IsLetterOrDigit(rest[0])) continue;
+
+            snippet.Trigger = prefix + rest;
+            prefixFixed++;
+        }
+
+        /* ② 分组未登记：补进分组列表（保持用户原有顺序，只在末尾追加）。 */
+        foreach (var snippet in snippets)
+        {
+            string group = (snippet.Group ?? "").Trim();
+            if (group.Length == 0 || groups.Contains(group)) continue;
+
+            settings.Global.SnippetGroups.Add(group);
+            groups.Add(group);
+            groupsAdded++;
+        }
+
+        /* ③ 触发词重复：第一条不动，后面依次加 2、3… 直到不撞车。 */
+        var seen = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+        foreach (var snippet in snippets)
+        {
+            string trigger = (snippet.Trigger ?? "").Trim();
+            if (trigger.Length == 0) continue;
+
+            if (seen.Add(trigger)) continue;
+
+            string name = SnippetPrefixOps.Strip(trigger, prefix);
+            int n = 2;
+            string candidate;
+            do
+            {
+                candidate = SnippetPrefixOps.Apply(name + n, prefix);
+                n++;
+            }
+            while (!seen.Add(candidate));
+
+            snippet.Trigger = candidate;
+            renamed++;
+        }
+
+        return new FixResult(prefixFixed, groupsAdded, renamed);
+    }
+
     /// <summary>把结果拼成一段给对话框看的文字（最多 <paramref name="max"/> 条）。</summary>
     public static string Describe(IReadOnlyList<Issue> issues, int max = 12)
     {

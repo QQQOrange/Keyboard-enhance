@@ -338,6 +338,9 @@
                     <TextBlock Style="{StaticResource Text.Tertiary}" Margin="0,5,0,0" TextWrapping="Wrap"
                                Text="{loc:T '换一个分组 = 把这条别名移过去；也可以把列表里的别名直接拖到左边的分组上。'}" />
 
+                    <TextBlock x:Name="UsageText" Style="{StaticResource Text.Tertiary}"
+                               Margin="0,8,0,0" Text="" />
+
                     <!-- 分组选择弹层 -->
                     <Popup x:Name="GroupPicker" StaysOpen="False" AllowsTransparency="True"
                            Placement="Bottom" PlacementTarget="{Binding ElementName=GroupBox}">

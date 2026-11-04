@@ -306,6 +306,13 @@ public partial class HotstringView : UserControl
             StatusText.Foreground = (Brush)FindResource("Brush.TextTertiary");
 
             GroupBox.Text = entry.Group ?? "";
+
+            /* 使用情况：帮用户判断这条还留着有没有意义。 */
+            UsageText.Text = entry.UseCount <= 0
+                ? Loc.T("还没用过")
+                : (entry.LastUsed is { } at
+                    ? Loc.F("用过 {0} 次 · 最近 {1:MM-dd HH:mm}", entry.UseCount, at)
+                    : Loc.F("用过 {0} 次", entry.UseCount));
         }
         finally { _suppress = false; }
     }
@@ -1092,6 +1099,26 @@ public partial class HotstringView : UserControl
         UI.Windows.AppDialog.Warn(Owner,
             Loc.F("发现 {0} 个问题：", issues.Count) + "\n\n" + SnippetAudit.Describe(issues),
             Loc.T("别名体检"));
+
+        /* 能自动修的那几类，问一句就修 —— 否则用户看完列表还得自己一条条改。 */
+        int fixable = issues.Count(x => x.Title is "触发词重复" or "前缀不对" or "分组未登记");
+        if (fixable == 0) return;
+
+        if (!UI.Windows.AppDialog.Confirm(Owner,
+                Loc.F("其中 {0} 个可以自动修（前缀换成当前的、分组补登记、重复的加序号）。要修吗？", fixable),
+                Loc.T("自动修复"),
+                Windows.DialogKind.Question,
+                okText: Loc.T("修复")))
+        {
+            return;
+        }
+
+        var fixedResult = SnippetAudit.Fix(_host.Settings);
+        _host.SaveSettings();
+        Refresh();
+
+        _host.Notify(Loc.F("已修复 {0} 项：前缀 {1}、分组 {2}、触发词 {3}",
+            fixedResult.Total, fixedResult.PrefixFixed, fixedResult.GroupsRegistered, fixedResult.TriggersRenamed));
     }
 
     /// <summary>导出全部别名到一个 JSON 文件。</summary>
