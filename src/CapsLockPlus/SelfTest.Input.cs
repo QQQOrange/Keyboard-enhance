@@ -1429,6 +1429,23 @@ public static partial class SelfTest
             Check("导入：导入文件里的分组生效", target[0].Group == "工作", target[0].Group);
             Check("导入：不删除本地条目", target.Count == 2, target.Count.ToString());
 
+            /* 替换模式：先清空再导入（调用方负责确认）。 */
+            {
+                var list = new List<Snippet>
+                {
+                    new() { Trigger = "/old", Text = "旧" },
+                    new() { Trigger = "/old2", Text = "旧2" },
+                };
+                var incoming = SnippetPortable.Parse(json)!;
+                var replaced = SnippetPortable.Import(incoming, list, replace: true);
+
+                Check("导入(替换)：清空旧条目", list.Count == 2, list.Count.ToString());
+                Check("导入(替换)：全部算新增", replaced.Added == 2 && replaced.Updated == 0,
+                    $"{replaced.Added}/{replaced.Updated}");
+                Check("导入(替换)：旧条目确实没了",
+                    list.All(x => !x.Trigger.StartsWith("/old")), "");
+            }
+
             Check("导入：坏文件返回 null", SnippetPortable.Parse("{ not json") == null, "");
             Check("导入：空文件返回 null", SnippetPortable.Parse("") == null, "");
         }

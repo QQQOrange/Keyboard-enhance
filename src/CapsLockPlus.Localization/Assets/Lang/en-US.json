@@ -2436,5 +2436,9 @@
   "已把 {0} 条别名移到「{1}」": "Moved {0} aliases to \"{1}\"",
   "已删除 {0} 条别名": "Deleted {0} aliases",
   "删除别名": "Delete aliases",
-  "删除选中的 {0} 条别名？\n\n删除后不可撤销。": "Delete the {0} selected aliases?\n\nThis cannot be undone."
+  "删除选中的 {0} 条别名？\n\n删除后不可撤销。": "Delete the {0} selected aliases?\n\nThis cannot be undone.",
+  "替换全部": "Replace all",
+  "合并导入": "Merge instead",
+  "已替换为 {0} 条别名": "Replaced everything with {0} aliases",
+  "导入会和现有 {0} 条别名合并。\n\n要改成「替换全部」吗？替换会先清空现有别名，且不可撤销。": "Import will merge with the {0} existing aliases.\n\nSwitch to \"Replace all\" instead? That clears existing aliases first and cannot be undone."
 }

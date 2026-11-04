@@ -339,9 +339,6 @@ public sealed partial class HotkeyEngine : IDisposable
      * 钩子在宿主进程里时，本进程看不到按键，界面（测试页）会一片空白。
      * 宿主把这些状态回传过来，这里只做**显示**，绝不参与热键决策
      * （否则等于两个进程都在处理按键）。 */
-    private volatile bool _remoteTriggerHeld;
-    private int _remoteLayer = -1;
-    private string? _remoteTriggerKey;
 
     /// <summary>
     /// 捕获模式：正在录「要发送的键」或「绑定哪个键」时置 true。
@@ -351,43 +348,14 @@ public sealed partial class HotkeyEngine : IDisposable
     /// </summary>
     public bool CaptureMode { get; set; }
 
-    /// <summary>
-    /// 宿主回传的按键计数。
-    ///
-    /// ⚠ 宿主模式下**本进程没有钩子**，<see cref="KeyEventCount"/> 永远是 0。
-    /// 健康检查如果拿它判断"钩子还活着没有"，就会永远判定"钩子死了" ——
-    /// 进而发 SWALLOW 0 让宿主停止吞键：Tab 立刻恢复成原生 Tab、层也进不去。
-    /// 这正是"更新后还是不行、甚至更糟"的原因。
-    /// </summary>
-    private long _remoteKeyCount;
-
     /// <summary>宿主回传的按键累计数（宿主模式下用它判断钩子健康度）。</summary>
     public long RemoteKeyCount => Interlocked.Read(ref _remoteKeyCount);
 
-    /// <summary>宿主回传：某个键被按下了（界面显示 + 健康度统计）。</summary>
-    internal void ApplyRemoteKey(int vk, bool down)
-    {
-        Interlocked.Increment(ref _remoteKeyCount);
-        try { KeySeen?.Invoke(vk, down, ActiveLayer); } catch { }
-    }
 
-    /// <summary>宿主回传：触发键按住/松开（只用于界面显示）。</summary>
-    internal void ApplyRemoteTrigger(bool held, string? key, int layer)
-    {
-        _remoteTriggerHeld = held;
-        _remoteTriggerKey = key;
-        _remoteLayer = layer;
-        try { TriggerHeldChanged?.Invoke(held); } catch { }
-    }
 
-    /// <summary>宿主回传：当前层变了（只用于界面显示）。</summary>
-    internal void ApplyRemoteLayer(int layer)
-    {
-        if (_remoteLayer == layer) return;
-        _remoteLayer = layer;
-        /* 页面靠 TriggerHeldChanged 刷新整块状态（含"当前层"），这里借它通知一次。 */
-        try { TriggerHeldChanged?.Invoke(_remoteTriggerHeld); } catch { }
-    }
+
+
+
 
     /// <summary>当前激活的层（未激活时为 -1）。</summary>
     public int ActiveLayer => _layerActive ? _activeLayer : _remoteLayer;

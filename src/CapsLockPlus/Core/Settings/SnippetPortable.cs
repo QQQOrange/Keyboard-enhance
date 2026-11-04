@@ -87,9 +87,12 @@ public static class SnippetPortable
     /// 合并规则：触发词（忽略大小写、忽略两侧空白）相同 → 覆盖内容并保留本地分组为空时的原分组；
     /// 否则追加。导入不会删除任何本地条目。
     /// </summary>
-    public static ImportResult Import(IEnumerable<Entry> entries, List<Snippet> target)
+    public static ImportResult Import(IEnumerable<Entry> entries, List<Snippet> target, bool replace = false)
     {
         int added = 0, updated = 0, ignored = 0;
+
+        /* 替换模式：先清空。调用方必须已经向用户确认过 —— 这是不可撤销的操作。 */
+        if (replace) target.Clear();
 
         foreach (var e in entries)
         {

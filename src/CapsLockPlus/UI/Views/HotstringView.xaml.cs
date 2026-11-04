@@ -1073,11 +1073,29 @@ public partial class HotstringView : UserControl
             return;
         }
 
-        var result = SnippetPortable.Import(parsed, _host.Settings.Global.Snippets);
+        /* 有现存数据时才问"合并还是替换"；空表直接导入，少一次打扰。 */
+        bool replace = false;
+        int existing = _host.Settings.Global.Snippets.Count;
+        if (existing > 0)
+        {
+            bool confirmed = UI.Windows.AppDialog.Confirm(Owner,
+                Loc.F("导入会和现有 {0} 条别名合并。\n\n要改成「替换全部」吗？替换会先清空现有别名，且不可撤销。", existing),
+                Loc.T("导入别名"),
+                Windows.DialogKind.Question,
+                okText: Loc.T("替换全部"),
+                cancelText: Loc.T("合并导入"));
+
+            replace = confirmed;
+        }
+
+        var result = SnippetPortable.Import(parsed, _host.Settings.Global.Snippets, replace);
         _host.SaveSettings();
+        _editing = null;
         Refresh();
 
-        _host.Notify(Loc.F("导入完成：新增 {0} 条，更新 {1} 条", result.Added, result.Updated));
+        _host.Notify(replace
+            ? Loc.F("已替换为 {0} 条别名", result.Added)
+            : Loc.F("导入完成：新增 {0} 条，更新 {1} 条", result.Added, result.Updated));
     }
 
     private void OnAddClick(object sender, RoutedEventArgs e)
