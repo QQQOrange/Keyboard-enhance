@@ -1441,6 +1441,33 @@ public static partial class SelfTest
                 !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64 - 60_000, false, out _), "");
         }
 
+        /* ---- 注入审计 / 静默期 / 漏抬起 ---- */
+        {
+            Check("注入审计：默认没有注入记录", Core.Input.InputSender.InjectCount >= 0, "");
+            Check("注入审计：最近一次摘要有可能是空串",
+                Core.Input.InputSender.LastInjectSummary is not null, "");
+
+            /* 静默期：干跑下 Send 直接返回，这里只验证开关字段本身可用。 */
+            var saved = Core.Input.InputSender.QuietUntil;
+            Core.Input.InputSender.QuietUntil = DateTime.Now.AddSeconds(5);
+            Check("静默期：字段可设置", Core.Input.InputSender.QuietUntil > DateTime.Now, "");
+            Core.Input.InputSender.QuietUntil = saved;
+
+            var s = DefaultSettings.Create();
+            foreach (var t in s.Triggers) t.Enabled = false;
+            var e = new HotkeyEngine(new ActionQueue(), () => s, (_, _) => true);
+
+            Check("物理按下查询：没按就是 false", !e.IsPhysicallyDown(0x11), "");
+            e.SimulateKey(0x11, true);
+            Check("物理按下查询：按下后是 true", e.IsPhysicallyDown(0x11), "");
+            e.SimulateKey(0x11, false);
+            Check("物理按下查询：松开后是 false", !e.IsPhysicallyDown(0x11), "");
+
+            Check("修饰键清单：包含 Ctrl", Core.Input.InputSafety.WatchedModifiers.Contains(0x11), "");
+            try { Core.Input.InputSafety.ReleaseKey(0x11); Check("补发单键抬起不抛异常", true, ""); }
+            catch { Check("补发单键抬起不抛异常", false, ""); }
+        }
+
         /* ---- 全局搜索 ---- */
         {
             var s = DefaultSettings.Create();

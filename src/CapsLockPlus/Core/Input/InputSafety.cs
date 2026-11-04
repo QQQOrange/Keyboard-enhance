@@ -91,6 +91,16 @@ public static class InputSafety
         }
     }
 
+    /// <summary>受关注的修饰键（巡检用）。</summary>
+    public static IReadOnlyList<int> WatchedModifiers => GuardedKeys;
+
+    /// <summary>补发单个键的抬起（调用方已经确认它确实按着）。</summary>
+    public static void ReleaseKey(int vk)
+    {
+        try { keybd_event((byte)vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); }
+        catch (Exception ex) { CoreLog.Swallow(ex, "补发单个键抬起"); }
+    }
+
     public static void ReleaseAll()
     {
         ReleaseModifiers();

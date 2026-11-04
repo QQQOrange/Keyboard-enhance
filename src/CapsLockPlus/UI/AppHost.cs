@@ -313,6 +313,10 @@ public sealed class AppHost : IDisposable
          * 导致钩子被静默摘掉（实测根因）。拿不到 READY 就退回自己装钩子。 */
         bool hookHostReady = StartHookHost();
 
+        /* 启动头两秒不许注入：这是"启动后莫名打出一个字母"的物理保险。
+         * 钩子探针走 TapUntagged（直连 SendInput），不受影响。 */
+        Core.Input.InputSender.QuietUntil = DateTime.Now.AddSeconds(2);
+
         Engine.Start(installHook: !hookHostReady);
         if (Settings.Global.ShowTrayIcon) CreateTray();
 
@@ -331,6 +335,9 @@ public sealed class AppHost : IDisposable
             healTimer.Stop();
             try
             {
+                if (Core.Input.InputSender.InjectCount > 0)
+                    CoreLog.Warn($"[注入] 启动 2 秒内共注入 {Core.Input.InputSender.InjectCount} 次，最后一次：{Core.Input.InputSender.LastInjectSummary}");
+
                 string held = Core.Input.InputSafety.DescribeHeld();
                 Core.Input.InputSafety.ReleaseAll();
                 if (held.Length > 0) CoreLog.Warn($"启动善后：补发抬起 {held}");
@@ -354,6 +361,31 @@ public sealed class AppHost : IDisposable
             });
         };
         if (!headless) stuckWatch.Start();
+
+        /* 快速纠偏：只在"刚刚注入过"的 3 秒窗口里工作。
+         *
+         * 判据：系统认为某个修饰键按着，但引擎**没收到过它的真实按下**
+         * → 那它只可能是我们注入的组合键漏了抬起。
+         * 立刻补发抬起，而不是等 20 秒巡检 —— 用户对"Ctrl 卡住"的体感是即时的。 */
+        var leakWatch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        leakWatch.Tick += (_, _) =>
+        {
+            try
+            {
+                if ((DateTime.Now - Core.Input.InputSender.LastInjectAt).TotalSeconds > 3) return;
+
+                foreach (int vk in Core.Input.InputSafety.WatchedModifiers)
+                {
+                    if (!Core.Input.InputSafety.IsDown(vk)) continue;
+                    if (Engine.IsPhysicallyDown(vk)) continue;
+
+                    Core.Input.InputSafety.ReleaseKey(vk);
+                    CoreLog.Warn($"[注入] 发现漏抬起的修饰键 {Core.Input.KeyName.NameOf(vk)}，已补发抬起");
+                }
+            }
+            catch (Exception ex) { CoreLog.Swallow(ex, "修饰键纠偏"); }
+        };
+        if (!headless) leakWatch.Start();
 
         /* 上次异常退出：等托盘/OSD 就绪后再提示一句。
          * 不放进启动关键路径（通知失败也不影响功能），也只在真的异常时出现。 */

@@ -47,11 +47,72 @@ public static class InputSender
     /// </summary>
     public static DateTime LastInjectAt { get; private set; } = DateTime.MinValue;
 
+    /// <summary>
+    /// 启动静默期：这段时间里不往系统里注入任何按键（钩子探针除外）。
+    ///
+    /// 为什么要它：有用户反馈"程序一启动就莫名打出一个字母 C / 像按着 Ctrl"。
+    /// 我们查不到是哪条路径发的（日志里没有痕迹）。与其继续猜，不如在启动的
+    /// 头两秒**物理上不许注入**，并且把"试图注入"记进日志 ——
+    /// 真有问题时日志会直接指出是哪一次调用，没有问题则用户也看不到副作用。
+    /// </summary>
+    public static DateTime QuietUntil { get; set; } = DateTime.MinValue;
+
+    /// <summary>注入审计：本次会话注入了几次（只用于日志与自检）。</summary>
+    public static int InjectCount { get; private set; }
+
+    /// <summary>本次会话最近一次注入的简述（诊断用）。</summary>
+    public static string LastInjectSummary { get; private set; } = "";
+
+    /// <summary>前 N 次注入写进日志，之后不再刷屏。</summary>
+    private const int InjectLogLimit = 40;
+
+    private static int _injectLogged;
+    private static bool _quietBlockLogged;
+    private static bool _allowDuringQuiet;
+
     private static void Send(params INPUT[] inputs)
     {
         if (inputs.Length == 0 || DryRun) return;
+
+        if (!_allowDuringQuiet && DateTime.Now < QuietUntil)
+        {
+            if (!_quietBlockLogged)
+            {
+                _quietBlockLogged = true;
+                CoreLog.Warn("[注入] 启动静默期内拦下一次注入（可能是这次启动的杂键来源）");
+            }
+            return;
+        }
+
         SendInput((uint)inputs.Length, inputs, InputSize);
         LastInjectAt = DateTime.Now;
+        InjectCount++;
+
+        if (_injectLogged < InjectLogLimit)
+        {
+            _injectLogged++;
+            try
+            {
+                var parts = new List<string>();
+                foreach (var input in inputs)
+                {
+                    if (input.type == INPUT_KEYBOARD)
+                    {
+                        int vk = (int)input.U.ki.wVk;
+                        bool up = (input.U.ki.dwFlags & KEYEVENTF_KEYUP) != 0;
+                        bool uni = (input.U.ki.dwFlags & KEYEVENTF_UNICODE) != 0;
+                        parts.Add(uni ? $"U+{vk:X4}" : KeyName.NameOf(vk) + (up ? "↑" : "↓"));
+                    }
+                    else
+                    {
+                        parts.Add("mouse");
+                    }
+                }
+                LastInjectSummary = string.Join(" ", parts);
+                CoreLog.Info($"[注入] {LastInjectSummary}");
+            }
+            catch { }
+        }
     }
 
     private static INPUT KeyInput(int vk, bool up, bool unicode = false, ushort scan = 0)
@@ -165,7 +226,6 @@ public static class InputSender
     public static bool TapUntagged(int vk)
     {
         if (DryRun) return false;
-        if (DryRun) return false;
 
         var down = KeyInput(vk, up: false);
         down.U.ki.dwExtraInfo = IntPtr.Zero;     // 关键：不带标记
@@ -226,8 +286,8 @@ public static class InputSender
     public static void Chord(int modifier, int vk)
     {
         KeyDown(modifier);
-        Tap(vk);
-        KeyUp(modifier);
+        try { Tap(vk); }
+        finally { KeyUp(modifier); }
     }
 
     public static void Ctrl(int vk) => Chord(VK.Control, vk);
@@ -236,9 +296,12 @@ public static class InputSender
     {
         KeyDown(VK.Control);
         KeyDown(VK.Shift);
-        Tap(vk);
-        KeyUp(VK.Shift);
-        KeyUp(VK.Control);
+        try { Tap(vk); }
+        finally
+        {
+            KeyUp(VK.Shift);
+            KeyUp(VK.Control);
+        }
     }
 
     /// <summary>
@@ -267,9 +330,17 @@ public static class InputSender
         }
 
         Send(VK.Control, ctrlScan, up: false);
-        Send(vk, keyScan, up: false);
-        Send(vk, keyScan, up: true);
-        Send(VK.Control, ctrlScan, up: true);
+        try
+        {
+            Send(vk, keyScan, up: false);
+            Send(vk, keyScan, up: true);
+        }
+        finally
+        {
+            /* 无论如何都要把 Ctrl 抬起来：漏掉这一下，用户会看到
+             * "程序像是一直按着 Ctrl"，随后点什么都变成快捷键。 */
+            Send(VK.Control, ctrlScan, up: true);
+        }
     }
 
     /// <summary>取虚拟键对应的扫描码（取不到则返回 0，退回不带扫描码的行为）。</summary>

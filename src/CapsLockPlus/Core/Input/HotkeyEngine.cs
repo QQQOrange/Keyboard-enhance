@@ -396,6 +396,9 @@ public sealed partial class HotkeyEngine : IDisposable
     /// <summary>引擎认为当前按住的键数（含修饰键）。</summary>
     public int PhysicallyDownCount => _physDown.Count;
 
+    /// <summary>这个键现在是不是**用户真的按着**（不含我们注入的）。</summary>
+    public bool IsPhysicallyDown(int vk) => _physDown.ContainsKey(vk);
+
     public event Action<int, bool, int>? KeySeen;
 
     /// <summary>兼容旧名称：按住/松开 CapsLock。</summary>
@@ -1773,7 +1776,8 @@ public sealed partial class HotkeyEngine : IDisposable
         try
         {
             if (!string.IsNullOrEmpty(action) && action != "doNothing")
-                _invoke(action, "");
+                LogAction(action, "");
+            _invoke(action, "");
         }
         catch (Exception ex) { CoreLog.Error("短按动作失败", ex); }
     }
@@ -2268,6 +2272,22 @@ public sealed partial class HotkeyEngine : IDisposable
     }
 
 
+
+    /// <summary>
+    /// 把"执行了什么动作"记进日志。
+    ///
+    /// 用户报"启动后莫名打出一个字母"时，日志里能直接看到是不是某个动作被触发；
+    /// 干跑（自检/渲染）不记，免得刷屏。
+    /// </summary>
+    private static void LogAction(string action, string arg)
+    {
+        if (InputSender.DryRun) return;
+        try
+        {
+            CoreLog.Info(arg.Length == 0 ? $"[动作] {action}" : $"[动作] {action} {arg}");
+        }
+        catch { }
+    }
 
     private Dictionary<string, KeyBinding>? LayerBindingMap(AppSettings s, int layerId)
     {
