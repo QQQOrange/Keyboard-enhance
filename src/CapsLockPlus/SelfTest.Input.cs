@@ -1406,6 +1406,38 @@ public static partial class SelfTest
             Check("前缀检测：新旧混着时不猜", SnippetPrefixOps.DetectStale(s.Global.Snippets, "=", out _) == null, "");
         }
 
+        /* ---- 别名体检 ---- */
+        {
+            var s = DefaultSettings.Create();
+            s.Hotstring.Prefix = "/";
+            s.Global.SnippetGroups.Clear();
+            s.Global.SnippetGroups.Add("工作");
+
+            s.Global.Snippets.Clear();
+            s.Global.Snippets.Add(new Snippet { Trigger = "/mail", Text = "a", Group = "工作" });
+            s.Global.Snippets.Add(new Snippet { Trigger = "/mail", Text = "b", Group = "工作" });   // 重复
+            s.Global.Snippets.Add(new Snippet { Trigger = "/empty", Text = "", Group = "工作" });   // 空内容
+            s.Global.Snippets.Add(new Snippet { Trigger = ";wrong", Text = "c", Group = "工作" });  // 前缀不对
+            s.Global.Snippets.Add(new Snippet { Trigger = "/ghost", Text = "d", Group = "无此组" }); // 分组未登记
+
+            var issues = SnippetAudit.Run(s);
+            Check("体检：能找到问题", issues.Count >= 4, issues.Count.ToString());
+            Check("体检：报出触发词重复", issues.Any(x => x.Title == "触发词重复"), "");
+            Check("体检：报出内容为空", issues.Any(x => x.Title == "内容为空"), "");
+            Check("体检：报出前缀不对", issues.Any(x => x.Title == "前缀不对"), "");
+            Check("体检：报出分组未登记", issues.Any(x => x.Title == "分组未登记"), "");
+
+            var clean = DefaultSettings.Create();
+            clean.Hotstring.Prefix = "/";
+            clean.Global.SnippetGroups.Clear();
+            clean.Global.SnippetGroups.Add("工作");
+            clean.Global.Snippets.Clear();
+            clean.Global.Snippets.Add(new Snippet { Trigger = "/mail", Text = "a", Group = "工作" });
+            Check("体检：干净的配置没有问题", SnippetAudit.Run(clean).Count == 0, "");
+
+            Check("体检：描述文本带条目", SnippetAudit.Describe(issues).Contains("触发词重复"), "");
+        }
+
         /* ---- 别名导入导出 ---- */
         {
             var src = new List<Snippet>

@@ -36,7 +36,18 @@
         <!-- ② 别名设置：标签在上、控件在下，和设置页一致 -->
         <Border Grid.Row="1" Style="{StaticResource Card}" Padding="18,14" Margin="0,0,0,14">
             <StackPanel>
-                <TextBlock Text="{loc:T '别名设置'}" Style="{StaticResource Text.H3}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{loc:T '别名设置'}" Style="{StaticResource Text.H3}" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" x:Name="AuditButton" Content="{loc:T '体检'}"
+                            Style="{StaticResource Button.Ghost}" Padding="9,4" Margin="10,0,0,0"
+                            HorizontalAlignment="Left" VerticalAlignment="Center"
+                            Click="OnAuditClick"
+                            ToolTip="{loc:T '检查重复触发词、空内容、前缀不对、分组未登记等问题'}" />
+                </Grid>
                 <WrapPanel Margin="0,10,0,0">
                     <StackPanel Margin="0,0,26,0">
                         <TextBlock Text="{loc:T '前缀符号'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,5" />
@@ -155,6 +166,10 @@
                         <Button x:Name="DeleteGroupButton" Content="{loc:T '删除'}"
                                 Style="{StaticResource Button.Danger}" Padding="10,5" Margin="6,0,0,0"
                                 IsEnabled="False" Click="OnDeleteGroupClick" />
+                        <Button x:Name="ExportGroupButton" Content="{loc:T '导出'}"
+                                Style="{StaticResource Button.Ghost}" Padding="10,5" Margin="6,0,0,0"
+                                Click="OnExportGroupClick"
+                                ToolTip="{loc:T '只导出当前分组的别名；选「全部」时导出全部'}" />
                     </StackPanel>
                 </Grid>
             </Border>

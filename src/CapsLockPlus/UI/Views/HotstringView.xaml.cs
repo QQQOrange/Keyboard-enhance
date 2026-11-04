@@ -1011,16 +1011,50 @@ public partial class HotstringView : UserControl
         _host.Notify(Loc.F("已复制为「{0}」", candidate));
     }
 
-    /// <summary>导出全部别名到一个 JSON 文件。</summary>
-    private void OnExportClick(object sender, RoutedEventArgs e)
+    /// <summary>导出"当前分组"的别名（全部视图 = 导出全部）。</summary>
+    private void OnExportGroupClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
+
+        string? group = CurrentGroup;
+        var list = group == null
+            ? _host.Settings.Global.Snippets.ToList()
+            : _host.Settings.Global.Snippets
+                .Where(x => string.Equals((x.Group ?? "").Trim(), group, StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
+
+        if (list.Count == 0)
+        {
+            _host.Notify(Loc.T("这个分组里还没有别名"));
+            return;
+        }
+
+        string name = group == null
+            ? "keyboard-enhance-aliases.json"
+            : $"keyboard-enhance-aliases-{SanitizeFileName(group.Length == 0 ? Loc.T("未分组") : group)}.json";
+
+        ExportToFile(list, name);
+    }
+
+    /// <summary>把文件名里 Windows 不接受的字符换掉。</summary>
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = System.IO.Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        string cleaned = new string(chars).Trim();
+        return cleaned.Length == 0 ? "aliases" : cleaned;
+    }
+
+    /// <summary>导出指定别名到文件（两个导出入口共用）。</summary>
+    private void ExportToFile(List<Snippet> snippets, string suggestedName)
+    {
+        if (_host == null || snippets.Count == 0) return;
 
         var dlg = new Microsoft.Win32.SaveFileDialog
         {
             Title = Loc.T("导出别名"),
             Filter = Loc.T("别名文件 (*.json)|*.json"),
-            FileName = "keyboard-enhance-aliases.json",
+            FileName = suggestedName,
             DefaultExt = ".json",
         };
 
@@ -1029,16 +1063,42 @@ public partial class HotstringView : UserControl
         try
         {
             System.IO.File.WriteAllText(dlg.FileName,
-                SnippetPortable.Export(_host.Settings.Global.Snippets),
+                SnippetPortable.Export(snippets),
                 new System.Text.UTF8Encoding(false));
 
-            _host.Notify(Loc.F("已导出 {0} 条别名", Entries.Count));
+            _host.Notify(Loc.F("已导出 {0} 条别名", snippets.Count));
         }
         catch (Exception ex)
         {
             CoreLog.Error("导出别名失败", ex);
             _host.Notify(Loc.T("导出失败：") + ex.Message);
         }
+    }
+
+    /// <summary>别名体检：重复触发词 / 空内容 / 前缀不对 / 分组未登记。</summary>
+    private void OnAuditClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var issues = SnippetAudit.Run(_host.Settings);
+        if (issues.Count == 0)
+        {
+            UI.Windows.AppDialog.Success(Owner,
+                Loc.T("没有发现问题：触发词不重复、内容都不为空、分组也都登记过了。"),
+                Loc.T("别名体检"));
+            return;
+        }
+
+        UI.Windows.AppDialog.Warn(Owner,
+            Loc.F("发现 {0} 个问题：", issues.Count) + "\n\n" + SnippetAudit.Describe(issues),
+            Loc.T("别名体检"));
+    }
+
+    /// <summary>导出全部别名到一个 JSON 文件。</summary>
+    private void OnExportClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        ExportToFile(_host.Settings.Global.Snippets.ToList(), "keyboard-enhance-aliases.json");
     }
 
     /// <summary>从 JSON 文件导入别名（合并，不删除本地已有条目）。</summary>

@@ -2440,5 +2440,20 @@
   "替换全部": "Replace all",
   "合并导入": "Merge instead",
   "已替换为 {0} 条别名": "Replaced everything with {0} aliases",
-  "导入会和现有 {0} 条别名合并。\n\n要改成「替换全部」吗？替换会先清空现有别名，且不可撤销。": "Import will merge with the {0} existing aliases.\n\nSwitch to \"Replace all\" instead? That clears existing aliases first and cannot be undone."
+  "导入会和现有 {0} 条别名合并。\n\n要改成「替换全部」吗？替换会先清空现有别名，且不可撤销。": "Import will merge with the {0} existing aliases.\n\nSwitch to \"Replace all\" instead? That clears existing aliases first and cannot be undone.",
+  "体检": "Checkup",
+  "检查重复触发词、空内容、前缀不对、分组未登记等问题": "Find duplicate triggers, empty text, wrong prefix, unregistered groups and more",
+  "只导出当前分组的别名；选「全部」时导出全部": "Export only the selected group's aliases; with \"All\" selected it exports everything",
+  "触发词重复": "Duplicate trigger",
+  "没有触发词": "Missing trigger",
+  "这条别名没有触发词，永远不会展开": "This alias has no trigger, so it will never expand",
+  "内容为空": "Empty text",
+  "前缀不对": "Wrong prefix",
+  "触发词含空格": "Trigger contains a space",
+  "分组未登记": "Group not registered",
+  "…还有 {0} 条\n": "…and {0} more\n",
+  "这个分组里还没有别名": "This group has no aliases yet",
+  "没有发现问题：触发词不重复、内容都不为空、分组也都登记过了。": "No problems found: triggers are unique, no empty text, all groups are registered.",
+  "别名体检": "Alias checkup",
+  "发现 {0} 个问题：": "Found {0} issues:"
 }
