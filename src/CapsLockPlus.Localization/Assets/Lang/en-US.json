@@ -2481,5 +2481,11 @@
   "打开这个页面": "Open this page",
   "{0} 毫秒后进入第 {1} 层": "Enters layer {1} after {0} ms",
   "没有匹配的结果": "No matches",
-  "↑↓ 选择 · Enter 打开 · Esc 关闭": "↑↓ to choose · Enter to open · Esc to close"
+  "↑↓ 选择 · Enter 打开 · Esc 关闭": "↑↓ to choose · Enter to open · Esc to close",
+  "复制内容": "Copy text",
+  "内容已复制": "Text copied",
+  "复制触发词": "Copy trigger",
+  "触发词已复制": "Trigger copied",
+  "这条别名的内容为空": "This alias has no text",
+  "全局搜索（Ctrl+K）：页面、别名、触发键、按键绑定": "Global search (Ctrl+K): pages, aliases, trigger keys, bindings"
 }

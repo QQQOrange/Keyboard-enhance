@@ -19,6 +19,11 @@ public partial class SearchPaletteWindow : Window
     private readonly List<GlobalHit> _all;
     private List<GlobalHit> _view = new();
 
+    /* 会话级记忆：再打开时接着上次的搜索词，空查询时把上次打开的结果放最前。
+     * 不写进配置 —— 这是"手的记忆"，不是需要同步的设置。 */
+    private static string _lastQuery = "";
+    private static GlobalHit? _lastPick;
+
     /// <summary>用户选中的结果；取消则为 null。</summary>
     public GlobalHit? Selected { get; private set; }
 
@@ -33,8 +38,12 @@ public partial class SearchPaletteWindow : Window
 
         Loaded += (_, _) =>
         {
+            QueryBox.Text = _lastQuery;      // 触发 TextChanged → Refresh
+            QueryBox.CaretIndex = QueryBox.Text.Length;
             QueryBox.Focus();
-            Refresh("");
+            QueryBox.SelectAll();
+
+            Refresh(QueryBox.Text);
         };
     }
 
@@ -49,6 +58,19 @@ public partial class SearchPaletteWindow : Window
     private void Refresh(string query)
     {
         _view = GlobalSearch.Query(_all, query);
+
+        /* 空查询时把"上次打开的那条"提到最前 —— 常见动作是来回看同一处。 */
+        if (query.Length == 0 && _lastPick != null)
+        {
+            int index = _view.FindIndex(h => h.Kind == _lastPick.Kind && h.Title == _lastPick.Title);
+            if (index > 0)
+            {
+                var hit = _view[index];
+                _view.RemoveAt(index);
+                _view.Insert(0, hit);
+            }
+        }
+
         ResultList.ItemsSource = _view;
 
         if (_view.Count > 0) ResultList.SelectedIndex = 0;
@@ -103,6 +125,8 @@ public partial class SearchPaletteWindow : Window
         if (ResultList.SelectedItem is not GlobalHit hit) return;
 
         Selected = hit;
+        _lastQuery = QueryBox.Text;
+        _lastPick = hit;
         Close();
     }
 

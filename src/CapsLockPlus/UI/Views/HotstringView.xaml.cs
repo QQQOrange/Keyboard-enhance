@@ -48,6 +48,9 @@ public partial class HotstringView : UserControl
     /// <summary>当前高亮的分组行（拖拽经过时）。</summary>
     private ListBoxItem? _dragHoverItem;
 
+    /// <summary>自定义顺序拖拽时的插入位置指示线。</summary>
+    private UI.InsertLineAdorner? _insertLine;
+
     /// <summary>跟着鼠标走的拖拽小卡片。</summary>
     private UI.DragChipAdorner? _dragAdorner;
 
@@ -448,6 +451,7 @@ public partial class HotstringView : UserControl
             EntryList.GiveFeedback -= follow;
             _dragAdorner?.Remove();
             _dragAdorner = null;
+            RemoveInsertLine();
             ClearDragHover();
             Mouse.UpdateCursor();
         }
@@ -1047,11 +1051,43 @@ public partial class HotstringView : UserControl
         }
 
         e.Effects = DragDropEffects.Move;
+
+        /* 指示线画在"将要插入的位置"：落在行上半 → 行上沿，下半 → 行下沿；
+         * 空白处 → 列表末尾。 */
+        _insertLine ??= UI.InsertLineAdorner.Show(EntryList);
+
+        if (_insertLine != null)
+        {
+            var target = FindRowAt(e.GetPosition(EntryList));
+            double y;
+
+            if (target == null)
+            {
+                y = EntryList.ActualHeight;
+            }
+            else if (EntryList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem container)
+            {
+                var top = container.TranslatePoint(new Point(0, 0), EntryList).Y;
+                double half = container.ActualHeight / 2;
+                y = e.GetPosition(EntryList).Y > top + half
+                    ? top + container.ActualHeight
+                    : top;
+            }
+            else
+            {
+                y = EntryList.ActualHeight;
+            }
+
+            _insertLine.MoveTo(y);
+        }
+
         e.Handled = true;
     }
 
     private void OnEntryListDrop(object sender, DragEventArgs e)
     {
+        RemoveInsertLine();
+
         if (_host == null || _sortMode != 3) return;
         if (e.Data.GetData("clp/snippet") is not Snippet dragged) return;
 
@@ -1081,6 +1117,13 @@ public partial class HotstringView : UserControl
         e.Handled = true;
     }
 
+    /// <summary>移除插入位置指示线（拖拽结束、离开列表时调）。</summary>
+    private void RemoveInsertLine()
+    {
+        _insertLine?.Remove();
+        _insertLine = null;
+    }
+
     /// <summary>把一批别名移到同一个分组。</summary>
     private void MoveMany(List<Snippet> snippets, string group)
     {
@@ -1102,6 +1145,28 @@ public partial class HotstringView : UserControl
             : Loc.F("已把 {0} 条别名移到「{1}」", snippets.Count, group));
     }
 
+
+    /// <summary>把文本放进剪贴板（失败给提示，不抛）。</summary>
+    private void CopyToClipboard(string? text, string doneMessage)
+    {
+        string value = text ?? "";
+        if (value.Length == 0)
+        {
+            _host?.Notify(Loc.T("这条别名的内容为空"));
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(value);
+            _host?.Notify(doneMessage);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("复制到剪贴板失败", ex);
+            _host?.Notify(Loc.T("复制失败：") + ex.Message);
+        }
+    }
 
     /// <summary>复制一条别名（触发词自动加序号，避免撞车）。</summary>
     private void DuplicateSnippet(Snippet source)
@@ -1437,6 +1502,18 @@ public partial class HotstringView : UserControl
         EntryList.SelectedItem = row;
 
         FillMoveMenu(menu, row.Snippet);
+
+        string name = SnippetPrefixOps.Strip(row.Snippet.Trigger, _host.Settings.Hotstring.EffectivePrefix);
+
+        var copyText = new MenuItem { Header = Loc.T("复制内容") };
+        copyText.Click += (_, _) => CopyToClipboard(row.Snippet.Text, Loc.T("内容已复制"));
+        menu.Items.Add(copyText);
+
+        var copyTrigger = new MenuItem { Header = Loc.T("复制触发词") };
+        copyTrigger.Click += (_, _) => CopyToClipboard(name, Loc.T("触发词已复制"));
+        menu.Items.Add(copyTrigger);
+
+        menu.Items.Add(new Separator());
 
         var dup = new MenuItem { Header = Loc.T("复制一个副本") };
         dup.Click += (_, _) => DuplicateSnippet(row.Snippet);
