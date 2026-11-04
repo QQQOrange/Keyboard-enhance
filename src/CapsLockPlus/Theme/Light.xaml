@@ -23,8 +23,6 @@
     <Color x:Key="Color.Warning">#D9822B</Color>
     <Color x:Key="Color.Keycap">#FFFFFF</Color>
     <Color x:Key="Color.KeycapBorder">#DCE2EE</Color>
-    <Color x:Key="Color.TriggerKey">#6D4AE0</Color>
-    <Color x:Key="Color.TriggerKeyBorder">#5B3BC7</Color>
 
     <Color x:Key="Color.KeycapShadow">#C9D2E3</Color>
 
@@ -47,6 +45,9 @@
     <SolidColorBrush x:Key="Brush.Danger" Color="{DynamicResource Color.Danger}" />
     <SolidColorBrush x:Key="Brush.Success" Color="{DynamicResource Color.Success}" />
     <SolidColorBrush x:Key="Brush.Warning" Color="{DynamicResource Color.Warning}" />
+
+    <!-- 触发键右上角那颗星：金色，在深蓝键帽上足够醒目但不刺眼。 -->
+    <SolidColorBrush x:Key="Brush.TriggerStar" Color="#E0A100" />
     <SolidColorBrush x:Key="Brush.QbarRowHover" Color="#0F000000" />
     <SolidColorBrush x:Key="Brush.QbarRowSelected" Color="#1F2B6CF6" />
     <SolidColorBrush x:Key="Brush.Keycap" Color="{DynamicResource Color.Keycap}" />
@@ -55,8 +56,6 @@
 
     <!-- 触发键：紫罗兰，与主色蓝同属冷色系，结构和"已绑定"一致
          （实心底 + 略暗的同色描边 + 白字）。 -->
-    <SolidColorBrush x:Key="Brush.TriggerKey" Color="{DynamicResource Color.TriggerKey}" />
-    <SolidColorBrush x:Key="Brush.TriggerKeyBorder" Color="{DynamicResource Color.TriggerKeyBorder}" />
 
     <!-- 渐变背景（窗口/侧栏） -->
     <LinearGradientBrush x:Key="Brush.WindowGradient" StartPoint="0,0" EndPoint="1,1">

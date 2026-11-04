@@ -216,10 +216,9 @@
                                                 VerticalAlignment="Center" />
                                         <TextBlock Text="{loc:T '已绑定'}" Style="{StaticResource Text.Tertiary}"
                                                    Margin="5,0,12,0" VerticalAlignment="Center" />
-                                        <Border Width="12" Height="12" CornerRadius="3"
-                                                Background="{DynamicResource Brush.TriggerKey}"
-                                                BorderBrush="{DynamicResource Brush.TriggerKeyBorder}" BorderThickness="1"
-                                                VerticalAlignment="Center" />
+                                        <TextBlock Text="★" FontSize="12" FontWeight="Bold"
+                                                   Foreground="{DynamicResource Brush.TriggerStar}"
+                                                   VerticalAlignment="Center" />
                                         <TextBlock Text="{loc:T '触发键'}" Style="{StaticResource Text.Tertiary}"
                                                    Margin="5,0,12,0" VerticalAlignment="Center" />
                                         <Border Width="12" Height="12" CornerRadius="3"

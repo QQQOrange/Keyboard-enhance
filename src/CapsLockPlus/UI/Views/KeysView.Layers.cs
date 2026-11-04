@@ -74,28 +74,14 @@ public partial class KeysView : UserControl
 
         /* 三种视觉状态，一眼可分但**对比不过分**：
          *
-         *   触发键（本层）  → 橙色底 + 橙字（主题自适应，白天浅杏、夜间深琥珀）
+         *   触发键（本层）  → 和已绑定一样的深蓝实心，右上角加一颗金★
          *   已绑定功能      → 深蓝实心 + 白字
          *   未绑定          → 浅蓝底 + 灰蓝字
          *
          * 未绑定用浅蓝而不是纯白：纯白键帽和深蓝键帽并排时对比太硬，
          * 满屏键帽看着刺眼。浅蓝能"退到背景里"，深蓝才自然跳出来。 */
         Brush background, borderBrush, textBrush, subTextBrush;
-        if (isTrigger)
-        {
-            /* 触发键 = 和"已绑定"完全同一套画法，只换色相：
-             *   实心底 + 略亮/略暗的同色描边 + 同一种文字色。
-             *
-             * 早先给它配了"深橙底 + 亮橙框 + 浅橙字"，三种橙混在一起，
-             * 和旁边一整块实心的蓝键放一起就显眼得不协调 —— 用户一眼就看出来了。
-             * 现在底色本身就是饱和橙，描边只在同色系里差一点，文字直接复用
-             * 已绑定键的 Brush.Surface，结构完全一致。 */
-            background = (Brush)FindResource("Brush.TriggerKey");
-            borderBrush = (Brush)FindResource("Brush.TriggerKeyBorder");
-            textBrush = (Brush)FindResource("Brush.Surface");
-            subTextBrush = (Brush)FindResource("Brush.Surface");
-        }
-        else if (isBound)
+        if (isTrigger || isBound)
         {
             background = (Brush)FindResource("Brush.Accent");
             borderBrush = (Brush)FindResource("Brush.AccentHover");
@@ -140,11 +126,9 @@ public partial class KeysView : UserControl
         if (isSelected)
         {
             border.BorderThickness = new Thickness(2);
-            border.BorderBrush = isTrigger
-                ? (Brush)FindResource("Brush.TriggerKeyBorder")
-                : isBound
-                    ? (Brush)FindResource("Brush.Surface")
-                    : (Brush)FindResource("Brush.Accent");
+            border.BorderBrush = isBound || isTrigger
+                ? (Brush)FindResource("Brush.Surface")
+                : (Brush)FindResource("Brush.Accent");
         }
 
         var stack = new StackPanel
@@ -167,9 +151,8 @@ public partial class KeysView : UserControl
             // ① 分类标识（小字，最上面）。触发键这里直接写"触发键"，比星号清楚。
             stack.Children.Add(new TextBlock
             {
-                Text = isTrigger ? Loc.T("触发键") : Shorten(actionCategory, 4),
+                Text = Shorten(actionCategory, 4),
                 FontSize = 6.5,
-                FontWeight = isTrigger ? FontWeights.Bold : FontWeights.Normal,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.NoWrap,
@@ -227,7 +210,35 @@ public partial class KeysView : UserControl
                 Foreground = textBrush,
             });
         }
-        border.Child = stack;
+        /* 触发键：右上角叠一个**更大的**星。
+         *
+         * 早先是在缩到 6.5px 的键名前面加 "★"，星号跟着一起缩，几乎看不见；
+         * 后来试过整块换色（橙/紫），又太抢眼。
+         * 现在恢复原来的蓝色键帽，只把星单独画在右上角、字号 12px，
+         * 不占键帽里的排版空间，也不改变整块键帽的观感。 */
+        if (isTrigger)
+        {
+            var star = new TextBlock
+            {
+                Text = "★",
+                FontSize = 14,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource("Brush.TriggerStar"),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 0, 3, 0),
+                IsHitTestVisible = false,
+            };
+
+            var layered = new Grid();
+            layered.Children.Add(stack);
+            layered.Children.Add(star);
+            border.Child = layered;
+        }
+        else
+        {
+            border.Child = stack;
+        }
 
         string captured = keyId;
         border.MouseLeftButtonUp += (_, _) => SelectKey(captured);
