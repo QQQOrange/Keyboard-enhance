@@ -296,6 +296,49 @@ public sealed class AppHost : IDisposable
                        && Core.Health.CrashGuard.MarkRunning(AppPaths.DataDir);
 
         /* 上一次没正常退出：把上一轮日志的尾巴另存一份，方便直接发给开发者。 */
+        /* 启动体检：如果配置里有"把修饰键本身换掉"的改键（Ctrl→Alt 这类），
+         * 用户很容易根本没意识到 —— 表现是"Ctrl+C 变成 Alt+C""快捷键全不对"。
+         * 只在第一次问，选"保留"就不再打扰。 */
+        bool headlessForReview = Environment.GetCommandLineArgs().Any(a => a is
+            "--render" or "--render-diag" or "--selftest" or "--diag" or "--osd" or "--hooktest");
+
+        if (!headlessForReview && !Settings.Global.RemapReviewDone
+            && Core.Input.KeyRemapMap.HasModifierSwap(Settings.Global.BaseRemaps))
+        {
+            var ask = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            ask.Tick += (_, _) =>
+            {
+                ask.Stop();
+                try
+                {
+                    if (!Core.Input.KeyRemapMap.HasModifierSwap(Settings.Global.BaseRemaps)) return;
+
+                    bool keep = UI.Windows.AppDialog.Confirm(
+                        _main,
+                        Loc.T("检测到「基础改键」里有修饰键互换（例如 Ctrl ↔ Alt）：\n")
+                        + Loc.T("开启后，按 Ctrl 发出的会是 Alt，所有 Ctrl 快捷键都会变成 Alt 组合。\n\n")
+                        + Loc.T("如果这不是你想要的，点「立即清除」。"),
+                        Loc.T("确认基础改键"),
+                        Windows.DialogKind.Warn,
+                        okText: Loc.T("保留"),
+                        cancelText: Loc.T("立即清除"));
+
+                    if (!keep)
+                    {
+                        Settings.Global.BaseRemaps.Clear();
+                        SaveSettings();
+                        Notify(Loc.T("已清除全部基础改键"));
+                        CoreLog.Info("用户确认后清除了修饰键改键");
+                    }
+
+                    Settings.Global.RemapReviewDone = true;
+                    SaveSettings();
+                }
+                catch (Exception ex) { CoreLog.Swallow(ex, "改键复查"); }
+            };
+            ask.Start();
+        }
+
         if (unclean) Core.Health.CrashGuard.SaveContext(AppPaths.DataDir, CoreLog.LogPath);
 
         ResetIncompleteCustomKeys();
@@ -361,6 +404,11 @@ public sealed class AppHost : IDisposable
                      * 这一步和下面的粘键巡检互补：改键的抬起丢失时，
                      * 系统里"按着"的其实是目标键（比如 Alt），而不是用户按的源键。 */
                     Engine.ReleaseStaleRemaps();
+
+                    /* 修饰键账本兜底：只在我们没有正在播宏的时候做 ——
+                     * 宏可以合法地按住修饰键很久。 */
+                    if (Engine.MacroPlayer?.IsPlaying != true)
+                        Core.Input.InputSender.ReleaseStaleModifiers();
 
                     Core.Input.InputSafety.HealIfStuck(last, out _);
                 }
@@ -793,7 +841,14 @@ public sealed class AppHost : IDisposable
                     try { Engine.ReleaseRemapTargets(); } catch (Exception ex) { CoreLog.Swallow(ex, "宿主退出时松开改键"); }
                     _dispatcher.BeginInvoke(() =>
                     {
-                        try { Engine.RestartHook(); } catch (Exception ex) { CoreLog.Swallow(ex, "接管钩子"); }
+                        try
+                        {
+                            /* 交接前把系统里可能悬空的键清一遍：宿主死掉的瞬间，
+                             * 用户正按着的那几个键不会再有抬起事件。 */
+                            Core.Input.InputSafety.ReleaseAll();
+                            Engine.RestartHook();
+                        }
+                        catch (Exception ex) { CoreLog.Swallow(ex, "接管钩子"); }
                     });
                 }
             });

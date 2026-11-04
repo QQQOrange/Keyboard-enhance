@@ -2503,5 +2503,16 @@
   "打开 Qbar。参数可填搜索引擎关键字（bd / bili / gh…），留空则用上次的引擎": "Open Qbar. The argument can be a search-engine keyword (bd / bili / gh…); leave empty to reuse the last engine",
   "引擎关键字，可留空，如 bili": "Engine keyword, optional, e.g. bili",
   "注意：这些规则会换掉修饰键本身 —— 开了 Ctrl→Alt 之后，Ctrl+C 在前台程序看来就是 Alt+C。不需要就点「清除」。": "Note: these rules replace the modifier keys themselves — with Ctrl→Alt on, Ctrl+C looks like Alt+C to the focused app. Click \"Clear\" if you don't need it.",
-  "改键生效：{0}": "Remaps active: {0}"
+  "改键生效：{0}": "Remaps active: {0}",
+  "回调连续异常": "Repeated callback errors",
+  "检测到「基础改键」里有修饰键互换（例如 Ctrl ↔ Alt）：\n": "A modifier swap is active under \"Base remaps\" (e.g. Ctrl ↔ Alt):\n",
+  "开启后，按 Ctrl 发出的会是 Alt，所有 Ctrl 快捷键都会变成 Alt 组合。\n\n": "While it is on, pressing Ctrl sends Alt, so every Ctrl shortcut becomes an Alt combination.\n\n",
+  "如果这不是你想要的，点「立即清除」。": "If that is not what you want, click \"Clear now\".",
+  "确认基础改键": "Confirm base remaps",
+  "保留": "Keep",
+  "立即清除": "Clear now",
+  "「{0}」会把修饰键本身换掉：开启后按 Ctrl 发出的就是 Alt，\n": "\"{0}\" replaces the modifier keys themselves: with it on, pressing Ctrl sends Alt,\n",
+  "所有 Ctrl 快捷键（Ctrl+C / Ctrl+V / Ctrl+S…）都会变成 Alt 组合。\n\n": "and every Ctrl shortcut (Ctrl+C / Ctrl+V / Ctrl+S…) becomes an Alt combination.\n\n",
+  "确认启用改键": "Confirm enabling remap",
+  "启用": "Enable"
 }

@@ -53,8 +53,44 @@ public sealed partial class HotkeyEngine
     ///   · 只发 Tap 的话，长按只会出一个字符。
     /// 代价是要记"谁按下了"，否则抬起时找不到目标键，会粘住。
     /// </summary>
+    /* 循环熔断：短时间内同一个键被改键处理太多次 = 一定有回声，
+     * 暂停 2 秒，避免把整台机器的输入搅乱。 */
+    private readonly Dictionary<int, int> _remapBurst = new();
+    private long _remapBurstWindowStart;
+    private long _remapSuppressedUntil;
+
     private bool TryApplyRemap(AppSettings s, int vk, bool down)
     {
+        /* ---- 防回声 ----
+         * 我们自己刚注入的键（含被别的工具复制后丢了标记的事件）一律不参与改键。
+         * 少了这道判断，Ctrl→Alt 与 Alt→Ctrl 同时开启时会形成闭环：
+         * 按一次 Ctrl 会连续冒出好几个 Alt/Ctrl 事件。 */
+        if (InputSender.WasInjectedRecently(vk, 30)) return false;
+
+        long now = Environment.TickCount64;
+        if (now < _remapSuppressedUntil) return false;
+
+        if (now - _remapBurstWindowStart > 200)
+        {
+            _remapBurstWindowStart = now;
+            _remapBurst.Clear();
+        }
+
+        _remapBurst.TryGetValue(vk, out int burst);
+        burst++;
+        _remapBurst[vk] = burst;
+
+        if (burst > 20)
+        {
+            /* 2 秒内同一个键被改键 20 次以上 —— 正常手速不可能。
+             * 熔断：这段时间不做改键，并清掉账本里的目标键。 */
+            _remapSuppressedUntil = now + 2000;
+            _remapBurst.Clear();
+            CoreLog.Warn($"[改键] 检测到疑似回声循环（键 {KeyName.NameOf(vk)} 200ms 内 {burst} 次），暂停改键 2 秒");
+            try { ReleaseRemappedKeys(); } catch { }
+            return false;
+        }
+
         var list = s.Global.BaseRemaps;
         if (list == null || list.Count == 0)
         {

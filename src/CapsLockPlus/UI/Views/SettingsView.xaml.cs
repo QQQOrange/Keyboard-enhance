@@ -993,6 +993,27 @@ public partial class SettingsView : UserControl
 
         int conflictsBefore = ConflictCount();
         string device = SelectedRemapDevice();
+
+        /* 涉及修饰键的预览要**先确认**。
+         *
+         * 这类预设一开，整个系统的按键语义就变了（Ctrl 变 Alt 之后，Ctrl+C、
+         * Ctrl+S、Ctrl+V 全部变成别的意思），而按钮就在设置页上排成一排，
+         * 很容易点着玩。用户反馈"我从没设置过 Ctrl 和 Alt 互换"就是这种情况。 */
+        bool swapsModifier = preset.Pairs.Any(pair => IsModifierKey(pair.From) || IsModifierKey(pair.To));
+        bool alreadyOn = KeyRemapMap.IsActive(_host.Settings.Global.BaseRemaps, preset, device);
+
+        if (!alreadyOn && swapsModifier &&
+            !UI.Windows.AppDialog.Confirm(Window.GetWindow(this),
+                Loc.F("「{0}」会把修饰键本身换掉：开启后按 Ctrl 发出的就是 Alt，\n"
+                      + "所有 Ctrl 快捷键（Ctrl+C / Ctrl+V / Ctrl+S…）都会变成 Alt 组合。\n\n"
+                      + "确定要开启吗？", preset.Title),
+                Loc.T("确认启用改键"),
+                Windows.DialogKind.Warn,
+                okText: Loc.T("启用")))
+        {
+            return;
+        }
+
         bool on = KeyRemapMap.Toggle(_host.Settings.Global.BaseRemaps, preset, device);
         Save();
         RefreshRemapState();

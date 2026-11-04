@@ -45,6 +45,16 @@ internal static class BindingDump
 
         sb.AppendLine($"触发键: {string.Join(", ", s.Triggers.Select(t => $"{t.Key}→层{t.LayerId}({t.HoldMs}ms)"))}");
 
+
+        /* 双击动作：这类规则会让"连按两下某键"执行一个动作 —— 排查"按几下就自动执行"时必须看到。 */
+        sb.AppendLine($"双击动作: {s.Global.KeyGestures.Count} 条");
+        foreach (var g in s.Global.KeyGestures)
+        {
+            sb.AppendLine($"  [{g.Key}] 双击 → {g.DoubleTapAction}" +
+                          (string.IsNullOrWhiteSpace(g.Comment) ? "" : $"  note=[{g.Comment}]"));
+        }
+        sb.AppendLine($"Caps 双击开关: {s.Global.DoubleTapCaps}，动作={s.Global.DoubleTapCapsAction}");
+        sb.AppendLine();
         /* 基础改键：Ctrl→Alt 这类规则会让 Ctrl+C 在系统看来变成 Alt+C，排查时必须先看到它。 */
         var remaps = s.Global?.BaseRemaps ?? new List<KeyRemap>();
         sb.AppendLine($"基础改键: {remaps.Count} 条");

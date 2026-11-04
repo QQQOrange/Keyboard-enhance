@@ -213,12 +213,127 @@ public static class InputSender
     /// </summary>
     internal static Action<int, bool>? SenderForTest { get; set; }
 
-    public static void KeyDown(int vk) => SendKey(vk, up: false);
-    public static void KeyUp(int vk) => SendKey(vk, up: true);
+    /* ---- 修饰键账本 ----
+     *
+     * 记录"我们发过按下、还没发抬起"的修饰键。用途只有一个：出现任何意外
+     * （异常、动作被取消、进程即将退出）时能把这些键**主动松开**。
+     * 只记修饰键：它们粘住的后果最严重（整机每个键都变成快捷键），
+     * 而普通字符键粘住最多多一个字母。
+     */
+    private static readonly Dictionary<int, long> HeldModifiers = new();
+    private static readonly object HeldGate = new();
+
+    /// <summary>当前还欠着抬起的修饰键数量（诊断 / 自检用）。</summary>
+    public static int TrackedModifierCount
+    {
+        get { lock (HeldGate) return HeldModifiers.Count; }
+    }
+
+    /* ---- 最近注入时刻（防回声） ----
+     *
+     * 有些输入工具（手势、宏、剪贴板增强）会把我们注入的事件**原样复制**再发一遍，
+     * 复制时 dwExtraInfo 标记会丢 —— 我们自己再看就是"用户真的按下了这个键"。
+     * 改键遇到这种情况会自我循环（Ctrl→Alt→Ctrl→…）。
+     *
+     * 这里记下"每个键最近一次由我们注入的时刻"，改键遇到 30ms 内的同一个键
+     * 一律当成回声，直接放行不处理。
+     */
+    private static readonly Dictionary<int, long> InjectedAt = new();
+    private static readonly object InjectedGate = new();
+
+    /// <summary>这个键是不是刚刚由我们注入过（用来识别回声）。</summary>
+    public static bool WasInjectedRecently(int vk, int withinMs = 30)
+    {
+        lock (InjectedGate)
+        {
+            if (!InjectedAt.TryGetValue(vk, out long at)) return false;
+            return Environment.TickCount64 - at <= withinMs;
+        }
+    }
+
+    private static bool IsModifierVk(int vk) => vk is
+        0x10 or 0x11 or 0x12 or 0x5B or 0x5C or      // 通用码 + Win
+        0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5; // 左右码
+
+    public static void KeyDown(int vk)
+    {
+        SendKey(vk, up: false);
+        if (!IsModifierVk(vk)) return;
+        lock (HeldGate) HeldModifiers[vk] = Environment.TickCount64;
+    }
+
+    public static void KeyUp(int vk)
+    {
+        SendKey(vk, up: true);
+        if (!IsModifierVk(vk)) return;
+        lock (HeldGate) HeldModifiers.Remove(vk);
+    }
+
+    /// <summary>把这些修饰键全部松开（退出 / 暂停 / 钩子丢失时用）。</summary>
+    public static int ReleaseTrackedModifiers()
+    {
+        int[] keys;
+        lock (HeldGate)
+        {
+            if (HeldModifiers.Count == 0) return 0;
+            keys = HeldModifiers.Keys.ToArray();
+            HeldModifiers.Clear();
+        }
+
+        foreach (int vk in keys)
+        {
+            try { SendKey(vk, up: true); }
+            catch (Exception ex) { CoreLog.Swallow(ex, "松开修饰键"); }
+        }
+        return keys.Length;
+    }
+
+    /// <summary>
+    /// 修饰键按住超过 <paramref name="maxAgeMs"/> 且最近没有任何注入 →
+    /// 判定为"漏了抬起"，直接松开并记日志。
+    ///
+    /// 用途：兜住"某个动作抛异常 / 线程被结束 / 队列被丢弃"导致的目标键悬空。
+    /// 正在播放宏时不调用（宏可以合法地按住修饰键很久）。
+    /// </summary>
+    public static int ReleaseStaleModifiers(int maxAgeMs = 10_000)
+    {
+        List<int>? stale = null;
+        long now = Environment.TickCount64;
+
+        lock (HeldGate)
+        {
+            if (HeldModifiers.Count == 0) return 0;
+
+            foreach (var pair in HeldModifiers.ToArray())
+            {
+                if (now - pair.Value < maxAgeMs) continue;
+                (stale ??= new List<int>()).Add(pair.Key);
+                HeldModifiers.Remove(pair.Key);
+            }
+        }
+
+        if (stale == null) return 0;
+
+        foreach (int vk in stale)
+        {
+            try { SendKey(vk, up: true); }
+            catch (Exception ex) { CoreLog.Swallow(ex, "松开超时修饰键"); }
+        }
+
+        CoreLog.Warn($"[注入] 修饰键按下超过 {maxAgeMs / 1000}s，已补发抬起：{string.Join(",", stale.Select(KeyName.NameOf))}");
+        return stale.Count;
+    }
 
     private static void SendKey(int vk, bool up)
     {
         if (SenderForTest is { } spy) { spy(vk, up); return; }
+        lock (InjectedGate)
+        {
+            /* 只留最近 128 条：这个表只是"回声识别"，不需要历史。 */
+            if (InjectedAt.Count > 128) InjectedAt.Clear();
+            InjectedAt[vk] = Environment.TickCount64;
+        }
+
         Send(KeyInput(vk, up));
     }
 

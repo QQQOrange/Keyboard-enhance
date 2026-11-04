@@ -111,6 +111,9 @@ public static class InputSafety
 
     public static void ReleaseAll()
     {
+        /* 先按账本松：账本里是"我们确实按下过"的修饰键，比按物理状态猜更准。 */
+        try { InputSender.ReleaseTrackedModifiers(); } catch (Exception ex) { CoreLog.Swallow(ex, "按账本松开修饰键"); }
+
         ReleaseModifiers();
         ReleaseMouseButtons();
     }

@@ -294,6 +294,13 @@ public sealed class GlobalOptions
     /// <summary>开机自启（写入 HKCU Run）。</summary>
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// 是否已经问过"检测到修饰键改键，要保留吗"。
+    ///
+    /// 只问一次：用户选了保留就别再烦他；以后新加同类规则时由设置页把这里清回 false。
+    /// </summary>
+    public bool RemapReviewDone { get; set; }
+
     /// <summary>热键方案：capslox（默认）或 capslock_plus（3.0 之前的经典布局）。</summary>
     public string HotkeyScheme { get; set; } = "capslox";
 

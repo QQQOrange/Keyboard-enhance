@@ -1,4 +1,4 @@
-﻿using CapsLockPlus.Core.Settings;
+using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus.Core.Input;
 
@@ -194,6 +194,37 @@ public static class KeyRemapMap
             list.Add(new KeyRemap { From = p.From, To = p.To, Comment = preset.Id, Device = dev });
         }
         return true;
+    }
+
+    /// <summary>这条预设当前是否已经生效（供界面决定要不要先确认）。</summary>
+    public static bool IsActive(List<KeyRemap> list, Preset preset, string? device)
+    {
+        string dev = NormalizeDevice(device);
+        return preset.Pairs.All(p =>
+            list.Any(r => Same(r.From, p.From) && Same(r.To, p.To) &&
+                          NormalizeDevice(r.Device) == dev));
+    }
+
+    /// <summary>
+    /// 这份配置里有没有"把修饰键本身换掉"的规则（Ctrl/Shift/Alt/Win）。
+    ///
+    /// 这类规则最容易造成"Ctrl+C 变成 Alt+C""所有快捷键都不对了"的错觉，
+    /// 启动时要专门问一次。
+    /// </summary>
+    public static bool HasModifierSwap(IEnumerable<KeyRemap>? list)
+    {
+        if (list == null) return false;
+
+        static bool IsModifier(string? key) => key?.Trim().ToLowerInvariant() is
+            "ctrl" or "lctrl" or "rctrl" or "control" or
+            "shift" or "lshift" or "rshift" or
+            "alt" or "lalt" or "ralt" or "menu" or
+            "win" or "lwin" or "rwin";
+
+        foreach (var r in list)
+            if (IsModifier(r.From) || IsModifier(r.To)) return true;
+
+        return false;
     }
 
     private static bool Same(string a, string b)

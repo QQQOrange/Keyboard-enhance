@@ -1531,6 +1531,99 @@ public static partial class SelfTest
             }
         }
 
+        /* ---- 修饰键账本（防止"按键粘住"的最后一道账） ---- */
+        {
+            /* 干跑模式下不会真的发给系统，但账本照常维护 —— 正好用来验证逻辑。 */
+            bool dry = Core.Input.InputSender.DryRun;
+            Core.Input.InputSender.DryRun = true;
+            try
+            {
+                int before = Core.Input.InputSender.TrackedModifierCount;
+
+                Core.Input.InputSender.KeyDown(0xA2);            // 左 Ctrl 按下
+                Check("账本：按下修饰键后记 1 条",
+                    Core.Input.InputSender.TrackedModifierCount == before + 1,
+                    Core.Input.InputSender.TrackedModifierCount.ToString());
+
+                Core.Input.InputSender.KeyUp(0xA2);
+                Check("账本：抬起后销账",
+                    Core.Input.InputSender.TrackedModifierCount == before,
+                    Core.Input.InputSender.TrackedModifierCount.ToString());
+
+                Core.Input.InputSender.KeyDown(0x41);            // 普通字母不记账
+                Check("账本：普通键不记账",
+                    Core.Input.InputSender.TrackedModifierCount == before,
+                    Core.Input.InputSender.TrackedModifierCount.ToString());
+                Core.Input.InputSender.KeyUp(0x41);
+
+                Core.Input.InputSender.KeyDown(0xA4);            // 左 Alt
+                int released = Core.Input.InputSender.ReleaseTrackedModifiers();
+                Check("账本：能一次全部松开", released >= 1, released.ToString());
+                Check("账本：松开后清零",
+                    Core.Input.InputSender.TrackedModifierCount == 0,
+                    Core.Input.InputSender.TrackedModifierCount.ToString());
+
+                Core.Input.InputSender.KeyDown(0xA2);
+                Check("账本：超时兜底能松开",
+                    Core.Input.InputSender.ReleaseStaleModifiers(maxAgeMs: 0) >= 1, "");
+                Check("账本：兜底后清零",
+                    Core.Input.InputSender.TrackedModifierCount == 0,
+                    Core.Input.InputSender.TrackedModifierCount.ToString());
+            }
+            finally
+            {
+                Core.Input.InputSender.DryRun = dry;
+            }
+        }
+
+        /* ---- 改键预设状态 / 回声防护 ---- */
+        {
+            var list = new List<KeyRemap>();
+            var preset = Core.Input.KeyRemapMap.FindPreset("ctrlAlt");
+            Check("预设：能找到 ctrlAlt", preset != null, "");
+
+            if (preset != null)
+            {
+                Check("预设：初始未生效", !Core.Input.KeyRemapMap.IsActive(list, preset, ""), "");
+
+                bool on = Core.Input.KeyRemapMap.Toggle(list, preset, "");
+                Check("预设：开启后生效", on && Core.Input.KeyRemapMap.IsActive(list, preset, ""), "");
+
+                bool off = Core.Input.KeyRemapMap.Toggle(list, preset, "");
+                Check("预设：再点一次取消", !off && !Core.Input.KeyRemapMap.IsActive(list, preset, ""), "");
+            }
+
+            /* 回声识别：刚注入过的键应被判为"回声"，不参与改键。 */
+            bool dry2 = Core.Input.InputSender.DryRun;
+            Core.Input.InputSender.DryRun = true;
+            try
+            {
+                Check("回声：没注入过就是 false",
+                    !Core.Input.InputSender.WasInjectedRecently(0x70), "");
+
+                Core.Input.InputSender.KeyDown(0x70);
+                Check("回声：刚注入的键能认出来",
+                    Core.Input.InputSender.WasInjectedRecently(0x70, 1000), "");
+                Core.Input.InputSender.KeyUp(0x70);
+
+                /* 带改键时，回声键必须被放行（返回 false = 不改键、不吞）。 */
+                var sEcho = DefaultSettings.Create();
+                foreach (var t in sEcho.Triggers) t.Enabled = false;
+                sEcho.Global.BaseRemaps.Clear();
+                sEcho.Global.BaseRemaps.Add(new KeyRemap { From = "f13", To = "f14" });
+
+                var eEcho = new HotkeyEngine(new ActionQueue(), () => sEcho, (_, _) => true);
+                Core.Input.InputSender.KeyDown(0x7C);      // 注入 F13
+                Check("回声：改键不处理自己刚注入的键",
+                    !eEcho.SimulateKey(0x7C, true), "");
+                Core.Input.InputSender.KeyUp(0x7C);
+            }
+            finally
+            {
+                Core.Input.InputSender.DryRun = dry2;
+            }
+        }
+
         /* ---- 全局搜索 ---- */
         {
             var s = DefaultSettings.Create();

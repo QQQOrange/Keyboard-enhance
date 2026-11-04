@@ -935,6 +935,10 @@ public sealed partial class HotkeyEngine : IDisposable
          * 账本里的目标键会永远按着 —— 重装之后更没人去松它。 */
         try { ReleaseRemappedKeys(); } catch (Exception ex) { CoreLog.Swallow(ex, "重装钩子前松开改键"); }
 
+        /* 状态复位：旧钩子可能漏收了修饰键的抬起，账本里会一直留着"按着"。
+         * 不复位的话，重装之后第一次组合键就会被拼成多余的前缀。 */
+        try { ResetTriggerState("钩子重装"); } catch (Exception ex) { CoreLog.Swallow(ex, "重装钩子前复位状态"); }
+
         _hook.Restart();
 
         /* ⚠ 这里**不能**刷新「钩子活着」的时间锚。
@@ -1072,13 +1076,51 @@ public sealed partial class HotkeyEngine : IDisposable
     ///   · 触发键按住 → 只吞触发键自己（其余键还没进层，放行不影响日常输入）；
     ///   · 其余情况   → 放行，与异常发生前的行为保持一致。
     /// </summary>
+    private int _errorStreak;
+    private long _lastErrorAtMs;
+
     internal bool ShouldSwallowOnError(int vk)
     {
+        CountEngineError();
+
         if (!Enabled) return false;
         if (_layerActive) return true;
         if (!_triggerHeld) return false;
         try { return IsTrigger(_settings(), vk); }
         catch { return true; }   // 连判定都抛了：按触发键处理，宁可吞掉
+    }
+
+    /// <summary>
+    /// 统计回调异常；短时间内连续多次 → 状态机可能已经不一致，做一次恢复。
+    ///
+    /// 为什么必须做：异常多半发生在"按下被吞、状态只更新了一半"的时候；
+    /// 接着后续按键就会带着错误的修饰键前缀、或者层永远退不出去。
+    /// 恢复动作走后台线程：钩子线程里只计数，不做输入操作。
+    /// </summary>
+    private void CountEngineError()
+    {
+        long now = Environment.TickCount64;
+
+        /* 超过 10 秒清零：偶发的单次异常不需要恢复。 */
+        if (now - _lastErrorAtMs > 10_000) _errorStreak = 0;
+        _lastErrorAtMs = now;
+
+        if (++_errorStreak < 3) return;
+        _errorStreak = 0;
+
+        CoreLog.Warn("按键回调连续异常 3 次，执行一次状态恢复（松开改键目标键与修饰键，复位层）");
+
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                ResetTriggerState("回调连续异常");
+                ReleaseRemappedKeys();
+                InputSender.ReleaseTrackedModifiers();
+                InputSafety.ReleaseAll();
+            }
+            catch (Exception ex) { CoreLog.Swallow(ex, "异常后恢复"); }
+        });
     }
 
     /// <summary>
