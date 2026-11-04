@@ -23,8 +23,8 @@
     <Color x:Key="Color.Warning">#F5A524</Color>
     <Color x:Key="Color.Keycap">#232935</Color>
     <Color x:Key="Color.KeycapBorder">#333B4D</Color>
-    <Color x:Key="Color.TriggerKey">#E08A2E</Color>
-    <Color x:Key="Color.TriggerKeyBorder">#F2A34D</Color>
+    <Color x:Key="Color.TriggerKey">#7C5CFF</Color>
+    <Color x:Key="Color.TriggerKeyBorder">#9A80FF</Color>
 
     <Color x:Key="Color.KeycapShadow">#0B0D12</Color>
 
@@ -53,9 +53,10 @@
     <SolidColorBrush x:Key="Brush.KeycapBorder" Color="{DynamicResource Color.KeycapBorder}" />
     <SolidColorBrush x:Key="Brush.KeycapShadow" Color="{DynamicResource Color.KeycapShadow}" />
 
-    <!-- 触发键（本层用哪个键进入）：暖橙，和"已绑定"的蓝色区分。
-         结构和"已绑定"完全一致：实心底 + 略亮的同色描边 + 白色文字，
-         亮度也和 Accent(#5B93FF) 对齐，避免出现"深框 + 淡内容"那种违和感。 -->
+    <!-- 触发键（本层用哪个键进入）：紫罗兰。
+         选它是因为它和主色蓝(#5B93FF)同属冷色系、亮度接近，放在一起协调；
+         橙色虽然醒目，但在整页冷色里太跳（用户反馈"突兀"）。
+         结构和"已绑定"完全一致：实心底 + 略亮的同色描边 + 白色文字。 -->
     <SolidColorBrush x:Key="Brush.TriggerKey" Color="{DynamicResource Color.TriggerKey}" />
     <SolidColorBrush x:Key="Brush.TriggerKeyBorder" Color="{DynamicResource Color.TriggerKeyBorder}" />
 

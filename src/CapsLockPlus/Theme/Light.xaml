@@ -23,8 +23,8 @@
     <Color x:Key="Color.Warning">#D9822B</Color>
     <Color x:Key="Color.Keycap">#FFFFFF</Color>
     <Color x:Key="Color.KeycapBorder">#DCE2EE</Color>
-    <Color x:Key="Color.TriggerKey">#D9701A</Color>
-    <Color x:Key="Color.TriggerKeyBorder">#B85C10</Color>
+    <Color x:Key="Color.TriggerKey">#6D4AE0</Color>
+    <Color x:Key="Color.TriggerKeyBorder">#5B3BC7</Color>
 
     <Color x:Key="Color.KeycapShadow">#C9D2E3</Color>
 
@@ -53,8 +53,8 @@
     <SolidColorBrush x:Key="Brush.KeycapBorder" Color="{DynamicResource Color.KeycapBorder}" />
     <SolidColorBrush x:Key="Brush.KeycapShadow" Color="{DynamicResource Color.KeycapShadow}" />
 
-    <!-- 触发键：结构和"已绑定"一致（实心底 + 略暗的同色描边 + 白字），
-         亮度与 Accent(#2B6CF6) 对齐。 -->
+    <!-- 触发键：紫罗兰，与主色蓝同属冷色系，结构和"已绑定"一致
+         （实心底 + 略暗的同色描边 + 白字）。 -->
     <SolidColorBrush x:Key="Brush.TriggerKey" Color="{DynamicResource Color.TriggerKey}" />
     <SolidColorBrush x:Key="Brush.TriggerKeyBorder" Color="{DynamicResource Color.TriggerKeyBorder}" />
 
