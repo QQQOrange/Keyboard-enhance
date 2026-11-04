@@ -23,16 +23,15 @@ public static class InputSafety
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern void mouse_event(uint dwFlags, int dx, int dy, uint dwData, UIntPtr dwExtraInfo);
-
-    private const uint KEYEVENTF_KEYUP = 0x0002;
-    private const uint MOUSEEVENTF_LEFTUP = 0x0004;
-    private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
-    private const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+    [DllImport("user32.dll")]
+    private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
     private const int VK_LBUTTON = 0x01;
     private const int VK_RBUTTON = 0x02;
@@ -70,7 +69,7 @@ public static class InputSafety
             try
             {
                 if (!IsDown(vk)) continue;
-                keybd_event((byte)vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                InputSender.KeyUp(vk);
             }
             catch (Exception ex) { CoreLog.Swallow(ex, "补发修饰键抬起"); }
         }
@@ -81,9 +80,9 @@ public static class InputSafety
     {
         try
         {
-            if (IsDown(VK_LBUTTON)) mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, UIntPtr.Zero);
-            if (IsDown(VK_RBUTTON)) mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, UIntPtr.Zero);
-            if (IsDown(VK_MBUTTON)) mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, UIntPtr.Zero);
+            if (IsDown(VK_LBUTTON)) InputSender.MouseUp(VK_LBUTTON);
+            if (IsDown(VK_RBUTTON)) InputSender.MouseUp(VK_RBUTTON);
+            if (IsDown(VK_MBUTTON)) InputSender.MouseUp(VK_MBUTTON);
         }
         catch (Exception ex)
         {
@@ -94,10 +93,19 @@ public static class InputSafety
     /// <summary>受关注的修饰键（巡检用）。</summary>
     public static IReadOnlyList<int> WatchedModifiers => GuardedKeys;
 
-    /// <summary>补发单个键的抬起（调用方已经确认它确实按着）。</summary>
+    /// <summary>
+    /// 补发单个键的抬起（调用方已经确认它确实按着）。
+    ///
+    /// ⚠ 必须走 <see cref="InputSender.KeyUp"/>（带 InjectionTag），**不能**用裸
+    /// `keybd_event`：裸事件在我们自己的钩子看来是"用户真的按下的键"，
+    /// 于是会被基础改键的 up 分支吞掉并重新映射成别的键 ——
+    /// 如果 lalt 是某条改键的源键，善后发出的每一次抬起都会被吞，
+    /// 系统的 Alt 状态永远清不掉（现场表现为日志每 5 秒重试一次、连续 2393 次都失败）。
+    /// 带标记的注入在钩子里走 injected 分支直接放行，改键逻辑碰不到它。
+    /// </summary>
     public static void ReleaseKey(int vk)
     {
-        try { keybd_event((byte)vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); }
+        try { InputSender.KeyUp(vk); }
         catch (Exception ex) { CoreLog.Swallow(ex, "补发单个键抬起"); }
     }
 
@@ -106,6 +114,32 @@ public static class InputSafety
         ReleaseModifiers();
         ReleaseMouseButtons();
     }
+
+    /// <summary>
+    /// 系统层面的"无输入"时长（毫秒）。
+    ///
+    /// 为什么不用我们自己的按键时间戳：鼠标移动、点击、滚轮都不产生键盘事件，
+    /// 用户拖着一个窗口拖了 30 秒，在"只看键盘事件"的判据里就是"空闲 30 秒"，
+    /// 于是巡检会把人家正按着的鼠标键强行松开。GetLastInputInfo 才是"整机有没有人在操作"。
+    /// </summary>
+    public static long SystemIdleMs
+    {
+        get
+        {
+            try
+            {
+                var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+                if (!GetLastInputInfo(ref info)) return 0;
+
+                /* dwTime 是 32 位的 tick，溢出后要按无符号减法算差值。 */
+                uint now = (uint)Environment.TickCount;
+                return (uint)(now - info.dwTime);
+            }
+            catch { return 0; }
+        }
+    }
+
+    private static long _lastHealLogAt;
 
     /// <summary>当前物理上是否真的按着（用于巡检判断）。</summary>
     public static bool IsDown(int vk)
@@ -130,7 +164,9 @@ public static class InputSafety
                 _ => "MouseMiddle",
             });
 
-        return parts.Count == 0 ? "" : string.Join(",", parts);
+        /* 通用码和左右码会同时为真（VK_MENU 与 VK_LMENU），去重后再输出，
+         * 否则日志里是 "alt,lalt"，看起来像两个键都粘住了。 */
+        return parts.Count == 0 ? "" : string.Join(",", parts.Distinct());
     }
 
     /// <summary>
@@ -140,24 +176,41 @@ public static class InputSafety
     /// 阈值取 20 秒：正常人手按住 Shift 选文字不会超过 20 秒不动，
     /// 而真的粘键时用户会在几秒内就发现异常 —— 20 秒足够安全。
     /// </summary>
-    public static bool HealIfStuck(long lastKeyEventUnixMs, bool anyKeyOwned, out string healed)
+    public static bool HealIfStuck(long lastKeyEventUnixMs, out string healed)
     {
         healed = "";
 
+        /* 判据：**整机** 30 秒没有任何输入（键盘、鼠标、滚轮都算）。
+         *
+         * 为什么不看引擎自己的按键时间戳、也不看"引擎认为有没有按着"：
+         * 抬起丢失时，引擎的物理表会一直留着那个键 —— 于是"还有键按着"永远成立，
+         * 善后永远不会触发（现场就是这个死循环）。整机 30 秒零输入才是可靠证据：
+         * 真人有按键动作就一定会有输入事件，一条都没有 = 状态卡住了。
+         *
+         * 阈值可用 CLP_HEAL_IDLE_MS 覆盖（只在诊断 / 自检时用）。 */
+        long threshold = 30_000;
+        string? env = Environment.GetEnvironmentVariable("CLP_HEAL_IDLE_MS");
+        if (long.TryParse(env, out long custom) && custom >= 500) threshold = custom;
+
+        if (SystemIdleMs < threshold) return false;
+
         long idleMs = Environment.TickCount64 - lastKeyEventUnixMs;
-        if (idleMs < 20_000) return false;
+        if (idleMs < Math.Min(threshold, 5_000)) return false;
 
         var held = DescribeHeld();
         if (held.Length == 0) return false;
 
-        /* 用户正按着某个键且引擎确实收到过它的按下（anyKeyOwned）→ 不动，
-         * 避免把人手正在按的键抢着松开。 */
-        if (anyKeyOwned) return false;
-
         ReleaseAll();
         healed = held;
 
-        CoreLog.Warn($"检测到疑似粘键（{held}），已补发抬起");
+        /* 每 60 秒最多记一条：一直清不掉时（说明另有原因）不要每 5 秒刷一行。 */
+        long now = Environment.TickCount64;
+        if (now - _lastHealLogAt >= 60_000)
+        {
+            _lastHealLogAt = now;
+            CoreLog.Warn($"检测到疑似粘键（{held}），已补发抬起");
+        }
+
         return true;
     }
 }

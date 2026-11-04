@@ -60,6 +60,11 @@ public static class InputSender
     /// <summary>注入审计：本次会话注入了几次（只用于日志与自检）。</summary>
     public static int InjectCount { get; private set; }
 
+    /// <summary>注入序号：日志里带 #n，两个进程的日志交错时也能排出先后。</summary>
+    public static long InjectSeq => Interlocked.Read(ref _injectSeq);
+
+    private static long _injectSeq;
+
     /// <summary>本次会话最近一次注入的简述（诊断用）。</summary>
     public static string LastInjectSummary { get; private set; } = "";
 
@@ -86,6 +91,7 @@ public static class InputSender
 
         SendInput((uint)inputs.Length, inputs, InputSize);
         LastInjectAt = DateTime.Now;
+        Interlocked.Increment(ref _injectSeq);
         InjectCount++;
 
         if (_injectLogged < InjectLogLimit)
@@ -109,7 +115,7 @@ public static class InputSender
                     }
                 }
                 LastInjectSummary = string.Join(" ", parts);
-                CoreLog.Info($"[注入] {LastInjectSummary}");
+                CoreLog.Info($"[注入#{Interlocked.Read(ref _injectSeq)}] {LastInjectSummary}");
             }
             catch { }
         }
@@ -770,6 +776,34 @@ public static class InputSender
             },
         };
         Send(down, up);
+    }
+
+    /// <summary>
+    /// 只发鼠标键的"抬起"。
+    ///
+    /// 善后必须用这个（而不是裸 mouse_event）：抬起带上 <see cref="InjectionTag"/> 之后，
+    /// 我们自己的钩子会按"注入"直接放行，不会被改键 / 层逻辑误当成用户按下的键吞掉。
+    /// </summary>
+    public static void MouseUp(int vk)
+    {
+        uint flag = vk switch
+        {
+            0x01 => MOUSEEVENTF_LEFTUP,
+            0x02 => MOUSEEVENTF_RIGHTUP,
+            0x04 => MOUSEEVENTF_MIDDLEUP,
+            _ => 0,
+        };
+        if (flag == 0) return;
+
+        var input = new INPUT
+        {
+            type = INPUT_MOUSE,
+            U = new InputUnion
+            {
+                mi = new MOUSEINPUT { dwFlags = flag, dwExtraInfo = InjectionTag },
+            },
+        };
+        Send(input);
     }
 
     /// <summary>相对移动鼠标（像素）。</summary>

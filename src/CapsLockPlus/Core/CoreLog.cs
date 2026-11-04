@@ -26,6 +26,15 @@ namespace CapsLockPlus.Core;
 public static class CoreLog
 {
     private static readonly object Gate = new();
+
+    /* 跨进程写锁。
+     *
+     * 主进程和钩子宿主（--hookhost）都会写同一个 app.log。没有锁的时候两边的
+     * 缓冲区会交错，日志里出现半行 + 半行的拼接 —— 用户报"启动后莫名打出一个字母"
+     * 那一次，恰恰在最关键的那一行被写坏了，排查因此多花了一轮。
+     * 命名 Mutex 属于当前会话，两个进程同用户同会话，正好够用。 */
+    private static Mutex? _fileMutex;
+    private static bool _mutexFailed;
     private static StreamWriter? _writer;
     private static string? _path;
     private static long _bytes;
@@ -105,6 +114,34 @@ public static class CoreLog
         try { Signal.Set(); } catch { }
     }
 
+    /// <summary>拿跨进程写锁（最多等 300ms，拿不到就跳过这一批）。</summary>
+    private static bool TryLockFile()
+    {
+        if (_mutexFailed) return true;      // 创建失败就退化成"不加锁"，别把日志整个停掉
+
+        try
+        {
+            _fileMutex ??= new Mutex(false, "KeyboardEnhance.AppLog.Write");
+            return _fileMutex.WaitOne(300);
+        }
+        catch (AbandonedMutexException)
+        {
+            // 上一个持有者崩了，锁已经归我们了
+            return true;
+        }
+        catch
+        {
+            _mutexFailed = true;
+            return true;
+        }
+    }
+
+    private static void UnlockFile()
+    {
+        try { _fileMutex?.ReleaseMutex(); }
+        catch { }
+    }
+
     private static void EnsurePump()
     {
         if (_pump != null) return;
@@ -150,6 +187,8 @@ public static class CoreLog
 
             lock (Gate)
             {
+                /* 拿不到锁就跳过这一批（日志永远不能拖住主流程）。 */
+                bool locked = TryLockFile();
                 try
                 {
                     EnsureOpenLocked();
@@ -165,6 +204,10 @@ public static class CoreLog
                 {
                     // 日志失败不能影响主流程；顺手关掉句柄，下次写再重开
                     ResetLocked();
+                }
+                finally
+                {
+                    if (locked) UnlockFile();
                 }
             }
         }

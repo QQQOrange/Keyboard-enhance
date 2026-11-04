@@ -1048,11 +1048,43 @@ public partial class SettingsView : UserControl
         var list = _host?.Settings.Global.BaseRemaps;
         string desc = list == null || list.Count == 0 ? "" : KeyRemapMap.Describe(list);
 
-        RemapStateText.Text = string.IsNullOrEmpty(desc)
+        /* 涉及修饰键的改键要额外警告：用户会把"Ctrl+C 变成 Alt+C"当成 bug，
+         * 而它其实是这条规则的必然结果。写在设置页，比事后排查便宜得多。 */
+        bool swapsModifier = list != null && list.Any(r => IsModifierKey(r.From) || IsModifierKey(r.To));
+
+        string text = string.IsNullOrEmpty(desc)
             ? Loc.T("当前未启用任何基础改键")
             : Loc.F("当前生效：{0}", desc);
+
+        if (swapsModifier)
+            text += "\n" + Loc.T("注意：这些规则会换掉修饰键本身 —— 开了 Ctrl→Alt 之后，Ctrl+C 在前台程序看来就是 Alt+C。不需要就点「清除」。");
+
+        RemapStateText.Text = text;
+
+        try
+        {
+            RemapStateText.Foreground = swapsModifier
+                ? (System.Windows.Media.Brush)FindResource("Brush.Warning")
+                : (System.Windows.Media.Brush)FindResource("Brush.TextTertiary");
+        }
+        catch { }
         RemapClearButton.Visibility = list == null || list.Count == 0
             ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>是不是修饰键（Ctrl / Shift / Alt / Win 的任意左右码）。</summary>
+    private static bool IsModifierKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+
+        return key!.Trim().ToLowerInvariant() switch
+        {
+            "ctrl" or "lctrl" or "rctrl" or "control" => true,
+            "shift" or "lshift" or "rshift" => true,
+            "alt" or "lalt" or "ralt" or "menu" => true,
+            "win" or "lwin" or "rwin" => true,
+            _ => false,
+        };
     }
 
     private void OnStartupChanged(object sender, RoutedEventArgs e)

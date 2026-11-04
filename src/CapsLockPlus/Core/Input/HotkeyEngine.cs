@@ -931,6 +931,10 @@ public sealed partial class HotkeyEngine : IDisposable
          * 要在宿主里重装，主程序发 REHOOK 命令给宿主。 */
         if (HookDelegatedToHost) return;
 
+        /* 重装前先松开所有改键目标键：旧钩子如果漏收了抬起，
+         * 账本里的目标键会永远按着 —— 重装之后更没人去松它。 */
+        try { ReleaseRemappedKeys(); } catch (Exception ex) { CoreLog.Swallow(ex, "重装钩子前松开改键"); }
+
         _hook.Restart();
 
         /* ⚠ 这里**不能**刷新「钩子活着」的时间锚。
@@ -2346,6 +2350,10 @@ public sealed partial class HotkeyEngine : IDisposable
 
     public void Dispose()
     {
+        /* 先松改键目标键，再卸钩子 —— 顺序反了就没机会补发了（钩子没了，
+         * 但系统里那个目标键还按着）。 */
+        try { ReleaseRemappedKeys(); } catch (Exception ex) { CoreLog.Swallow(ex, "退出时松开改键目标键"); }
+
         if (_holdTimer != null)
         {
             _holdTimer.Stop();

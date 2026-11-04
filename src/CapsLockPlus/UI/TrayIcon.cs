@@ -125,7 +125,7 @@ public sealed class TrayIcon : IDisposable
         {
             ApplyText();
             UpdateCapsState();
-            _icon.Text = EnabledTooltip(_host.Engine.Enabled);
+            _icon.Text = TrayTooltip();
             _icon.Icon = _customIcon ?? SystemIcons.Application;
         }
         catch (Exception ex)
@@ -144,7 +144,7 @@ public sealed class TrayIcon : IDisposable
         _qbarItem.Text = Loc.F("打开 Qbar  (Caps+{0})", qKey);
         _mathItem.Text = Loc.T("计算器  (Caps+F2)");
         _bindingsItem.Text = Loc.T("窗口绑定（按键映射页）");
-        _aliasesItem.Text = Loc.T("窗口绑定（按键映射页）");
+        _aliasesItem.Text = Loc.T("别名替换");
         _helpItem.Text = Loc.T("使用帮助");
         _reloadItem.Text = Loc.T("重新加载配置  (Caps+F5)");
         _exitItem.Text = Loc.T("退出");
@@ -236,6 +236,51 @@ public sealed class TrayIcon : IDisposable
             _icon.Text = EnabledTooltip(enabled);
         }
         catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+    }
+
+    /// <summary>
+    /// 托盘提示：除了"运行中"，还要写出**当前生效的改键**。
+    ///
+    /// 用户开了「Ctrl ↔ Alt（左）」之后，Ctrl+C 会变成 Alt+C —— 这是预设语义，
+    /// 但界面上没有任何地方告诉他"现在 Ctrl 是 Alt"，只能凭"复制不好使"猜。
+    /// 悬停托盘就能看到，至少不用再猜。
+    /// </summary>
+    private string TrayTooltip()
+    {
+        string text = EnabledTooltip(_host.Engine.Enabled);
+
+        try
+        {
+            var remaps = _host.Settings.Global.BaseRemaps;
+            if (remaps.Count > 0)
+            {
+                string pairs = string.Join("、", remaps.Take(2).Select(r => $"{KeyNameOf(r.From)}→{KeyNameOf(r.To)}"));
+                if (remaps.Count > 2) pairs += "…";
+                text += Environment.NewLine + Loc.F("改键生效：{0}", pairs);
+            }
+        }
+        catch { }
+
+        /* NotifyIcon.Text 有长度上限（127），超了会直接抛。 */
+        return text.Length <= 120 ? text : text[..119] + "…";
+    }
+
+    private static string KeyNameOf(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return "?";
+        return key!.Trim().ToLowerInvariant() switch
+        {
+            "capslock" => "Caps",
+            "lctrl" or "ctrl" => "Ctrl",
+            "rctrl" => "RCtrl",
+            "lalt" or "alt" => "Alt",
+            "ralt" => "RAlt",
+            "lshift" or "shift" => "Shift",
+            "rshift" => "RShift",
+            "lwin" or "win" => "Win",
+            "rwin" => "RWin",
+            _ => key!,
+        };
     }
 
     /// <summary>

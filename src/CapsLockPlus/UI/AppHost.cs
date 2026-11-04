@@ -351,12 +351,19 @@ public sealed class AppHost : IDisposable
         stuckWatch.Tick += (_, _) =>
         {
             long last = Engine.LastKeyActivityMs;
-            bool held = Engine.PhysicallyDownCount > 0;
 
             /* 放到后台线程：补发抬起要进 user32，绝不能占着界面线程。 */
             _ = System.Threading.Tasks.Task.Run(() =>
             {
-                try { Core.Input.InputSafety.HealIfStuck(last, held, out _); }
+                try
+                {
+                    /* 先看改键账本：源键早就松开、目标键还按着 → 立刻松开。
+                     * 这一步和下面的粘键巡检互补：改键的抬起丢失时，
+                     * 系统里"按着"的其实是目标键（比如 Alt），而不是用户按的源键。 */
+                    Engine.ReleaseStaleRemaps();
+
+                    Core.Input.InputSafety.HealIfStuck(last, out _);
+                }
                 catch (Exception ex) { CoreLog.Swallow(ex, "粘键巡检"); }
             });
         };
@@ -780,6 +787,10 @@ public sealed class AppHost : IDisposable
                     _hookHostReady = false;
                     Engine.HookDelegatedToHost = false;
                     CoreLog.Warn("钩子宿主已退出，改由本进程自己装钩子");
+
+                    /* 宿主没了 = 抬起的按键再也收不到：先把改键目标键松开，
+                     * 否则用户按着 Ctrl 的那一刻宿主崩掉，Alt 会一直按着。 */
+                    try { Engine.ReleaseRemapTargets(); } catch (Exception ex) { CoreLog.Swallow(ex, "宿主退出时松开改键"); }
                     _dispatcher.BeginInvoke(() =>
                     {
                         try { Engine.RestartHook(); } catch (Exception ex) { CoreLog.Swallow(ex, "接管钩子"); }

@@ -44,6 +44,17 @@ internal static class BindingDump
         }
 
         sb.AppendLine($"触发键: {string.Join(", ", s.Triggers.Select(t => $"{t.Key}→层{t.LayerId}({t.HoldMs}ms)"))}");
+
+        /* 基础改键：Ctrl→Alt 这类规则会让 Ctrl+C 在系统看来变成 Alt+C，排查时必须先看到它。 */
+        var remaps = s.Global?.BaseRemaps ?? new List<KeyRemap>();
+        sb.AppendLine($"基础改键: {remaps.Count} 条");
+        foreach (var r in remaps)
+        {
+            sb.AppendLine($"  [{r.From}] → [{r.To}]"
+                          + (string.IsNullOrWhiteSpace(r.Device) ? "" : $"  device=[{r.Device}]")
+                          + (string.IsNullOrWhiteSpace(r.Comment) ? "" : $"  note=[{r.Comment}]"));
+        }
+        sb.AppendLine();
         sb.AppendLine($"层数: {s.Layers.Count}");
         sb.AppendLine();
 

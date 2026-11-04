@@ -1436,9 +1436,9 @@ public static partial class SelfTest
 
             Check("粘键善后：描述不抛异常", Core.Input.InputSafety.DescribeHeld() is { } d, "");
             Check("粘键善后：刚有按键时不乱动",
-                !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64, false, out _), "");
+                !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64, out _), "");
             Check("粘键善后：空闲但没按住时不乱动",
-                !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64 - 60_000, false, out _), "");
+                !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64 - 60_000, out _), "");
         }
 
         /* ---- 注入审计 / 静默期 / 漏抬起 ---- */
@@ -1466,6 +1466,69 @@ public static partial class SelfTest
             Check("修饰键清单：包含 Ctrl", Core.Input.InputSafety.WatchedModifiers.Contains(0x11), "");
             try { Core.Input.InputSafety.ReleaseKey(0x11); Check("补发单键抬起不抛异常", true, ""); }
             catch { Check("补发单键抬起不抛异常", false, ""); }
+        }
+
+        /* ---- 基础改键：抬起不能吞、账本要能兜底（v4.17 回归） ---- */
+        {
+            var s = DefaultSettings.Create();
+            foreach (var t in s.Triggers) t.Enabled = false;
+
+            s.Global.BaseRemaps.Clear();
+            s.Global.BaseRemaps.Add(new KeyRemap { From = "lalt", To = "lctrl" });
+
+            var e = new HotkeyEngine(new ActionQueue(), () => s, (_, _) => true);
+
+            /* ① 没有账本的孤立抬起必须放行。
+             *    这条就是现场事故的核心：善后补发的 lalt 抬起被吞掉、改写成 lctrl 抬起，
+             *    于是系统里的 Alt 永远清不掉。 */
+            Check("改键：孤立抬起放行（善后能用）", !e.SimulateKey(0xA4, false), "");
+
+            /* ② 有账本时照旧接管：按下建账、抬起销账。 */
+            Check("改键：按下被接管", e.SimulateKey(0xA4, true), "");
+            Check("改键：按下后账本为 1", e.PendingRemapCount == 1, e.PendingRemapCount.ToString());
+            Check("改键：抬起被接管", e.SimulateKey(0xA4, false), "");
+            Check("改键：抬起后账本清空", e.PendingRemapCount == 0, e.PendingRemapCount.ToString());
+
+            /* ③ 账本躺着没人收（钩子退出/队列停了）→ 看门狗兜底松开。 */
+            e.SimulateKey(0xA4, true);
+            Check("改键：又有 1 条欠账", e.PendingRemapCount == 1, e.PendingRemapCount.ToString());
+            int released = e.ReleaseStaleRemaps(maxAgeMs: 0);
+            Check("改键：超时兜底会松开目标键", released == 1, released.ToString());
+            Check("改键：兜底后账本清空", e.PendingRemapCount == 0, e.PendingRemapCount.ToString());
+
+            /* ④ 账本还"新鲜"的时候不许兜底（用户正当按着组合键）。 */
+            e.SimulateKey(0xA4, true);
+            Check("改键：刚按下时不误松", e.ReleaseStaleRemaps(maxAgeMs: 60_000) == 0, "");
+            e.SimulateKey(0xA4, false);
+            Check("改键：正常抬起后账本清空", e.PendingRemapCount == 0, e.PendingRemapCount.ToString());
+
+            /* ⑤ 善后入口本身不能抛（内部走带标记的 InputSender.KeyUp）。 */
+            try
+            {
+                Core.Input.InputSafety.ReleaseKey(0xA4);
+                Core.Input.InputSafety.ReleaseModifiers();
+                Check("善后：补发抬起不抛异常", true, "");
+            }
+            catch (Exception ex)
+            {
+                Check("善后：补发抬起不抛异常", false, ex.Message);
+            }
+
+            /* 巡检判据：整机空闲时长可读、阈值可调，且"刚有输入"时绝不动手。 */
+            Check("善后：整机空闲时长可读", Core.Input.InputSafety.SystemIdleMs >= 0,
+                Core.Input.InputSafety.SystemIdleMs.ToString());
+
+            string? savedEnv = Environment.GetEnvironmentVariable("CLP_HEAL_IDLE_MS");
+            try
+            {
+                Environment.SetEnvironmentVariable("CLP_HEAL_IDLE_MS", "600000");   // 10 分钟
+                Check("善后：阈值调大后不乱动手",
+                    !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64, out _), "");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("CLP_HEAL_IDLE_MS", savedEnv);
+            }
         }
 
         /* ---- 全局搜索 ---- */

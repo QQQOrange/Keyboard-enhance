@@ -2501,5 +2501,7 @@
   "拾取失败：": "Pick failed: ",
   "已加入限定程序": "Added to the app list",
   "打开 Qbar。参数可填搜索引擎关键字（bd / bili / gh…），留空则用上次的引擎": "Open Qbar. The argument can be a search-engine keyword (bd / bili / gh…); leave empty to reuse the last engine",
-  "引擎关键字，可留空，如 bili": "Engine keyword, optional, e.g. bili"
+  "引擎关键字，可留空，如 bili": "Engine keyword, optional, e.g. bili",
+  "注意：这些规则会换掉修饰键本身 —— 开了 Ctrl→Alt 之后，Ctrl+C 在前台程序看来就是 Alt+C。不需要就点「清除」。": "Note: these rules replace the modifier keys themselves — with Ctrl→Alt on, Ctrl+C looks like Alt+C to the focused app. Click \"Clear\" if you don't need it.",
+  "改键生效：{0}": "Remaps active: {0}"
 }
