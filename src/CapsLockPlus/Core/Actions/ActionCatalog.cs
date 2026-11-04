@@ -236,17 +236,15 @@ public sealed class ActionCatalog
         // 绑到任意层的任意按键。按下后弹出的 Qbar **默认就用这个引擎搜索**，
         // 省得每次再在面板里选一次。
         //
-        /* 只注册常用引擎：全部 300 个会让动作总数逼近 600，
-         * 键盘页在这个量级上布局会卡死（渲染实测：medium 档直接挂住）。
-         * 想要任意引擎用「Qbar 搜索（指定引擎）」这个动作，参数里填关键字即可。 */
-        string[] quickEngines =
-        {
-            "bd", "zh", "bili", "go", "bi", "tb", "jd", "gh",
-            "wx", "db", "xhs",
-        };
+        /* 注册**全部**引擎。
+         *
+         * 曾经担心"动作总数逼近 600 会让键盘页布局卡死"，于是只挑了 11 个常用引擎；
+         * 后来查明那次卡死是**粘键巡检定时器**在无人值守的渲染里空转导致的，
+         * 与动作条数无关（定时器现在在诊断模式下不启动）。所以全部引擎都放回来：
+         * 「按键映射」的搜索框能直接过滤，想绑哪个引擎都能选到。 */
         foreach (var e in ctx.Settings().Search.Where(x =>
                      !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
-                     quickEngines.Contains(x.Key, StringComparer.OrdinalIgnoreCase)))
+                     !string.IsNullOrWhiteSpace(x.Value)))
         {
             string key = e.Key;
             string name = string.IsNullOrWhiteSpace(e.Comment) ? key : e.Comment;

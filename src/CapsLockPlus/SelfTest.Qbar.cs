@@ -1129,9 +1129,16 @@ public static partial class SelfTest
         /* 「Qbar 搜索」保留常用引擎的快捷动作（数量受控），
          * 其余引擎走「Qbar 快速启动」的参数 —— 那个动作填什么关键字就用什么引擎，
          * 所以"面板里所有引擎"在按键映射里都能用。 */
+        /* 「Qbar 搜索」现在注册**全部**引擎（用户要求"按键映射里要能选到所有引擎"）。
+         * 早先那次"动作太多导致键盘页卡死"的真实原因是巡检定时器，与条数无关；
+         * 定时器在诊断模式已停用，所以这里改为校验"覆盖完整"。 */
         int engineActions = cat.Items.Count(i => i.Id.StartsWith("qbar:"));
-        Check("引擎快捷动作数量受控（不撑爆布局）", engineActions <= 30, engineActions.ToString());
-        Check("引擎快捷动作够用（>= 8）", engineActions >= 8, engineActions.ToString());
+        int engines = settings.Search.Count(x =>
+            !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(x.Value));
+
+        Check("引擎动作覆盖全部引擎", engineActions == engines, $"{engineActions}/{engines}");
+        Check("引擎动作够用（>= 20）", engineActions >= 20, engineActions.ToString());
 
         var qbarAction = cat.Items.First(i => i.Id == "qbar");
         Check("Qbar 动作接受引擎参数", qbarAction.NeedsArg, "");
