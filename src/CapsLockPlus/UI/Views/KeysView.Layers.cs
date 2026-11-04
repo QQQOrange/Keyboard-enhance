@@ -60,6 +60,33 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
+    /// 把键名写进 <paramref name="block"/>；触发键在**名字前面**加一颗星。
+    ///
+    /// 星用 <see cref="System.Windows.Documents.Run"/> 单独给字号：
+    /// 比键名大一号（×1.5），颜色不设 —— 直接继承 TextBlock 的 Foreground，
+    /// 所以和字母永远同色（夜间是白字、浅色键上是灰字，跟着走）。
+    ///
+    /// 早先的做法是把 "★" 拼进字符串，星只能和 6.5px 的键名一样小，看不清；
+    /// 后来试过右上角独立金星 —— 用户要的是"还在字母前面、和字母同色、再大一号"。
+    /// </summary>
+    private static void SetNameWithStar(System.Windows.Controls.TextBlock block, string label, double fontSize, bool star)
+    {
+        if (!star)
+        {
+            block.Text = label;
+            return;
+        }
+
+        block.Text = string.Empty;
+        block.Inlines.Add(new System.Windows.Documents.Run("★")
+        {
+            FontSize = fontSize * 1.5,
+            FontWeight = FontWeights.Bold,
+        });
+        block.Inlines.Add(new System.Windows.Documents.Run(" " + label));
+    }
+
+    /// <summary>
     /// 建一个键帽。
     /// </summary>
     /// <param name="triggerKey">当前层的触发键名（非 null 时该键会额外高亮 +
@@ -176,10 +203,9 @@ public partial class KeysView : UserControl
                 Foreground = textBrush,
             });
 
-            // ③ 键名：缩小放在最下面
-            stack.Children.Add(new TextBlock
+            // ③ 键名：缩小放在最下面（触发键在名字**前面**加一颗大一号的星）
+            var nameBlock = new TextBlock
             {
-                Text = label,
                 FontSize = 6.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
@@ -187,58 +213,37 @@ public partial class KeysView : UserControl
                 Foreground = subTextBrush,
                 Opacity = 0.7,
                 Margin = new Thickness(0, 1, 0, 0),
-            });
+            };
+
+            SetNameWithStar(nameBlock, label, 6.5, isTrigger);
+            stack.Children.Add(nameBlock);
         }
         else
         {
             /* ===== 未绑定：只显示键名，居中大字 ===== */
-            stack.Children.Add(new TextBlock
+            double size = label.Length switch
             {
-                Text = label,
-                FontSize = label.Length switch
-                {
-                    <= 1 => 12,
-                    2 => 10.5,
-                    3 => 9,
-                    _ => 8,
-                },
+                <= 1 => 12,
+                2 => 10.5,
+                3 => 9,
+                _ => 8,
+            };
+
+            var bigBlock = new TextBlock
+            {
+                FontSize = size,
                 FontWeight = FontWeights.SemiBold,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Foreground = textBrush,
-            });
-        }
-        /* 触发键：右上角叠一个**更大的**星。
-         *
-         * 早先是在缩到 6.5px 的键名前面加 "★"，星号跟着一起缩，几乎看不见；
-         * 后来试过整块换色（橙/紫），又太抢眼。
-         * 现在恢复原来的蓝色键帽，只把星单独画在右上角、字号 12px，
-         * 不占键帽里的排版空间，也不改变整块键帽的观感。 */
-        if (isTrigger)
-        {
-            var star = new TextBlock
-            {
-                Text = "★",
-                FontSize = 14,
-                FontWeight = FontWeights.Bold,
-                Foreground = (Brush)FindResource("Brush.TriggerStar"),
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 0, 3, 0),
-                IsHitTestVisible = false,
             };
 
-            var layered = new Grid();
-            layered.Children.Add(stack);
-            layered.Children.Add(star);
-            border.Child = layered;
+            SetNameWithStar(bigBlock, label, size, isTrigger);
+            stack.Children.Add(bigBlock);
         }
-        else
-        {
-            border.Child = stack;
-        }
+        border.Child = stack;
 
         string captured = keyId;
         border.MouseLeftButtonUp += (_, _) => SelectKey(captured);

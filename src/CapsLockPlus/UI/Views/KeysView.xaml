@@ -217,7 +217,7 @@
                                         <TextBlock Text="{loc:T '已绑定'}" Style="{StaticResource Text.Tertiary}"
                                                    Margin="5,0,12,0" VerticalAlignment="Center" />
                                         <TextBlock Text="★" FontSize="12" FontWeight="Bold"
-                                                   Foreground="{DynamicResource Brush.TriggerStar}"
+                                                   Style="{StaticResource Text.Tertiary}"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Text="{loc:T '触发键'}" Style="{StaticResource Text.Tertiary}"
                                                    Margin="5,0,12,0" VerticalAlignment="Center" />

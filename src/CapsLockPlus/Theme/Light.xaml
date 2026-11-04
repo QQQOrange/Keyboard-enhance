@@ -46,8 +46,6 @@
     <SolidColorBrush x:Key="Brush.Success" Color="{DynamicResource Color.Success}" />
     <SolidColorBrush x:Key="Brush.Warning" Color="{DynamicResource Color.Warning}" />
 
-    <!-- 触发键右上角那颗星：金色，在深蓝键帽上足够醒目但不刺眼。 -->
-    <SolidColorBrush x:Key="Brush.TriggerStar" Color="#E0A100" />
     <SolidColorBrush x:Key="Brush.QbarRowHover" Color="#0F000000" />
     <SolidColorBrush x:Key="Brush.QbarRowSelected" Color="#1F2B6CF6" />
     <SolidColorBrush x:Key="Brush.Keycap" Color="{DynamicResource Color.Keycap}" />
