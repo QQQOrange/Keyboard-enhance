@@ -2531,5 +2531,14 @@
   "「{0}」将加入 {1} 项：": "\"{0}\" will add {1} item(s):",
   "已存在、会跳过 {0} 项。": "{0} item(s) already exist and will be skipped.",
   "只添加缺失项，不会改动你已有的设置。": "Only missing items are added; nothing you already have is changed.",
-  "「{0}」里的 {1} 项你都已经有了，没有可添加的内容": "You already have all {1} items in \"{0}\", nothing to add."
+  "「{0}」里的 {1} 项你都已经有了，没有可添加的内容": "You already have all {1} items in \"{0}\", nothing to add.",
+  "添加这些": "Add these",
+  "不用了": "Not now",
+  "场景模板：{0}": "Scenario template: {0}",
+  "这个模板里的 {0} 项你都已经有了，没有可添加的内容。": "You already have all {0} items in this template; nothing to add.",
+  "它只是把现成的键位一次性写进配置，不会改动你已有的设置。": "It only writes a prepared set of bindings into your config; nothing you already have is changed.",
+  "将加入 {0} 项：": "Will add {0} item(s):",
+  "已有、会跳过 {0} 项：": "Already present, skipped ({0}):",
+  "添加这 {0} 项": "Add these {0} items",
+  "没有可添加的内容": "Nothing to add"
 }

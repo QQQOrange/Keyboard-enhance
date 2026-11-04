@@ -256,6 +256,22 @@
                             <Button Style="{StaticResource Button.Base}" Padding="12,5" Margin="0,0,8,8"
                                     Content="{loc:T '剪贴板效率'}" Tag="clip" Click="OnApplyPackClick" />
                         </WrapPanel>
+
+                                    <!-- 点模板后在这里就地展开"会加什么"，不用弹窗、点了立刻有反应 -->
+                                    <Border x:Name="PackPreviewPanel" Visibility="Collapsed" Margin="0,4,0,0"
+                                            Background="{DynamicResource Brush.AccentSoft}" CornerRadius="8" Padding="12,10">
+                                        <StackPanel>
+                                            <TextBlock x:Name="PackPreviewTitle" Style="{StaticResource Text.Body}" />
+                                            <TextBlock x:Name="PackPreviewText" Style="{StaticResource Text.Secondary}"
+                                                       TextWrapping="Wrap" Margin="0,6,0,0" LineHeight="20" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                <Button x:Name="PackApplyButton" Content="{loc:T '添加这些'}" Padding="14,6"
+                                                        Style="{StaticResource Button.Primary}" Click="OnPackApplyClick" />
+                                                <Button Content="{loc:T '不用了'}" Margin="8,0,0,0" Padding="14,6"
+                                                        Style="{StaticResource Button.Ghost}" Click="OnPackCancelClick" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
                     </StackPanel>
 
                     <Border Style="{StaticResource Divider}" />

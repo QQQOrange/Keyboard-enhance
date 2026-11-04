@@ -279,6 +279,22 @@ public static class RenderTools
                 {
                     CoreLog.Warn("渲染设置页外观区失败：" + ex.Message);
                 }
+                /* 场景模板的"就地预览"：点了之后会展开的那块内容。 */
+                try
+                {
+                    if (sv.ShowPackPreviewForRender("window"))
+                    {
+                        Pump(220);
+                        Save(main, Path.Combine(outDir, "settings-pack.png"));
+                    }
+                    sv.HidePackPreviewForRender();
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染场景模板预览失败：" + ex.Message);
+                }
+                Pump(120);
+
                 sv.ResetRenderStateForRender();
                 Pump(120);
             }

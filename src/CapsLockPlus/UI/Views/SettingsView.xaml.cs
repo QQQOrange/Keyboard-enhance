@@ -385,6 +385,15 @@ public partial class SettingsView : UserControl
     /// 应用模板：合并进当前配置（只加缺失项）。
     /// 重复点同一个模板等于什么都不做，所以不需要二次确认。
     /// </summary>
+    /// <summary>点了模板但还没确认的那个模板（null = 没有待确认的）。</summary>
+    private ScenarioPacks.Pack? _pendingPack;
+
+    /// <summary>
+    /// 点模板按钮：**就地展开一块预览**，列出会加什么、哪些已经有。
+    ///
+    /// 早先是弹确认框；用户反馈"点了像没反应"——弹窗会被别的窗口挡住、也可能
+    /// 因为命中判定失败而什么都看不到。就地展开是即时可见的，不依赖任何焦点。
+    /// </summary>
     private void OnApplyPackClick(object sender, RoutedEventArgs e)
     {
         if (_host == null || _suppress) return;
@@ -393,32 +402,57 @@ public partial class SettingsView : UserControl
         var pack = ScenarioPacks.Find(id);
         if (pack == null) return;
 
-        int layerId = _host.Settings.Layers.FirstOrDefault()?.Id ?? 1;
+        ShowPackPreview(pack);
+    }
 
-        /* 先给一份"会改动什么"的清单再动手：模板的语义是只补缺失，
-         * 所以同一个按钮在不同配置上的效果差别很大，必须先让用户看到。 */
+    private void ShowPackPreview(ScenarioPacks.Pack pack)
+    {
+        if (_host == null || PackPreviewPanel == null) return;
+
+        int layerId = _host.Settings.Layers.FirstOrDefault()?.Id ?? 1;
         var preview = ScenarioPacks.Describe(_host.Settings, pack, layerId);
+
+        _pendingPack = pack;
+
+        var body = new System.Text.StringBuilder();
+
         if (preview.Add.Count == 0)
         {
-            _host.Notify(Loc.F("「{0}」里的 {1} 项你都已经有了，没有可添加的内容", pack.Title, preview.Skip.Count));
-            return;
+            body.AppendLine(Loc.F("这个模板里的 {0} 项你都已经有了，没有可添加的内容。", preview.Skip.Count));
+            body.AppendLine();
+            body.AppendLine(Loc.T("它只是把现成的键位一次性写进配置，不会改动你已有的设置。"));
         }
-
-        string body = Loc.F("「{0}」将加入 {1} 项：", pack.Title, preview.Add.Count)
-                      + "\n\n" + string.Join("\n", preview.Add.Select(x => "· " + x));
-
-        if (preview.Skip.Count > 0)
-            body += "\n\n" + Loc.F("已存在、会跳过 {0} 项。", preview.Skip.Count);
-
-        body += "\n\n" + Loc.T("只添加缺失项，不会改动你已有的设置。");
-
-        if (!UI.Windows.AppDialog.Confirm(Window.GetWindow(this), body, Loc.T("应用场景模板"),
-                Windows.DialogKind.Info, okText: Loc.T("添加"), cancelText: Loc.T("取消")))
+        else
         {
-            return;
+            body.AppendLine(Loc.F("将加入 {0} 项：", preview.Add.Count));
+            foreach (string line in preview.Add) body.AppendLine("· " + line);
+
+            if (preview.Skip.Count > 0)
+            {
+                body.AppendLine();
+                body.AppendLine(Loc.F("已有、会跳过 {0} 项：", preview.Skip.Count));
+                foreach (string line in preview.Skip.Take(6)) body.AppendLine("· " + line);
+                if (preview.Skip.Count > 6) body.AppendLine("· …");
+            }
         }
 
-        var (added, skipped) = ScenarioPacks.Apply(_host.Settings, pack, layerId);
+        PackPreviewTitle.Text = Loc.F("场景模板：{0}", pack.Title);
+        PackPreviewText.Text = body.ToString().TrimEnd();
+        PackApplyButton.IsEnabled = preview.Add.Count > 0;
+        PackApplyButton.Content = preview.Add.Count > 0 ? Loc.F("添加这 {0} 项", preview.Add.Count) : Loc.T("没有可添加的内容");
+        PackPreviewPanel.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>确认添加：把预览里列出的内容真正写进配置。</summary>
+    private void OnPackApplyClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _pendingPack == null) return;
+
+        int layerId = _host.Settings.Layers.FirstOrDefault()?.Id ?? 1;
+        var (added, skipped) = ScenarioPacks.Apply(_host.Settings, _pendingPack, layerId);
+
+        _pendingPack = null;
+        if (PackPreviewPanel != null) PackPreviewPanel.Visibility = Visibility.Collapsed;
 
         Save();
         Refresh();
@@ -426,6 +460,32 @@ public partial class SettingsView : UserControl
         _host.Notify(added > 0
             ? Loc.F("已添加 {0} 项（跳过已存在的 {1} 项）", added, skipped)
             : Loc.F("没有新增内容：这 {0} 项都已存在", skipped));
+    }
+
+    /// <summary>收起预览，不做任何改动。</summary>
+    private void OnPackCancelClick(object sender, RoutedEventArgs e)
+    {
+        _pendingPack = null;
+        if (PackPreviewPanel != null) PackPreviewPanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>仅供渲染：收起预览。</summary>
+    internal void HidePackPreviewForRender() => OnPackCancelClick(this, new RoutedEventArgs());
+
+    /// <summary>仅供渲染：展开某个模板的预览并截图，确认这块界面真的能看见。</summary>
+    internal bool ShowPackPreviewForRender(string id)
+    {
+        var pack = ScenarioPacks.Find(id);
+        if (pack == null || _host == null) return false;
+
+        ShowPackPreview(pack);
+        UpdateLayout();
+
+        /* 预览块在页面中部，截图前先滚过去，否则拍到的是别的地方。 */
+        try { PackPreviewPanel.BringIntoView(); } catch { }
+        UpdateLayout();
+
+        return PackPreviewPanel.Visibility == Visibility.Visible;
     }
 
     // ---------------- 文本片段 ----------------
