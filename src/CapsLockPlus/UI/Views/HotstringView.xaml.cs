@@ -31,6 +31,12 @@ public partial class HotstringView : UserControl
     /// <summary>自动对齐前缀只做一次，避免迁移后再次触发。</summary>
     private bool _prefixAlignedOnce;
 
+    /// <summary>当前排序方式（0 触发词 / 1 最近使用 / 2 使用次数）。</summary>
+    private int _sortMode;
+
+    /// <summary>只显示从未使用过的别名。</summary>
+    private bool _unusedOnly;
+
     /* ---------------- 拖拽状态 ---------------- */
 
     /// <summary>按下左键时的位置（判断"是点击还是拖拽"）。</summary>
@@ -70,10 +76,22 @@ public partial class HotstringView : UserControl
         /// <summary>停用的别名整行压暗，一眼能看出来（不用点进去看勾选）。</summary>
         public double Opacity => Snippet.Enabled ? 1.0 : 0.45;
 
+        /// <summary>列表右侧的"用过几次"；从没用过就留空，避免一列全是 0。</summary>
+        public string UsageLabel => Snippet.UseCount > 0 ? Snippet.UseCount.ToString() : "";
+
         public override string ToString() => KeyLabel;
     }
 
-    public HotstringView() => InitializeComponent();
+    public HotstringView()
+    {
+        InitializeComponent();
+
+        /* 排序下拉：文字在构造时填，切语言重开页面即可（和其他页面一致）。 */
+        SortBox.Items.Add(Loc.T("按触发词"));
+        SortBox.Items.Add(Loc.T("按最近使用"));
+        SortBox.Items.Add(Loc.T("按使用次数"));
+        SortBox.SelectedIndex = 0;
+    }
 
     public void Initialize(AppHost host)
     {
@@ -162,7 +180,7 @@ public partial class HotstringView : UserControl
         string? group = CurrentGroup;
         var all = Entries.ToList();
 
-        var rows = all
+        var filtered = all
             .Where(x => group == null
                         || (group.Length == 0
                             ? string.IsNullOrWhiteSpace(x.Group)
@@ -171,7 +189,9 @@ public partial class HotstringView : UserControl
                         || (x.Trigger?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
                         || (x.Comment?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
                         || (x.Text?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false))
-            .OrderBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase)
+            .Where(x => !_unusedOnly || x.UseCount <= 0);
+
+        var rows = SortSnippets(filtered, _sortMode)
             .Select(x => new Row
             {
                 Snippet = x,
@@ -763,6 +783,30 @@ public partial class HotstringView : UserControl
         }
     }
 
+    /// <summary>排序：触发词（默认）/ 最近使用（新的在前）/ 使用次数（多的在前）。</summary>
+    private static IEnumerable<Snippet> SortSnippets(IEnumerable<Snippet> source, int mode) => mode switch
+    {
+        1 => source.OrderByDescending(x => x.LastUsed ?? DateTime.MinValue)
+                   .ThenBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase),
+        2 => source.OrderByDescending(x => x.UseCount)
+                   .ThenBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase),
+        _ => source.OrderBy(x => x.Trigger, StringComparer.OrdinalIgnoreCase),
+    };
+
+    private void OnSortChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        _sortMode = Math.Max(0, SortBox.SelectedIndex);
+        RefreshList();
+    }
+
+    private void OnUnusedOnlyChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+        _unusedOnly = UnusedOnlyBox.IsChecked == true;
+        RefreshList();
+    }
+
     private void OnFilterChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppress) return;
@@ -1088,16 +1132,23 @@ public partial class HotstringView : UserControl
         if (_host == null) return;
 
         var issues = SnippetAudit.Run(_host.Settings);
+
+        /* 没用过的条目不算"问题"，但对清理很有用 —— 附一句，并告诉用户去哪儿看。 */
+        int unused = _host.Settings.Global.Snippets.Count(x => x.UseCount <= 0);
+        string unusedHint = unused > 0
+            ? "\n\n" + Loc.F("另有 {0} 条别名还没用过，勾上右上角「从未使用」就能只看它们。", unused)
+            : "";
+
         if (issues.Count == 0)
         {
             UI.Windows.AppDialog.Success(Owner,
-                Loc.T("没有发现问题：触发词不重复、内容都不为空、分组也都登记过了。"),
+                Loc.T("没有发现问题：触发词不重复、内容都不为空、分组也都登记过了。") + unusedHint,
                 Loc.T("别名体检"));
             return;
         }
 
         UI.Windows.AppDialog.Warn(Owner,
-            Loc.F("发现 {0} 个问题：", issues.Count) + "\n\n" + SnippetAudit.Describe(issues),
+            Loc.F("发现 {0} 个问题：", issues.Count) + "\n\n" + SnippetAudit.Describe(issues) + unusedHint,
             Loc.T("别名体检"));
 
         /* 能自动修的那几类，问一句就修 —— 否则用户看完列表还得自己一条条改。 */

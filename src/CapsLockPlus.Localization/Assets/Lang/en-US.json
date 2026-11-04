@@ -2462,5 +2462,12 @@
   "自动修复": "Auto-fix",
   "修复": "Fix",
   "其中 {0} 个可以自动修（前缀换成当前的、分组补登记、重复的加序号）。要修吗？": "{0} of them can be fixed automatically (switch to the current prefix, register groups, number the duplicates). Fix them?",
-  "已修复 {0} 项：前缀 {1}、分组 {2}、触发词 {3}": "Fixed {0} issues: {1} prefix, {2} groups, {3} triggers"
+  "已修复 {0} 项：前缀 {1}、分组 {2}、触发词 {3}": "Fixed {0} issues: {1} prefix, {2} groups, {3} triggers",
+  "按触发词": "By trigger",
+  "按最近使用": "By last used",
+  "按使用次数": "By use count",
+  "从未使用": "Never used",
+  "只显示还没被展开过的别名": "Show only aliases that were never expanded",
+  "列表排序方式": "Sort order",
+  "另有 {0} 条别名还没用过，勾上右上角「从未使用」就能只看它们。": "{0} aliases have never been used — tick \"Never used\" at the top right to show only those."
 }

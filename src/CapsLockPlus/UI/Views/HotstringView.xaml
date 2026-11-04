@@ -205,9 +205,19 @@
                             <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}" KeyDown="OnFilterKeyDown"
                                      MinHeight="34" VerticalContentAlignment="Center"
                                      TextChanged="OnFilterChanged" />
-                            <TextBlock Grid.Column="2" x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
-                                       VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="64"
-                                       TextAlignment="Right" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="10,0,0,0">
+                                <CheckBox x:Name="UnusedOnlyBox" Content="{loc:T '从未使用'}"
+                                          VerticalAlignment="Center" Margin="0,0,10,0"
+                                          Click="OnUnusedOnlyChanged"
+                                          ToolTip="{loc:T '只显示还没被展开过的别名'}" />
+                                <ComboBox x:Name="SortBox" Style="{StaticResource ComboBox.Base}"
+                                          Width="96" VerticalAlignment="Center"
+                                          SelectionChanged="OnSortChanged"
+                                          ToolTip="{loc:T '列表排序方式'}" />
+                                <TextBlock x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="56"
+                                           TextAlignment="Right" />
+                            </StackPanel>
                         </Grid>
                     </Grid>
 
@@ -240,6 +250,7 @@
                                             <ColumnDefinition Width="120" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
 
                                         <Border Grid.Column="0" Width="20" Height="20" CornerRadius="5"
@@ -258,6 +269,9 @@
                                                    Foreground="{DynamicResource Brush.TextSecondary}" />
                                         <TextBlock Grid.Column="3" Text="{Binding GroupLabel}" VerticalAlignment="Center"
                                                    Style="{StaticResource Text.Tertiary}" />
+                                        <TextBlock Grid.Column="4" Text="{Binding UsageLabel}" VerticalAlignment="Center"
+                                                   Style="{StaticResource Text.Tertiary}" Margin="10,0,0,0"
+                                                   MinWidth="34" TextAlignment="Right" />
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

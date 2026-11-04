@@ -58,14 +58,12 @@ public sealed partial class HotkeyEngine : IDisposable
     public Func<int, bool, string?>? DeviceResolver { get; set; }
 
     /// <summary>当前按住的"源键 → 目标键"，用于成对松开（否则会粘键）。</summary>
-    private readonly Dictionary<int, int> _remappedDown = new();
 
     /* 改键账本 / 双击时间戳都会被**钩子线程**和**界面线程**同时碰
      * （暂停、挂起、钩子重装都会从界面线程调 ResetTriggerState）。
      * 字典没有线程安全保证，一边遍历一边增删会抛"集合已修改"，
      * 而抛出点在钩子回调里 —— 结果可能是某个目标键永远松不开。
      * 一把只在极短临界区内持有的锁，代价远小于这个风险。 */
-    private readonly object _remapGate = new();
 
     /// <summary>叠加层 id，由前台窗口监听写入（钩子线程读，必须 volatile）。</summary>
     private volatile int _appLayerId;
@@ -1078,99 +1076,9 @@ public sealed partial class HotkeyEngine : IDisposable
     ///    而且系统认为 CapsLock 一直按着（因为真实 up 被吞了）。
     ///    现在的做法从根上避免了这两个问题。
     /// </summary>
-    /// <summary>
-    /// 基础改键：命中则把源键换成目标键。返回 true 表示"这个事件已经被接管"。
-    ///
-    /// 为什么按 down/up 成对转发，而不是在 down 时发一次 Tap：
-    ///   · 按住不放时要能连发 —— 系统对物理键产生的重复 down 会被原样转发成
-    ///     目标键的重复 down，效果与真实按住一致；
-    ///   · 只发 Tap 的话，长按只会出一个字符。
-    /// 代价是要记"谁按下了"，否则抬起时找不到目标键，会粘住。
-    /// </summary>
-    private bool TryApplyRemap(AppSettings s, int vk, bool down)
-    {
-        var list = s.Global.BaseRemaps;
-        if (list == null || list.Count == 0)
-        {
-            _remapTable = null;
-            return false;
-        }
 
-        string stamp = KeyRemapMap.Stamp(list);
-        if (_remapTable == null || !string.Equals(stamp, _remapStamp, StringComparison.Ordinal))
-        {
-            _remapTable = KeyRemapMap.BuildTable(list);
-            _remapStamp = stamp;
-        }
 
-        /* 只有"配了设备专属规则"的键才去问设备：问设备最多要等十几毫秒
-         * （等 Raw Input 到达），摊到每个按键上打字会发涩。 */
-        string? device = null;
-        if (down && _remapTable.DeviceScopedKeys.Contains(vk))
-            device = DeviceResolver?.Invoke(vk, down);
 
-        /* 抬起**先看记账**，再查表。
-         *
-         * 顺序反了会卡键：设备专属规则在"抬起"这一刻没有设备标识（只有按下才解析），
-         * 查表会落空 → 直接 return false → 注入的目标键永远不松开。
-         * 表现是"按一下某键，之后那个目标键一直粘着"。
-         */
-        if (!down)
-        {
-            int held = 0;
-            bool found;
-            lock (_remapGate)
-            {
-                found = _remappedDown.Remove(vk, out held);
-            }
-            if (found)
-            {
-                int t = held;
-                _queue.Post(() => InputSender.KeyUp(t));
-                return true;
-            }
-
-            // 记账丢了（进程重启/状态复位）也要把目标键松开，宁可多一次无害的 up
-            if (_remapTable.TryGet(vk, null, out int orphan))
-            {
-                int t = orphan;
-                _queue.Post(() => InputSender.KeyUp(t));
-                return true;
-            }
-            return false;
-        }
-
-        if (!_remapTable.TryGet(vk, device, out int target)) return false;
-
-        lock (_remapGate) _remappedDown[vk] = target;
-        int pressed = target;
-        _queue.Post(() => InputSender.KeyDown(pressed));
-        return true;
-    }
-
-    /// <summary>
-    /// 松开所有"改键按下"的目标键。
-    /// 引擎被禁用 / 层状态复位时调用，避免目标键粘住（表现为某个键一直按着）。
-    /// </summary>
-    private void ReleaseRemappedKeys()
-    {
-        /* 先加锁取快照再发键：
-         * 这个方法会被界面线程（暂停 / 挂起）和钩子线程（触发键复位）同时调用，
-         * 而 `_remappedDown` 另一头正被 TryApplyRemap 增删。
-         * 直接遍历会抛"集合已修改"—— 那样后面几个键就松不开了。 */
-        int[] targets;
-        lock (_remapGate)
-        {
-            if (_remappedDown.Count == 0) return;
-            targets = _remappedDown.Values.ToArray();
-            _remappedDown.Clear();
-        }
-
-        foreach (int t in targets)
-        {
-            _queue.Post(() => InputSender.KeyUp(t));
-        }
-    }
 
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
