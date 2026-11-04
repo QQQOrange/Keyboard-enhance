@@ -2428,5 +2428,13 @@
   "层已经 30 秒没有任何按键活动，判定为抬起事件丢失，自动复位": "No key activity for 30 seconds — assuming the key-up was lost and resetting the layer.",
   "已把 {0} 条别名的旧前缀统一成「{1}」": "Unified the old prefix on {0} aliases to \"{1}\"",
   "⚠ 这个触发词和另一条别名重复，只有其中一条会生效": "⚠ This trigger duplicates another alias — only one of them will fire",
-  "把选中的别名放到某个分组里（也可以直接把别名拖到左侧分组上）": "Put the selected alias into a group (you can also drag it onto a group on the left)"
+  "把选中的别名放到某个分组里（也可以直接把别名拖到左侧分组上）": "Put the selected alias into a group (you can also drag it onto a group on the left)",
+  "移到分组 ({0})": "Move to group ({0})",
+  "删除 ({0})": "Delete ({0})",
+  "把这 {0} 条移到分组": "Move these {0} aliases to",
+  "已把 {0} 条别名移到「未分组」": "Moved {0} aliases to \"Ungrouped\"",
+  "已把 {0} 条别名移到「{1}」": "Moved {0} aliases to \"{1}\"",
+  "已删除 {0} 条别名": "Deleted {0} aliases",
+  "删除别名": "Delete aliases",
+  "删除选中的 {0} 条别名？\n\n删除后不可撤销。": "Delete the {0} selected aliases?\n\nThis cannot be undone."
 }

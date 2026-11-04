@@ -187,7 +187,7 @@
                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
                                        Foreground="{DynamicResource Brush.TextTertiary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}"
+                            <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}" KeyDown="OnFilterKeyDown"
                                      MinHeight="34" VerticalContentAlignment="Center"
                                      TextChanged="OnFilterChanged" />
                             <TextBlock Grid.Column="2" x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
@@ -202,7 +202,7 @@
                                    VerticalAlignment="Center" Visibility="Collapsed" TextWrapping="Wrap"
                                    MaxWidth="260" TextAlignment="Center" />
                         <ListBox x:Name="EntryList" Background="Transparent" BorderThickness="0"
-                                 Margin="0,0,0,4"
+                                 Margin="0,0,0,4" SelectionMode="Extended"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  SelectionChanged="OnSelectionChanged"
                                  ContextMenuOpening="OnEntryContextMenuOpening"

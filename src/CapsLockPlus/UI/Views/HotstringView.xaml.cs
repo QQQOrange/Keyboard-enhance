@@ -204,9 +204,14 @@ public partial class HotstringView : UserControl
 
     private void SyncEditorToSelection()
     {
+        int selected = EntryList.SelectedItems.Count;
+        MoveButton.IsEnabled = selected > 0;
+        DeleteButton.IsEnabled = selected > 0;
+        MoveButton.Content = selected > 1 ? Loc.F("移到分组 ({0})", selected) : Loc.T("移到分组");
+        DeleteButton.Content = selected > 1 ? Loc.F("删除 ({0})", selected) : Loc.T("删除");
+
         if (EntryList.SelectedItem is Row row)
         {
-            MoveButton.IsEnabled = true;
             if (!ReferenceEquals(row.Snippet, _editing)) LoadEditor(row.Snippet);
         }
         else
@@ -673,6 +678,17 @@ public partial class HotstringView : UserControl
             : Loc.F("已移到「{0}」", group));
     }
 
+    /// <summary>当前选中的别名（多选时是全部；没选中时退回编辑区那一条）。</summary>
+    private List<Snippet> SelectedSnippets()
+    {
+        var list = new List<Snippet>();
+        foreach (var item in EntryList.SelectedItems)
+            if (item is Row row) list.Add(row.Snippet);
+
+        if (list.Count == 0 && _editing != null) list.Add(_editing);
+        return list;
+    }
+
     // ---------------- 事件 ----------------
 
     private void OnOptionsChanged(object sender, RoutedEventArgs e)
@@ -722,6 +738,24 @@ public partial class HotstringView : UserControl
         if (_editing != null) LoadEditor(_editing);
     }
 
+    /// <summary>搜索框：Esc 清空（再按一次回到列表），Ctrl+F 全选关键词。</summary>
+    private void OnFilterKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            if (FilterBox.Text.Length > 0) FilterBox.Text = "";
+            else EntryList.Focus();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            FilterBox.SelectAll();
+            e.Handled = true;
+        }
+    }
+
     private void OnFilterChanged(object sender, TextChangedEventArgs e)
     {
         if (_host == null || _suppress) return;
@@ -741,6 +775,27 @@ public partial class HotstringView : UserControl
         if (_suppress) return;
         RefreshList();
         SyncEditorToSelection();
+    }
+
+    /// <summary>页面级快捷键：Ctrl+F 搜索；列表有焦点时 Ctrl+A 全选。</summary>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            FilterBox.Focus();
+            FilterBox.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control && EntryList.IsKeyboardFocusWithin)
+        {
+            EntryList.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
+        base.OnPreviewKeyDown(e);
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -826,7 +881,10 @@ public partial class HotstringView : UserControl
     /// </summary>
     private void OnMoveClick(object sender, RoutedEventArgs e)
     {
-        if (_host == null || EntryList.SelectedItem is not Row row) return;
+        if (_host == null) return;
+
+        var targets = SelectedSnippets();
+        if (targets.Count == 0) return;
 
         var menu = new ContextMenu
         {
@@ -834,16 +892,29 @@ public partial class HotstringView : UserControl
             Placement = System.Windows.Controls.Primitives.PlacementMode.Top,
         };
 
-        FillMoveMenu(menu, row.Snippet);
+        FillMoveMenu(menu, targets);
         menu.IsOpen = true;
     }
 
     /// <summary>把"移到分组"的菜单项填进给定菜单（右键与底部按钮共用）。</summary>
     private void FillMoveMenu(ContextMenu menu, Snippet snippet)
+        => FillMoveMenu(menu, new List<Snippet> { snippet });
+
+    /// <summary>把"移到分组"的菜单项填进给定菜单；支持一次移动多条。</summary>
+    private void FillMoveMenu(ContextMenu menu, List<Snippet> snippets)
     {
         menu.Items.Clear();
+        if (snippets.Count == 0) return;
 
-        var move = new MenuItem { Header = Loc.T("移到分组") };
+        bool allSameGroup = snippets
+            .Select(x => (x.Group ?? "").Trim())
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Count() == 1;
+        string current = allSameGroup ? (snippets[0].Group ?? "").Trim() : "\u0000";
+
+        var move = new MenuItem { Header = snippets.Count > 1
+            ? Loc.F("把这 {0} 条移到分组", snippets.Count)
+            : Loc.T("移到分组") };
 
         foreach (string g in AllGroups())
         {
@@ -852,10 +923,9 @@ public partial class HotstringView : UserControl
             {
                 Header = target,
                 IsCheckable = true,
-                IsChecked = string.Equals((snippet.Group ?? "").Trim(), target,
-                    StringComparison.CurrentCultureIgnoreCase),
+                IsChecked = string.Equals(current, target, StringComparison.CurrentCultureIgnoreCase),
             };
-            mi.Click += (_, _) => MoveTo(snippet, target);
+            mi.Click += (_, _) => MoveMany(snippets, target);
             move.Items.Add(mi);
         }
 
@@ -865,20 +935,41 @@ public partial class HotstringView : UserControl
         {
             Header = Loc.T("未分组"),
             IsCheckable = true,
-            IsChecked = string.IsNullOrWhiteSpace(snippet.Group),
+            IsChecked = current.Length == 0,
         };
-        ungrouped.Click += (_, _) => MoveTo(snippet, "");
+        ungrouped.Click += (_, _) => MoveMany(snippets, "");
         move.Items.Add(ungrouped);
 
         var create = new MenuItem { Header = Loc.T("新建分组…") };
         create.Click += (_, _) =>
         {
             string? name = AskNewGroup();
-            if (name != null) MoveTo(snippet, name);
+            if (name != null) MoveMany(snippets, name);
         };
         move.Items.Add(create);
 
         menu.Items.Add(move);
+    }
+
+    /// <summary>把一批别名移到同一个分组。</summary>
+    private void MoveMany(List<Snippet> snippets, string group)
+    {
+        if (_host == null || snippets.Count == 0) return;
+
+        if (snippets.Count == 1)
+        {
+            MoveTo(snippets[0], group);
+            return;
+        }
+
+        foreach (var snippet in snippets) SnippetGroupOps.Move(_host.Settings, snippet, group);
+
+        _host.SaveSettings();
+        Refresh();
+
+        _host.Notify(string.IsNullOrWhiteSpace(group)
+            ? Loc.F("已把 {0} 条别名移到「未分组」", snippets.Count)
+            : Loc.F("已把 {0} 条别名移到「{1}」", snippets.Count, group));
     }
 
 
@@ -1022,8 +1113,30 @@ public partial class HotstringView : UserControl
 
     private void OnDeleteClick(object sender, RoutedEventArgs e)
     {
-        if (_host == null || _editing == null) return;
-        DeleteSnippet(_editing);
+        if (_host == null) return;
+
+        var targets = SelectedSnippets();
+        if (targets.Count == 0) return;
+
+        if (targets.Count == 1)
+        {
+            DeleteSnippet(targets[0]);
+            return;
+        }
+
+        /* 多条一起删：必须确认。别名是用户攒出来的东西，误删很难恢复。 */
+        if (!UI.Windows.AppDialog.Confirm(Owner,
+                Loc.F("删除选中的 {0} 条别名？\n\n删除后不可撤销。", targets.Count),
+                Loc.T("删除别名"), Windows.DialogKind.Warn, okText: Loc.T("删除")))
+        {
+            return;
+        }
+
+        foreach (var snippet in targets) Entries.Remove(snippet);
+        _editing = null;
+        _host.SaveSettings();
+        Refresh();
+        _host.Notify(Loc.F("已删除 {0} 条别名", targets.Count));
     }
 
     private void DeleteSnippet(Snippet snippet)
