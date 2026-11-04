@@ -261,6 +261,7 @@ public sealed partial class HotkeyEngine : IDisposable
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
         _lastTriggerDownTick = 0;
         _lastKeyActivity = DateTime.Now;
+        LastKeyActivityMs = Environment.TickCount64;
         if (!string.IsNullOrEmpty(_subLayerKeyDown))
         {
             _subLayerKeyDown = "";
@@ -380,6 +381,20 @@ public sealed partial class HotkeyEngine : IDisposable
     /// 注入的按键不抛（否则测试页会被自己的动作刷屏）。
     /// </summary>
     public event Action? SnippetUsed;
+
+    /// <summary>
+    /// 按键拦截器（可选）。返回 true = "这个键我处理了，别再往下走"。
+    ///
+    /// 用途：Qbar 面板没拿到键盘焦点时也要能用 Esc 关掉 —— 面板显示期间挂上，
+    /// 隐藏时摘掉。回调在钩子线程，只能做判断 + 派发，不能碰界面。
+    /// </summary>
+    public Func<int, bool>? KeyInterceptor { get; set; }
+
+    /// <summary>最近一次收到物理按键的时刻（Environment.TickCount64 毫秒）。</summary>
+    public long LastKeyActivityMs { get; private set; } = Environment.TickCount64;
+
+    /// <summary>引擎认为当前按住的键数（含修饰键）。</summary>
+    public int PhysicallyDownCount => _physDown.Count;
 
     public event Action<int, bool, int>? KeySeen;
 
@@ -1115,6 +1130,14 @@ public sealed partial class HotkeyEngine : IDisposable
         if (!injected && KeySeen != null)
         {
             try { KeySeen(vk, down, ActiveLayer); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+        }
+
+        /* 外部拦截器（Qbar 的 Esc 等）：在物理状态记账、上报之后调用，
+         * 这样界面的"按键测试"仍然看得到这个键。 */
+        if (KeyInterceptor is { } interceptor)
+        {
+            try { if (interceptor(vk)) return true; }
+            catch (Exception ex) { CoreLog.Swallow(ex, "按键拦截器"); }
         }
 
         // 录制中：照常放行（不影响用户正常操作），只记录事件

@@ -316,6 +316,45 @@ public sealed class AppHost : IDisposable
         Engine.Start(installHook: !hookHostReady);
         if (Settings.Global.ShowTrayIcon) CreateTray();
 
+        /* 启动善后：上一次如果被强杀/崩溃，系统里可能还留着"按下去没抬起来"的
+         * 修饰键或鼠标键（表现是 Win 粘住、点击变成多选、鼠标像一直按着）。
+         * 等钩子系统就绪后再补发抬起 —— 太早会和我们自己的注入撞在一起。 */
+        /* 渲染/自检/诊断这些无人值守的模式不启用巡检：
+         * 它们会在没有真实按键的情况下长时间空转，补发抬起反而会
+         * 和截图用的布局泵互相卡住（实测 --render 会卡在 keys 页）。 */
+        bool headless = Environment.GetCommandLineArgs().Any(a => a is
+            "--render" or "--render-diag" or "--selftest" or "--diag" or "--osd" or "--hooktest");
+
+        var healTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        healTimer.Tick += (_, _) =>
+        {
+            healTimer.Stop();
+            try
+            {
+                string held = Core.Input.InputSafety.DescribeHeld();
+                Core.Input.InputSafety.ReleaseAll();
+                if (held.Length > 0) CoreLog.Warn($"启动善后：补发抬起 {held}");
+            }
+            catch (Exception ex) { CoreLog.Swallow(ex, "启动善后"); }
+        };
+        if (!headless) healTimer.Start();
+
+        /* 粘键巡检：20 秒没有任何按键、但系统仍认为修饰键/鼠标键按着 → 补发抬起。 */
+        var stuckWatch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        stuckWatch.Tick += (_, _) =>
+        {
+            long last = Engine.LastKeyActivityMs;
+            bool held = Engine.PhysicallyDownCount > 0;
+
+            /* 放到后台线程：补发抬起要进 user32，绝不能占着界面线程。 */
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                try { Core.Input.InputSafety.HealIfStuck(last, held, out _); }
+                catch (Exception ex) { CoreLog.Swallow(ex, "粘键巡检"); }
+            });
+        };
+        if (!headless) stuckWatch.Start();
+
         /* 上次异常退出：等托盘/OSD 就绪后再提示一句。
          * 不放进启动关键路径（通知失败也不影响功能），也只在真的异常时出现。 */
         /* 启动 60 秒后回收一次工作集：这时启动期的临时对象都已释放，
@@ -1109,6 +1148,11 @@ public sealed class AppHost : IDisposable
     {
         if (Engine.Enabled == enabled) return;
         Engine.Enabled = enabled;
+
+        /* 暂停前把可能"按着没抬起来"的键补一次抬起：
+         * 暂停后引擎不再管按键，粘住就没人修了。 */
+        if (!enabled) Core.Input.InputSafety.ReleaseAll();
+
         _tray?.SetEnabled(enabled);
         EnabledChanged?.Invoke(enabled);
         Notify(enabled ? AppInfo.ShortName + " 已启用" : AppInfo.ShortName + " 已暂停");

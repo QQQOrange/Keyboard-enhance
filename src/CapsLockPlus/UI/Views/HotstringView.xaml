@@ -206,6 +206,10 @@
                                      MinHeight="34" VerticalContentAlignment="Center"
                                      TextChanged="OnFilterChanged" />
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="10,0,0,0">
+                                <Button x:Name="TextEyeButton" Style="{StaticResource Button.Icon}"
+                                        Content="&#xE7B3;" Click="OnToggleTextClick" Margin="0,0,6,0"
+                                        AutomationProperties.Name="{loc:T '显示或隐藏替换内容'}"
+                                        ToolTip="{loc:T '显示或隐藏列表里的替换内容（隐藏后只显示备注）'}" />
                                 <CheckBox x:Name="UnusedOnlyBox" Content="{loc:T '从未使用'}"
                                           VerticalAlignment="Center" Margin="0,0,10,0"
                                           Click="OnUnusedOnlyChanged"
@@ -327,9 +331,26 @@
 
                     <TextBlock Text="{loc:T '只在这些程序里展开（可选）'}" Style="{StaticResource Text.Secondary}"
                                Margin="0,12,0,6" />
-                    <TextBox x:Name="AppsBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                             VerticalContentAlignment="Center" TextChanged="OnEditorChanged"
-                             ToolTip="{loc:T '进程名，逗号分隔，例如 code.exe, notepad.exe；留空 = 所有程序'}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox Grid.Column="0" x:Name="AppsBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                                 VerticalContentAlignment="Center" TextChanged="OnEditorChanged"
+                                 ToolTip="{loc:T '进程名，逗号分隔，例如 code.exe, notepad.exe；留空 = 所有程序'}" />
+
+                        <Button Grid.Column="1" Style="{StaticResource Button.Ghost}"
+                                Content="{loc:T '选择程序…'}" Margin="6,0,0,0" Click="OnPickAppFile"
+                                ToolTip="{loc:T '从文件管理器里挑一个 exe'}" />
+
+                        <Button Grid.Column="2" Style="{StaticResource Button.Icon}" Content="&#xE7C9;"
+                                Click="OnPickAppWindow" Margin="2,0,0,0"
+                                AutomationProperties.Name="{loc:T '点窗口选取程序'}"
+                                ToolTip="{loc:T '点一下，然后在目标程序窗口上点一下就能选中它'}" />
+                    </Grid>
 
                     <TextBlock Text="{loc:T '分组'}" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
                     <Grid>

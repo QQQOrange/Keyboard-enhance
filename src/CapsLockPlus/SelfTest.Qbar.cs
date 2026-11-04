@@ -1126,10 +1126,19 @@ public static partial class SelfTest
             Check($"引擎 {key} 的动作在「Qbar 搜索」分类", item.Category == "Qbar 搜索", item.Category);
         }
 
-        // 不要塞成 300 个（否则功能下拉没法用）
+        /* 「Qbar 搜索」保留常用引擎的快捷动作（数量受控），
+         * 其余引擎走「Qbar 快速启动」的参数 —— 那个动作填什么关键字就用什么引擎，
+         * 所以"面板里所有引擎"在按键映射里都能用。 */
         int engineActions = cat.Items.Count(i => i.Id.StartsWith("qbar:"));
-        Check("引擎动作数量受控（不撑爆下拉）", engineActions <= 30, engineActions.ToString());
-        Check("引擎动作数量足够用（>= 8）", engineActions >= 8, engineActions.ToString());
+        Check("引擎快捷动作数量受控（不撑爆布局）", engineActions <= 30, engineActions.ToString());
+        Check("引擎快捷动作够用（>= 8）", engineActions >= 8, engineActions.ToString());
+
+        var qbarAction = cat.Items.First(i => i.Id == "qbar");
+        Check("Qbar 动作接受引擎参数", qbarAction.NeedsArg, "");
+
+        requested = "(未请求)";
+        cat.Invoke("qbar", "bili");
+        Check("Qbar 动作把参数当引擎传下去", requested == "bili", requested);
 
         // default 引擎不该成为动作
         Check("default 引擎没有动作", !cat.Items.Any(i => i.Id == "qbar:default"));

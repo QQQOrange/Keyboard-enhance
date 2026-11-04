@@ -167,6 +167,14 @@ public sealed class HotstringOptions
     /// <summary>列表里优先显示备注（没备注才显示触发词）。</summary>
     public bool ShowNoteFirst { get; set; } = true;
 
+    /// <summary>
+    /// 列表里是否显示展开后的内容。
+    ///
+    /// 关掉后只显示备注 —— 别名可能是整段正文/密钥/口令，
+    /// 摊在列表里一览无余并不合适（旁边有人、或者正在录屏时）。
+    /// </summary>
+    public bool ShowTextInList { get; set; } = true;
+
     /// <summary>实际生效的前缀字符（考虑全角设置）。</summary>
     public string EffectivePrefix => FullWidth ? ToFullWidthOrSelf(Prefix) : (Prefix ?? "");
 

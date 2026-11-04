@@ -1411,6 +1411,36 @@ public static partial class SelfTest
             Check("前缀检测：新旧混着时不猜", SnippetPrefixOps.DetectStale(s.Global.Snippets, "=", out _) == null, "");
         }
 
+        /* ---- 按键拦截器 + 粘键善后 ---- */
+        {
+            var s = DefaultSettings.Create();
+            foreach (var t in s.Triggers) t.Enabled = false;
+
+            var e = new HotkeyEngine(new ActionQueue(), () => s, (_, _) => true);
+
+            int seen = 0;
+            e.KeyInterceptor = vk => { if (vk != 0x1B) return false; seen++; return true; };
+
+            /* 按 Esc：被拦截器吃掉，回调各触发一次 down/up */
+            e.SimulateKey(0x1B, true);
+            e.SimulateKey(0x1B, false);
+            Check("拦截器：Esc 被拦下", seen == 2, seen.ToString());
+
+            /* 别的键不受影响 */
+            e.SimulateKey('A', true);
+            e.SimulateKey('A', false);
+            Check("拦截器：其它键不受影响", seen == 2, seen.ToString());
+
+            e.KeyInterceptor = null;
+            Check("拦截器：可以摘掉", e.KeyInterceptor == null, "");
+
+            Check("粘键善后：描述不抛异常", Core.Input.InputSafety.DescribeHeld() is { } d, "");
+            Check("粘键善后：刚有按键时不乱动",
+                !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64, false, out _), "");
+            Check("粘键善后：空闲但没按住时不乱动",
+                !Core.Input.InputSafety.HealIfStuck(Environment.TickCount64 - 60_000, false, out _), "");
+        }
+
         /* ---- 全局搜索 ---- */
         {
             var s = DefaultSettings.Create();

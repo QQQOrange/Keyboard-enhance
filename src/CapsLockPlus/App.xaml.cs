@@ -737,6 +737,10 @@ public partial class App : Application
         }
         catch (Exception ex) { CoreLog.Warn("退出同步异常：" + ex.Message); }
 
+        /* 退出前补发所有抬起：绝不给系统留下"按着的键/鼠标键"。
+         * 放在 Dispose 之前 —— Dispose 会把钩子和引擎一起拆掉。 */
+        try { CapsLockPlus.Core.Input.InputSafety.ReleaseAll(); } catch { }
+
         try { Host?.Dispose(); } catch { }   /* 预期内：清理动作，失败无副作用 */
 
         /* 收尾：把防抖中的设置落盘、把日志缓冲刷出去。

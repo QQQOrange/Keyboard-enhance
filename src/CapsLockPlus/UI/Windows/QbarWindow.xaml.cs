@@ -480,6 +480,34 @@ public partial class QbarWindow : Window
     /// <summary>设置页改了外观后调用，强制下次打开重建画笔。</summary>
     public void InvalidateStyle() => _styleStamp = "";
 
+    /// <summary>
+    /// 面板显示期间的 Esc 拦截：面板经常抢不到键盘焦点（前台锁定），
+    /// 这时 Esc 会打进原来那个程序，面板纹丝不动 —— 用户看到的就是"Esc 关不掉"。
+    /// 挂在引擎上就与焦点无关了。
+    /// </summary>
+    private Func<int, bool>? _escInterceptor;
+
+    private void AttachEscInterceptor()
+    {
+        if (_host == null) return;
+
+        _escInterceptor ??= vk =>
+        {
+            if (vk != 0x1B) return false;
+            Dispatcher.BeginInvoke(new Action(() => HideQbar()));
+            return true;
+        };
+
+        _host.Engine.KeyInterceptor = _escInterceptor;
+    }
+
+    private void DetachEscInterceptor()
+    {
+        if (_host == null || _escInterceptor == null) return;
+        if (ReferenceEquals(_host.Engine.KeyInterceptor, _escInterceptor))
+            _host.Engine.KeyInterceptor = null;
+    }
+
     public void Open(string? prefill = null)
     {
         if (_closing) ReopenFromFade();
@@ -514,6 +542,7 @@ public partial class QbarWindow : Window
          * 面板显示在最上面，但打字仍然打在原来的程序里。
          * 这就是用户说的"换出 Qbar 之后打的字不落在面板里"。 */
         _openedAt = DateTime.Now;
+        AttachEscInterceptor();
         StartOutsideWatch();
         BeginForceFocus();
 
@@ -608,6 +637,7 @@ public partial class QbarWindow : Window
     public void HideQbar()
     {
         if (!IsVisible || _closing) return;
+        DetachEscInterceptor();
         StopFocusTimer();
         StopOutsideWatch();
         _closing = true;

@@ -2487,5 +2487,19 @@
   "复制触发词": "Copy trigger",
   "触发词已复制": "Trigger copied",
   "这条别名的内容为空": "This alias has no text",
-  "全局搜索（Ctrl+K）：页面、别名、触发键、按键绑定": "Global search (Ctrl+K): pages, aliases, trigger keys, bindings"
+  "全局搜索（Ctrl+K）：页面、别名、触发键、按键绑定": "Global search (Ctrl+K): pages, aliases, trigger keys, bindings",
+  "显示或隐藏替换内容": "Show or hide alias text",
+  "显示或隐藏列表里的替换内容（隐藏后只显示备注）": "Show or hide alias text in the list (when hidden only the note is shown)",
+  "正在显示替换内容，点一下隐藏": "Alias text is visible — click to hide",
+  "已隐藏替换内容，点一下显示": "Alias text is hidden — click to show",
+  "从文件管理器里挑一个 exe": "Pick an exe from the file manager",
+  "点窗口选取程序": "Pick an app by clicking its window",
+  "点一下，然后在目标程序窗口上点一下就能选中它": "Click, then click the target app's window to select it",
+  "选择要限定的程序": "Choose the apps to limit to",
+  "所有文件": "All files",
+  "没认出这个窗口属于哪个程序": "Could not tell which app this window belongs to",
+  "拾取失败：": "Pick failed: ",
+  "已加入限定程序": "Added to the app list",
+  "打开 Qbar。参数可填搜索引擎关键字（bd / bili / gh…），留空则用上次的引擎": "Open Qbar. The argument can be a search-engine keyword (bd / bili / gh…); leave empty to reuse the last engine",
+  "引擎关键字，可留空，如 bili": "Engine keyword, optional, e.g. bili"
 }

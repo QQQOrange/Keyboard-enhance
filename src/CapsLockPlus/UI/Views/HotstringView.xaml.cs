@@ -37,6 +37,9 @@ public partial class HotstringView : UserControl
     /// <summary>只显示从未使用过的别名。</summary>
     private bool _unusedOnly;
 
+    /// <summary>列表里是否显示展开后的内容（眼睛按钮控制）。</summary>
+    private bool _showTextInList = true;
+
     /* ---------------- 拖拽状态 ---------------- */
 
     /// <summary>按下左键时的位置（判断"是点击还是拖拽"）。</summary>
@@ -110,6 +113,8 @@ public partial class HotstringView : UserControl
             SpaceBox.IsChecked = opt.ExpandOnSpace;
             SwallowBox.IsChecked = opt.SwallowSpace;
             NoteFirstBox.IsChecked = opt.ShowNoteFirst;
+            _showTextInList = opt.ShowTextInList;
+            UpdateEyeGlyph();
         }
         finally { _suppress = false; }
 
@@ -203,7 +208,7 @@ public partial class HotstringView : UserControl
                 KeyLabel = SnippetPrefixOps.Strip(x.Trigger, opt.EffectivePrefix),
                 Initial = InitialOf(x.Trigger, opt.EffectivePrefix),
                 GroupLabel = string.IsNullOrWhiteSpace(x.Group) ? "" : x.Group!.Trim(),
-                Preview = Shorten(opt.ShowNoteFirst && !string.IsNullOrWhiteSpace(x.Comment) ? x.Comment : x.Text, 56),
+                Preview = BuildPreview(x, opt, _showTextInList),
             })
             .ToList();
 
@@ -1145,6 +1150,115 @@ public partial class HotstringView : UserControl
             : Loc.F("已把 {0} 条别名移到「{1}」", snippets.Count, group));
     }
 
+
+    /// <summary>
+    /// 列表里的那一行说明文字。
+    ///
+    /// 三种组合：
+    ///   · 显示内容 + 优先备注 → 有备注显示备注，否则显示内容；
+    ///   · 显示内容 + 不优先备注 → 显示内容，没内容才显示备注；
+    ///   · 隐藏内容 → 只显示备注（没备注就空着，绝不把正文摊出来）。
+    /// </summary>
+    private static string BuildPreview(Snippet snippet, HotstringOptions opt, bool showText)
+    {
+        string comment = (snippet.Comment ?? "").Trim();
+        string text = (snippet.Text ?? "").Replace("\r", "").Replace("\n", " ");
+
+        if (!showText) return Shorten(comment, 56);
+
+        if (opt.ShowNoteFirst && comment.Length > 0) return Shorten(comment, 56);
+        if (text.Length > 0) return Shorten(text, 56);
+        return Shorten(comment, 56);
+    }
+
+    /// <summary>眼睛按钮：切换列表里是否显示替换内容。</summary>
+    private void OnToggleTextClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        _showTextInList = !_showTextInList;
+        _host.Settings.Hotstring.ShowTextInList = _showTextInList;
+        _host.SaveSettings();
+
+        UpdateEyeGlyph();
+        RefreshList();
+    }
+
+    /// <summary>眼睛图标随状态变淡，并且换提示语 —— 不用猜现在是什么状态。</summary>
+    private void UpdateEyeGlyph()
+    {
+        TextEyeButton.Opacity = _showTextInList ? 1.0 : 0.45;
+        TextEyeButton.ToolTip = _showTextInList
+            ? Loc.T("正在显示替换内容，点一下隐藏")
+            : Loc.T("已隐藏替换内容，点一下显示");
+    }
+
+    /* ---------------- 只在指定程序里展开：两种选择方式 ---------------- */
+
+    /// <summary>方式一：从文件管理器里挑 exe（可多选）。</summary>
+    private void OnPickAppFile(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = Loc.T("选择要限定的程序"),
+            Filter = Loc.T("程序") + " (*.exe)|*.exe|" + Loc.T("所有文件") + " (*.*)|*.*",
+            Multiselect = true,
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
+
+        /* 只取文件名：进程名匹配用的是 exe 名字，不是完整路径。 */
+        AppendApps(dialog.FileNames.Select(System.IO.Path.GetFileName).Where(n => !string.IsNullOrEmpty(n))!);
+    }
+
+    /// <summary>方式二：十字拾取 —— 在那个程序的窗口上点一下。</summary>
+    private void OnPickAppWindow(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new Windows.WindowPickerWindow { Owner = Window.GetWindow(this) };
+            picker.ShowDialog();
+
+            if (picker.PickedWindow == IntPtr.Zero) return;
+
+            var info = Core.Windows.WindowService.Describe(picker.PickedWindow);
+            string exe = (info?.ExeName ?? "").Trim();
+            if (exe.Length == 0)
+            {
+                _host?.Notify(Loc.T("没认出这个窗口属于哪个程序"));
+                return;
+            }
+
+            AppendApps(new[] { exe });
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Error("十字拾取程序失败", ex);
+            _host?.Notify(Loc.T("拾取失败：") + ex.Message);
+        }
+    }
+
+    /// <summary>把程序名追加进输入框（去重、统一用逗号分隔）。</summary>
+    private void AppendApps(IEnumerable<string> names)
+    {
+        var list = (AppsBox.Text ?? "")
+            .Split(new[] { ',', '，', ';', '；', '、' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .ToList();
+
+        foreach (string name in names)
+        {
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) continue;
+            if (list.Any(x => string.Equals(x, n, StringComparison.OrdinalIgnoreCase))) continue;
+            list.Add(n);
+        }
+
+        AppsBox.Text = string.Join(", ", list);
+        _host?.Notify(Loc.T("已加入限定程序"));
+    }
 
     /// <summary>把文本放进剪贴板（失败给提示，不抛）。</summary>
     private void CopyToClipboard(string? text, string doneMessage)

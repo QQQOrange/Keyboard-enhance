@@ -217,7 +217,18 @@ public sealed class ActionCatalog
         c.Add("clipboardHistory", "剪贴板", "剪贴板历史", "查看并粘贴最近的复制内容", _ => { ctx.RequestOpenClipboardHistory(); return true; });
 
         // ---------------- 面板 / 工具 ----------------
-        c.Add("qbar", "面板", "Qbar 快速启动", "打开 Qbar：搜索、启动程序、打开网址、计算", _ => { ctx.RequestQbar(); return true; }, shortTitle: "Qbar");
+        /* Qbar：参数填引擎关键字（如 bili / gh）就默认用那个引擎搜索，
+         * 留空 = 用上次的引擎。这样"面板里所有引擎"在按键映射里都能用，
+         * 又不用为每个引擎注册一个动作（那样动作会逼近 600 条，键盘页布局扛不住）。 */
+        c.Add("qbar", "面板", "Qbar 快速启动",
+            "打开 Qbar。参数可填搜索引擎关键字（bd / bili / gh…），留空则用上次的引擎",
+            a =>
+            {
+                string? key = string.IsNullOrWhiteSpace(a) ? null : a.Trim();
+                ctx.RequestQbar(key);
+                return true;
+            },
+            needsArg: true, argHint: "引擎关键字，可留空，如 bili", shortTitle: "Qbar");
 
         // ---- 直接用指定搜索引擎开 Qbar ----
         //
@@ -225,8 +236,9 @@ public sealed class ActionCatalog
         // 绑到任意层的任意按键。按下后弹出的 Qbar **默认就用这个引擎搜索**，
         // 省得每次再在面板里选一次。
         //
-        // ⚠ 只注册**常用引擎**而不是全部 300 个：塞进功能下拉会把列表撑爆，
-        // 正常键盘也按不出 300 个组合键。别的引擎仍可在面板里手动输入关键字用。
+        /* 只注册常用引擎：全部 300 个会让动作总数逼近 600，
+         * 键盘页在这个量级上布局会卡死（渲染实测：medium 档直接挂住）。
+         * 想要任意引擎用「Qbar 搜索（指定引擎）」这个动作，参数里填关键字即可。 */
         string[] quickEngines =
         {
             "bd", "zh", "bili", "go", "bi", "tb", "jd", "gh",
