@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 using CapsLockPlus.Core;
@@ -23,6 +23,7 @@ public sealed class TrayIcon : IDisposable
     private readonly ToolStripMenuItem _qbarItem;
     private readonly ToolStripMenuItem _mathItem;
     private readonly ToolStripMenuItem _bindingsItem;
+    private readonly ToolStripMenuItem _aliasesItem;
     private readonly ToolStripMenuItem _helpItem;
     private readonly ToolStripMenuItem _reloadItem;
     private readonly ToolStripMenuItem _exitItem;
@@ -57,6 +58,7 @@ public sealed class TrayIcon : IDisposable
         _qbarItem = new ToolStripMenuItem("", null, (_, _) => host.ShowQbar());
         _mathItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMathBoard());
         _bindingsItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMainWindow("keys"));
+        _aliasesItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMainWindow("hotstrings"));
         _helpItem = new ToolStripMenuItem("", null, (_, _) => host.ShowMainWindow("help"));
         _reloadItem = new ToolStripMenuItem("", null, (_, _) => host.ReloadAll());
         _exitItem = new ToolStripMenuItem("", null, (_, _) => ExitApp());
@@ -78,6 +80,7 @@ public sealed class TrayIcon : IDisposable
             _qbarItem,
             _mathItem,
             _bindingsItem,
+            _aliasesItem,
             _helpItem,
             new ToolStripSeparator(),
             _reloadItem,
@@ -141,6 +144,7 @@ public sealed class TrayIcon : IDisposable
         _qbarItem.Text = Loc.F("打开 Qbar  (Caps+{0})", qKey);
         _mathItem.Text = Loc.T("计算器  (Caps+F2)");
         _bindingsItem.Text = Loc.T("窗口绑定（按键映射页）");
+        _aliasesItem.Text = Loc.T("窗口绑定（按键映射页）");
         _helpItem.Text = Loc.T("使用帮助");
         _reloadItem.Text = Loc.T("重新加载配置  (Caps+F5)");
         _exitItem.Text = Loc.T("退出");

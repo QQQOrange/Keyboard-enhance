@@ -206,10 +206,12 @@ public partial class HotstringView : UserControl
     {
         if (EntryList.SelectedItem is Row row)
         {
+            MoveButton.IsEnabled = true;
             if (!ReferenceEquals(row.Snippet, _editing)) LoadEditor(row.Snippet);
         }
         else
         {
+            MoveButton.IsEnabled = false;
             _editing = null;
             ShowEditor(false);
         }
@@ -816,6 +818,70 @@ public partial class HotstringView : UserControl
         }
     }
 
+    /// <summary>
+    /// 底部的「移到分组」按钮。
+    ///
+    /// 右键菜单在部分环境里不好按出来（用户反馈过），所以给一个**显式按钮**，
+    /// 走的是同一份分组列表，不会两处逻辑各写一遍。
+    /// </summary>
+    private void OnMoveClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || EntryList.SelectedItem is not Row row) return;
+
+        var menu = new ContextMenu
+        {
+            PlacementTarget = MoveButton,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Top,
+        };
+
+        FillMoveMenu(menu, row.Snippet);
+        menu.IsOpen = true;
+    }
+
+    /// <summary>把"移到分组"的菜单项填进给定菜单（右键与底部按钮共用）。</summary>
+    private void FillMoveMenu(ContextMenu menu, Snippet snippet)
+    {
+        menu.Items.Clear();
+
+        var move = new MenuItem { Header = Loc.T("移到分组") };
+
+        foreach (string g in AllGroups())
+        {
+            string target = g;
+            var mi = new MenuItem
+            {
+                Header = target,
+                IsCheckable = true,
+                IsChecked = string.Equals((snippet.Group ?? "").Trim(), target,
+                    StringComparison.CurrentCultureIgnoreCase),
+            };
+            mi.Click += (_, _) => MoveTo(snippet, target);
+            move.Items.Add(mi);
+        }
+
+        if (move.Items.Count > 0) move.Items.Add(new Separator());
+
+        var ungrouped = new MenuItem
+        {
+            Header = Loc.T("未分组"),
+            IsCheckable = true,
+            IsChecked = string.IsNullOrWhiteSpace(snippet.Group),
+        };
+        ungrouped.Click += (_, _) => MoveTo(snippet, "");
+        move.Items.Add(ungrouped);
+
+        var create = new MenuItem { Header = Loc.T("新建分组…") };
+        create.Click += (_, _) =>
+        {
+            string? name = AskNewGroup();
+            if (name != null) MoveTo(snippet, name);
+        };
+        move.Items.Add(create);
+
+        menu.Items.Add(move);
+    }
+
+
     /// <summary>复制一条别名（触发词自动加序号，避免撞车）。</summary>
     private void DuplicateSnippet(Snippet source)
     {
@@ -993,43 +1059,7 @@ public partial class HotstringView : UserControl
 
         EntryList.SelectedItem = row;
 
-        menu.Items.Clear();
-
-        var move = new MenuItem { Header = Loc.T("移到分组") };
-        foreach (string g in AllGroups())
-        {
-            string target = g;
-            var mi = new MenuItem
-            {
-                Header = target,
-                IsCheckable = true,
-                IsChecked = string.Equals(row.Snippet.Group?.Trim(), target,
-                    StringComparison.CurrentCultureIgnoreCase),
-            };
-            mi.Click += (_, _) => MoveTo(row.Snippet, target);
-            move.Items.Add(mi);
-        }
-
-        if (move.Items.Count > 0) move.Items.Add(new Separator());
-
-        var ungrouped = new MenuItem
-        {
-            Header = Loc.T("未分组"),
-            IsCheckable = true,
-            IsChecked = string.IsNullOrWhiteSpace(row.Snippet.Group),
-        };
-        ungrouped.Click += (_, _) => MoveTo(row.Snippet, "");
-        move.Items.Add(ungrouped);
-
-        var create = new MenuItem { Header = Loc.T("新建分组…") };
-        create.Click += (_, _) =>
-        {
-            string? name = AskNewGroup();
-            if (name != null) MoveTo(row.Snippet, name);
-        };
-        move.Items.Add(create);
-
-        menu.Items.Add(move);
+        FillMoveMenu(menu, row.Snippet);
 
         var dup = new MenuItem { Header = Loc.T("复制一个副本") };
         dup.Click += (_, _) => DuplicateSnippet(row.Snippet);
