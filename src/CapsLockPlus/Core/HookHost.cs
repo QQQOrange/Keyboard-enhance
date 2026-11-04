@@ -109,6 +109,15 @@ internal static class HookHost
 
         engine = new HotkeyEngine(queue, () => settings, (action, arg) => { Forward(action, arg); return true; });
 
+        /* 诊断：`--trace` 只设了主进程的开关，而钩子在宿主里 ——
+         * 不把开关传过来，用户开 --trace 也看不到任何"钩子收到"的日志。
+         * 主程序通过环境变量传（子进程天然继承）。 */
+        if (Environment.GetEnvironmentVariable("CLP_TRACE") == "1")
+        {
+            engine.EnableKeyTrace();
+            CoreLog.Info("钩子宿主：已开启按键追踪（CLP_TRACE=1）");
+        }
+
         /* 把按键 / 触发键状态回传给主程序：「测试」页靠它显示实时流水与当前层。
          * 这里只做显示，吞键决策全在宿主这边。 */
         engine.KeySeen += (vk, down, _)

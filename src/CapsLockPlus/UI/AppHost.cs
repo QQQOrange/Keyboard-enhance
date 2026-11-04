@@ -299,46 +299,6 @@ public sealed class AppHost : IDisposable
         /* 启动体检：如果配置里有"把修饰键本身换掉"的改键（Ctrl→Alt 这类），
          * 用户很容易根本没意识到 —— 表现是"Ctrl+C 变成 Alt+C""快捷键全不对"。
          * 只在第一次问，选"保留"就不再打扰。 */
-        bool headlessForReview = Environment.GetCommandLineArgs().Any(a => a is
-            "--render" or "--render-diag" or "--selftest" or "--diag" or "--osd" or "--hooktest");
-
-        if (!headlessForReview && !Settings.Global.RemapReviewDone
-            && Core.Input.KeyRemapMap.HasModifierSwap(Settings.Global.BaseRemaps))
-        {
-            var ask = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-            ask.Tick += (_, _) =>
-            {
-                ask.Stop();
-                try
-                {
-                    if (!Core.Input.KeyRemapMap.HasModifierSwap(Settings.Global.BaseRemaps)) return;
-
-                    bool keep = UI.Windows.AppDialog.Confirm(
-                        _main,
-                        Loc.T("检测到「基础改键」里有修饰键互换（例如 Ctrl ↔ Alt）：\n")
-                        + Loc.T("开启后，按 Ctrl 发出的会是 Alt，所有 Ctrl 快捷键都会变成 Alt 组合。\n\n")
-                        + Loc.T("如果这不是你想要的，点「立即清除」。"),
-                        Loc.T("确认基础改键"),
-                        Windows.DialogKind.Warn,
-                        okText: Loc.T("保留"),
-                        cancelText: Loc.T("立即清除"));
-
-                    if (!keep)
-                    {
-                        Settings.Global.BaseRemaps.Clear();
-                        SaveSettings();
-                        Notify(Loc.T("已清除全部基础改键"));
-                        CoreLog.Info("用户确认后清除了修饰键改键");
-                    }
-
-                    Settings.Global.RemapReviewDone = true;
-                    SaveSettings();
-                }
-                catch (Exception ex) { CoreLog.Swallow(ex, "改键复查"); }
-            };
-            ask.Start();
-        }
-
         if (unclean) Core.Health.CrashGuard.SaveContext(AppPaths.DataDir, CoreLog.LogPath);
 
         ResetIncompleteCustomKeys();
@@ -354,6 +314,11 @@ public sealed class AppHost : IDisposable
         /* 先起"钩子宿主"：它是个最小进程（不建界面、不做同步），装钩子的可靠性
          * 远高于本进程 —— 完整进程的 GC 停顿会把钩子回调拖过系统的 300ms 限制，
          * 导致钩子被静默摘掉（实测根因）。拿不到 READY 就退回自己装钩子。 */
+        /* 宿主进程通过环境变量继承"是否追踪按键"（--trace 只设了主进程的开关，
+         * 而钩子在宿主里）。 */
+        if (Environment.GetCommandLineArgs().Any(a => a.Equals("--trace", StringComparison.OrdinalIgnoreCase)))
+            Environment.SetEnvironmentVariable("CLP_TRACE", "1");
+
         bool hookHostReady = StartHookHost();
 
         /* 启动头两秒不许注入：这是"启动后莫名打出一个字母"的物理保险。
