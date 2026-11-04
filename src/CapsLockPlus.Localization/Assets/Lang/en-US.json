@@ -2521,5 +2521,15 @@
   "还没有添加双击动作。": "No double-tap actions yet.",
   "选择按键…": "Choose a key…",
   "选择动作…": "Choose an action…",
-  "「{0}」是触发键，它的双击在「触发键与层」页设置，这里配了也不会触发": "\"{0}\" is a trigger key; its double-tap is set on the \"Triggers & layers\" page, so an entry here never fires"
+  "「{0}」是触发键，它的双击在「触发键与层」页设置，这里配了也不会触发": "\"{0}\" is a trigger key; its double-tap is set on the \"Triggers & layers\" page, so an entry here never fires",
+  "Vim 导航 = 把 Caps 改成 Esc + 按住 Caps 用 h/j/k/l 移动光标；窗口管理 = 按住 Caps 用方向键贴边；剪贴板效率 = 按住 Caps 用 V/P/Y。": "Vim navigation = Caps becomes Esc, and hold Caps + h/j/k/l to move the caret; Window = hold Caps + arrow keys to snap; Clipboard = hold Caps + V/P/Y.",
+  "按住 {0} 再按 {1} → {2}": "Hold {0} then press {1} → {2}",
+  "前缀键": "prefix key",
+  "全局改键：{0} → {1}": "Base remap: {0} → {1}",
+  "别名：打 {0} 展开成「{1}」": "Alias: type {0} to expand into \"{1}\"",
+  "应用场景模板": "Apply scenario template",
+  "「{0}」将加入 {1} 项：": "\"{0}\" will add {1} item(s):",
+  "已存在、会跳过 {0} 项。": "{0} item(s) already exist and will be skipped.",
+  "只添加缺失项，不会改动你已有的设置。": "Only missing items are added; nothing you already have is changed.",
+  "「{0}」里的 {1} 项你都已经有了，没有可添加的内容": "You already have all {1} items in \"{0}\", nothing to add."
 }

@@ -79,6 +79,54 @@ public static class ScenarioPacks
             new[] { (";mail", "you@example.com") }),
     };
 
+    /// <summary>预览结果：会被加入的条目 / 已存在会被跳过的条目（都是人能读的句子）。</summary>
+    public sealed record Preview(List<string> Add, List<string> Skip);
+
+    /// <summary>
+    /// 算出"这个模板会改动什么"，用于点击前的确认框。
+    ///
+    /// 为什么需要：模板的语义是"只补缺失"，所以同一个按钮在不同配置上效果完全不同
+    /// （别人的配置可能加 7 条，你的配置可能一条都不加）。只在结果里报一句
+    /// "已添加 N 项"，用户根本不知道刚才发生了什么。
+    /// </summary>
+    public static Preview Describe(AppSettings s, Pack pack, int layerId = 1)
+    {
+        var add = new List<string>();
+        var skip = new List<string>();
+
+        var layer = s.Layers.FirstOrDefault(l => l.Id == layerId) ?? s.Layers.FirstOrDefault();
+        string layerName = layer == null ? "" : LayerName.Display(layer.Id, layer.Name);
+
+        foreach (var b in pack.Bindings)
+        {
+            string combo = Core.Input.KeyName.BuildComboEx(b.Mods, b.Key);
+            string title = Core.Actions.ActionCatalog.TitleOf(b.Action) ?? b.Action;
+
+            string line = Loc.F("按住 {0} 再按 {1} → {2}",
+                layerName.Length == 0 ? Loc.T("前缀键") : layerName,
+                Core.Input.KeyName.Display(b.Key), title);
+
+            bool exists = layer != null && layer.Keys.Any(k => string.Equals(k.Combo, combo, StringComparison.OrdinalIgnoreCase));
+            (exists ? skip : add).Add(line);
+        }
+
+        foreach (var (from, to) in pack.Remaps)
+        {
+            bool exists = s.Global.BaseRemaps.Any(r => string.Equals(r.From, from, StringComparison.OrdinalIgnoreCase));
+            string line = Loc.F("全局改键：{0} → {1}", Core.Input.KeyName.Display(from), Core.Input.KeyName.Display(to));
+            (exists ? skip : add).Add(line);
+        }
+
+        foreach (var (trigger, text) in pack.Snippets)
+        {
+            bool exists = s.Global.Snippets.Any(x => x.Trigger == trigger);
+            string line = Loc.F("别名：打 {0} 展开成「{1}」", trigger, text);
+            (exists ? skip : add).Add(line);
+        }
+
+        return new Preview(add, skip);
+    }
+
     public static Pack? Find(string? id)
         => All.FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 

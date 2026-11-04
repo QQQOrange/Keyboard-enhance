@@ -394,6 +394,30 @@ public partial class SettingsView : UserControl
         if (pack == null) return;
 
         int layerId = _host.Settings.Layers.FirstOrDefault()?.Id ?? 1;
+
+        /* 先给一份"会改动什么"的清单再动手：模板的语义是只补缺失，
+         * 所以同一个按钮在不同配置上的效果差别很大，必须先让用户看到。 */
+        var preview = ScenarioPacks.Describe(_host.Settings, pack, layerId);
+        if (preview.Add.Count == 0)
+        {
+            _host.Notify(Loc.F("「{0}」里的 {1} 项你都已经有了，没有可添加的内容", pack.Title, preview.Skip.Count));
+            return;
+        }
+
+        string body = Loc.F("「{0}」将加入 {1} 项：", pack.Title, preview.Add.Count)
+                      + "\n\n" + string.Join("\n", preview.Add.Select(x => "· " + x));
+
+        if (preview.Skip.Count > 0)
+            body += "\n\n" + Loc.F("已存在、会跳过 {0} 项。", preview.Skip.Count);
+
+        body += "\n\n" + Loc.T("只添加缺失项，不会改动你已有的设置。");
+
+        if (!UI.Windows.AppDialog.Confirm(Window.GetWindow(this), body, Loc.T("应用场景模板"),
+                Windows.DialogKind.Info, okText: Loc.T("添加"), cancelText: Loc.T("取消")))
+        {
+            return;
+        }
+
         var (added, skipped) = ScenarioPacks.Apply(_host.Settings, pack, layerId);
 
         Save();
