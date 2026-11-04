@@ -799,16 +799,35 @@ public partial class SettingsView : UserControl
         if (GestureKeyBox == null || _host == null) return;
 
         GestureKeyBox.Items.Clear();
+
+        /* 第一项是占位，不是"默认值"。
+         * 早先这里默认选中第一项（大写键）+ 第一个动作（不绑定），
+         * 用户看到的像是"已经有一条：双击大写键 → 不绑定"，
+         * 而上面又有一个"双击 Caps 打开搜索面板"的开关 —— 两处都提大写键，
+         * 看起来就像冲突。占位项能把这个误解从根上去掉。 */
+        GestureKeyBox.Items.Add(new ComboBoxItem { Content = Loc.T("选择按键…"), Tag = "" });
         foreach (string k in GestureKeys)
             GestureKeyBox.Items.Add(new ComboBoxItem { Content = KeyName.Display(k), Tag = k });
-        if (GestureKeyBox.Items.Count > 0) GestureKeyBox.SelectedIndex = 0;
+        GestureKeyBox.SelectedIndex = 0;
 
         GestureActionBox.Items.Clear();
+        GestureActionBox.Items.Add(new ComboBoxItem { Content = Loc.T("选择动作…"), Tag = "" });
         foreach (var a in _host.Actions.Items.Where(a => !a.Hidden))
             GestureActionBox.Items.Add(new ComboBoxItem { Content = a.Title, Tag = a.Id });
-        if (GestureActionBox.Items.Count > 0) GestureActionBox.SelectedIndex = 0;
+        GestureActionBox.SelectedIndex = 0;
+
+        GestureKeyBox.SelectionChanged -= OnGestureSelectionChanged;
+        GestureKeyBox.SelectionChanged += OnGestureSelectionChanged;
+        GestureActionBox.SelectionChanged -= OnGestureSelectionChanged;
+        GestureActionBox.SelectionChanged += OnGestureSelectionChanged;
+        UpdateGestureAddState();
 
         GestureList.Items.Clear();
+        if (GestureEmptyHint != null)
+            GestureEmptyHint.Visibility = _host.Settings.Global.KeyGestures.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
         foreach (var g in _host.Settings.Global.KeyGestures.ToList())
         {
             var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
@@ -840,11 +859,34 @@ public partial class SettingsView : UserControl
         }
     }
 
+    /// <summary>两个下拉都选好了才让点「添加」。</summary>
+    private void OnGestureSelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateGestureAddState();
+
+    private void UpdateGestureAddState()
+    {
+        if (GestureAddButton == null) return;
+
+        bool keyOk = GestureKeyBox?.SelectedItem is ComboBoxItem k && k.Tag is string ks && ks.Length > 0;
+        bool actionOk = GestureActionBox?.SelectedItem is ComboBoxItem a && a.Tag is string ac && ac.Length > 0;
+        GestureAddButton.IsEnabled = keyOk && actionOk;
+    }
+
     private void OnAddGestureClick(object sender, RoutedEventArgs e)
     {
         if (_host == null || _suppress) return;
         if (GestureKeyBox.SelectedItem is not ComboBoxItem kItem || kItem.Tag is not string key) return;
         if (GestureActionBox.SelectedItem is not ComboBoxItem aItem || aItem.Tag is not string action) return;
+        if (key.Length == 0 || action.Length == 0) return;
+
+        /* 触发键的双击归触发键自己管（OnTriggerUp 里处理 DoubleTapAction），
+         * 这里再加一条永远不会触发 —— 与其让用户白配，不如当场说明。 */
+        if (_host.Settings.Triggers.Any(t => t.Enabled &&
+                string.Equals(t.Key, key, StringComparison.OrdinalIgnoreCase)))
+        {
+            _host.Notify(Loc.F("「{0}」是触发键，它的双击在「触发键与层」页设置，这里配了也不会触发",
+                KeyName.Display(key)));
+            return;
+        }
 
         int conflictsBefore = ConflictCount();
         var list = _host.Settings.Global.KeyGestures;

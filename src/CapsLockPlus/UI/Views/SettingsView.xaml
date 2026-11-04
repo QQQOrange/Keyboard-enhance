@@ -141,8 +141,10 @@
 
                     <!-- 双击动作：任意键连按两次 -->
                     <StackPanel x:Name="GestureSection" Background="Transparent">
-                        <TextBlock Text="{loc:T '双击动作'}" Style="{StaticResource Text.Body}" />
-                        <TextBlock Text="{loc:T '任意键连按两次触发一个动作。单击保持原样，第二次按下不会打出字符。'}"
+                        <TextBlock Text="{loc:T '双击动作（普通键）'}" Style="{StaticResource Text.Body}" />
+                        <TextBlock Text="{loc:T '普通键连按两次触发一个动作。单击保持原样，第二次按下不会打出字符。'}"
+                                   Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                        <TextBlock Text="{loc:T '触发键（大写键 / Tab / 右 Alt）的双击在「触发键与层」页或上面的开关里设置，不在这里配。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0" />
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
@@ -153,9 +155,11 @@
                             <ComboBox x:Name="GestureKeyBox" Width="130" Style="{StaticResource ComboBox.Base}" />
                             <ComboBox x:Name="GestureActionBox" Grid.Column="1" Margin="8,0,0,0"
                                       Style="{StaticResource ComboBox.Base}" />
-                            <Button Grid.Column="2" Content="{loc:T '添加'}" Margin="8,0,0,0" Padding="14,6"
+                            <Button Grid.Column="2" x:Name="GestureAddButton" IsEnabled="False" Content="{loc:T '添加'}" Margin="8,0,0,0" Padding="14,6"
                                     Style="{StaticResource Button.Base}" Click="OnAddGestureClick" />
                         </Grid>
+                        <TextBlock x:Name="GestureEmptyHint" Text="{loc:T '还没有添加双击动作。'}"
+                                   Style="{StaticResource Text.Tertiary}" Margin="0,8,0,0" />
                         <ItemsControl x:Name="GestureList" Margin="0,8,0,0" />
                     </StackPanel>
 

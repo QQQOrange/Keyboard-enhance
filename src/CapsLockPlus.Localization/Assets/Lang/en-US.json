@@ -2514,5 +2514,12 @@
   "「{0}」会把修饰键本身换掉：开启后按 Ctrl 发出的就是 Alt，\n": "\"{0}\" replaces the modifier keys themselves: with it on, pressing Ctrl sends Alt,\n",
   "所有 Ctrl 快捷键（Ctrl+C / Ctrl+V / Ctrl+S…）都会变成 Alt 组合。\n\n": "and every Ctrl shortcut (Ctrl+C / Ctrl+V / Ctrl+S…) becomes an Alt combination.\n\n",
   "确认启用改键": "Confirm enabling remap",
-  "启用": "Enable"
+  "启用": "Enable",
+  "双击动作（普通键）": "Double-tap actions (regular keys)",
+  "普通键连按两次触发一个动作。单击保持原样，第二次按下不会打出字符。": "Press a regular key twice to run an action. Single presses stay unchanged; the second press does not type a character.",
+  "触发键（大写键 / Tab / 右 Alt）的双击在「触发键与层」页或上面的开关里设置，不在这里配。": "Double-tap for trigger keys (CapsLock / Tab / right Alt) is configured on the \"Triggers & layers\" page or with the switch above, not here.",
+  "还没有添加双击动作。": "No double-tap actions yet.",
+  "选择按键…": "Choose a key…",
+  "选择动作…": "Choose an action…",
+  "「{0}」是触发键，它的双击在「触发键与层」页设置，这里配了也不会触发": "\"{0}\" is a trigger key; its double-tap is set on the \"Triggers & layers\" page, so an entry here never fires"
 }
