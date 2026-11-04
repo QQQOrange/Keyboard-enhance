@@ -83,14 +83,17 @@ public partial class KeysView : UserControl
         Brush background, borderBrush, textBrush, subTextBrush;
         if (isTrigger)
         {
-            /* 触发键用**橙色系**，和"已绑定"的蓝色一眼分开。
-             * 以前只是蓝底 + 键名前加个 ★，星号挤在缩小的键名里根本看不清；
-             * 整块换色比加符号直观得多，也不占额外空间。
-             * 颜色都走主题资源，白天浅杏底、夜间深琥珀底。 */
+            /* 触发键 = 和"已绑定"完全同一套画法，只换色相：
+             *   实心底 + 略亮/略暗的同色描边 + 同一种文字色。
+             *
+             * 早先给它配了"深橙底 + 亮橙框 + 浅橙字"，三种橙混在一起，
+             * 和旁边一整块实心的蓝键放一起就显眼得不协调 —— 用户一眼就看出来了。
+             * 现在底色本身就是饱和橙，描边只在同色系里差一点，文字直接复用
+             * 已绑定键的 Brush.Surface，结构完全一致。 */
             background = (Brush)FindResource("Brush.TriggerKey");
             borderBrush = (Brush)FindResource("Brush.TriggerKeyBorder");
-            textBrush = (Brush)FindResource("Brush.TriggerKeyText");
-            subTextBrush = (Brush)FindResource("Brush.TriggerKeyText");
+            textBrush = (Brush)FindResource("Brush.Surface");
+            subTextBrush = (Brush)FindResource("Brush.Surface");
         }
         else if (isBound)
         {

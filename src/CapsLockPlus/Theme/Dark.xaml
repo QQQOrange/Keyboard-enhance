@@ -23,9 +23,8 @@
     <Color x:Key="Color.Warning">#F5A524</Color>
     <Color x:Key="Color.Keycap">#232935</Color>
     <Color x:Key="Color.KeycapBorder">#333B4D</Color>
-    <Color x:Key="Color.TriggerKey">#3E2A12</Color>
-    <Color x:Key="Color.TriggerKeyBorder">#E08C2E</Color>
-    <Color x:Key="Color.TriggerKeyText">#FFC078</Color>
+    <Color x:Key="Color.TriggerKey">#E08A2E</Color>
+    <Color x:Key="Color.TriggerKeyBorder">#F2A34D</Color>
 
     <Color x:Key="Color.KeycapShadow">#0B0D12</Color>
 
@@ -54,11 +53,11 @@
     <SolidColorBrush x:Key="Brush.KeycapBorder" Color="{DynamicResource Color.KeycapBorder}" />
     <SolidColorBrush x:Key="Brush.KeycapShadow" Color="{DynamicResource Color.KeycapShadow}" />
 
-    <!-- 触发键（本层用哪个键进入）：暖橙，和"已绑定"的蓝色明确区分。
-         夜间用深琥珀底 + 亮橙描边，避免整块发光刺眼。 -->
+    <!-- 触发键（本层用哪个键进入）：暖橙，和"已绑定"的蓝色区分。
+         结构和"已绑定"完全一致：实心底 + 略亮的同色描边 + 白色文字，
+         亮度也和 Accent(#5B93FF) 对齐，避免出现"深框 + 淡内容"那种违和感。 -->
     <SolidColorBrush x:Key="Brush.TriggerKey" Color="{DynamicResource Color.TriggerKey}" />
     <SolidColorBrush x:Key="Brush.TriggerKeyBorder" Color="{DynamicResource Color.TriggerKeyBorder}" />
-    <SolidColorBrush x:Key="Brush.TriggerKeyText" Color="{DynamicResource Color.TriggerKeyText}" />
 
     <LinearGradientBrush x:Key="Brush.WindowGradient" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#11151C" Offset="0" />
