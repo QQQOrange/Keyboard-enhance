@@ -1,3 +1,4 @@
+using CapsLockPlus.Core.Security;
 using System.IO;
 using System.Text.Json;
 
@@ -108,7 +109,7 @@ public static class UsageStats
         {
             if (!File.Exists(FilePath)) return;
 
-            var data = JsonSerializer.Deserialize<Persisted>(File.ReadAllText(FilePath));
+            var data = JsonSerializer.Deserialize<Persisted>(SecureFile.ReadAllText(FilePath));
             if (data == null) return;
 
             _total = data.Total;
@@ -146,7 +147,7 @@ public static class UsageStats
                 ByAction = new Dictionary<string, int>(ByAction, StringComparer.OrdinalIgnoreCase),
                 ByDay = new Dictionary<string, int>(ByDay, StringComparer.Ordinal),
             };
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(data));
+            SecureFile.WriteAllText(FilePath, JsonSerializer.Serialize(data));
         }
         catch (Exception ex)
         {

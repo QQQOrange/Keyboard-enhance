@@ -1,3 +1,4 @@
+using CapsLockPlus.Core.Security;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -66,7 +67,7 @@ internal static class CliOutput
         {
             string? dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(path, text + Environment.NewLine, new UTF8Encoding(false));
+            SecureFile.WriteAllText(path, text + Environment.NewLine);
         }
         catch { /* 写不了就只弹窗 */ }
 

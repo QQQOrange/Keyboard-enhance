@@ -1,3 +1,4 @@
+using CapsLockPlus.Core.Security;
 using System;
 using System.Globalization;
 using System.IO;
@@ -47,7 +48,7 @@ public static class CrashGuard
                 /* 把上次留下的时间戳读出来写进本次的日志，
                  * 这样"上次到底什么时候挂的"能直接对上。 */
                 string prev;
-                try { prev = File.ReadAllText(path).Trim(); }
+                try { prev = SecureFile.ReadAllText(path).Trim(); }
                 catch { prev = ""; }
 
                 if (!string.IsNullOrEmpty(prev))
@@ -64,7 +65,7 @@ public static class CrashGuard
         try
         {
             Directory.CreateDirectory(dataDir);
-            File.WriteAllText(path, Now(startedAt));
+            SecureFile.WriteAllText(path, Now(startedAt));
         }
         catch (Exception ex)
         {
@@ -89,7 +90,10 @@ public static class CrashGuard
         {
             if (!File.Exists(logPath)) return null;
 
-            string[] lines = File.ReadAllLines(logPath);
+            /* 日志是加密存储的：先解出明文再截取末尾，
+             * 否则快照里会是一堆 CLP2:...（对排查毫无用处）。 */
+            string[] lines = SecureFile.ReadLog(logPath)
+                .Replace("\r\n", "\n").Split('\n');
             var tail = lines.Length <= tailLines ? lines : lines[^tailLines..];
 
             string path = Path.Combine(dataDir,
@@ -101,7 +105,7 @@ public static class CrashGuard
             text.AppendLine($"日志文件: {logPath}（共 {lines.Length} 行，下面是最后 {tail.Length} 行）");
             text.AppendLine();
             foreach (string line in tail) text.AppendLine(line);
-            File.WriteAllText(path, text.ToString());
+            SecureFile.WriteAllText(path, text.ToString());
 
             /* 只留最近几份：崩溃多的时候不能让数据目录被这些文件撑满。 */
             var old = new DirectoryInfo(dataDir).GetFiles("crash-context-*.log")

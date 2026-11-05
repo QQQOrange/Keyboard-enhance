@@ -1895,7 +1895,8 @@ public static partial class SelfTest
 
                 string? ctx = Core.Health.CrashGuard.SaveContext(dir, log, tailLines: 200, keep: 3);
                 Check("崩溃现场：生成了快照文件", ctx != null && System.IO.File.Exists(ctx), ctx ?? "(null)");
-                string body = ctx == null ? "" : System.IO.File.ReadAllText(ctx);
+                /* 崩溃快照现在是加密存储的，必须走 SecureFile 读回明文。 */
+                string body = ctx == null ? "" : Core.Security.SecureFile.ReadAllText(ctx);
                 Check("崩溃现场：写明是异常退出", body.Contains("上次运行没有正常退出"), "");
                 Check("崩溃现场：只截取末尾（不含第 1 行）",
                     !body.Contains("第 1 行") && body.Contains("第 500 行"), "");

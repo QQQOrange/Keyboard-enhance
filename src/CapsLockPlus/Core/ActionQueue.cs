@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
 
 namespace CapsLockPlus.Core;
@@ -175,9 +175,8 @@ public static class AppPaths
             int n = CopyTree(legacy, target, 0);
             try
             {
-                File.AppendAllText(Path.Combine(target, "migrated.txt"),
-                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 从 {legacy} 迁移 {n} 个文件到 {target}"
-                    + Environment.NewLine);
+                Security.SecureFile.AppendLine(Path.Combine(target, "migrated.txt"),
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 从 {legacy} 迁移 {n} 个文件到 {target}");
             }
             catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
         }

@@ -167,4 +167,51 @@ public static partial class SelfTest
             catch { /* 临时目录，删不掉也不影响结果 */ }
         }
     }
+
+    /// <summary>
+    /// 本地文件加密：写下去是密文、读回来是原文，旧明文能就地迁移。
+    /// 这几条直接盯"磁盘上能不能搜到明文"，比只测加解密函数更接近真实风险。
+    /// </summary>
+    private static void TestLocalEncryption()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "clp-sec-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            string file = Path.Combine(dir, "usage.json");
+            const string secret = "{\"secret\":\"张三的秘密\"}";
+
+            Core.Security.SecureFile.WriteAllText(file, secret);
+            string raw = File.ReadAllText(file);
+
+            Check("加密：文件带密文头", raw.StartsWith("CLP2:"));
+            Check("加密：磁盘上不含明文", !raw.Contains("张三的秘密"));
+            CheckEqual("加密：能原样读回", Core.Security.SecureFile.ReadAllText(file), secret);
+
+            string legacy = Path.Combine(dir, "legacy.json");
+            File.WriteAllText(legacy, "{\"old\":1}");
+            Check("加密：旧明文被就地转换", Core.Security.SecureFile.EncryptInPlace(legacy));
+            Check("加密：转换后可读", Core.Security.SecureFile.ReadAllText(legacy).Contains("\"old\":1"));
+
+            string log = Path.Combine(dir, "app.log");
+            Core.Security.SecureFile.AppendBlock(log, "第一行\n第二行\n");
+            Core.Security.SecureFile.AppendBlock(log, "第三行\n");
+
+            Check("加密日志：两批都能解出", Core.Security.SecureFile.ReadLog(log).Contains("第三行"));
+            Check("加密日志：磁盘无明文", !File.ReadAllText(log).Contains("第三行"));
+
+            string marker = "秘密标记-" + Guid.NewGuid().ToString("N");
+            Core.CoreLog.Info(marker);
+            Core.CoreLog.Flush();
+            Check("加密日志：CoreLog 写入后磁盘无明文",
+                !File.ReadAllText(Core.CoreLog.LogPath).Contains(marker));
+            Check("加密日志：CoreLog 能解出",
+                Core.Security.SecureFile.ReadLog(Core.CoreLog.LogPath).Contains(marker));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
 }

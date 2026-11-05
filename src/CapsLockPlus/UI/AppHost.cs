@@ -292,6 +292,10 @@ public sealed class AppHost : IDisposable
         /* 诊断模式（--selftest / --render / --dump-bindings …）都是跑完就 Environment.Exit，
          * 它们写下的标记没人去清 —— 那样下次正常启动就会虚假地提示"上次没有正常退出"。
          * 所以诊断模式下不参与这套标记。 */
+        /* 老版本留下的明文数据（usage.json / 日志 / 绑定快照）在启动时统一加密，
+         * 幂等：已经是密文的文件直接跳过。 */
+        Core.Security.LocalDataProtection.MigrateAll();
+
         bool unclean = !Core.CliFlags.IsDiagnostic(Environment.GetCommandLineArgs().Skip(1))
                        && Core.Health.CrashGuard.MarkRunning(AppPaths.DataDir);
 

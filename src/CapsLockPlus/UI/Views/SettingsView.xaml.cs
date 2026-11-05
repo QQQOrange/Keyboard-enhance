@@ -1867,9 +1867,13 @@ public partial class SettingsView : UserControl
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(CoreLog.LogPath)!);
-            if (!File.Exists(CoreLog.LogPath)) File.WriteAllText(CoreLog.LogPath, "");
-            Process.Start(new ProcessStartInfo(CoreLog.LogPath) { UseShellExecute = true });
+            /* 日志在磁盘上是密文：先导出一份明文副本到临时目录再交给记事本，
+             * 不然用户看到的是一堆 CLP2:... 。 */
+            string text = Core.Security.SecureFile.ReadLog(CoreLog.LogPath);
+            string export = Path.Combine(Path.GetTempPath(),
+                $"KeyboardEnhance-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+            File.WriteAllText(export, text, System.Text.Encoding.UTF8);
+            Process.Start(new ProcessStartInfo(export) { UseShellExecute = true });
         }
         catch (Exception ex)
         {

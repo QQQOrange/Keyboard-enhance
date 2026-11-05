@@ -1,3 +1,4 @@
+using CapsLockPlus.Core.Security;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CapsLockPlus.Core.Input;
@@ -214,6 +215,20 @@ public static class SettingsStore
 
                 string raw = File.ReadAllText(AppPaths.SettingsFile);
 
+                /* 没有设置备份密码时也会用**本机密钥**加密（CLP2:）——
+                 * 保证"任何情况下设置都不落明文"。 */
+                if (LocalCrypto.IsEncrypted(raw))
+                {
+                    string? plainText = LocalCrypto.TryDecrypt(raw);
+                    if (plainText == null)
+                    {
+                        _dataLocked = true;
+                        CoreLog.Error("设置文件已用本机密钥加密，但当前用户解不开 —— 进入只读保护");
+                        return DefaultSettings.Create();
+                    }
+                    raw = plainText;
+                }
+
                 /* 加密过的设置：先解锁再解密。
                  *
                  * 解不开时**绝不能**返回默认值然后让它覆盖原文件 ——
@@ -253,8 +268,9 @@ public static class SettingsStore
 
                 /* 已经设了备份密码、但这份文件还是明文的旧数据 → 立刻以加密形式重存，
                  * 让"设了密码就不再留明文"当场生效，而不是等下一次改设置。 */
-                bool needsEncrypt = DataVault.IsEnabled && DataVault.IsUnlocked
-                                    && !DataVault.LooksEncrypted(File.ReadAllText(AppPaths.SettingsFile));
+                bool needsEncrypt = !LocalCrypto.IsEncrypted(File.ReadAllText(AppPaths.SettingsFile))
+                                    && !(DataVault.IsEnabled && DataVault.IsUnlocked
+                                         && DataVault.LooksEncrypted(File.ReadAllText(AppPaths.SettingsFile)));
 
                 if (migrated || needsEncrypt) Save(s);
 
@@ -495,7 +511,8 @@ public static class SettingsStore
         {
             Directory.CreateDirectory(AppPaths.DataDir);
 
-            // 启用了加密就写密文；没解锁时宁可保留旧文件也不写半成品
+            // 启用了备份密码 → 用它加密；否则用本机密钥（DPAPI）加密。
+            // 两种情况下磁盘上都不会出现明文设置。
             if (DataVault.IsEnabled)
             {
                 if (!DataVault.IsUnlocked)
@@ -504,6 +521,10 @@ public static class SettingsStore
                     return false;
                 }
                 json = DataVault.Encrypt(json);
+            }
+            else
+            {
+                json = LocalCrypto.Encrypt(json);
             }
 
             var tmp = AppPaths.SettingsFile + ".tmp";

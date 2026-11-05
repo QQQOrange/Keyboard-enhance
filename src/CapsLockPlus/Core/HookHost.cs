@@ -1,3 +1,4 @@
+using CapsLockPlus.Core.Security;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -288,7 +289,7 @@ internal static class HookHost
             string path = Path.Combine(AppPaths.DataDir, "logs", "hookhost.log");
             string? dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.AppendAllText(path, log.ToString() + Environment.NewLine, new UTF8Encoding(false));
+            SecureFile.AppendLine(path, log.ToString());
         }
         catch { }
     }

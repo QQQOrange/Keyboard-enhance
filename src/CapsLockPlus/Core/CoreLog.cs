@@ -1,3 +1,4 @@
+using CapsLockPlus.Core.Security;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
@@ -35,7 +36,6 @@ public static class CoreLog
      * 命名 Mutex 属于当前会话，两个进程同用户同会话，正好够用。 */
     private static Mutex? _fileMutex;
     private static bool _mutexFailed;
-    private static StreamWriter? _writer;
     private static string? _path;
     private static long _bytes;
 
@@ -191,14 +191,13 @@ public static class CoreLog
                 bool locked = TryLockFile();
                 try
                 {
-                    EnsureOpenLocked();
                     if (_bytes > MaxBytes) RotateLocked();
-                    foreach (string line in batch)
-                    {
-                        _writer!.WriteLine(line);
-                        _bytes += line.Length + Environment.NewLine.Length;
-                    }
-                    FlushLocked();
+
+                    var block = new StringBuilder(batch.Count * 96);
+                    foreach (string line in batch) block.AppendLine(line);
+                    SecureFile.AppendBlock(LogPath, block.ToString());
+
+                    try { _bytes = new FileInfo(LogPath).Length; } catch { _bytes += block.Length; }
                 }
                 catch
                 {
@@ -230,35 +229,26 @@ public static class CoreLog
         lock (Gate)
         {
             FlushLocked();
-            try { _writer?.Dispose(); } catch { }
-            _writer = null;
         }
     }
 
     private static void EnsureOpenLocked()
     {
-        if (_writer != null) return;
-
         string path = LogPath;
         string? dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-        // FileShare.ReadWrite：用户/工具可以在程序运行时查看日志
-        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-        _writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = false };
-        _bytes = stream.Length;
+        if (!File.Exists(path)) File.WriteAllBytes(path, Array.Empty<byte>());
+        if (_bytes == 0) { try { _bytes = new FileInfo(path).Length; } catch { } }
     }
 
     private static void FlushLocked()
     {
-        try { _writer?.Flush(); } catch { }
+        /* 每批都是立即写入的密文记录，没有缓冲区要刷。 */
     }
 
     /// <summary>超过上限：关掉、删掉、重开（和旧行为一致：只留最近一段）。</summary>
     private static void RotateLocked()
     {
-        try { _writer?.Dispose(); } catch { }
-        _writer = null;
         try { File.Delete(LogPath); } catch { }
         _bytes = 0;
         EnsureOpenLocked();
@@ -266,8 +256,6 @@ public static class CoreLog
 
     private static void ResetLocked()
     {
-        try { _writer?.Dispose(); } catch { }
-        _writer = null;
         _bytes = 0;
     }
 }
