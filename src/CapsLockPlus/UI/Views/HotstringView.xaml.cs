@@ -486,39 +486,76 @@ public partial class HotstringView : UserControl
     /* ---------------- 分组拖拽排序 ---------------- */
 
     private Point _groupDragStart;
-    private GroupRow? _groupDragRow;
+    private string? _dragGroupName;
+    private bool _groupDragging;
 
     private void OnGroupMouseDown(object sender, MouseButtonEventArgs e)
     {
         _groupDragStart = e.GetPosition(GroupList);
-
-        /* 事件挂在 ListBox 上，sender 是 ListBox 而不是行 ——
-         * 早先直接取 sender.DataContext，永远拿不到 GroupRow，拖动因此从未生效。
-         * 改成按坐标找行。 */
-        _groupDragRow = FindGroupRowAt(_groupDragStart);
+        var row = FindGroupRowAt(_groupDragStart);
+        _dragGroupName = row is { IsReal: true } ? row.Group : null;
+        _groupDragging = false;
     }
 
+    /// <summary>
+    /// 分组拖动：**不用 DragDrop**，改成"按住 → 移动过阈值 → 实时重排"。
+    ///
+    /// 之前用 DragDrop.DoDragDrop，实际测试拖不动（ListBox 的选中/捕获会把
+    /// 拖动链路吃掉，Drop 也常拿不到目标行）。现在用鼠标捕获自己算位置：
+    /// 拖过哪个分组就把自己插到它的位置，松手保存。
+    /// 这样即使不松手也能看到分组在动，反馈最直接。
+    /// </summary>
     private void OnGroupMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _groupDragRow is not { IsReal: true } row)
+        if (e.LeftButton != MouseButtonState.Pressed)
         {
-            if (e.LeftButton != MouseButtonState.Pressed) _groupDragRow = null;
+            EndGroupDrag(commit: _groupDragging);
             return;
         }
 
-        var now = e.GetPosition(GroupList);
-        if (Math.Abs(now.X - _groupDragStart.X) < 6 && Math.Abs(now.Y - _groupDragStart.Y) < 6) return;
+        if (_dragGroupName == null || _host == null) return;
 
-        var data = new DataObject("clp/group", row.Group!);
-        DragDrop.DoDragDrop(GroupList, data, DragDropEffects.Move);
-        _groupDragRow = null;
+        var now = e.GetPosition(GroupList);
+        if (!_groupDragging)
+        {
+            if (Math.Abs(now.X - _groupDragStart.X) < 4 && Math.Abs(now.Y - _groupDragStart.Y) < 4) return;
+
+            _groupDragging = true;
+            Mouse.Capture(GroupList);
+        }
+
+        var over = FindGroupRowAt(now);
+        if (over is not { IsReal: true } || string.Equals(over.Group, _dragGroupName, StringComparison.CurrentCultureIgnoreCase))
+            return;
+
+        SnippetGroupOps.Reorder(_host.Settings, _dragGroupName, over.Group);
+        _host.SaveSettings();
+
+        string dragging = _dragGroupName;
+        _selectGroupAfterRefresh = dragging;   // 重排后保持选中的是正在拖的那个组
+        RefreshGroups();
+        _dragGroupName = dragging;          // 行对象已重建，按名字继续拖
+        Mouse.Capture(GroupList);           // 刷新会丢捕获，重新拿回来
+    }
+
+    private void OnGroupMouseUp(object sender, MouseButtonEventArgs e) => EndGroupDrag(commit: _groupDragging);
+
+    private void EndGroupDrag(bool commit)
+    {
+        if (commit && _host != null && _dragGroupName != null)
+        {
+            _host.SaveSettings();
+            _host.Notify(Loc.F("已调整「{0}」的位置", _dragGroupName));
+        }
+
+        _groupDragging = false;
+        _dragGroupName = null;
+        if (ReferenceEquals(Mouse.Captured, GroupList)) GroupList.ReleaseMouseCapture();
     }
 
     private void OnGroupDragOver(object sender, DragEventArgs e)
     {
-        bool isGroupDrag = e.Data.GetDataPresent("clp/group");
-
-        if (!isGroupDrag && !e.Data.GetDataPresent("clp/snippet"))
+        if (!e.Data.GetDataPresent("clp/snippet"))
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -549,21 +586,6 @@ public partial class HotstringView : UserControl
     private void OnGroupDrop(object sender, DragEventArgs e)
     {
         ClearDragHover();
-
-        /* 分组拖拽排序：把拖动的组插到目标组的位置。 */
-        if (e.Data.GetData("clp/group") is string dragged)
-        {
-            var dropTarget = FindGroupRowAt(e.GetPosition(GroupList));
-            if (dropTarget is not { IsReal: true } || _host == null) return;
-
-            SnippetGroupOps.Reorder(_host.Settings, dragged, dropTarget.Group);
-            _host.SaveSettings();
-
-            RefreshGroups();
-            _host.Notify(Loc.F("已调整「{0}」的位置", dragged));
-            e.Handled = true;
-            return;
-        }
 
         if (e.Data.GetData("clp/snippet") is not Snippet snippet) return;
 
@@ -711,6 +733,16 @@ public partial class HotstringView : UserControl
 
         menu.Items.Clear();
 
+        var up = new MenuItem { Header = Loc.T("上移") };
+        up.Click += (_, _) => MoveGroupBy(row.Group!, -1);
+        menu.Items.Add(up);
+
+        var down = new MenuItem { Header = Loc.T("下移") };
+        down.Click += (_, _) => MoveGroupBy(row.Group!, +1);
+        menu.Items.Add(down);
+
+        menu.Items.Add(new Separator());
+
         var rename = new MenuItem { Header = Loc.T("重命名分组…") };
         rename.Click += (_, _) => RenameGroup(row.Group!);
         menu.Items.Add(rename);
@@ -721,6 +753,61 @@ public partial class HotstringView : UserControl
 
         /* 菜单已经挂在控件上（XAML 里那个空 ContextMenu），
          * WPF 会在本方法返回后自己打开 —— 这里不要再手动 IsOpen。 */
+    }
+
+    /// <summary>
+    /// 把分组上移/下移一格（右键菜单与 Alt+↑/↓ 都走这里）。
+    ///
+    /// 拖拽受鼠标环境影响（远程桌面、触摸板都可能拖不动），所以保留一条
+    /// **键盘/菜单**的通路，保证排序功能在任何情况下都可用。
+    /// </summary>
+    private void MoveGroupBy(string group, int delta)
+    {
+        if (_host == null) return;
+
+        var names = (GroupList.ItemsSource as List<GroupRow> ?? new List<GroupRow>())
+            .Where(r => r.IsReal)
+            .Select(r => r.Group!)
+            .ToList();
+
+        int i = names.FindIndex(g => string.Equals(g, group, StringComparison.CurrentCultureIgnoreCase));
+        int j = i + delta;
+        if (i < 0 || j < 0 || j >= names.Count) return;
+
+        /* Reorder 的语义是"插到 before 之前"：
+         *  上移 → 插到前一个之前；
+         *  下移 → 插到后一个的后面（即再下一个之前；没有下一个就放末尾）。 */
+        string? before = delta < 0
+            ? names[j]
+            : (j + 1 < names.Count ? names[j + 1] : null);
+
+        SnippetGroupOps.Reorder(_host.Settings, group, before);
+        _host.SaveSettings();
+
+        _selectGroupAfterRefresh = group;
+        RefreshGroups();
+    }
+
+    private void OnGroupMoveUp(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is GroupRow { IsReal: true } row)
+            MoveGroupBy(row.Group!, -1);
+    }
+
+    private void OnGroupMoveDown(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is GroupRow { IsReal: true } row)
+            MoveGroupBy(row.Group!, +1);
+    }
+
+    private void OnGroupListKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Up or Key.Down)) return;
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) == 0) return;
+        if (GroupList.SelectedItem is not GroupRow { IsReal: true } row) return;
+
+        MoveGroupBy(row.Group!, e.Key == Key.Up ? -1 : +1);
+        e.Handled = true;
     }
 
     private void OnRenameGroupClick(object sender, RoutedEventArgs e)

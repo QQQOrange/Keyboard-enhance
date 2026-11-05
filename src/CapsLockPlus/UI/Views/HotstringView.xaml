@@ -77,7 +77,7 @@
 
                     <StackPanel MaxWidth="360">
                         <TextBlock Text="{loc:T '列表显示'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
-                        <TextBlock Text="{loc:T '正文只显示备注；没有备注的显示「（无备注）」。替换内容不会出现在列表里。'}"
+                        <TextBlock Text="{loc:T '只显示备注（替换内容不显示）'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" />
                     </StackPanel>
                 </WrapPanel>
@@ -107,7 +107,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="{loc:T '分组'}" Style="{StaticResource Text.H3}" />
-                            <TextBlock Text="{loc:T '点一下筛选；拖动可排序'}" Style="{StaticResource Text.Tertiary}"
+                            <TextBlock Text="{loc:T '筛选 · 拖动排序'}" Style="{StaticResource Text.Tertiary}"
                                        TextWrapping="Wrap" Margin="0,2,0,0" />
 
                         </StackPanel>
@@ -125,6 +125,8 @@
                              AllowDrop="True"
                              PreviewMouseLeftButtonDown="OnGroupMouseDown"
                              PreviewMouseMove="OnGroupMouseMove"
+                             PreviewMouseLeftButtonUp="OnGroupMouseUp"
+                             PreviewKeyDown="OnGroupListKeyDown"
                              DragEnter="OnGroupDragOver" DragOver="OnGroupDragOver"
                              DragLeave="OnGroupDragLeave" Drop="OnGroupDrop">
                         <!-- 菜单挂在**每个列表项**上：WPF 只有在事件源元素自己带 ContextMenu 时才会
@@ -154,8 +156,42 @@
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource Brush.TextPrimary}" />
                                     <TextBlock Grid.Column="2" Text="{Binding Count}" FontSize="10.5"
-                                               VerticalAlignment="Center" Margin="6,0,8,0"
+                                               VerticalAlignment="Center" Margin="6,0,2,0"
                                                Foreground="{DynamicResource Brush.TextTertiary}" />
+
+                                    <!-- 每行都有上移/下移：拖拽之外再给一条确定可用的通路。
+                                         「全部 / 未分组」不是真分组，按钮自动禁用。 -->
+                                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center"
+                                                Margin="2,0,4,0">
+                                        <Button Content="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                                Width="18" Height="18" Padding="0" Click="OnGroupMoveUp"
+                                                ToolTip="{loc:T '上移'}" AutomationProperties.Name="{loc:T '上移'}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource Button.Icon}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsReal}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Content="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                                Width="18" Height="18" Padding="0" Click="OnGroupMoveDown"
+                                                ToolTip="{loc:T '下移'}" AutomationProperties.Name="{loc:T '下移'}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource Button.Icon}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsReal}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -194,52 +230,41 @@
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0" Text="{loc:T '全部别名'}" Style="{StaticResource Text.H3}"
-                                   VerticalAlignment="Top" Margin="0,8,0,0" />
+                                   VerticalAlignment="Center" />
 
-                        <!-- 搜索与筛选分成两行：
-                             窗口变窄时优先保证搜索框宽度，排序下拉也给足宽度，
-                             不再出现"搜索框被挤成一条缝、排序文字显示不全"。 -->
-                        <Grid Grid.Column="1" Margin="16,0,0,0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                        <!-- 单行：搜索框自适应（最小 180），筛选/排序/计数靠右。
+                             用 Grid 而不是 StackPanel —— 右侧控件按内容定宽，搜索框吃掉剩余空间。 -->
+                        <Grid Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" MinWidth="180" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                            <Grid Grid.Row="0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="&#xE721;"
-                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                                           Foreground="{DynamicResource Brush.TextTertiary}"
-                                           VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}"
-                                         KeyDown="OnFilterKeyDown" MinHeight="34" MinWidth="160"
-                                         VerticalContentAlignment="Center" TextChanged="OnFilterChanged" />
-                            </Grid>
+                            <TextBlock Grid.Column="0" Text="&#xE721;"
+                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                                       Foreground="{DynamicResource Brush.TextTertiary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
 
-                            <Grid Grid.Row="1" Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}"
+                                     KeyDown="OnFilterKeyDown" MinHeight="34" MinWidth="180"
+                                     VerticalContentAlignment="Center" TextChanged="OnFilterChanged" />
 
-                                <CheckBox Grid.Column="0" x:Name="UnusedOnlyBox" Content="{loc:T '从未使用'}"
-                                          VerticalAlignment="Center" Margin="0,0,12,0"
-                                          Click="OnUnusedOnlyChanged"
-                                          ToolTip="{loc:T '只显示还没被展开过的别名'}" />
+                            <CheckBox Grid.Column="2" x:Name="UnusedOnlyBox" Content="{loc:T '从未使用'}"
+                                      VerticalAlignment="Center" Margin="12,0,12,0"
+                                      Click="OnUnusedOnlyChanged"
+                                      ToolTip="{loc:T '只显示还没被展开过的别名'}" />
 
-                                <ComboBox Grid.Column="1" x:Name="SortBox" Style="{StaticResource ComboBox.Base}"
-                                          Width="150" MinWidth="150" VerticalAlignment="Center"
-                                          SelectionChanged="OnSortChanged"
-                                          ToolTip="{loc:T '列表排序方式'}" />
+                            <ComboBox Grid.Column="3" x:Name="SortBox" Style="{StaticResource ComboBox.Base}"
+                                      Width="150" MinWidth="150" VerticalAlignment="Center"
+                                      SelectionChanged="OnSortChanged"
+                                      ToolTip="{loc:T '列表排序方式'}" />
 
-                                <TextBlock Grid.Column="2" x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
-                                           VerticalAlignment="Center" Margin="12,0,0,0"
-                                           HorizontalAlignment="Right" TextAlignment="Right" />
-                            </Grid>
+                            <TextBlock Grid.Column="4" x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
+                                       VerticalAlignment="Center" Margin="12,0,0,0" MinWidth="52"
+                                       TextAlignment="Right" />
                         </Grid>
                     </Grid>
 
