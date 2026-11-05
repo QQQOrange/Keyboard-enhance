@@ -488,6 +488,8 @@ public partial class HotstringView : UserControl
 
     private Point _groupDragStart;
     private string? _dragGroupName;
+    private UI.DragChipAdorner? _groupDragChip;
+    private UI.InsertLineAdorner? _groupInsertLine;
 
     private void OnGroupMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -514,8 +516,36 @@ public partial class HotstringView : UserControl
         string dragged = _dragGroupName;
         _dragGroupName = null;
 
-        var data = new DataObject("clp/group", dragged);
-        DragDrop.DoDragDrop(GroupList, data, DragDropEffects.Move);
+        /* 拖动时让分组名"贴着鼠标"：用和别名列表同一个拖拽卡片。
+         * DoDragDrop 期间是 OLE 的消息循环，只有 GiveFeedback 会被持续触发，
+         * 所以卡片位置在 GiveFeedback 里更新。 */
+        _groupDragChip = UI.DragChipAdorner.Show(this, dragged, UI.DragChipAdorner.CursorIn(this));
+
+        GiveFeedbackEventHandler follow = (_, _) =>
+        {
+            _groupDragChip?.MoveTo(UI.DragChipAdorner.CursorIn(this));
+        };
+
+        GroupList.GiveFeedback += follow;
+        try
+        {
+            var data = new DataObject("clp/group", dragged);
+            DragDrop.DoDragDrop(GroupList, data, DragDropEffects.Move);
+        }
+        finally
+        {
+            GroupList.GiveFeedback -= follow;
+            _groupDragChip?.Remove();
+            _groupDragChip = null;
+            RemoveGroupInsertLine();
+            ClearDragHover();
+        }
+    }
+
+    private void RemoveGroupInsertLine()
+    {
+        _groupInsertLine?.Remove();
+        _groupInsertLine = null;
     }
 
     private void OnGroupDragOver(object sender, DragEventArgs e)
@@ -541,17 +571,45 @@ public partial class HotstringView : UserControl
         e.Effects = DragDropEffects.Move;
         HighlightDragHover(target);
 
+        /* 插入指示线：落在目标行的上半 → 画在行的上沿（插到它前面）；
+         * 下半 → 画在下沿（插到它后面）。空白处 → 画在列表末尾。 */
+        _groupInsertLine ??= UI.InsertLineAdorner.Show(GroupList);
+        if (_groupInsertLine != null)
+        {
+            double y;
+            if (target == null)
+            {
+                y = GroupList.ActualHeight;
+            }
+            else if (GroupList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem container)
+            {
+                double top = container.TranslatePoint(new Point(0, 0), GroupList).Y;
+                y = e.GetPosition(GroupList).Y > top + container.ActualHeight / 2
+                    ? top + container.ActualHeight
+                    : top;
+            }
+            else
+            {
+                y = GroupList.ActualHeight;
+            }
+
+            _groupInsertLine.MoveTo(y);
+        }
+
         e.Handled = true;
     }
 
     private void OnGroupDragLeave(object sender, DragEventArgs e)
     {
         ClearDragHover();
+        RemoveGroupInsertLine();
     }
 
     private void OnGroupDrop(object sender, DragEventArgs e)
     {
         ClearDragHover();
+
+        RemoveGroupInsertLine();
 
         if (e.Data.GetData("clp/group") is string draggedGroup)
         {
@@ -566,7 +624,12 @@ public partial class HotstringView : UserControl
             int to = names.FindIndex(g => string.Equals(g, dropRow.Group, StringComparison.CurrentCultureIgnoreCase));
             if (from < 0 || to < 0 || from == to) return;
 
-            string? before = to > from ? (to + 1 < names.Count ? names[to + 1] : null) : names[to];
+            /* 指针在目标行下半 → 插到它后面；上半 → 插到它前面。 */
+            bool after = dropItem != null && e.GetPosition(dropItem).Y > dropItem.ActualHeight / 2;
+            string? before = after
+                ? (to + 1 < names.Count ? names[to + 1] : null)
+                : names[to];
+            if (string.Equals(before, draggedGroup, StringComparison.CurrentCultureIgnoreCase)) before = null;
             SnippetGroupOps.Reorder(_host.Settings, draggedGroup, before);
             _host.SaveSettings();
             _host.Notify(Loc.F("已调整「{0}」的位置", draggedGroup));
