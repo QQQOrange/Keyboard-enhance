@@ -122,12 +122,17 @@ def main():
                 entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
                 continue
 
-            full = os.path.join(os.getcwd(), path.replace("/", os.sep))
-            with open(full, "rb") as fh:
-                blob = call("POST", f"/repos/{REPO}/git/blobs", token, {
-                    "content": base64.b64encode(fh.read()).decode("ascii"),
-                    "encoding": "base64",
-                })
+            # 必须取 git 里的 blob，而不是工作区文件：
+            # 工作区是 CRLF（core.autocrlf），仓库里存的是 LF；
+            # 直接上传会让整份文件显示为“全部重写”，历史被行尾噪声污染。
+            proc = subprocess.run(["git", "cat-file", "blob", f"{sha}:{path}"], capture_output=True)
+            if proc.returncode != 0:
+                raise SystemExit("读取 " + path + " 失败：" + proc.stderr.decode("utf-8", "replace"))
+
+            blob = call("POST", f"/repos/{REPO}/git/blobs", token, {
+                "content": base64.b64encode(proc.stdout).decode("ascii"),
+                "encoding": "base64",
+            })
             entries.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
 
         tree_payload = {"base_tree": parent_tree, "tree": entries}
