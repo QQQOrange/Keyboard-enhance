@@ -2543,5 +2543,10 @@
   "没有可添加的内容": "Nothing to add",
   "{0} = 本层触发键\n长按它进入这一层；短按执行短按动作": "{0} is the trigger key for this layer\nHold it to enter the layer; a short press runs the tap action",
   "触发键星标大小": "Trigger-key star size",
-  "当前 {0:0.0} 倍（默认 1.5 倍，改完立即生效）": "Currently {0:0.0}× (default 1.5×, applies immediately)"
+  "当前 {0:0.0} 倍（默认 1.5 倍，改完立即生效）": "Currently {0:0.0}× (default 1.5×, applies immediately)",
+  "没有备注。点这个图标可以直接写备注。": "No note yet. Click this icon to write one.",
+  "备注：": "Note: ",
+  "备注（鼠标停在列表左侧图标上即可看到）": "Note (hover the icon at the left of the list to see it)",
+  "显示或隐藏列表里的替换内容（隐藏时显示为圆点）": "Show or hide the replacement text in the list (dots when hidden)",
+  "替换内容默认打码为 ●●●●●●；备注在左侧图标上（悬停可见）。点右上角的眼睛按钮可临时显示原文。": "Replacement text is masked as ●●●●●● by default; the note lives on the left icon (hover to read). Use the eye button at the top right to reveal the text temporarily."
 }

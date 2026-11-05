@@ -79,6 +79,23 @@ public partial class HotstringView : UserControl
         public string GroupLabel { get; init; } = "";
         public string Preview { get; init; } = "";
 
+        /// <summary>
+        /// 左侧图标的提示：有备注显示备注，没有就说明"可以点它写一条"。
+        /// 备注不再挤在列表正文里 —— 正文那一列现在专门显示"替换成什么"（默认打码）。
+        /// </summary>
+        public string NoteTooltip => string.IsNullOrWhiteSpace(Snippet.Comment)
+            ? Loc.T("没有备注。点这个图标可以直接写备注。")
+            : Loc.T("备注：") + (Snippet.Comment ?? "").Trim();
+
+        /// <summary>有备注的图标用主色，没备注压暗 —— 一眼看出哪些条目写过说明。</summary>
+        public System.Windows.Media.Brush NoteBrush => HasNote
+            ? (System.Windows.Application.Current?.TryFindResource("Brush.Accent") as System.Windows.Media.Brush
+               ?? System.Windows.Media.Brushes.SteelBlue)
+            : (System.Windows.Application.Current?.TryFindResource("Brush.TextTertiary") as System.Windows.Media.Brush
+               ?? System.Windows.Media.Brushes.Gray);
+
+        public bool HasNote => !string.IsNullOrWhiteSpace(Snippet.Comment);
+
         /// <summary>停用的别名整行压暗，一眼能看出来（不用点进去看勾选）。</summary>
         public double Opacity => Snippet.Enabled ? 1.0 : 0.45;
 
@@ -112,8 +129,7 @@ public partial class HotstringView : UserControl
             FullWidthBox.IsChecked = opt.FullWidth;
             SpaceBox.IsChecked = opt.ExpandOnSpace;
             SwallowBox.IsChecked = opt.SwallowSpace;
-            NoteFirstBox.IsChecked = opt.ShowNoteFirst;
-            _showTextInList = opt.ShowTextInList;
+                _showTextInList = opt.ShowTextInList;
             UpdateEyeGlyph();
         }
         finally { _suppress = false; }
@@ -761,7 +777,6 @@ public partial class HotstringView : UserControl
         opt.FullWidth = FullWidthBox.IsChecked == true;
         opt.ExpandOnSpace = SpaceBox.IsChecked == true;
         opt.SwallowSpace = SwallowBox.IsChecked == true;
-        opt.ShowNoteFirst = NoteFirstBox.IsChecked == true;
 
         string newPrefix = opt.EffectivePrefix ?? "";
         if (oldPrefix != newPrefix)
@@ -1152,23 +1167,40 @@ public partial class HotstringView : UserControl
 
 
     /// <summary>
-    /// 列表里的那一行说明文字。
+    /// 列表里"替换成什么"这一列的内容。
     ///
-    /// 三种组合：
-    ///   · 显示内容 + 优先备注 → 有备注显示备注，否则显示内容；
-    ///   · 显示内容 + 不优先备注 → 显示内容，没内容才显示备注；
-    ///   · 隐藏内容 → 只显示备注（没备注就空着，绝不把正文摊出来）。
+    /// 默认**打码**：用固定 6 个实心圆点代替，既隐藏内容、也不泄漏原文长度。
+    /// 备注不再占用这一列 —— 它挪到了每行最左边的图标（悬停可见）。
+    /// 点眼睛按钮可以临时显示真实内容。
     /// </summary>
     private static string BuildPreview(Snippet snippet, HotstringOptions opt, bool showText)
     {
-        string comment = (snippet.Comment ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(snippet.Text))
+            return Loc.T("（空）");                          // 空内容不该显示成一排圆点
+
+        if (!showText) return new string('\u25CF', 6);      // ●●●●●●
+
         string text = (snippet.Text ?? "").Replace("\r", "").Replace("\n", " ");
-
-        if (!showText) return Shorten(comment, 56);
-
-        if (opt.ShowNoteFirst && comment.Length > 0) return Shorten(comment, 56);
         if (text.Length > 0) return Shorten(text, 56);
-        return Shorten(comment, 56);
+
+        /* 内容为空时给个明确的占位，而不是留空白让人以为坏了。 */
+        return Loc.T("（空）");
+    }
+
+    /// <summary>点列表左侧的备注图标：选中这条别名并把光标送到备注框。</summary>
+    private void OnNoteIconClick(object sender, MouseButtonEventArgs e)
+    {
+        if (_host == null) return;
+
+        if (sender is FrameworkElement { DataContext: Row row })
+        {
+            EntryList.SelectedItem = row;
+            LoadEditor(row.Snippet);
+            CommentBox.Focus();
+            CommentBox.SelectAll();
+        }
+
+        e.Handled = true;
     }
 
     /// <summary>眼睛按钮：切换列表里是否显示替换内容。</summary>
