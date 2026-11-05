@@ -484,69 +484,39 @@ public partial class HotstringView : UserControl
         }
     }
 
-    /* ---- 分组拖拽排序 ----
-     *
-     * 两条经验：
-     *   1) 事件要挂在 ListBox 上（行级事件在鼠标捕获后会断掉）；
-     *   2) 拖动过程中**不要**实时重排 —— 行会在指针下位移，顺序被反复改写。
-     * 所以：按下记住行 → 移动只记录"悬在哪一行"并高亮 → 松手才落一次位置。 */
+    /* ---- 分组拖拽排序 ---- */
 
     private Point _groupDragStart;
     private string? _dragGroupName;
-    private string? _dragOverName;
-    private bool _groupDragging;
 
-    private string? _thumbDragGroup;
-
-    private void OnGroupThumbDragStarted(object sender, DragStartedEventArgs e)
+    private void OnGroupMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is GroupRow { IsReal: true } row)
-        {
-            _thumbDragGroup = row.Group;
-            GroupList.SelectedItem = row;
-        }
+        _groupDragStart = e.GetPosition(GroupList);
+        var row = FindGroupRowAt(_groupDragStart);
+        _dragGroupName = row is { IsReal: true } ? row.Group : null;
     }
 
     /// <summary>
-    /// 松手时按指针位置找目标行，再落一次顺序。
-    ///
-    /// 用 Thumb 而不是 ListBox 的鼠标事件：Thumb 自己会捕获鼠标，
-    /// DragCompleted 一定会来；而 ListBox 的 PreviewMouseDown 在部分场景根本收不到。
+    /// 分组拖拽：与别名列表用同一套 DragDrop 流程（那边已验证可用）。
+    /// 之前自己算鼠标捕获/Thumb 都不稳，改成标准拖放最可靠。
     /// </summary>
-    private void OnGroupThumbDragCompleted(object sender, DragCompletedEventArgs e)
+    private void OnGroupMouseMove(object sender, MouseEventArgs e)
     {
-        string? dragged = _thumbDragGroup;
-        _thumbDragGroup = null;
-        if (dragged == null || _host == null) return;
+        if (_dragGroupName == null || e.LeftButton != MouseButtonState.Pressed) return;
 
-        var over = FindGroupRowAt(Mouse.GetPosition(GroupList));
-        if (over is not { IsReal: true } || string.Equals(over.Group, dragged, StringComparison.CurrentCultureIgnoreCase))
-            return;
+        var now = e.GetPosition(GroupList);
+        if (Math.Abs(now.X - _groupDragStart.X) < 8 && Math.Abs(now.Y - _groupDragStart.Y) < 8) return;
 
-        var names = (GroupList.ItemsSource as List<GroupRow> ?? new List<GroupRow>())
-            .Where(r => r.IsReal)
-            .Select(r => r.Group!)
-            .ToList();
+        string dragged = _dragGroupName;
+        _dragGroupName = null;
 
-        int from = names.FindIndex(g => string.Equals(g, dragged, StringComparison.CurrentCultureIgnoreCase));
-        int to = names.FindIndex(g => string.Equals(g, over.Group, StringComparison.CurrentCultureIgnoreCase));
-        if (from < 0 || to < 0 || from == to) return;
-
-        string? before = to > from
-            ? (to + 1 < names.Count ? names[to + 1] : null)
-            : names[to];
-
-        SnippetGroupOps.Reorder(_host.Settings, dragged, before);
-        _host.SaveSettings();
-        _host.Notify(Loc.F("已调整「{0}」的位置", dragged));
-
-        _selectGroupAfterRefresh = dragged;
-        RefreshGroups();
+        var data = new DataObject("clp/group", dragged);
+        DragDrop.DoDragDrop(GroupList, data, DragDropEffects.Move);
     }
 
     private void OnGroupDragOver(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent("clp/snippet"))
+        if (!e.Data.GetDataPresent("clp/snippet") && !e.Data.GetDataPresent("clp/group"))
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -577,6 +547,29 @@ public partial class HotstringView : UserControl
     private void OnGroupDrop(object sender, DragEventArgs e)
     {
         ClearDragHover();
+
+        if (e.Data.GetData("clp/group") is string draggedGroup)
+        {
+            var dropRow = FindGroupRowAt(e.GetPosition(GroupList));
+            if (dropRow is not { IsReal: true } || _host == null) return;
+
+            var names = (GroupList.ItemsSource as List<GroupRow> ?? new List<GroupRow>())
+                .Where(r => r.IsReal).Select(r => r.Group!).ToList();
+
+            int from = names.FindIndex(g => string.Equals(g, draggedGroup, StringComparison.CurrentCultureIgnoreCase));
+            int to = names.FindIndex(g => string.Equals(g, dropRow.Group, StringComparison.CurrentCultureIgnoreCase));
+            if (from < 0 || to < 0 || from == to) return;
+
+            string? before = to > from ? (to + 1 < names.Count ? names[to + 1] : null) : names[to];
+            SnippetGroupOps.Reorder(_host.Settings, draggedGroup, before);
+            _host.SaveSettings();
+            _host.Notify(Loc.F("已调整「{0}」的位置", draggedGroup));
+
+            _selectGroupAfterRefresh = draggedGroup;
+            RefreshGroups();
+            e.Handled = true;
+            return;
+        }
 
         if (e.Data.GetData("clp/snippet") is not Snippet snippet) return;
 

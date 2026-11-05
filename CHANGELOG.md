@@ -1,3 +1,29 @@
+## v4.19.8 — 分组拖拽改用与别名列表相同的 DragDrop；分组名居中
+
+### 1. 拖拽排序换成"已验证可用"的那套
+
+别名列表的拖拽一直正常（`DragDrop.DoDragDrop` + `AllowDrop` + `Drop`）。
+分组这边之前反复用自定义鼠标捕获/Thumb，都不稳。现在两组代码统一：
+
+- `PreviewMouseLeftButtonDown` 记住按在哪一行；
+- `PreviewMouseMove` 超过 8px → `DragDrop.DoDragDrop(GroupList, "clp/group", Move)`；
+- `DragOver` 接受 `clp/group`，`Drop` 时按目标行计算位置并保存。
+
+### 2. 分组名居中
+
+名称列改成 `TextAlignment=Center` + `HorizontalAlignment=Stretch`，
+行内容 `HorizontalContentAlignment=Stretch`，名称在行内水平居中；
+文件夹图标仍在最左，作为"这是一个分组"的标记。
+
+### 3. 行内不再有任何数字和按钮
+
+条目数与 `▲▼` 都已移除，排序只靠拖动（右键菜单与 `Alt+↑/↓` 作为备用）。
+
+### 验证
+
+- `--selftest`：3340 项全过
+- `--render`：1100×800 确认名称居中、行内无数字无按钮
+
 ## v4.19.7 — 分组行去掉数字与按钮；整行拖拽
 
 ### 1. 分组行不再显示数量
