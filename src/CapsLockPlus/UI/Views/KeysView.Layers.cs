@@ -60,33 +60,49 @@ public partial class KeysView : UserControl
     }
 
     /// <summary>
-    /// 把键名写进 <paramref name="block"/>；触发键在**名字前面**加一颗星。
+    /// 生成"键名"这一行；触发键会在**字母前面**加一颗更大的星，两者作为一个整体居中。
     ///
-    /// 星用 <see cref="System.Windows.Documents.Run"/> 单独给字号：
-    /// 比键名大一号（×1.5），颜色不设 —— 直接继承 TextBlock 的 Foreground，
-    /// 所以和字母永远同色（夜间是白字、浅色键上是灰字，跟着走）。
+    /// 曾经用 <c>Run</c> 内联写法：星的字号一大，整行行高被星撑高，而字母是按基线排的，
+    /// 于是字母被压到行的下半部分 —— 用户把倍数拉到最大时就看到"字母偏下"。
     ///
-    /// 早先的做法是把 "★" 拼进字符串，星只能和 6.5px 的键名一样小，看不清；
-    /// 后来试过右上角独立金星 —— 用户要的是"还在字母前面、和字母同色、再大一号"。
+    /// 现在改成横向 StackPanel：星和字母是两个独立的 TextBlock，各自
+    /// <c>VerticalAlignment=Center</c>，整行再在键帽里居中 —— 倍数怎么变，
+    /// 两者的中线始终重合，看上去就是一整块。
     /// </summary>
-    private void SetNameWithStar(System.Windows.Controls.TextBlock block, string label, double fontSize, bool star)
+    private FrameworkElement BuildNameRow(System.Windows.Controls.TextBlock nameBlock, string label,
+        double fontSize, bool star)
     {
         if (!star)
         {
-            block.Text = label;
-            return;
+            nameBlock.Text = label;
+            return nameBlock;
         }
 
-        block.Text = string.Empty;
         double scale = _host?.Settings.Global.TriggerStarScale ?? 1.5;
         scale = Math.Clamp(scale, 1.0, 2.5);
 
-        block.Inlines.Add(new System.Windows.Documents.Run("★")
+        nameBlock.Text = label;
+
+        var row = new StackPanel
         {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        row.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = "★",
             FontSize = fontSize * scale,
             FontWeight = FontWeights.Bold,
+            Foreground = nameBlock.Foreground,     // 与字母同色
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.NoWrap,
+            Margin = new Thickness(0, 0, 1, 0),
         });
-        block.Inlines.Add(new System.Windows.Documents.Run(" " + label));
+
+        row.Children.Add(nameBlock);
+        return row;
     }
 
     /// <summary>
@@ -218,8 +234,7 @@ public partial class KeysView : UserControl
                 Margin = new Thickness(0, 1, 0, 0),
             };
 
-            SetNameWithStar(nameBlock, label, 6.5, isTrigger);
-            stack.Children.Add(nameBlock);
+            stack.Children.Add(BuildNameRow(nameBlock, label, 6.5, isTrigger));
         }
         else
         {
@@ -243,8 +258,7 @@ public partial class KeysView : UserControl
                 Foreground = textBrush,
             };
 
-            SetNameWithStar(bigBlock, label, size, isTrigger);
-            stack.Children.Add(bigBlock);
+            stack.Children.Add(BuildNameRow(bigBlock, label, size, isTrigger));
         }
         border.Child = stack;
 
