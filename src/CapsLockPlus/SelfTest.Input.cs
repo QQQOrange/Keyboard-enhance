@@ -1881,6 +1881,38 @@ public static partial class SelfTest
             Check("分组：移动会顺带登记分组", SnippetGroupOps.All(s).Any(g => g == "工作"), "");
         }
 
+        /* ---- 导出/备份要带上"使用统计" ---- */
+        {
+            Core.UsageStats.ImportJson("{\"Total\":7,\"ByAction\":{\"copy\":7},\"ByDay\":{\"2026-11-05\":7}}");
+
+            var sEx = DefaultSettings.Create();
+            var allIds = Core.Sync.ExportImport.Groups.Select(g => g.Id).ToList();
+            var (text, _) = Core.Sync.ExportImport.Build(sEx, allIds);
+
+            Check("导出：包含使用统计", text.Contains("\"Usage\""), "");
+            Check("导出：组清单里有 usage", allIds.Contains("usage"), string.Join(",", allIds));
+
+            var root = System.Text.Json.Nodes.JsonNode.Parse(text)!;
+            var data = root["data"]!.AsObject();
+            var fresh = DefaultSettings.Create();
+            Core.Sync.ExportImport.Apply(fresh, allIds, data);
+
+            CheckEqual("导入：使用统计恢复", Core.UsageStats.Summary().Total, 7);
+
+            /* 备份/同步载荷也要带上使用统计 */
+            Core.UsageStats.ImportJson("{\"Total\":9,\"ByAction\":{\"paste\":9},\"ByDay\":{}}");
+            var sSrc = DefaultSettings.Create();
+            sSrc.Sync.BackupPassword = "test-pass";
+            string payload = new Core.Sync.SyncService(() => sSrc).BuildBackupPayload(out _);
+
+            var sDst = DefaultSettings.Create();
+            new Core.Sync.SyncService(() => sDst).RestoreFromText(payload, password: "test-pass");
+            CheckEqual("备份恢复：使用统计跟着回来", Core.UsageStats.Summary().Total, 9);
+
+            /* 还原成 0，避免影响后面的用例 */
+            Core.UsageStats.ImportJson("{\"Total\":0,\"ByAction\":{},\"ByDay\":{}}");
+        }
+
         /* ---- 崩溃现场快照 ---- */
         {
             string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(),

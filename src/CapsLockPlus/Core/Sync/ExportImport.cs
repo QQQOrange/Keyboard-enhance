@@ -94,6 +94,9 @@ public static class ExportImport
             new[] { nameof(AppSettings.Qbar), nameof(AppSettings.Global) },
             Private: false, DefaultChecked: true),
 
+        new("usage", "使用统计", "每个动作用过多少次、每天的使用次数（换机器也能接着统计）",
+            Array.Empty<string>(), Private: false, DefaultChecked: true),
+
         new("syncSettings", "同步与备份设置", "WebDAV 地址、用户名、备份保留策略；加密导出时含密码",
             new[] { nameof(AppSettings.Sync) },
             Private: true, DefaultChecked: false),
@@ -204,6 +207,10 @@ public static class ExportImport
             if (all.TryGetPropertyValue(key, out var v) && v != null)
                 data[key] = JsonNodeTool.DeepClone(v);
         }
+
+        /* 使用统计不在 AppSettings 里（单独一个 usage.json），单独挂到 data 下。 */
+        if (ids.Contains("usage", StringComparer.OrdinalIgnoreCase))
+            data["Usage"] = JsonNode.Parse(Core.UsageStats.ExportJson());
 
         var file = new JsonObject
         {
@@ -481,6 +488,15 @@ public static class ExportImport
 
         // 导入的数据可能缺项，归一化一遍保证结构完整
         SettingsStore.Normalize(settings);
+
+        /* 使用统计是独立文件，挂在 data["Usage"] 下；勾了这一组才恢复。 */
+        if (groups.Contains("usage", StringComparer.OrdinalIgnoreCase)
+            && data.TryGetPropertyValue("Usage", out var usageNode)
+            && usageNode != null)
+        {
+            Core.UsageStats.ImportJson(usageNode.ToJsonString());
+        }
+
         CoreLog.Info($"已导入明文配置：组={string.Join(",", groups)}，键={filtered.Count}");
         return groups;
     }

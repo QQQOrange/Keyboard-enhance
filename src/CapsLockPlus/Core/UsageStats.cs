@@ -155,6 +155,53 @@ public static class UsageStats
         }
     }
 
+    /// <summary>把使用统计序列化成一段 JSON（备份/导出用）。</summary>
+    public static string ExportJson()
+    {
+        lock (Gate)
+        {
+            EnsureLoaded();
+            var data = new Persisted
+            {
+                Total = _total,
+                ByAction = new Dictionary<string, int>(ByAction, StringComparer.OrdinalIgnoreCase),
+                ByDay = new Dictionary<string, int>(ByDay, StringComparer.Ordinal),
+            };
+            return JsonSerializer.Serialize(data);
+        }
+    }
+
+    /// <summary>从备份/导出里恢复使用统计（整体替换）。</summary>
+    public static bool ImportJson(string json)
+    {
+        try
+        {
+            var data = JsonSerializer.Deserialize<Persisted>(json);
+            if (data == null) return false;
+
+            lock (Gate)
+            {
+                _total = data.Total;
+                ByAction.Clear();
+                if (data.ByAction != null)
+                    foreach (var kv in data.ByAction) ByAction[kv.Key] = kv.Value;
+                ByDay.Clear();
+                if (data.ByDay != null)
+                    foreach (var kv in data.ByDay) ByDay[kv.Key] = kv.Value;
+
+                _dirty = 0;
+                SaveLocked();
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("恢复使用统计失败：" + ex.Message);
+            return false;
+        }
+    }
+
     private sealed class Persisted
     {
         public int Total { get; set; }

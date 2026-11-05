@@ -103,7 +103,11 @@ public sealed class SyncService
     private string SnapshotJson()
     {
         if (_snapshotJson != null) return _snapshotJson();
-        return JsonSerializer.Serialize(_settings(), SettingsStore.JsonOptions);
+
+        /* 备份/同步要带走"全部用户数据"：设置之外还有使用统计（usage.json）。 */
+        var node = JsonSerializer.SerializeToNode(_settings(), SettingsStore.JsonOptions)!.AsObject();
+        node["Usage"] = JsonNode.Parse(Core.UsageStats.ExportJson());
+        return node.ToJsonString(SettingsStore.JsonOptions);
     }
 
     // ---------------- 本地目录 ----------------
@@ -388,6 +392,14 @@ public sealed class SyncService
         }
 
         SettingsStore.Normalize(parsed);
+
+        /* 备份里带使用统计就一起恢复（老备份没有这一段，跳过即可）。 */
+        if (root is JsonObject rootObj
+            && rootObj.TryGetPropertyValue("Usage", out var usageNode)
+            && usageNode != null)
+        {
+            Core.UsageStats.ImportJson(usageNode.ToJsonString());
+        }
 
         if (mode == RestoreMode.Merge)
         {
