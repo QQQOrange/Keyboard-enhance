@@ -280,6 +280,7 @@ public static partial class SelfTest
 
         Section("引擎回归（第二轮）");
         TestEngineRegressions2();
+        TestAuditFixes();
 
         Section("宏可绑定");
         TestMacroIsBindable();

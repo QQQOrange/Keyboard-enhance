@@ -2412,4 +2412,143 @@ public static partial class SelfTest
         engine.Dispose();
         queue.Dispose();
     }
+
+    /// <summary>
+    /// 本轮审计修掉的几个缺陷的回归用例。
+    ///
+    /// 这些都属于"单看某一行都对、连起来才出错"的问题：
+    ///   · 改键：按下 0xA2、抬起 0x11（左右码混发）→ 目标键要松开；
+    ///   · 层绑定缓存：原地改内容且条数不变 → 必须用新绑定；
+    ///   · 片段（空格触发）：触发用的那个空格必须被吞掉；
+    ///   · 层内修饰键：按下被吞，抬起也要吞（否则前台收到孤儿 keyup）。
+    /// </summary>
+    private static void TestAuditFixes()
+    {
+        Section("审计修复回归");
+
+        /* ---- 1. 改键：同族键码（0xA2 按下 / 0x11 抬起） ---- */
+        {
+            var s = DefaultSettings.Create();
+            foreach (var t in s.Triggers) t.Enabled = false;
+            s.Global.BaseRemaps.Clear();
+            s.Global.BaseRemaps.Add(new KeyRemap { From = "lctrl", To = "lalt" });
+
+            var q = new ActionQueue();
+            var e = new HotkeyEngine(q, () => s, (_, _) => true);
+
+            bool down = e.SimulateKey(0xA2, true);
+            Check("改键（混发）：按下被接管", down);
+            CheckEqual("改键（混发）：账本记了 1 条", e.PendingRemapsForTest, 1);
+
+            bool up = e.SimulateKey(0x11, false);       // 抬起用通用 Ctrl 码
+            Check("改键（混发）：抬起也能结账", up);
+            CheckEqual("改键（混发）：账本清空", e.PendingRemapsForTest, 0);
+        }
+
+        /* ---- 2. 层绑定缓存：原地替换内容（条数不变） ---- */
+        {
+            var s = DefaultSettings.Create();
+            var layer = s.Layers.First(l => l.Id == 1);
+            layer.Keys.Clear();
+            layer.Keys.Add(new KeyBinding { Combo = "caps_a", Action = "moveLeft" });
+
+            var captured = new List<string>();
+            var q = new ActionQueue();
+            var e = new HotkeyEngine(q, () => s, (a, _) => { captured.Add(a); return true; });
+
+            e.SimulateKey(VK.CapsLock, true);
+            e.SimulateKey(0x41, true);
+            e.SimulateKey(0x41, false);
+            e.SimulateKey(VK.CapsLock, false);
+            DoEvents(80);
+            Check("层缓存：初始动作生效", captured.Contains("moveLeft"),
+                string.Join(",", captured));
+
+            /* 原地换掉内容，条数不变；版本号 +1（AppHost.SaveSettings 会做这件事）。 */
+            captured.Clear();
+            layer.Keys.Clear();
+            layer.Keys.Add(new KeyBinding { Combo = "caps_a", Action = "moveRight" });
+            s.Global.BindingsVersion++;
+
+            e.SimulateKey(VK.CapsLock, true);
+            e.SimulateKey(0x41, true);
+            e.SimulateKey(0x41, false);
+            e.SimulateKey(VK.CapsLock, false);
+            DoEvents(80);
+            Check("层缓存：内容改动后必须用新绑定", captured.Contains("moveRight"),
+                string.Join(",", captured));
+        }
+
+        /* ---- 3. 片段（空格触发）：空格本身要被吞掉 ---- */
+        {
+            var s = DefaultSettings.Create();
+            foreach (var t in s.Triggers) t.Enabled = false;
+            s.Global.Snippets.Clear();
+            s.Global.Snippets.Add(new Snippet { Trigger = ";mail", Text = "a@b.com" });
+            s.Hotstring.Prefix = ";";
+            s.Hotstring.ExpandOnSpace = true;
+
+            var q = new ActionQueue();
+            var e = new HotkeyEngine(q, () => s, (_, _) => true);
+            foreach (int vk in new[] { 0xBA, 'M', 'A', 'I', 'L' })
+            {
+                e.SimulateKey(vk, true);
+                e.SimulateKey(vk, false);
+            }
+
+            bool spaceDown = e.SimulateKey(0x20, true);
+            bool spaceUp = e.SimulateKey(0x20, false);
+            DoEvents(160);
+
+            Check("片段（空格触发）：空格按下被吞掉", spaceDown);
+            Check("片段（空格触发）：空格抬起也被吞掉", spaceUp);
+            CheckEqual("片段（空格触发）：确实展开了", e.SnippetMatchesForTest, 1);
+        }
+
+        /* ---- 4. 层内修饰键：按下/抬起都要吞 ---- */
+        {
+            var s = DefaultSettings.Create();
+            var layer = s.Layers.First(l => l.Id == 1);
+            layer.Keys.Clear();
+            layer.Keys.Add(new KeyBinding { Combo = "caps_ctrl_c", Action = "copy1" });
+
+            var q = new ActionQueue();
+            var e = new HotkeyEngine(q, () => s, (_, _) => true);
+
+            e.SimulateKey(VK.CapsLock, true);          // 进入层
+            bool ctrlDown = e.SimulateKey(0xA2, true);
+            bool ctrlUp = e.SimulateKey(0xA2, false);
+            e.SimulateKey(VK.CapsLock, false);
+
+            Check("层内修饰键：按下被吞", ctrlDown);
+            Check("层内修饰键：抬起也被吞（不留孤儿 keyup）", ctrlUp);
+        }
+
+        /* ---- 5. Raw 兜底：钩子恢复后必须交还（原分支不可达） ---- */
+        {
+            var s = DefaultSettings.Create();
+            foreach (var t in s.Triggers) t.Enabled = false;
+
+            var q = new ActionQueue();
+            var e = new HotkeyEngine(q, () => s, (_, _) => true);
+
+            long now = Environment.TickCount64;
+
+            /* 第 1 次 feed 的作用只是把 _lastHookSample 对齐到 7 ——
+             * 它本身会被判成"钩子动了"，并把静默锚点刷成当前时刻。
+             * 所以要先对齐、再把锚点拨回 20 秒前，否则永远等不到静默。 */
+            e.FeedFromRaw(0x41, true, hookCount: 7, nowMs: now);
+            e.SeedHookSeenAtForTest(now - 20_000);
+
+            for (int i = 0; i < 6; i++) e.FeedFromRaw(0x41, true, hookCount: 7, nowMs: now + i);
+            Check("Raw 兜底：钩子静默时启用", e.RawFallbackActive);
+
+            /* 钩子计数变化 = 钩子又活了：下一次必须关闭兜底。 */
+            e.FeedFromRaw(0x41, true, hookCount: 8, nowMs: now + 10);
+            Check("Raw 兜底：钩子恢复后关闭", !e.RawFallbackActive);
+
+            /* 再静默也不应在没有新事件时反复抖动：计数不变但时间未到不会立即重开。 */
+            Check("Raw 兜底：恢复后不残留", !e.RawFallbackActive);
+        }
+    }
 }

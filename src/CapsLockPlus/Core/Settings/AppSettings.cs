@@ -300,6 +300,15 @@ public sealed class GlobalOptions
     /// </summary>
     public double TriggerStarScale { get; set; } = 1.5;
 
+    /// <summary>
+    /// 绑定内容版本号：每次保存设置时 +1。
+    ///
+    /// 层绑定字典是缓存复用的，早先只按"List 实例 + 条数"判断失效 ——
+    /// `ResetLayerOne` 是**清空后原地重新填充**，条数一变（或恰好不变）都可能
+    /// 命中旧缓存，出现"界面显示默认动作、键盘还执行旧动作"。加上版本号即可。
+    /// </summary>
+    public int BindingsVersion { get; set; }
+
     public bool StartWithWindows { get; set; }
 
 

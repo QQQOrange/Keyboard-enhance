@@ -307,7 +307,11 @@ public sealed class AppHost : IDisposable
         /* 前缀符号改成"只认一个"之后，老配置（;mail 之类）要自动迁就一下。 */
         if (InferSnippetPrefix(Settings) is char inferred)
         {
-            SettingsStore.RequestSave(Settings);
+            /* 绑定内容变了：让引擎的层绑定缓存失效（它按 List 实例 + 条数判断，
+         * "恢复默认"是清空后原地重填，可能沿用旧缓存）。 */
+        Settings.Global.BindingsVersion++;
+
+        SettingsStore.RequestSave(Settings);
             CoreLog.Info($"文本片段：按已有触发词把前缀符号设为「{inferred}」");
         }
 
@@ -1446,7 +1450,9 @@ public sealed class AppHost : IDisposable
         if (common == null) return null;
         if (common.Key.ToString() == prefix) return null;
 
-        s.Hotstring.Prefix = common.Key.ToString();
+        /* 配置里 "Hotstring": null 时（手改文件 / 旧版本导出的残缺配置）
+         * 这里会直接 NRE，整个"自动识别前缀"静默失败。补一个兜底实例。 */
+        (s.Hotstring ??= new Core.Settings.HotstringOptions()).Prefix = common.Key.ToString();
         return common.Key;
     }
 

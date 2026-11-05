@@ -116,10 +116,37 @@ public sealed partial class HotkeyEngine
         {
             RemapEntry entry = default;
             bool found;
-            lock (_remapGate) found = _remappedDown.Remove(vk, out entry);
+            List<int>? family = null;
+
+            lock (_remapGate)
+            {
+                found = _remappedDown.Remove(vk, out entry);
+
+                /* 驱动 / 远程桌面有时"按下报 0xA2、抬起报 0x11"（左 Ctrl 与通用码混发）。
+                 * 只按精确 vk 找账本会漏，目标修饰键就永远收不到抬起。
+                 * 找不到时按同族码再找一次，并把同族里残留的物理按下一并清掉，
+                 * 否则看门狗会以为"源键还按着"而不敢兜底松开。 */
+                if (!found)
+                {
+                    int canon = CanonicalKey(vk);
+                    foreach (var pair in _remappedDown.ToArray())
+                    {
+                        if (CanonicalKey(pair.Key) != canon) continue;
+
+                        entry = pair.Value;
+                        found = true;
+                        (family ??= new List<int>()).Add(pair.Key);
+                        _remappedDown.Remove(pair.Key);
+                        break;
+                    }
+                }
+            }
 
             if (found)
             {
+                if (family != null)
+                    foreach (int k in family) _physDown.TryRemove(k, out _);
+
                 /* 同步直发，不走 ActionQueue —— 见文件头说明。 */
                 SendDirect(() => InputSender.KeyUp(entry.Target));
                 return true;
@@ -144,6 +171,19 @@ public sealed partial class HotkeyEngine
         SendDirect(() => InputSender.KeyDown(target));
         return true;
     }
+
+    /// <summary>
+    /// 把"左右码 / 通用码"归一到同一个值：0xA2/0xA3/0x11 → 0x11，
+    /// 0xA4/0xA5/0x12 → 0x12，0xA0/0xA1/0x10 → 0x10，0x5C → 0x5B。
+    /// </summary>
+    private static int CanonicalKey(int vk) => vk switch
+    {
+        0xA2 or 0xA3 or 0x11 => 0x11,
+        0xA4 or 0xA5 or 0x12 => 0x12,
+        0xA0 or 0xA1 or 0x10 => 0x10,
+        0x5C => 0x5B,
+        _ => vk,
+    };
 
     /// <summary>
     /// 改键看门狗：账本里躺太久、而源键其实早就松开的条目 —— 直接把目标键抬起来。

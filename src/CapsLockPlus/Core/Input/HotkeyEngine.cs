@@ -865,23 +865,33 @@ public sealed partial class HotkeyEngine : IDisposable
         if (hookCount == _lastHookSample) Interlocked.Increment(ref _missedStreak);
         else _missedStreak = 0;
 
-        if (!ShouldUseRawFallback(hookCount, _lastHookSample, _hookSeenAtMs, nowMs, out bool hookJustMoved)
-            || _missedStreak < 3)
+        bool usable = ShouldUseRawFallback(hookCount, _lastHookSample, _hookSeenAtMs, nowMs,
+                                           out bool hookJustMoved);
+
+        /* 「钩子又动了」必须**最先**处理：
+         * ShouldUseRawFallback 在 hookJustMoved 时返回 false，若沿用下面的
+         * 早退分支，这段恢复逻辑永远走不到 —— RawFallbackActive 一直为 true、
+         * 静默锚点也停在旧时间，钩子恢复后可能两边同时喂键。 */
+        if (hookJustMoved)
         {
-            if (hookJustMoved) _missedStreak = 0;
+            _hookSeenAtMs = nowMs;
+            _lastHookSample = hookCount;
+            _missedStreak = 0;
+            if (RawFallbackActive)
+            {
+                CoreLog.Info("键盘钩子恢复，热键交还给它");
+                RawFallbackActive = false;
+            }
+            return false;
+        }
+
+        if (!usable || _missedStreak < 3)
+        {
             _lastHookSample = hookCount;
             return false;
         }
 
         _lastHookSample = hookCount;
-        if (hookJustMoved)
-        {
-            /* 钩子回来了：交还给它，别两边都喂。 */
-            _hookSeenAtMs = nowMs;
-            if (RawFallbackActive) CoreLog.Info("键盘钩子恢复，热键交还给它");
-            RawFallbackActive = false;
-            return false;
-        }
 
         if (!RawFallbackActive)
         {
@@ -1371,7 +1381,15 @@ public sealed partial class HotkeyEngine : IDisposable
             {
                 _snippetBuffer.Clear();
             }
-            else ObserveSnippet(settings, vk);
+            else if (ObserveSnippet(settings, vk))
+            {
+                /* 空格触发了片段展开：这个空格不能送到前台 ——
+                 * 否则前台会多出一个空格，而 ExpandSnippet 按触发词长度回删，
+                 * 会把空格连同触发词的最后一个字母一起删掉，留下残字。
+                 * 记进 _swallowedUp，抬起也一并吞掉。 */
+                _swallowedUp.TryAdd(vk, 0);
+                return true;
+            }
 
             return false;
         }
@@ -1512,8 +1530,12 @@ public sealed partial class HotkeyEngine : IDisposable
                 return;      // 不是修饰键，什么都不做
         }
 
-        // 抬起的修饰键也从吞掉集合里移除，避免残留
-        if (!down) _swallowedUp.TryRemove(vk, out _);
+        /* 这里**不能**从 _swallowedUp 里删。
+         *
+         * 层内按下 Ctrl/Shift/Alt 时，OnKeyDownInLayer 会把它记进 _swallowedUp，
+         * 抬起必须由 OnKeyUpInLayer 原子地取走并吞掉；本方法在按键处理链的最前面
+         * 执行，先删掉的话 OnKeyUpInLayer 查不到 → 前台收到一个"从没按下过的抬起"，
+         * 游戏 / 远程桌面会判定输入异常。 */
     }
 
     /// <summary>
@@ -1884,13 +1906,14 @@ public sealed partial class HotkeyEngine : IDisposable
     ///     宁可丢掉一次展开，也不要跨键拼出假触发词；
     ///   · 只在"不按任何修饰键"的纯文本输入时累计。
     /// </summary>
-    private void ObserveSnippet(AppSettings s, int vk)
+    /// <returns>true = 这次按键已被片段展开消费，调用方应吞掉它。</returns>
+    private bool ObserveSnippet(AppSettings s, int vk)
     {
         var all = s.Global.Snippets;
         if (all == null || all.Count == 0)
         {
             _snippetBuffer.Clear();
-            return;
+            return false;
         }
 
         /* 只认一个前缀符号（用户可改、可清空、可切全角）。
@@ -1904,7 +1927,7 @@ public sealed partial class HotkeyEngine : IDisposable
         if (list.Count == 0)
         {
             _snippetBuffer.Clear();
-            return;
+            return false;
         }
 
         /* 空格触发：打完触发词**再按空格**才替换（默认）。 */
@@ -1915,19 +1938,18 @@ public sealed partial class HotkeyEngine : IDisposable
             if (ready == null)
             {
                 _snippetBuffer.Clear();
-                return;                     // 没命中 → 空格照常输入
+                return false;               // 没命中 → 空格照常输入
             }
 
             ExpandSnippet(ready);
-            _snippetSpaceSwallowed = true;  // 通知调用方把这次空格吞掉
-            return;
+            return true;                    // 通知调用方把这次空格吞掉
         }
 
         char? ch = AsciiCharOf(vk, _shiftDown);
         if (ch == null)
         {
             _snippetBuffer.Clear();      // 非文本键：断开
-            return;
+            return false;
         }
 
         _snippetBuffer.Append(ch.Value);
@@ -1939,30 +1961,28 @@ public sealed partial class HotkeyEngine : IDisposable
         }
 
         var hit = SnippetMatcher.Match(list, _snippetBuffer.ToString(), ForegroundProcess);
-        if (hit == null) return;
+        if (hit == null) return false;
 
         /* 有更长的候选（例如配了 ;m 和 ;mail，现在命中 ;m）就先别展开：
          * 等 120ms，用户接着打 'a' 就说明他要的是 ;mail。
          * 没有更长的候选时立刻展开 —— 常规场景保持"打完就变"的手感。 */
         /* 空格触发模式：命中先攒着，等空格；不在这里展开。 */
-        if (opt.ExpandOnSpace) return;
+        if (opt.ExpandOnSpace) return false;
 
         if (SnippetMatcher.HasLongerCandidate(list, _snippetBuffer.ToString(), ForegroundProcess))
         {
             _snippetPending = hit;
             _snippetPendingAt = DateTime.Now;
             _snippetPendingBuffer = _snippetBuffer.ToString();
-            return;
+            return false;
         }
 
         ExpandSnippet(hit);
+        return false;
     }
 
     /// <summary>等长候选时的等待窗口。</summary>
     public const int SnippetWaitMs = 120;
-
-    /// <summary>这次空格是否已经被"片段展开"消费掉（调用方据此吞键）。</summary>
-    private bool _snippetSpaceSwallowed;
 
     private Snippet? _snippetPending;
     private DateTime _snippetPendingAt;
@@ -2343,9 +2363,12 @@ public sealed partial class HotkeyEngine : IDisposable
             keys = layerId == 1 ? s.Keys : null;      // 老设置没有层结构时，Keys 即第 1 层
         if (keys == null) return null;
 
+        int version = s.Global?.BindingsVersion ?? 0;
+
         if (_layerMapCache.TryGetValue(layerId, out var cached)
             && ReferenceEquals(cached.Src, keys)
-            && cached.Map.Count == keys.Count)
+            && cached.Map.Count == keys.Count
+            && cached.Version == version)
             return cached.Map;
 
         var map = new Dictionary<string, KeyBinding>(keys.Count, StringComparer.OrdinalIgnoreCase);
@@ -2355,7 +2378,7 @@ public sealed partial class HotkeyEngine : IDisposable
             map[k.Combo] = k;      // 重复时保留最后一条，与 SettingsStore.Normalize 的行为一致
         }
 
-        _layerMapCache[layerId] = (map, keys);
+        _layerMapCache[layerId] = (map, keys, version);
         return map;
     }
 

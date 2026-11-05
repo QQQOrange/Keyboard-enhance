@@ -75,16 +75,29 @@ internal static class HookHost
          * 现在改成：回调里只把消息塞进队列（O(1)，永不阻塞），
          * 由单独线程慢慢写；队列满时**只丢显示用的 KEY/TRIG**，动作不丢。
          */
+        /* 显示消息（KEY/TRIG/LAYER）走有界队列，满了就丢 —— 少几条流水无所谓；
+         * 动作消息（ACT）必须**一条都不丢**：那是用户按下的热键，丢了就是"按了没反应"。
+         *
+         * 早先两者共用一个 512 的有界队列，注释写着"动作不丢"，代码却在
+         * TryAdd 失败后直接 return（droppableWhenFull=false 时），
+         * 主程序一卡顿（渲染页面/同步/GC）队列满，热键就被静默吞掉。 */
         var outQueue = new System.Collections.Concurrent.BlockingCollection<string>(
             new System.Collections.Concurrent.ConcurrentQueue<string>(), 512);
 
+        var actQueue = new System.Collections.Concurrent.BlockingCollection<string>(
+            new System.Collections.Concurrent.ConcurrentQueue<string>());
+
         void Enqueue(string line, bool droppableWhenFull)
         {
-            if (outQueue.TryAdd(line)) return;
-            if (!droppableWhenFull) return;      // 队列满：显示消息直接丢，不阻塞
+            if (droppableWhenFull)
+            {
+                /* 队列满一般是因为主程序卡住了。显示消息不排队、不等待，直接丢。 */
+                outQueue.TryAdd(line);
+                return;
+            }
 
-            /* 队列满一般是因为主程序卡住了。这里也不排队、不等待，
-             * 直接丢 —— 显示流水少几条无所谓，钩子绝对不能超时。 */
+            /* 动作消息：无界队列，绝不丢。 */
+            actQueue.Add(line);
         }
 
         void Forward(string action, string arg)
@@ -96,10 +109,20 @@ internal static class HookHost
         {
             try
             {
-                foreach (string line in outQueue.GetConsumingEnumerable())
+                while (true)
                 {
-                    try { writer?.WriteLine(line); }
-                    catch { /* 主程序没了也不影响吞键 */ }
+                    /* 动作优先：先把 ACT 全部发出去，再发显示消息。
+                     * 两者都空时阻塞 50ms，避免忙等。 */
+                    if (actQueue.TryTake(out string? act))
+                    {
+                        try { writer?.WriteLine(act); } catch { }
+                        continue;
+                    }
+
+                    if (outQueue.TryTake(out string? shown, 50))
+                    {
+                        try { writer?.WriteLine(shown); } catch { }
+                    }
                 }
             }
             catch { }

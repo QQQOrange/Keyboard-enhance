@@ -72,7 +72,7 @@ public sealed partial class HotkeyEngine
     /// 用"层对象 + Keys 列表实例 + 条数"作为失效判据：
     /// 重新加载配置会换新实例，用户增删绑定会改变条数，两种情况都能自动重建。
     /// </summary>
-    private readonly Dictionary<int, (Dictionary<string, KeyBinding> Map, List<KeyBinding> Src)>
+    private readonly Dictionary<int, (Dictionary<string, KeyBinding> Map, List<KeyBinding> Src, int Version)>
         _layerMapCache = new();
 
     private KeyBinding? FindInLayer(AppSettings s, int layerId, string comboId)
