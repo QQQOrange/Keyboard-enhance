@@ -491,12 +491,20 @@ public partial class HotstringView : UserControl
     private void OnGroupMouseDown(object sender, MouseButtonEventArgs e)
     {
         _groupDragStart = e.GetPosition(GroupList);
-        _groupDragRow = (sender as FrameworkElement)?.DataContext as GroupRow;
+
+        /* 事件挂在 ListBox 上，sender 是 ListBox 而不是行 ——
+         * 早先直接取 sender.DataContext，永远拿不到 GroupRow，拖动因此从未生效。
+         * 改成按坐标找行。 */
+        _groupDragRow = FindGroupRowAt(_groupDragStart);
     }
 
     private void OnGroupMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _groupDragRow is not { IsReal: true } row) return;
+        if (e.LeftButton != MouseButtonState.Pressed || _groupDragRow is not { IsReal: true } row)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed) _groupDragRow = null;
+            return;
+        }
 
         var now = e.GetPosition(GroupList);
         if (Math.Abs(now.X - _groupDragStart.X) < 6 && Math.Abs(now.Y - _groupDragStart.Y) < 6) return;

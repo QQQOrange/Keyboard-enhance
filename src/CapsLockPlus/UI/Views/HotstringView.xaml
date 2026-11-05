@@ -194,35 +194,52 @@
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0" Text="{loc:T '全部别名'}" Style="{StaticResource Text.H3}"
-                                   VerticalAlignment="Center" />
+                                   VerticalAlignment="Top" Margin="0,8,0,0" />
 
+                        <!-- 搜索与筛选分成两行：
+                             窗口变窄时优先保证搜索框宽度，排序下拉也给足宽度，
+                             不再出现"搜索框被挤成一条缝、排序文字显示不全"。 -->
                         <Grid Grid.Column="1" Margin="16,0,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="&#xE721;"
-                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                                       Foreground="{DynamicResource Brush.TextTertiary}"
-                                       VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}" KeyDown="OnFilterKeyDown"
-                                     MinHeight="34" VerticalContentAlignment="Center"
-                                     TextChanged="OnFilterChanged" />
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="10,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                                <CheckBox x:Name="UnusedOnlyBox" Content="{loc:T '从未使用'}"
-                                          VerticalAlignment="Center" Margin="0,0,10,0"
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="&#xE721;"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                                           Foreground="{DynamicResource Brush.TextTertiary}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox Grid.Column="1" x:Name="FilterBox" Style="{StaticResource TextBox.Base}"
+                                         KeyDown="OnFilterKeyDown" MinHeight="34" MinWidth="160"
+                                         VerticalContentAlignment="Center" TextChanged="OnFilterChanged" />
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox Grid.Column="0" x:Name="UnusedOnlyBox" Content="{loc:T '从未使用'}"
+                                          VerticalAlignment="Center" Margin="0,0,12,0"
                                           Click="OnUnusedOnlyChanged"
                                           ToolTip="{loc:T '只显示还没被展开过的别名'}" />
-                                <ComboBox x:Name="SortBox" Style="{StaticResource ComboBox.Base}"
-                                          Width="96" VerticalAlignment="Center"
+
+                                <ComboBox Grid.Column="1" x:Name="SortBox" Style="{StaticResource ComboBox.Base}"
+                                          Width="150" MinWidth="150" VerticalAlignment="Center"
                                           SelectionChanged="OnSortChanged"
                                           ToolTip="{loc:T '列表排序方式'}" />
-                                <TextBlock x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
-                                           VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="56"
-                                           TextAlignment="Right" />
-                            </StackPanel>
+
+                                <TextBlock Grid.Column="2" x:Name="FilterCount" Style="{StaticResource Text.Tertiary}"
+                                           VerticalAlignment="Center" Margin="12,0,0,0"
+                                           HorizontalAlignment="Right" TextAlignment="Right" />
+                            </Grid>
                         </Grid>
                     </Grid>
 
