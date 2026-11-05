@@ -2524,6 +2524,24 @@ public static partial class SelfTest
             Check("层内修饰键：抬起也被吞（不留孤儿 keyup）", ctrlUp);
         }
 
+        /* ---- 4.5 分组自定义排序（拖拽的纯逻辑） ---- */
+        {
+            var s = DefaultSettings.Create();
+            s.Global.SnippetGroups.Clear();
+            s.Global.SnippetGroups.AddRange(new[] { "工作", "生活", "临时" });
+            s.Global.SnippetGroupOrder.Clear();
+
+            var order = Core.Settings.SnippetGroupOps.Reorder(s, "临时", "工作");
+            CheckEqual("分组排序：拖到某个组之前", string.Join(",", order), "临时,工作,生活");
+
+            order = Core.Settings.SnippetGroupOps.Reorder(s, "工作", null);
+            CheckEqual("分组排序：拖到最后", string.Join(",", order), "临时,生活,工作");
+
+            Check("分组排序：结果已写回设置",
+                string.Join(",", s.Global.SnippetGroupOrder) == "临时,生活,工作",
+                string.Join(",", s.Global.SnippetGroupOrder));
+        }
+
         /* ---- 5. Raw 兜底：钩子恢复后必须交还（原分支不可达） ---- */
         {
             var s = DefaultSettings.Create();

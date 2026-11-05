@@ -106,6 +106,11 @@ public partial class HotstringView : UserControl
         SortBox.Items.Add(Loc.T("按使用次数"));
         SortBox.Items.Add(Loc.T("自定义顺序"));
         SortBox.SelectedIndex = 0;
+
+        GroupSortBox.Items.Add(Loc.T("按名称"));
+        GroupSortBox.Items.Add(Loc.T("按条目数"));
+        GroupSortBox.Items.Add(Loc.T("自定义（拖动）"));
+        GroupSortBox.SelectedIndex = 0;
     }
 
     public void Initialize(AppHost host)
@@ -120,7 +125,23 @@ public partial class HotstringView : UserControl
             FullWidthBox.IsChecked = opt.FullWidth;
             SpaceBox.IsChecked = opt.ExpandOnSpace;
             SwallowBox.IsChecked = opt.SwallowSpace;
-                _showTextInList = opt.ShowTextInList;
+                /* 4.19.2 之前"列表显示内容"是默认开的；新版默认显示备注。
+         * 老配置只迁移一次，之后用户自己切回"显示内容"不会被再改。 */
+        if (!opt.ListModeMigrated)
+        {
+            opt.ShowTextInList = false;
+            opt.ListModeMigrated = true;
+            _host.SaveSettings();
+        }
+
+        _showTextInList = opt.ShowTextInList;
+
+        GroupSortBox.SelectedIndex = (opt.GroupSortMode ?? "name") switch
+        {
+            "count" => 1,
+            "custom" => 2,
+            _ => 0,
+        };
             UpdateEyeGlyph();
         }
         finally { _suppress = false; }
@@ -160,12 +181,32 @@ public partial class HotstringView : UserControl
         var all = Entries.ToList();
         var groups = AllGroups();
 
+        string mode = _host.Settings.Hotstring.GroupSortMode ?? "name";
+        var savedOrder = _host.Settings.Global.SnippetGroupOrder ?? new List<string>();
+
+        static int CountOf(List<Snippet> all, string g)
+            => all.Count(x => string.Equals(x.Group?.Trim(), g, StringComparison.CurrentCultureIgnoreCase));
+
+        int OrderIndex(string g)
+        {
+            int i = savedOrder.FindIndex(o => string.Equals(o?.Trim(), g, StringComparison.CurrentCultureIgnoreCase));
+            return i < 0 ? int.MaxValue : i;
+        }
+
+        IEnumerable<string> ordered = mode switch
+        {
+            "count" => groups.OrderByDescending(g => CountOf(all, g))
+                             .ThenBy(g => g, StringComparer.CurrentCulture),
+            "custom" => groups.OrderBy(OrderIndex).ThenBy(g => g, StringComparer.CurrentCulture),
+            _ => groups.OrderBy(g => g, StringComparer.CurrentCulture),
+        };
+
         var rows = new List<GroupRow> { new() { Group = null, Label = Loc.T("全部"), Count = all.Count } };
-        rows.AddRange(groups.Select(g => new GroupRow
+        rows.AddRange(ordered.Select(g => new GroupRow
         {
             Group = g,
             Label = g,
-            Count = all.Count(x => string.Equals(x.Group?.Trim(), g, StringComparison.CurrentCultureIgnoreCase)),
+            Count = CountOf(all, g),
         }));
         rows.Add(new GroupRow
         {
@@ -470,9 +511,50 @@ public partial class HotstringView : UserControl
         }
     }
 
+    /// <summary>切换分组排序方式（名称 / 条目数 / 自定义）。</summary>
+    private void OnGroupSortChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null || _suppress) return;
+
+        _host.Settings.Hotstring.GroupSortMode = GroupSortBox.SelectedIndex switch
+        {
+            1 => "count",
+            2 => "custom",
+            _ => "name",
+        };
+
+        _host.SaveSettings();
+        RefreshGroups();
+    }
+
+    /* ---------------- 分组拖拽排序 ---------------- */
+
+    private Point _groupDragStart;
+    private GroupRow? _groupDragRow;
+
+    private void OnGroupMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _groupDragStart = e.GetPosition(GroupList);
+        _groupDragRow = (sender as FrameworkElement)?.DataContext as GroupRow;
+    }
+
+    private void OnGroupMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _groupDragRow is not { IsReal: true } row) return;
+
+        var now = e.GetPosition(GroupList);
+        if (Math.Abs(now.X - _groupDragStart.X) < 6 && Math.Abs(now.Y - _groupDragStart.Y) < 6) return;
+
+        var data = new DataObject("clp/group", row.Group!);
+        DragDrop.DoDragDrop(GroupList, data, DragDropEffects.Move);
+        _groupDragRow = null;
+    }
+
     private void OnGroupDragOver(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent("clp/snippet"))
+        bool isGroupDrag = e.Data.GetDataPresent("clp/group");
+
+        if (!isGroupDrag && !e.Data.GetDataPresent("clp/snippet"))
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -503,6 +585,23 @@ public partial class HotstringView : UserControl
     private void OnGroupDrop(object sender, DragEventArgs e)
     {
         ClearDragHover();
+
+        /* 分组拖拽排序：把拖动的组插到目标组的位置。 */
+        if (e.Data.GetData("clp/group") is string dragged)
+        {
+            var dropTarget = FindGroupRowAt(e.GetPosition(GroupList));
+            if (dropTarget is not { IsReal: true } || _host == null) return;
+
+            SnippetGroupOps.Reorder(_host.Settings, dragged, dropTarget.Group);
+            _host.Settings.Hotstring.GroupSortMode = "custom";
+            _host.SaveSettings();
+
+            GroupSortBox.SelectedIndex = 2;
+            RefreshGroups();
+            _host.Notify(Loc.F("已调整「{0}」的位置（分组顺序：自定义）", dragged));
+            e.Handled = true;
+            return;
+        }
 
         if (e.Data.GetData("clp/snippet") is not Snippet snippet) return;
 
@@ -1169,8 +1268,10 @@ public partial class HotstringView : UserControl
         string comment = (snippet.Comment ?? "").Trim();
         string text = (snippet.Text ?? "").Replace("\r", "").Replace("\n", " ");
 
+        /* 默认显示备注 —— 备注就是这条别名的"名字"。
+         * 没写备注时给一句可操作的提示，而不是把替换内容摊出来。 */
         if (!showText)
-            return comment.Length > 0 ? Shorten(comment, 56) : new string('\u25CF', 6);   // ●●●●●●
+            return comment.Length > 0 ? Shorten(comment, 56) : Loc.T("（无备注）");
 
         if (text.Length > 0) return Shorten(text, 56);
         return comment.Length > 0 ? Shorten(comment, 56) : Loc.T("（空）");

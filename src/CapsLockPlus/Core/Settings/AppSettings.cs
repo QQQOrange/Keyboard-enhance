@@ -173,7 +173,16 @@ public sealed class HotstringOptions
     /// 关掉后只显示备注 —— 别名可能是整段正文/密钥/口令，
     /// 摊在列表里一览无余并不合适（旁边有人、或者正在录屏时）。
     /// </summary>
-    public bool ShowTextInList { get; set; } = true;
+    public bool ShowTextInList { get; set; }
+
+    /// <summary>分组列表的排序方式：name（按名称）/ count（按条目数）/ custom（自定义拖拽顺序）。</summary>
+    public string GroupSortMode { get; set; } = "name";
+
+    /// <summary>
+    /// 4.19.2 之前"列表显示替换内容"默认是开的；新版默认改为显示备注。
+    /// 这个标记保证老配置只被重置一次，之后用户自己切回"显示内容"不会被再改。
+    /// </summary>
+    public bool ListModeMigrated { get; set; } = true;
 
     /// <summary>实际生效的前缀字符（考虑全角设置）。</summary>
     public string EffectivePrefix => FullWidth ? ToFullWidthOrSelf(Prefix) : (Prefix ?? "");
@@ -308,6 +317,12 @@ public sealed class GlobalOptions
     /// 命中旧缓存，出现"界面显示默认动作、键盘还执行旧动作"。加上版本号即可。
     /// </summary>
     public int BindingsVersion { get; set; }
+
+    /// <summary>
+    /// 别名的分组自定义顺序（拖拽后的顺序）。空 = 还没拖过。
+    /// 分组本身是"名字集合"，顺序必须单独存，否则每次刷新又按名字排回去了。
+    /// </summary>
+    public List<string> SnippetGroupOrder { get; set; } = new();
 
     public bool StartWithWindows { get; set; }
 

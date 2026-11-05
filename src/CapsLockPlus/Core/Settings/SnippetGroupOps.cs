@@ -29,6 +29,32 @@ public static class SnippetGroupOps
             .ToList();
     }
 
+    /// <summary>
+    /// 把 <paramref name="dragged"/> 移动到 <paramref name="before"/> 之前
+    /// （before 为 null 表示移到最后），结果写进 <see cref="GlobalOptions.SnippetGroupOrder"/>。
+    ///
+    /// 拖拽排序的核心逻辑放在这里（纯数据），界面只负责把坐标换成"拖到谁头上"。
+    /// </summary>
+    public static List<string> Reorder(AppSettings s, string dragged, string? before)
+    {
+        var order = s.Global.SnippetGroupOrder?.Count > 0
+            ? s.Global.SnippetGroupOrder.ToList()
+            : All(s);
+
+        /* 把还没登记过的分组补进来，保证一次拖动不会把别的组弄丢。 */
+        foreach (string g in All(s))
+            if (!order.Any(x => Same(x, g))) order.Add(g);
+
+        order.RemoveAll(x => Same(x, dragged));
+
+        int idx = before == null ? -1 : order.FindIndex(x => Same(x, before));
+        if (idx < 0) order.Add(dragged);
+        else order.Insert(idx, dragged);
+
+        s.Global.SnippetGroupOrder = order;
+        return order;
+    }
+
     /// <summary>新建分组；已存在返回 false（不重复添加）。</summary>
     public static bool Add(AppSettings s, string? name)
     {

@@ -77,7 +77,7 @@
 
                     <StackPanel MaxWidth="360">
                         <TextBlock Text="{loc:T '列表显示'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
-                        <TextBlock Text="{loc:T '正文显示备注；没备注时用 ●●●●●● 打码。点右上角眼睛按钮可临时显示真正的替换内容。'}"
+                        <TextBlock Text="{loc:T '正文显示备注；没有备注的显示「（无备注）」。点右上角眼睛按钮可临时显示真正的替换内容。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" />
                     </StackPanel>
                 </WrapPanel>
@@ -107,8 +107,12 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="{loc:T '分组'}" Style="{StaticResource Text.H3}" />
-                            <TextBlock Text="{loc:T '点一下只看这一组'}" Style="{StaticResource Text.Tertiary}"
-                                       Margin="0,2,0,0" />
+                            <TextBlock Text="{loc:T '点一下只看这一组；拖动可自定义顺序'}" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" Margin="0,2,0,0" />
+                            <ComboBox x:Name="GroupSortBox" Margin="0,6,0,0" Width="150"
+                                      HorizontalAlignment="Left" Style="{StaticResource ComboBox.Base}"
+                                      SelectionChanged="OnGroupSortChanged"
+                                      ToolTip="{loc:T '分组的排序方式'}" />
                         </StackPanel>
                         <Button Grid.Column="1" x:Name="NewGroupButton" Content="+"
                                 Style="{StaticResource Button.Ghost}" Padding="8,2" FontSize="15"
@@ -122,6 +126,8 @@
                              SelectionChanged="OnGroupChanged"
                              ContextMenuOpening="OnGroupContextMenuOpening"
                              AllowDrop="True"
+                             PreviewMouseLeftButtonDown="OnGroupMouseDown"
+                             PreviewMouseMove="OnGroupMouseMove"
                              DragEnter="OnGroupDragOver" DragOver="OnGroupDragOver"
                              DragLeave="OnGroupDragLeave" Drop="OnGroupDrop">
                         <!-- 菜单挂在**每个列表项**上：WPF 只有在事件源元素自己带 ContextMenu 时才会
