@@ -59,6 +59,12 @@ public partial class SettingsView : UserControl
         FeedbackBox.IsChecked = g.ShowActionFeedback;
         DoubleTapBox.IsChecked = g.DoubleTapCaps;
         RepeatBox.IsChecked = g.RepeatWhenHeld;
+        if (TriggerStarSlider != null)
+        {
+            TriggerStarSlider.Value = g.TriggerStarScale;
+            TriggerStarText.Text = Loc.F("当前 {0:0.0} 倍（默认 1.5 倍，改完立即生效）", g.TriggerStarScale);
+        }
+
         MouseSpeedSlider.Value = g.MouseSpeed;
         MouseSpeedText.Text = Loc.F("{0}（Caps+LAlt+滚轮 可快速调整）", g.MouseSpeed);
         /* 音量下限跟系统步进走：系统一步就是 2%，设 1% 也只能走 2%，
@@ -1568,6 +1574,23 @@ public partial class SettingsView : UserControl
         }
 
         Save();
+    }
+
+    private void OnTriggerStarScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_host == null || _suppress) return;
+
+        double v = Math.Round(e.NewValue, 1);
+        _host.Settings.Global.TriggerStarScale = v;
+
+        if (TriggerStarText != null)
+            TriggerStarText.Text = Loc.F("当前 {0:0.0} 倍（默认 1.5 倍，改完立即生效）", v);
+
+        Save();
+
+        /* 键盘页是缓存复用的，不主动刷新的话要等切页才看得到效果。 */
+        if (Window.GetWindow(this) is UI.Windows.MainWindow mw)
+            mw.RefreshCachedKeysPage();
     }
 
     private void OnRepeatChanged(object sender, RoutedEventArgs e)

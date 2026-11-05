@@ -69,7 +69,7 @@ public partial class KeysView : UserControl
     /// 早先的做法是把 "★" 拼进字符串，星只能和 6.5px 的键名一样小，看不清；
     /// 后来试过右上角独立金星 —— 用户要的是"还在字母前面、和字母同色、再大一号"。
     /// </summary>
-    private static void SetNameWithStar(System.Windows.Controls.TextBlock block, string label, double fontSize, bool star)
+    private void SetNameWithStar(System.Windows.Controls.TextBlock block, string label, double fontSize, bool star)
     {
         if (!star)
         {
@@ -78,9 +78,12 @@ public partial class KeysView : UserControl
         }
 
         block.Text = string.Empty;
+        double scale = _host?.Settings.Global.TriggerStarScale ?? 1.5;
+        scale = Math.Clamp(scale, 1.0, 2.5);
+
         block.Inlines.Add(new System.Windows.Documents.Run("★")
         {
-            FontSize = fontSize * 1.5,
+            FontSize = fontSize * scale,
             FontWeight = FontWeights.Bold,
         });
         block.Inlines.Add(new System.Windows.Documents.Run(" " + label));

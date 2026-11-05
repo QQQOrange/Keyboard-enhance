@@ -634,6 +634,22 @@
                         </ComboBox>
                     </Grid>
 
+                        <!-- 触发键的星标大小：以前写死在代码里（1.5 倍），用户没法调。 -->
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="180" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{loc:T '触发键星标大小'}" Style="{StaticResource Text.Body}" />
+                                <TextBlock x:Name="TriggerStarText" Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Slider Grid.Column="1" x:Name="TriggerStarSlider" Minimum="1.0" Maximum="2.5"
+                                    TickFrequency="0.1" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                    ValueChanged="OnTriggerStarScaleChanged" />
+                        </Grid>
+
                     <!-- 界面语言：条目来自内置语言包（Assets/Lang/*.json），
                          丢一个新 json 进来就会自动出现在这个下拉里，不用改代码。 -->
                     <Grid Margin="0,16,0,0">

@@ -212,6 +212,16 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 设置页改了影响键盘外观的东西（例如触发键星标大小）时，让已缓存的键盘页立刻重画。
+    /// 键盘页是缓存复用的，不主动刷新的话要等用户切走再切回来才看得到变化。
+    /// </summary>
+    public void RefreshCachedKeysPage()
+    {
+        if (_pages.TryGetValue("keys", out var page) && page is KeysView keys)
+            keys.Refresh();
+    }
+
     public UserControl GetPage(string page)
     {
         TouchPage(page);

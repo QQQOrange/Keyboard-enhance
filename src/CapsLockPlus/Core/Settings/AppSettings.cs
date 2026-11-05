@@ -292,6 +292,14 @@ public sealed class QEntry
 public sealed class GlobalOptions
 {
     /// <summary>开机自启（写入 HKCU Run）。</summary>
+    /// <summary>
+    /// 触发键左上角那颗星相对键名的倍数（1.0–2.5，默认 1.5）。
+    ///
+    /// 之前是写死的 1.5，用户问"在哪调"——设置页没有入口，只能改代码。
+    /// 现在做成设置项，实时生效。
+    /// </summary>
+    public double TriggerStarScale { get; set; } = 1.5;
+
     public bool StartWithWindows { get; set; }
 
 
