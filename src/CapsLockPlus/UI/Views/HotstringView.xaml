@@ -77,7 +77,7 @@
 
                     <StackPanel MaxWidth="360">
                         <TextBlock Text="{loc:T '列表显示'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
-                        <TextBlock Text="{loc:T '替换内容默认打码为 ●●●●●●；备注在左侧图标上（悬停可见）。点右上角的眼睛按钮可临时显示原文。'}"
+                        <TextBlock Text="{loc:T '正文显示备注；没备注时用 ●●●●●● 打码。点右上角眼睛按钮可临时显示真正的替换内容。'}"
                                    Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" />
                     </StackPanel>
                 </WrapPanel>
@@ -258,24 +258,14 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
 
-                                        <!-- 最左边：备注图标。悬停显示备注；没备注时压暗，点一下直接去写。 -->
+                                        <!-- 最左边：当前前缀符号（跟着设置里的前缀一起变）。 -->
                                         <Border Grid.Column="0" Width="20" Height="20" CornerRadius="5"
-                                                Margin="0,0,8,0" VerticalAlignment="Center" Cursor="Hand"
+                                                Margin="0,0,8,0" VerticalAlignment="Center"
                                                 Background="{DynamicResource Brush.AccentSoft}"
-                                                ToolTip="{Binding NoteTooltip}"
-                                                MouseLeftButtonUp="OnNoteIconClick">
-                                            <!-- 矢量"便签"图标：不依赖字体，深浅主题、不同 DPI 都不会变形。 -->
-                                            <Viewbox Width="12" Height="12" HorizontalAlignment="Center"
-                                                     VerticalAlignment="Center">
-                                                <Canvas Width="12" Height="12">
-                                                    <Path Stroke="{Binding NoteBrush}" StrokeThickness="1.2"
-                                                          Fill="Transparent" Data="M2,1 H7.5 L10.5,4 V11 H2 Z" />
-                                                    <Path Stroke="{Binding NoteBrush}" StrokeThickness="1.1"
-                                                          Data="M7.5,1 V4 H10.5" />
-                                                    <Path Stroke="{Binding NoteBrush}" StrokeThickness="1"
-                                                          Data="M4,6.4 H8.4 M4,8.8 H6.8" />
-                                                </Canvas>
-                                            </Viewbox>
+                                                ToolTip="{loc:T '当前前缀符号'}">
+                                            <TextBlock Text="{Binding PrefixLabel}" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Brush.Accent}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
 
                                         <TextBlock Grid.Column="1" Text="{Binding KeyLabel}" FontWeight="SemiBold"

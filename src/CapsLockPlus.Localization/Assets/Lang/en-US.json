@@ -2548,5 +2548,7 @@
   "备注：": "Note: ",
   "备注（鼠标停在列表左侧图标上即可看到）": "Note (hover the icon at the left of the list to see it)",
   "显示或隐藏列表里的替换内容（隐藏时显示为圆点）": "Show or hide the replacement text in the list (dots when hidden)",
-  "替换内容默认打码为 ●●●●●●；备注在左侧图标上（悬停可见）。点右上角的眼睛按钮可临时显示原文。": "Replacement text is masked as ●●●●●● by default; the note lives on the left icon (hover to read). Use the eye button at the top right to reveal the text temporarily."
+  "替换内容默认打码为 ●●●●●●；备注在左侧图标上（悬停可见）。点右上角的眼睛按钮可临时显示原文。": "Replacement text is masked as ●●●●●● by default; the note lives on the left icon (hover to read). Use the eye button at the top right to reveal the text temporarily.",
+  "当前前缀符号": "Current prefix symbol",
+  "正文显示备注；没备注时用 ●●●●●● 打码。点右上角眼睛按钮可临时显示真正的替换内容。": "The list shows the note; entries without one are masked as ●●●●●●. Use the eye button at the top right to reveal the actual replacement text."
 }
