@@ -18,14 +18,7 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Width="34" Height="36" CornerRadius="10"
-                        Background="{DynamicResource Brush.AccentSoft}" VerticalAlignment="Top">
-                    <TextBlock Text="&#xE8D2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
-                               Foreground="{DynamicResource Brush.Accent}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
-
-                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                <StackPanel Grid.Column="1" Margin="0">
                     <TextBlock Style="{StaticResource Text.H2}" Text="{loc:T '打一个别名，自动变成一大段文字'}" />
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0"
                                Text="{loc:T '打完别名再按空格就替换（也可以关掉，改用 Caps+Tab 展开）。前缀符号只有一个，可以自己改。'}" />
@@ -123,9 +116,6 @@
                              SelectionChanged="OnGroupChanged"
                              ContextMenuOpening="OnGroupContextMenuOpening"
                              AllowDrop="True"
-                             PreviewMouseLeftButtonDown="OnGroupMouseDown"
-                             PreviewMouseMove="OnGroupMouseMove"
-                             PreviewMouseLeftButtonUp="OnGroupMouseUp"
                              PreviewKeyDown="OnGroupListKeyDown"
                              DragEnter="OnGroupDragOver" DragOver="OnGroupDragOver"
                              DragLeave="OnGroupDragLeave" Drop="OnGroupDrop">
@@ -148,50 +138,26 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="&#xE8B7;"
+                                    <!-- 左侧的抓手只是"可以拖"的视觉提示，真正的拖动面是覆盖整行的透明 Thumb。 -->
+                                    <TextBlock Grid.Column="0" Text="&#xE76F;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                               Foreground="{DynamicResource Brush.TextTertiary}"
+                                               VerticalAlignment="Center" Margin="6,0,2,0" />
+
+                                    <TextBlock Grid.Column="1" Text="&#xE8B7;"
                                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
                                                Foreground="{DynamicResource Brush.TextTertiary}"
-                                               VerticalAlignment="Center" Margin="8,0,8,0" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="12.5"
+                                               VerticalAlignment="Center" Margin="2,0,8,0" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Label}" FontSize="12.5"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource Brush.TextPrimary}" />
-                                    <TextBlock Grid.Column="2" Text="{Binding Count}" FontSize="10.5"
-                                               VerticalAlignment="Center" Margin="6,0,2,0"
-                                               Foreground="{DynamicResource Brush.TextTertiary}" />
 
-                                    <!-- 每行都有上移/下移：拖拽之外再给一条确定可用的通路。
-                                         「全部 / 未分组」不是真分组，按钮自动禁用。 -->
-                                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center"
-                                                Margin="2,0,4,0">
-                                        <Button Content="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="9"
-                                                Width="18" Height="18" Padding="0" Click="OnGroupMoveUp"
-                                                ToolTip="{loc:T '上移'}" AutomationProperties.Name="{loc:T '上移'}">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource Button.Icon}">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsReal}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                        <Button Content="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9"
-                                                Width="18" Height="18" Padding="0" Click="OnGroupMoveDown"
-                                                ToolTip="{loc:T '下移'}" AutomationProperties.Name="{loc:T '下移'}">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource Button.Icon}">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsReal}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                    </StackPanel>
+                                    <!-- 覆盖整行的透明拖动面：按在分组名的任意位置都能上下拖。 -->
+                                    <Thumb Grid.ColumnSpan="3" Background="Transparent" Opacity="0"
+                                           Cursor="SizeAll"
+                                           AutomationProperties.Name="{loc:T '拖动排序'}"
+                                           DragStarted="OnGroupThumbDragStarted"
+                                           DragCompleted="OnGroupThumbDragCompleted"
+                                           ToolTip="{loc:T '按住拖动可调整分组顺序'}" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

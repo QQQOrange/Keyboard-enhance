@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -483,74 +484,64 @@ public partial class HotstringView : UserControl
         }
     }
 
-    /* ---------------- 分组拖拽排序 ---------------- */
+    /* ---- 分组拖拽排序 ----
+     *
+     * 两条经验：
+     *   1) 事件要挂在 ListBox 上（行级事件在鼠标捕获后会断掉）；
+     *   2) 拖动过程中**不要**实时重排 —— 行会在指针下位移，顺序被反复改写。
+     * 所以：按下记住行 → 移动只记录"悬在哪一行"并高亮 → 松手才落一次位置。 */
 
     private Point _groupDragStart;
     private string? _dragGroupName;
+    private string? _dragOverName;
     private bool _groupDragging;
 
-    private void OnGroupMouseDown(object sender, MouseButtonEventArgs e)
+    private string? _thumbDragGroup;
+
+    private void OnGroupThumbDragStarted(object sender, DragStartedEventArgs e)
     {
-        _groupDragStart = e.GetPosition(GroupList);
-        var row = FindGroupRowAt(_groupDragStart);
-        _dragGroupName = row is { IsReal: true } ? row.Group : null;
-        _groupDragging = false;
+        if ((sender as FrameworkElement)?.DataContext is GroupRow { IsReal: true } row)
+        {
+            _thumbDragGroup = row.Group;
+            GroupList.SelectedItem = row;
+        }
     }
 
     /// <summary>
-    /// 分组拖动：**不用 DragDrop**，改成"按住 → 移动过阈值 → 实时重排"。
+    /// 松手时按指针位置找目标行，再落一次顺序。
     ///
-    /// 之前用 DragDrop.DoDragDrop，实际测试拖不动（ListBox 的选中/捕获会把
-    /// 拖动链路吃掉，Drop 也常拿不到目标行）。现在用鼠标捕获自己算位置：
-    /// 拖过哪个分组就把自己插到它的位置，松手保存。
-    /// 这样即使不松手也能看到分组在动，反馈最直接。
+    /// 用 Thumb 而不是 ListBox 的鼠标事件：Thumb 自己会捕获鼠标，
+    /// DragCompleted 一定会来；而 ListBox 的 PreviewMouseDown 在部分场景根本收不到。
     /// </summary>
-    private void OnGroupMouseMove(object sender, MouseEventArgs e)
+    private void OnGroupThumbDragCompleted(object sender, DragCompletedEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed)
-        {
-            EndGroupDrag(commit: _groupDragging);
-            return;
-        }
+        string? dragged = _thumbDragGroup;
+        _thumbDragGroup = null;
+        if (dragged == null || _host == null) return;
 
-        if (_dragGroupName == null || _host == null) return;
-
-        var now = e.GetPosition(GroupList);
-        if (!_groupDragging)
-        {
-            if (Math.Abs(now.X - _groupDragStart.X) < 4 && Math.Abs(now.Y - _groupDragStart.Y) < 4) return;
-
-            _groupDragging = true;
-            Mouse.Capture(GroupList);
-        }
-
-        var over = FindGroupRowAt(now);
-        if (over is not { IsReal: true } || string.Equals(over.Group, _dragGroupName, StringComparison.CurrentCultureIgnoreCase))
+        var over = FindGroupRowAt(Mouse.GetPosition(GroupList));
+        if (over is not { IsReal: true } || string.Equals(over.Group, dragged, StringComparison.CurrentCultureIgnoreCase))
             return;
 
-        SnippetGroupOps.Reorder(_host.Settings, _dragGroupName, over.Group);
+        var names = (GroupList.ItemsSource as List<GroupRow> ?? new List<GroupRow>())
+            .Where(r => r.IsReal)
+            .Select(r => r.Group!)
+            .ToList();
+
+        int from = names.FindIndex(g => string.Equals(g, dragged, StringComparison.CurrentCultureIgnoreCase));
+        int to = names.FindIndex(g => string.Equals(g, over.Group, StringComparison.CurrentCultureIgnoreCase));
+        if (from < 0 || to < 0 || from == to) return;
+
+        string? before = to > from
+            ? (to + 1 < names.Count ? names[to + 1] : null)
+            : names[to];
+
+        SnippetGroupOps.Reorder(_host.Settings, dragged, before);
         _host.SaveSettings();
+        _host.Notify(Loc.F("已调整「{0}」的位置", dragged));
 
-        string dragging = _dragGroupName;
-        _selectGroupAfterRefresh = dragging;   // 重排后保持选中的是正在拖的那个组
+        _selectGroupAfterRefresh = dragged;
         RefreshGroups();
-        _dragGroupName = dragging;          // 行对象已重建，按名字继续拖
-        Mouse.Capture(GroupList);           // 刷新会丢捕获，重新拿回来
-    }
-
-    private void OnGroupMouseUp(object sender, MouseButtonEventArgs e) => EndGroupDrag(commit: _groupDragging);
-
-    private void EndGroupDrag(bool commit)
-    {
-        if (commit && _host != null && _dragGroupName != null)
-        {
-            _host.SaveSettings();
-            _host.Notify(Loc.F("已调整「{0}」的位置", _dragGroupName));
-        }
-
-        _groupDragging = false;
-        _dragGroupName = null;
-        if (ReferenceEquals(Mouse.Captured, GroupList)) GroupList.ReleaseMouseCapture();
     }
 
     private void OnGroupDragOver(object sender, DragEventArgs e)
