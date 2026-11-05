@@ -83,6 +83,11 @@ public partial class KeysView : UserControl
 
         nameBlock.Text = label;
 
+        /* 关键：TextBlock 默认 VerticalAlignment=Stretch，放进横向 StackPanel 后
+         * 会被拉高到"星"的高度，而文字是从盒子**顶部**开始排的 ——
+         * 于是字看起来不在中间（星越大越明显）。显式居中对齐。 */
+        nameBlock.VerticalAlignment = VerticalAlignment.Center;
+
         var row = new StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
@@ -90,19 +95,59 @@ public partial class KeysView : UserControl
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        row.Children.Add(new System.Windows.Controls.TextBlock
+        /* 星用**矢量图形**而不是字符：
+         * 文字的字形在行盒里偏上（大字号尤其明显），和旁边小一号的字母放一起
+         * 会"星高字低"。Path 的包围盒就是图形本身，VerticalAlignment=Center
+         * 对齐的是真正的几何中心，两者才会齐。 */
+        /* Stretch=None + 按目标尺寸直接生成几何：
+         * 容器高度只有一行字，用 Uniform 会被压扁（星星变成扁片），
+         * 所以几何本身就按像素尺寸生成，让它自然溢出、上下对称。 */
+        row.Children.Add(new System.Windows.Shapes.Path
         {
-            Text = "★",
-            FontSize = fontSize * scale,
-            FontWeight = FontWeights.Bold,
-            Foreground = nameBlock.Foreground,     // 与字母同色
+            Data = StarGeometry(fontSize * scale),
+            Fill = nameBlock.Foreground,
+            Stretch = Stretch.None,
             VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.NoWrap,
-            Margin = new Thickness(0, 0, 1, 0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 2, 0),
+            IsHitTestVisible = false,
         });
 
         row.Children.Add(nameBlock);
+
+        /* 行高由星决定（星最大），字母在自己的行盒里居中对齐 —— 
+         * 两者中线重合。之前把整行塞进"一行字高"的容器里，超出的部分
+         * 会被裁掉（星变成扁片），所以这里不再限制高度。 */
         return row;
+    }
+
+    /// <summary>
+    /// 五角星几何，直接按像素尺寸生成（1 个单位 = 1 px）。
+    ///
+    /// 用矢量而不是字符："★" 的字形在行盒里偏上，大字号时和旁边小字放一起会
+    /// "星高字低"；矢量图形的包围盒就是图形本身，垂直居中才准。
+    /// 也不用 Stretch：容器高度受限时 Uniform 会把星压扁。
+    /// </summary>
+    private static Geometry StarGeometry(double size)
+    {
+        const int points = 5;
+        double outer = size / 2;
+        double inner = size * 0.21;
+
+        var geo = new StreamGeometry();
+        using (StreamGeometryContext ctx = geo.Open())
+        {
+            for (int i = 0; i < points * 2; i++)
+            {
+                double radius = i % 2 == 0 ? outer : inner;
+                double angle = -Math.PI / 2 + i * Math.PI / points;
+                var pt = new Point(size / 2 + radius * Math.Cos(angle), size / 2 + radius * Math.Sin(angle));
+                if (i == 0) ctx.BeginFigure(pt, isFilled: true, isClosed: true);
+                else ctx.LineTo(pt, isStroked: false, isSmoothJoin: false);
+            }
+        }
+        geo.Freeze();
+        return geo;
     }
 
     /// <summary>
