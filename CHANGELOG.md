@@ -1,3 +1,32 @@
+## v4.19.9 — 分组拖拽：找到"从来没启动"的真正原因
+
+### 根因
+
+分组拖拽的起点一直用 `GroupList.InputHitTest(point)` 来找"按在哪一行"。
+在这个带 ScrollViewer 的 ListBox 上，`InputHitTest` 经常只返回 ScrollViewer 本身，
+`ContainerFromElement` 自然拿不到 `ListBoxItem` —— `_dragGroupName` 永远是 null，
+`OnGroupMouseMove` 第一行就 return，`DoDragDrop` 从来没被调用过。
+
+所以前面几版无论换成 Thumb、鼠标捕获还是 DragDrop，都拖不动：**不是拖放实现的问题，
+是"按下时没认出是哪一行"**。
+
+### 修复
+
+改成和别名列表完全一样的写法（那边一直可用）：
+
+```csharp
+var item = ItemsControl.ContainerFromElement(GroupList, e.OriginalSource as DependencyObject) as ListBoxItem;
+_dragGroupName = (item?.DataContext as GroupRow) is { IsReal: true } row ? row.Group : null;
+```
+
+- `DragOver` / `Drop` 也用 `e.OriginalSource` 取目标行（保留坐标兜底）；
+- 其余流程不变：超过 8px → `DoDragDrop("clp/group")` → `Reorder` → 保存。
+
+### 验证
+
+- `--selftest`：3340 项全过
+- 分组名居中、行内无数字无按钮（上一版已确认）
+
 ## v4.19.8 — 分组拖拽改用与别名列表相同的 DragDrop；分组名居中
 
 ### 1. 拖拽排序换成"已验证可用"的那套

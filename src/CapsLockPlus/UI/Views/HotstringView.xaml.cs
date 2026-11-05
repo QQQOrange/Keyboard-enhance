@@ -492,8 +492,12 @@ public partial class HotstringView : UserControl
     private void OnGroupMouseDown(object sender, MouseButtonEventArgs e)
     {
         _groupDragStart = e.GetPosition(GroupList);
-        var row = FindGroupRowAt(_groupDragStart);
-        _dragGroupName = row is { IsReal: true } ? row.Group : null;
+
+        /* 关键：用 e.OriginalSource 往上找 ListBoxItem。
+         * InputHitTest 在这种带 ScrollViewer 的 ListBox 上经常只返回 ScrollViewer，
+         * 于是永远拿不到行、拖拽从一开始就没启动过。别名列表就是这么写的，一直好用。 */
+        var item = ItemsControl.ContainerFromElement(GroupList, e.OriginalSource as DependencyObject) as ListBoxItem;
+        _dragGroupName = (item?.DataContext as GroupRow) is { IsReal: true } row ? row.Group : null;
     }
 
     /// <summary>
@@ -523,7 +527,8 @@ public partial class HotstringView : UserControl
             return;
         }
 
-        var target = FindGroupRowAt(e.GetPosition(GroupList));
+        var hoverItem = ItemsControl.ContainerFromElement(GroupList, e.OriginalSource as DependencyObject) as ListBoxItem;
+        var target = hoverItem?.DataContext as GroupRow ?? FindGroupRowAt(e.GetPosition(GroupList));
         if (target is not { IsReal: true } && target is not { Group: "" })
         {
             /* 「全部」只是个视图，不接受放下。 */
@@ -550,7 +555,8 @@ public partial class HotstringView : UserControl
 
         if (e.Data.GetData("clp/group") is string draggedGroup)
         {
-            var dropRow = FindGroupRowAt(e.GetPosition(GroupList));
+            var dropItem = ItemsControl.ContainerFromElement(GroupList, e.OriginalSource as DependencyObject) as ListBoxItem;
+            var dropRow = dropItem?.DataContext as GroupRow;
             if (dropRow is not { IsReal: true } || _host == null) return;
 
             var names = (GroupList.ItemsSource as List<GroupRow> ?? new List<GroupRow>())
