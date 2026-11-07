@@ -269,6 +269,22 @@ public static class InputSender
         lock (HeldGate) HeldModifiers.Remove(vk);
     }
 
+    /// <summary>这个修饰键当前是不是"我们注入按下、还没抬起"的状态。</summary>
+    public static bool IsHeldByUs(int vk)
+    {
+        lock (HeldGate) return HeldModifiers.ContainsKey(vk);
+    }
+
+    /// <summary>
+    /// 纠偏判定：只有**我们自己按下却没抬起**的修饰键才允许自动松手。
+    ///
+    /// 以前只看"系统说它按着 + 引擎没收到真实按下"——用户自己按住的 Ctrl/Alt
+    /// 一旦因为钩子重装、宿主机掉线而没进 _physDown，就会被当成漏抬起**强制松开**，
+    /// 于是正在进行的 Ctrl+C（手势工具、复制粘贴）当场失效。
+    /// </summary>
+    public static bool ShouldAutoRelease(int vk, bool physicallyDown)
+        => !physicallyDown && IsHeldByUs(vk);
+
     /// <summary>把这些修饰键全部松开（退出 / 暂停 / 钩子丢失时用）。</summary>
     public static int ReleaseTrackedModifiers()
     {

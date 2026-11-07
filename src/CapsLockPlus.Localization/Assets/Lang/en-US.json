@@ -2566,5 +2566,13 @@
   "已调整「{0}」的位置": "Moved \"{0}\"",
   "筛选 · 拖动排序": "Filter · drag to reorder",
   "拖动排序": "Drag to reorder",
-  "按住拖动可调整分组顺序": "Press and drag to reorder groups"
+  "按住拖动可调整分组顺序": "Press and drag to reorder groups",
+  "绑定应用（可选）": "Bind an app (optional)",
+  "发送按键（可绑定应用）": "Send a key (optionally to an app)",
+  "已发送 {0}（未绑定应用，发给当前窗口）": "Sent {0} (no app bound; sent to the focused window)",
+  "每个动作用过多少次、每天的使用次数（换机器也能接着统计）": "How many times each action was used, per day (keeps counting after moving machines)",
+  "发送 {0}（未绑定应用，发给当前窗口）": "Send {0} (no app bound; to the focused window)",
+  "未绑定应用 —— 按下时直接发给当前窗口（任何程序都能用）": "No app bound — the key is sent to the focused window (works in any program)",
+  "还差：「要发送的键」": "Still missing: the key to send",
+  "按这个键时：不找应用、不等窗口，直接把键发给当前窗口 —— 任何时候按都生效。": "Pressing this key sends it straight to the focused window — no app lookup, no waiting. Works anytime."
 }

@@ -405,7 +405,11 @@ public sealed class AppHost : IDisposable
                 foreach (int vk in Core.Input.InputSafety.WatchedModifiers)
                 {
                     if (!Core.Input.InputSafety.IsDown(vk)) continue;
-                    if (Engine.IsPhysicallyDown(vk)) continue;
+
+                    /* 只松"我们自己按下、却没抬起"的键。
+                     * 用户自己按住的 Ctrl/Alt 不能被误判 —— 那会把正在进行
+                     * 的 Ctrl+C 直接打断（手势工具复制失败的典型原因）。 */
+                    if (!Core.Input.InputSender.ShouldAutoRelease(vk, Engine.IsPhysicallyDown(vk))) continue;
 
                     Core.Input.InputSafety.ReleaseKey(vk);
                     CoreLog.Warn($"[注入] 发现漏抬起的修饰键 {Core.Input.KeyName.NameOf(vk)}，已补发抬起");

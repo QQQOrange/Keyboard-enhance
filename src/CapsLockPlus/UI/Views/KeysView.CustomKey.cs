@@ -100,7 +100,7 @@ public partial class KeysView : UserControl
         // 应用状态：路径存不存在直接说，别等按下去才报错
         if (string.IsNullOrWhiteSpace(spec.AppPath))
         {
-            CustomAppStatus.Text = "";
+            CustomAppStatus.Text = Loc.T("未绑定应用 —— 按下时直接发给当前窗口（任何程序都能用）");
         }
         else if (File.Exists(spec.AppPath))
         {
@@ -116,14 +116,14 @@ public partial class KeysView : UserControl
             CustomAppStatus.Text = Loc.T("这个路径现在不存在 —— 按下去会启动失败");
         }
 
-        CustomKeyHint.Text = spec.IsReady
-            ? Loc.F("按这个键时：先看「{0}」在不在运行 —— ", spec.ProcessName)
-              + Loc.T("在运行就直接把键发过去；没运行就先启动它（")
-              + (spec.RunAsAdmin ? Loc.T("以管理员身份") : Loc.T("普通权限"))
-              + Loc.T("），等窗口出来再发键。")
-            : Loc.T("还差：") + (hasKey ? "" : Loc.T("「要发送的键」"))
-              + (!hasKey && string.IsNullOrWhiteSpace(spec.AppPath) ? Loc.T(" 和 ") : "")
-              + (string.IsNullOrWhiteSpace(spec.AppPath) ? Loc.T("「绑定应用」") : "");
+        CustomKeyHint.Text = !spec.IsReady
+            ? Loc.T("还差：「要发送的键」")
+            : !spec.HasApp
+                ? Loc.T("按这个键时：不找应用、不等窗口，直接把键发给当前窗口 —— 任何时候按都生效。")
+                : Loc.F("按这个键时：先看「{0}」在不在运行 —— ", spec.ProcessName)
+                  + Loc.T("在运行就直接把键发过去；没运行就先启动它（")
+                  + (spec.RunAsAdmin ? Loc.T("以管理员身份") : Loc.T("普通权限"))
+                  + Loc.T("），等窗口出来再发键。");
     }
 
     /// <summary>

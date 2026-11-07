@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Windows;
@@ -58,8 +58,22 @@ public static class CustomKeyRunner
     {
         if (string.IsNullOrWhiteSpace(spec.Key))
             return new Result(false, "自定义按键还没设置要发送的键");
-        if (string.IsNullOrWhiteSpace(spec.AppPath))
-            return new Result(false, "自定义按键还没绑定应用");
+
+        /* 没绑定应用 = "任何时候都生效"的那种用法：
+         * 不做进程查找、不启动、不等窗口，直接把键交给当前前台窗口。
+         * 之前这里直接报"还没绑定应用"，等于把不绑应用的用法整个堵死了。 */
+        if (!spec.HasApp)
+        {
+            string note = Loc.F("已发送 {0}（未绑定应用，发给当前窗口）", ComboDisplay(spec.Key));
+            if (SendForTest != null)
+            {
+                SendForTest(spec.Key);
+                return new Result(true, note);
+            }
+
+            SendCombo(spec.Key);
+            return new Result(true, note);
+        }
 
         string proc = spec.ProcessName;
         if (proc.Length == 0)

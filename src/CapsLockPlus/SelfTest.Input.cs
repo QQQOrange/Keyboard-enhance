@@ -452,7 +452,8 @@ public static partial class SelfTest
         Check("自定义按键：空参数不炸", !CustomKeySpec.FromArg("").IsReady);
         Check("自定义按键：坏 JSON 不炸", !CustomKeySpec.FromArg("{oops").IsReady);
         CheckEqual("自定义按键：手填纯键名也认", CustomKeySpec.FromArg("f13").Key, "f13");
-        Check("自定义按键：只填键不算就绪", !CustomKeySpec.FromArg("f13").IsReady);
+        Check("自定义按键：只填键也算就绪（绑定应用是可选的）", CustomKeySpec.FromArg("f13").IsReady);
+        Check("自定义按键：只填键时没有绑定应用", !CustomKeySpec.FromArg("f13").HasApp);
 
         // ---------- 组合键解析 ----------
         var (mods, vk) = CustomKeyRunner.ResolveCombo("ctrl_shift_k");
@@ -484,6 +485,15 @@ public static partial class SelfTest
             Check("应用没在运行时会先启动", launched);
             Check("启动后把键发出去了", sent == back.Key, sent ?? "(null)");
             Check("结果说明里提到已启动", r1.Ok && r1.Message.Contains("已启动"), r1.Message);
+
+            // 没绑定应用 → 不启动、不找窗口，直接发给当前窗口
+            launched = false;
+            sent = null;
+            var noApp = new CustomKeySpec { Key = "f13" };
+            var r0 = CustomKeyRunner.Run(noApp);
+            Check("未绑定应用：不启动任何程序", !launched);
+            Check("未绑定应用：照样把键发出去", sent == "f13", sent ?? "(null)");
+            Check("未绑定应用：结果说明写清楚", r0.Ok && r0.Message.Contains("未绑定"), r0.Message);
 
             // 已在运行 → 不重复启动，直接发
             launched = false;
@@ -1879,6 +1889,35 @@ public static partial class SelfTest
 
             SnippetGroupOps.Move(s, s.Global.Snippets.First(x => x.Trigger == ";c"), "工作");
             Check("分组：移动会顺带登记分组", SnippetGroupOps.All(s).Any(g => g == "工作"), "");
+        }
+
+        /* ---- 修饰键纠偏：只松"我们注入的"，绝不松用户自己按住的 ---- */
+        {
+            var sent = new List<(int Vk, bool Up)>();
+            Core.Input.InputSender.SenderForTest = (vk, up) => sent.Add((vk, up));
+            try
+            {
+                /* 用户自己按住 Ctrl：引擎没记录、也不是我们注入的 → 不许自动松 */
+                Check("纠偏：用户按住的 Ctrl 不会被自动松开",
+                    !Core.Input.InputSender.ShouldAutoRelease(0xA2, physicallyDown: false), "");
+
+                /* 我们注入按下、还没抬起 → 才允许补发抬起 */
+                Core.Input.InputSender.KeyDown(0xA2);
+                Check("纠偏：注入的 Ctrl 算作我们按着",
+                    Core.Input.InputSender.IsHeldByUs(0xA2), "");
+                Check("纠偏：注入后允许自动松开",
+                    Core.Input.InputSender.ShouldAutoRelease(0xA2, physicallyDown: false), "");
+
+                Core.Input.InputSender.KeyUp(0xA2);
+                Check("纠偏：抬起后不再算我们按着",
+                    !Core.Input.InputSender.IsHeldByUs(0xA2), "");
+                Check("纠偏：抬起后不允许再自动松开",
+                    !Core.Input.InputSender.ShouldAutoRelease(0xA2, physicallyDown: false), "");
+            }
+            finally
+            {
+                Core.Input.InputSender.SenderForTest = null;
+            }
         }
 
         /* ---- 导出/备份要带上"使用统计" ---- */

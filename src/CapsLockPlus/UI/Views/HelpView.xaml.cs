@@ -363,7 +363,9 @@ public partial class HelpView : UserControl
             if (note != null) return note;
             var spec = Core.Actions.CustomKeySpec.FromArg(binding.Arg);
             if (!spec.IsReady) return Loc.T("自定义按键（还没配好）");
-            return Loc.F("把 {0} 发给 {1}", Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key), spec.ProcessName)
+            return spec.HasApp
+                ? Loc.F("把 {0} 发给 {1}", Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key), spec.ProcessName)
+                : Loc.F("发送 {0}（未绑定应用，发给当前窗口）", Core.Actions.CustomKeyRunner.ComboDisplay(spec.Key))
                  + (spec.RunAsAdmin ? Loc.T("（需要时以管理员身份启动）") : "")
                  + (spec.BringFront ? Loc.T("，会先切到前台") : "");
         }

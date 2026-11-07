@@ -130,6 +130,20 @@ public partial class App : Application
             return;
         }
 
+        /* 只读检查：当前配置里有哪些改键规则。 */
+        if (Core.CliFlags.Has(e.Args, "--check-remaps"))
+        {
+            Environment.Exit(Core.RemapCheck.Run());
+            return;
+        }
+
+        /* 把加密日志导出成明文（用户反馈问题用）。 */
+        if (Core.CliFlags.Has(e.Args, "--export-log"))
+        {
+            Environment.Exit(Core.LogExport.Run(e.Args));
+            return;
+        }
+
         if (Core.CliFlags.Has(e.Args, "--help") || Core.CliFlags.Has(e.Args, "-h"))
         {
             Core.CliFlags.PrintUsage();

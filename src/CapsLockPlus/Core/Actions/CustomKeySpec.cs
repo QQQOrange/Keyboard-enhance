@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace CapsLockPlus.Core.Actions;
 
@@ -51,8 +51,17 @@ public sealed class CustomKeySpec
     /// <summary>默认额外等待（毫秒），与 QuickSearch 的默认值保持一致。</summary>
     public const int DefaultWaitMs = 900;
 
-    /// <summary>两个必填项都填了才算配置完整。</summary>
-    public bool IsReady => !string.IsNullOrWhiteSpace(Key) && !string.IsNullOrWhiteSpace(AppPath);
+    /// <summary>有没有绑定应用。没绑定 = 发给当前前台窗口（任何程序下都生效）。</summary>
+    public bool HasApp => !string.IsNullOrWhiteSpace(AppPath);
+
+    /// <summary>
+    /// 配置是否完整：**只要设了要发送的键就算完整**。
+    ///
+    /// 绑定应用是可选项：
+    ///   · 绑了 → 先确保它在运行，再把键发给它；
+    ///   · 没绑 → 直接把键发给当前前台窗口，任何时候按都生效。
+    /// </summary>
+    public bool IsReady => !string.IsNullOrWhiteSpace(Key);
 
     /// <summary>应用的进程名（不带 .exe），用于"有没有在运行"。</summary>
     public string ProcessName
