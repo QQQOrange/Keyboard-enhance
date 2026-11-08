@@ -76,12 +76,19 @@ public static class SnippetMatcher
     public static bool HasLongerCandidate(IEnumerable<Snippet>? snippets, string buffer, string? process)
     {
         if (snippets == null || string.IsNullOrEmpty(buffer)) return false;
+
+        /* 缓冲区可能包含普通文字（"hello ;m"）。先找出**当前命中的那个触发词**，
+         * 再只比较以它为前缀的更长的触发词；直接拿整个 buffer 去 StartsWith
+         * 会让前面有文字时的 ;m / ;mail 判定失效。 */
+        var hit = Match(snippets, buffer, process);
+        if (hit == null) return false;
+
         foreach (var s in snippets)
         {
             if (s == null || !s.Enabled || !IsValidTrigger(s.Trigger)) continue;
             if (!AllowedIn(s, process)) continue;
-            if (s.Trigger.Length <= buffer.Length) continue;
-            if (s.Trigger.StartsWith(buffer, StringComparison.Ordinal)) return true;
+            if (s.Trigger.Length <= hit.Trigger.Length) continue;
+            if (s.Trigger.StartsWith(hit.Trigger, StringComparison.Ordinal)) return true;
         }
         return false;
     }

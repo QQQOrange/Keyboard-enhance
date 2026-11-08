@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using CapsLockPlus.Core.Input;
@@ -92,7 +92,11 @@ public sealed partial class ActionContext
 
         try
         {
-            if (!Directory.Exists(target))
+            /* shell:Downloads / shell:Startup 是 Shell 命名空间，不是文件系统路径，
+             * Directory.Exists 永远返回 false。之前这里直接判“不存在”，
+             * 导致文档里承诺的虚拟目录全部打不开。 */
+            bool shellNamespace = target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase);
+            if (!shellNamespace && !Directory.Exists(target))
             {
                 Notify(Loc.F("文件夹不存在：{0}", target));
                 return;

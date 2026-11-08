@@ -87,7 +87,7 @@ public static class ExportImport
         /* 文本片段存在 Global 里（和历史结构有关），所以这一组导出的是 Global。
          * 描述里必须写清楚"顺带带走别的东西"，否则用户只勾这一组会意外改掉外观。 */
         new("snippets", "别名替换", "别名、展开内容、备注、分组、限定程序，以及前缀符号等设置（因为存在 Global 里，同组还会带走外观与行为设置）",
-            new[] { nameof(AppSettings.Global) },
+            new[] { nameof(AppSettings.Global), nameof(AppSettings.Hotstring) },
             Private: false, DefaultChecked: true),
 
         new("appearance", "外观与行为", "主题、Qbar 面板样式、鼠标速度、按键行为等",
@@ -206,6 +206,17 @@ public static class ExportImport
         {
             if (all.TryGetPropertyValue(key, out var v) && v != null)
                 data[key] = JsonNodeTool.DeepClone(v);
+        }
+
+        /* 「触发键与层」只承诺层名称/启用状态，不承诺按键映射。
+         * 单独勾它时把 Layers.Keys 从导出文件里摘掉，避免导入时把别人的键位
+         * 覆盖到本机（源文件仍保留 Keys 给「按键映射」组使用）。 */
+        if (ids.Contains("triggers", StringComparer.OrdinalIgnoreCase)
+            && !ids.Contains("keys", StringComparer.OrdinalIgnoreCase)
+            && data["Layers"] is JsonArray layerArray)
+        {
+            foreach (var layerNode in layerArray.OfType<JsonObject>())
+                layerNode.Remove("Keys");
         }
 
         /* 使用统计不在 AppSettings 里（单独一个 usage.json），单独挂到 data 下。 */
@@ -447,6 +458,18 @@ public static class ExportImport
                 case nameof(AppSettings.Keys):
                     settings.Keys = merged.Keys; break;
                 case nameof(AppSettings.Layers):
+                    /* 只导入触发键/层元数据时，不能把源文件的 Keys 代进本机，
+                     * 否则“只换层名”会静默清空或替换本地按键映射。 */
+                    if (groups.Contains("triggers", StringComparer.OrdinalIgnoreCase)
+                        && !groups.Contains("keys", StringComparer.OrdinalIgnoreCase))
+                    {
+                        var localLayers = settings.Layers.ToDictionary(l => l.Id);
+                        foreach (var incomingLayer in merged.Layers)
+                        {
+                            if (localLayers.TryGetValue(incomingLayer.Id, out var local))
+                                incomingLayer.Keys = local.Keys;
+                        }
+                    }
                     settings.Layers = merged.Layers; break;
                 case nameof(AppSettings.Triggers):
                     settings.Triggers = merged.Triggers; break;
@@ -460,6 +483,8 @@ public static class ExportImport
                     settings.Web = merged.Web; break;
                 case nameof(AppSettings.HotStrings):
                     settings.HotStrings = merged.HotStrings; break;
+                case nameof(AppSettings.Hotstring):
+                    settings.Hotstring = merged.Hotstring; break;
                 case nameof(AppSettings.Qbar):
                     settings.Qbar = merged.Qbar; break;
                 case nameof(AppSettings.Global):

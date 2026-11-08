@@ -73,13 +73,12 @@ public static class InputSender
 
     private static int _injectLogged;
     private static bool _quietBlockLogged;
-    private static bool _allowDuringQuiet;
 
     private static void Send(params INPUT[] inputs)
     {
         if (inputs.Length == 0 || DryRun) return;
 
-        if (!_allowDuringQuiet && DateTime.Now < QuietUntil)
+        if (DateTime.Now < QuietUntil)
         {
             if (!_quietBlockLogged)
             {
@@ -836,11 +835,12 @@ public static class InputSender
          * 每批 32 字符（64 个 INPUT），批次之间让出几毫秒。
          */
         const int Batch = 32;
-        for (int start = 0; start < text.Length; start += Batch)
+        for (int start = 0; start < text.Length; )
         {
             int len = Math.Min(Batch, text.Length - start);
 
-            // 别把代理对（emoji）劈在两批之间：末尾是高位代理就留到下一批
+            // 别把代理对（emoji）劈在两批之间：末尾是高位代理就留到下一批。
+            // 下一批必须从被保留的高位代理重新开始，所以循环增量要用实际发送的 len。
             if (start + len < text.Length && len > 1 && char.IsHighSurrogate(text[start + len - 1]))
                 len--;
 
@@ -853,7 +853,8 @@ public static class InputSender
             }
             Send(arr.ToArray());
 
-            if (start + len < text.Length) Thread.Sleep(6);
+            start += len;
+            if (start < text.Length) Thread.Sleep(6);
         }
     }
 

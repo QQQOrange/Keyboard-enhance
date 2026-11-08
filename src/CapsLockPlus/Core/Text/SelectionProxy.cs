@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace CapsLockPlus.Core.Text;
 
@@ -39,7 +40,7 @@ public static class SelectionProxy
     /// <summary>取词代理的整体预算（含进程启动）。</summary>
     public const int DefaultBudgetMs = 1500;
 
-    private static bool _busy;
+    private static int _busy;
 
     /// <summary>当前进程是不是"取词代理"角色（是的话不能再递归调代理）。</summary>
     public static bool InHelper { get; private set; }
@@ -67,14 +68,18 @@ public static class SelectionProxy
     /// </summary>
     public static string TryGetSelectedText(int budgetMs = DefaultBudgetMs)
     {
-        if (_busy) return string.Empty;          // 防重入：连续触发时只跑一次
         if (InHelper) return string.Empty;
+        if (Interlocked.Exchange(ref _busy, 1) != 0) return string.Empty;
 
         string? exe = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exe)) return string.Empty;
+        if (string.IsNullOrEmpty(exe))
+        {
+            Volatile.Write(ref _busy, 0);
+            return string.Empty;
+        }
 
-        _busy = true;
         string pipeName = "KeyEnhancePick_" + Guid.NewGuid().ToString("N");
+        var sw = Stopwatch.StartNew();
         try
         {
             if (!LaunchHelper(exe, pipeName))
@@ -84,7 +89,8 @@ public static class SelectionProxy
             }
 
             using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.In);
-            try { client.Connect(Math.Max(400, budgetMs - 200)); }
+            int connectBudget = Math.Max(400, budgetMs - 200);
+            try { client.Connect(connectBudget); }
             catch
             {
                 CoreLog.Warn($"[取词代理] 未能在预算内连上子进程");
@@ -92,7 +98,23 @@ public static class SelectionProxy
             }
 
             using var ms = new MemoryStream();
-            client.CopyTo(ms);
+
+            /* Connect 只是第一段；代理取词本身卡住时，CopyTo 会永久等待，
+             * 而本方法跑在动作队列线程，会让所有后续热键一起失灵。
+             * 给读取阶段也加硬超时。 */
+            int remaining = budgetMs - (int)sw.ElapsedMilliseconds;
+            if (remaining <= 0) return string.Empty;
+
+            using var cts = new CancellationTokenSource(remaining);
+            try
+            {
+                client.CopyToAsync(ms, cts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                CoreLog.Warn("[取词代理] 读取结果超时（预算 " + budgetMs + "ms）");
+                return string.Empty;
+            }
 
             string text = Encoding.UTF8.GetString(ms.ToArray());
             CoreLog.Info($"[取词代理] 返回长度={text.Length}");
@@ -105,7 +127,7 @@ public static class SelectionProxy
         }
         finally
         {
-            _busy = false;
+            Volatile.Write(ref _busy, 0);
         }
     }
 

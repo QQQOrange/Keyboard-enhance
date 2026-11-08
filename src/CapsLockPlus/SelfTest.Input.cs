@@ -2196,6 +2196,8 @@ public static partial class SelfTest
         Check("片段：停用的不命中", SnippetMatcher.Match(snipList, ";off") == null);
         Check("片段：卡在短触发词上时知道还有更长的候选",
             SnippetMatcher.HasLongerCandidate(snipList, ";m", null));
+        Check("片段：前面有普通文字时仍能识别更长候选",
+            SnippetMatcher.HasLongerCandidate(snipList, "hello ;m", null));
         Check("片段：没有更长候选时不等待",
             !SnippetMatcher.HasLongerCandidate(snipList, ";mail", null));
         Check("片段：停用的长候选不算候选",

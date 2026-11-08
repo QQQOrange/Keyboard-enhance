@@ -223,6 +223,7 @@ public static partial class SelfTest
         var candidates = WindowService.EnumerateTopLevel()
             .Where(w => !w.ExeName.Equals(AppInfo.ExeName, StringComparison.OrdinalIgnoreCase))
             .Where(w => w.ClassName is not ("Progman" or "WorkerW" or "Shell_TrayWnd"))
+            .Where(w => NativeMethods.IsWindowVisible(w.Handle) && !NativeMethods.IsIconic(w.Handle))
             .Take(3)
             .ToList();
         if (candidates.Count > 0)

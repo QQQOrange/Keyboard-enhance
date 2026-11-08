@@ -89,6 +89,45 @@ public static class ScreenPlacement
     }
 
     /// <summary>
+    /// 取窗口当前所在显示器的工作区，单位是**该显示器 DPI 下的 DIP**。
+    /// 主窗口夹取尺寸、按键页计算最小宽度都用它，避免再混用主屏 WorkArea。
+    /// </summary>
+    public static bool TryGetWorkAreaDip(Window window, out Rect workArea)
+    {
+        workArea = Rect.Empty;
+        try
+        {
+            var helper = new WindowInteropHelper(window);
+            IntPtr hwnd = helper.Handle;
+            if (hwnd == IntPtr.Zero) hwnd = helper.EnsureHandle();
+            if (hwnd == IntPtr.Zero) return false;
+
+            IntPtr monitor = NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            if (monitor == IntPtr.Zero) return false;
+
+            var mi = new NativeMethods.MONITORINFO
+            {
+                cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>(),
+            };
+            if (!NativeMethods.GetMonitorInfo(monitor, ref mi)) return false;
+
+            var work = mi.rcWork;
+            if (work.Width <= 0 || work.Height <= 0) return false;
+
+            double scale = ScaleOf(monitor, hwnd);
+            workArea = new Rect(
+                work.Left / scale, work.Top / scale,
+                work.Width / scale, work.Height / scale);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("读取显示器工作区失败：" + ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 纯函数：算出窗口左上角的**物理像素**坐标。
     ///
     /// 单独拆出来有两个原因：

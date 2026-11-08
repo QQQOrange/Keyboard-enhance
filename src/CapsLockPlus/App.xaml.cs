@@ -111,6 +111,7 @@ public partial class App : Application
         if (Core.CliFlags.Has(e.Args, "--dump-bindings"))
         {
             Core.BindingDump.Run();
+            Environment.Exit(0);
             return;
         }
 
@@ -427,7 +428,11 @@ public partial class App : Application
         {
             CoreLog.Info("诊断模式：跳过单实例检查");
         }
-        else if (!SingleInstance.TryAcquire(out bool running))
+        else if (!SingleInstance.TryAcquire(out bool running,
+                     // 提权/更新交接时旧进程可能还在收尾，给足时间；普通“再开一次”不该干等 6 秒。
+                     e.Args.Any(a => a.Equals("--elevated", StringComparison.OrdinalIgnoreCase)
+                                     || a.Equals("--updated", StringComparison.OrdinalIgnoreCase))
+                         ? 6000 : 1200))
         {
             CoreLog.Info("已有实例在运行，唤醒它并退出");
             SingleInstance.ActivateExisting();

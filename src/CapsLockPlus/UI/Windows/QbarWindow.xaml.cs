@@ -634,6 +634,17 @@ public partial class QbarWindow : Window
         _closing = false;
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        /* Alt+F4 / 系统关闭不会走 HideQbar；这里必须把全局 Esc 拦截和鼠标监听
+         * 一起摘掉，否则 Qbar 消失后整个系统的 Esc 会被永久吞掉。 */
+        _closing = true;
+        DetachEscInterceptor();
+        StopFocusTimer();
+        StopOutsideWatch();
+        base.OnClosed(e);
+    }
+
     public void HideQbar()
     {
         if (!IsVisible || _closing) return;

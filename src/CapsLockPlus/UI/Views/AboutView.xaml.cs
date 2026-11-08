@@ -543,7 +543,7 @@ public partial class AboutView : UserControl
             SetStatus(Loc.T("下载完成，正在替换并重启…"), "");
             await Task.Delay(400, ct);
 
-            if (UpdateService.ApplyAndRestart(path))
+            if (UpdateService.ApplyAndRestart(path, target.Sha256))
             {
                 _host?.ExitApp();
                 return;

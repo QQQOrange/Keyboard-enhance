@@ -43,6 +43,9 @@ internal sealed class ClipboardBackup
     /// <summary>抓取时出了意外 —— 这时绝不能去动剪贴板。</summary>
     private bool _failed;
 
+    /// <summary>快照是否可用；false 时所有调用方都不应再改剪贴板。</summary>
+    internal bool IsUsable => !_failed && (_wasEmpty || _data != null || _text != null || _image != null);
+
     private ClipboardBackup() { }
 
     /// <summary>
@@ -63,6 +66,7 @@ internal sealed class ClipboardBackup
             if (formats.Length == 0) { b._wasEmpty = b._text == null; return b; }
 
             var copy = new DataObject();
+            bool anyCopied = false;
             foreach (string format in formats)
             {
                 try
@@ -76,6 +80,7 @@ internal sealed class ClipboardBackup
                     if (data is MemoryStream ms) data = new MemoryStream(ms.ToArray());
 
                     copy.SetData(format, data, false);
+                    anyCopied = true;
                 }
                 catch
                 {
@@ -94,6 +99,7 @@ internal sealed class ClipboardBackup
                         if (img.CanFreeze) img.Freeze();
                         b._image = img;
                         copy.SetData(DataFormats.Bitmap, img, true);
+                        anyCopied = true;
                     }
                 }
             }
@@ -102,7 +108,14 @@ internal sealed class ClipboardBackup
                 CoreLog.Warn("[剪贴板] 位图快照失败：" + ex.Message);
             }
 
-            b._data = copy;
+            if (!anyCopied && b._text == null)
+            {
+                b._failed = true;
+                CoreLog.Warn("[剪贴板] 没有成功复制任何格式，本次不动剪贴板");
+                return b;
+            }
+
+            b._data = anyCopied ? copy : null;
         }
         catch (Exception ex)
         {
@@ -119,9 +132,28 @@ internal sealed class ClipboardBackup
     /// 非 null 时先核对"当前剪贴板里的文字还是不是这个" —— 不是就说明
     /// 期间用户自己按了 Ctrl+C（或别的程序写了剪贴板），不能再覆盖回去。
     /// </param>
-    public void Restore(string? currentTextGuard = null)
+    /// <param name="expectedSequence">
+    /// 还原前要求当前剪贴板序号仍等于这个值，用于识别用户在中转期间复制了新内容。
+    /// </param>
+    public void Restore(string? currentTextGuard = null, uint? expectedSequence = null)
     {
         if (_failed) return;
+
+        if (expectedSequence is uint seq)
+        {
+            try
+            {
+                if (GetClipboardSequenceNumber() != seq)
+                {
+                    CoreLog.Info("[剪贴板] 序号已变化，跳过还原，保留用户的新内容");
+                    return;
+                }
+            }
+            catch
+            {
+                return;
+            }
+        }
 
         if (currentTextGuard != null)
         {
@@ -146,16 +178,16 @@ internal sealed class ClipboardBackup
             {
                 if (_image != null)
                 {
-                    /* 有位图时用 SetDataObject（同时带回文字等格式）；
-                     * 只 SetImage 会把同一份剪贴板里的文字格式冲掉。 */
-                    var data = new DataObject();
+                    /* 从完整快照出发，只替换位图项；重建一个空 DataObject
+                     * 会把同一份剪贴板里的文件列表 / HTML / RTF 一起丢掉。 */
+                    var data = _data ?? new DataObject();
                     data.SetData(DataFormats.Bitmap, _image, true);
                     if (!string.IsNullOrEmpty(_text)) data.SetText(_text!);
                     Clipboard.SetDataObject(data, copy: true);
                 }
                 else if (_data != null) Clipboard.SetDataObject(_data, copy: true);
                 else if (_text != null) Clipboard.SetText(_text);
-                else if (_wasEmpty) Clipboard.Clear();
+                else if (_wasEmpty && expectedSequence != null) Clipboard.Clear();
                 return;
             }
             catch (ExternalException) when (attempt < 2)
@@ -175,4 +207,7 @@ internal sealed class ClipboardBackup
             }
         }
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetClipboardSequenceNumber();
 }

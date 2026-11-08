@@ -241,38 +241,45 @@ public static class WindowService
         hwnd != IntPtr.Zero && GetForegroundWindow() == hwnd;
 
     /// <summary>临时把前台锁定超时置 0 抢焦点，随后还原（最后手段）。</summary>
+    private static readonly object ForegroundUnlockGate = new();
+
     private static bool ForceForegroundUnlocking(IntPtr hwnd)
     {
-        uint old = 0;
-        bool changed = false;
-        try
+        /* 这是进程级/系统级全局设置。两个调用并发时，后一个可能读到前一个
+         * 临时写入的 0，最后把 0 永久留下。整段 GET→SET→还原必须串行。 */
+        lock (ForegroundUnlockGate)
         {
-            if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, out old, 0))
+            uint old = 0;
+            bool changed = false;
+            try
             {
-                // SET 的值放在 uiParam，pvParam 必须为 NULL
-                SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
-                changed = true;
-            }
-
-            SetForegroundWindow(hwnd);
-            bool ok = GetForegroundWindow() == hwnd;
-            if (ok) SetFocus(hwnd);
-            return ok;
-        }
-        catch
-        {
-            return false;
-        }
-        finally
-        {
-            // 无论成败都要还原：这是全局设置，改完不还会影响所有程序
-            if (changed)
-            {
-                try
+                if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, out old, 0))
                 {
-                    SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, old, IntPtr.Zero, SPIF_SENDCHANGE);
+                    // SET 的值放在 uiParam，pvParam 必须为 NULL
+                    SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
+                    changed = true;
                 }
-                catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+
+                SetForegroundWindow(hwnd);
+                bool ok = GetForegroundWindow() == hwnd;
+                if (ok) SetFocus(hwnd);
+                return ok;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                // 无论成败都要还原：这是全局设置，改完不还会影响所有程序
+                if (changed)
+                {
+                    try
+                    {
+                        SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, old, IntPtr.Zero, SPIF_SENDCHANGE);
+                    }
+                    catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
+                }
             }
         }
     }

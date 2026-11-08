@@ -100,14 +100,31 @@ public sealed class SyncService
     /// 取一份安全的设置 JSON：优先用界面线程给的快照，没有就退化成直接序列化
     /// （自检/命令行等单线程场景）。
     /// </summary>
-    private string SnapshotJson()
+    /// <param name="includeUsage">
+    /// 备份/导出要带上使用统计；配置指纹不能带 —— usage 每次按键都会变，
+    /// 带上它会让“配置没变化就跳过自动备份”彻底失效。
+    /// </param>
+    private string SnapshotJson(bool includeUsage = false)
     {
-        if (_snapshotJson != null) return _snapshotJson();
+        string json = _snapshotJson != null
+            ? _snapshotJson()
+            : JsonSerializer.Serialize(_settings(), SettingsStore.JsonOptions);
 
-        /* 备份/同步要带走"全部用户数据"：设置之外还有使用统计（usage.json）。 */
-        var node = JsonSerializer.SerializeToNode(_settings(), SettingsStore.JsonOptions)!.AsObject();
-        node["Usage"] = JsonNode.Parse(Core.UsageStats.ExportJson());
-        return node.ToJsonString(SettingsStore.JsonOptions);
+        if (!includeUsage) return json;
+
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonObject node)
+                return json;
+
+            node["Usage"] = JsonNode.Parse(Core.UsageStats.ExportJson());
+            return node.ToJsonString(SettingsStore.JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("把使用统计并入备份失败：" + ex.Message);
+            return json;
+        }
     }
 
     // ---------------- 本地目录 ----------------
@@ -306,7 +323,7 @@ public sealed class SyncService
                 "还没设备份密码。备份一律加密，请先在「备份密码」里设一个再备份。");
 
         encrypted = true;
-        return CryptoBox.Encrypt(SnapshotJson(), password);
+        return CryptoBox.Encrypt(SnapshotJson(includeUsage: true), password);
     }
 
     /// <summary>不抛异常版本，供自动备份这类"失败就算了"的场景用。</summary>
@@ -428,11 +445,13 @@ public sealed class SyncService
          * 所以恢复只恢复"内容"（按键、层、宏、搜索项、窗口绑定、外观），
          * 不碰"这台机器的身份"。 */
         var localSync = s.Sync;
+        var localSecurity = s.Security;
         string localToken = s.Global.GitHubToken;
         string backupToken = parsed.Global.GitHubToken;
 
         SettingsStore.CopyInto(s, parsed);
         s.Sync = localSync;
+        s.Security = localSecurity;   // 启动密码是“本机锁”，不能跟着备份走
 
         /* GitHub 令牌的边界：
          *   · 备份里有 → 采用（换台机器恢复后能直接检查更新，不用重新贴）；
@@ -708,7 +727,27 @@ public sealed class SyncService
     public string WriteLocalBackup(string payload, bool prune = true)
     {
         string path = Path.Combine(BackupDir, BackupName(DateTime.Now));
-        File.WriteAllText(path, payload, System.Text.Encoding.UTF8);
+        string tmp = path + ".tmp";
+        try
+        {
+            /* 直接写最终文件名：断电/磁盘满会留下半份备份，而 PruneLocal 会按时间
+             * 把它当成最新一份保留，反而挤掉旧的完好备份。先写临时文件并落盘，
+             * 成功后再原子改名。 */
+            using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false)))
+            {
+                writer.Write(payload);
+                writer.Flush();
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(tmp, path, true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            throw;
+        }
+
         CoreLog.Info($"本地备份已写：{path}");
         if (prune) PruneLocal();
         return path;
@@ -740,6 +779,7 @@ public sealed class SyncService
             foreach (var f in info.GetFiles())
             {
                 if (!IsBackupName(f.Name)) continue;
+                if (f.Length <= 0) continue;   // 截断/零字节备份不能参与轮换
                 bool enc = true;
                 try { enc = CryptoBox.LooksEncrypted(File.ReadAllText(f.FullName)); }
                 catch { }   /* 预期内：探测/重试型，失败即视为无结果 */

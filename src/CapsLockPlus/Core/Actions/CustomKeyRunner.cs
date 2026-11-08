@@ -140,7 +140,12 @@ public static class CustomKeyRunner
         if (string.IsNullOrWhiteSpace(processName)) return false;
         try
         {
-            return Process.GetProcessesByName(processName).Length > 0;
+            var procs = Process.GetProcessesByName(processName);
+            try { return procs.Length > 0; }
+            finally
+            {
+                foreach (var p in procs) p.Dispose();
+            }
         }
         catch (Exception ex)
         {
@@ -154,9 +159,15 @@ public static class CustomKeyRunner
     {
         try
         {
-            foreach (var p in Process.GetProcessesByName(processName))
+            var procs = Process.GetProcessesByName(processName);
+            try
             {
-                if (p.MainWindowHandle != IntPtr.Zero) return p.MainWindowHandle;
+                foreach (var p in procs)
+                    if (p.MainWindowHandle != IntPtr.Zero) return p.MainWindowHandle;
+            }
+            finally
+            {
+                foreach (var p in procs) p.Dispose();
             }
         }
         catch (Exception ex)

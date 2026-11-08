@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace CapsLockPlus.Core;
@@ -35,6 +35,12 @@ public static class SingleInstance
     private static Mutex? _mutex;
     private static bool _owned;
 
+    private static EventWaitHandle? _wakeEvent;
+    private static Thread? _wakeThread;
+    private static volatile bool _wakeStop;
+
+    private static string WakeEventName => EffectiveMutexName + ".Wake";
+
     /// <summary>
     /// 尝试成为唯一实例。
     /// 返回 true 表示当前进程应当继续运行；false 表示已有实例在运行。
@@ -45,12 +51,12 @@ public static class SingleInstance
     /// 尚未释放互斥体时误判为“已有实例”而退出 —— 结果是两个进程都没了，
     /// 钩子没装上，表现就是“按什么键都没反应”。
     /// </summary>
-    public static bool TryAcquire(out bool alreadyRunning)
+    public static bool TryAcquire(out bool alreadyRunning, int waitMs = 1200)
     {
         alreadyRunning = false;
 
-        // 先尝试直接获取；失败则等待旧实例退出，最多等 6 秒
-        var deadline = Environment.TickCount64 + 6000;
+        // 先尝试直接获取；失败则等待旧实例退出（重启交接时由调用方给更长预算）
+        var deadline = Environment.TickCount64 + Math.Max(200, waitMs);
         while (true)
         {
             try
@@ -90,8 +96,70 @@ public static class SingleInstance
         }
     }
 
+    /// <summary>
+    /// 主实例建立“唤醒事件”。第二个实例只要 Set 一下，就能让托盘里的主窗口出来：
+    /// 比向 HWND_BROADCAST 发自定义消息可靠，也不受 UIPI / 隐藏窗口影响。
+    /// </summary>
+    public static void StartWakeListener(Action onWake)
+    {
+        if (_wakeEvent != null) return;
+        try
+        {
+            _wakeEvent = new EventWaitHandle(false, EventResetMode.AutoReset, WakeEventName);
+            _wakeStop = false;
+            _wakeThread = new Thread(() =>
+            {
+                while (!_wakeStop)
+                {
+                    try
+                    {
+                        if (_wakeEvent.WaitOne(500) && !_wakeStop)
+                            onWake();
+                    }
+                    catch { Thread.Sleep(100); }
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "CapsLockPlus.WakeListener",
+            };
+            _wakeThread.Start();
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("创建唤醒事件失败，仍使用窗口广播兜底：" + ex.Message);
+            _wakeEvent?.Dispose();
+            _wakeEvent = null;
+        }
+    }
+
+    public static void StopWakeListener()
+    {
+        _wakeStop = true;
+        try { _wakeEvent?.Set(); } catch { }
+        _wakeEvent?.Dispose();
+        _wakeEvent = null;
+    }
+
+    private static bool SignalWake()
+    {
+        try
+        {
+            using var ev = EventWaitHandle.OpenExisting(WakeEventName);
+            ev.Set();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static void Release()
     {
+        // 退出/交接时先把唤醒监听停掉；否则新实例会与旧监听共享同名事件，
+        // 出现“第二次启动时窗口有时出来、有时不出来”。
+        StopWakeListener();
         try
         {
             if (_owned) _mutex?.ReleaseMutex();
@@ -107,20 +175,29 @@ public static class SingleInstance
     {
         try
         {
-            var current = Process.GetCurrentProcess();
-            foreach (var p in Process.GetProcessesByName(current.ProcessName))
+            bool signaled = SignalWake();
+            using var current = Process.GetCurrentProcess();
+            var processes = Process.GetProcessesByName(current.ProcessName);
+            try
             {
-                if (p.Id == current.Id) continue;
-                if (p.MainWindowHandle != IntPtr.Zero)
+                foreach (var p in processes)
                 {
-                    ShowWindow(p.MainWindowHandle, 9);
-                    SetForegroundWindow(p.MainWindowHandle);
+                    if (p.Id == current.Id) continue;
+                    if (p.MainWindowHandle != IntPtr.Zero)
+                    {
+                        ShowWindow(p.MainWindowHandle, 9);
+                        SetForegroundWindow(p.MainWindowHandle);
+                    }
+                    else if (!signaled)
+                    {
+                        // 没有唤醒事件（老版本 / 权限不同）：退回自定义消息广播
+                        PostMessage(new IntPtr(0xFFFF), WmShowWindow, IntPtr.Zero, IntPtr.Zero);
+                    }
                 }
-                else
-                {
-                    // 窗口在托盘里：广播一个自定义消息让老实例自己弹出来
-                    PostMessage(new IntPtr(0xFFFF), WmShowWindow, IntPtr.Zero, IntPtr.Zero);
-                }
+            }
+            finally
+            {
+                foreach (var p in processes) p.Dispose();
             }
         }
         catch (Exception ex)

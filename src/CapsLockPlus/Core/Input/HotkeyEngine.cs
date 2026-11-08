@@ -249,7 +249,8 @@ public sealed partial class HotkeyEngine : IDisposable
          * 复现后每个按键都会变成 Alt+键，而且在下次按 Ctrl 抬起之前无法解除。 */
         int pendingRemaps;
         lock (_remapGate) pendingRemaps = _remappedDown.Count;
-        if (!_triggerHeld && !_layerActive && pendingRemaps == 0) return;
+        bool hasModifier = _laltDown || _lwinDown || _rwinDown || _ctrlDown || _shiftDown;
+        if (!_triggerHeld && !_layerActive && pendingRemaps == 0 && !hasModifier) return;
         CoreLog.Info($"引擎状态复位（{reason}）：丢弃未完成的触发键会话");
         _triggerHeld = false;
         _layerActive = false;
@@ -258,6 +259,7 @@ public sealed partial class HotkeyEngine : IDisposable
         _activeLayer = -1;
         _swallowedDown.Clear();
         if (_swallowedUp.Count > MaxPendingUps) _swallowedUp.Clear();
+        _physDown.Clear();
         _laltDown = _lwinDown = _rwinDown = _ctrlDown = _shiftDown = false;
         _lastTriggerDownTick = 0;
         _lastKeyActivity = DateTime.Now;
@@ -298,8 +300,19 @@ public sealed partial class HotkeyEngine : IDisposable
     ///
     /// 这时**任何键都不许吞** —— 否则用户想录 Caps/Tab 这类触发键时，
     /// 键在宿主那儿就被吞掉了，捕获窗永远等不到它。按键仍然照常上报（KeySeen）。
+    /// 进入/退出捕获都会复位状态，避免录制期间漏掉的 up 让修饰键或触发键卡住。
     /// </summary>
-    public bool CaptureMode { get; set; }
+    public bool CaptureMode
+    {
+        get => _captureMode;
+        set
+        {
+            if (_captureMode == value) return;
+            _captureMode = value;
+            ResetTriggerState(value ? "进入录键模式" : "退出录键模式");
+        }
+    }
+    private bool _captureMode;
 
     /// <summary>宿主回传的按键累计数（宿主模式下用它判断钩子健康度）。</summary>
     public long RemoteKeyCount => Interlocked.Read(ref _remoteKeyCount);
@@ -468,7 +481,11 @@ public sealed partial class HotkeyEngine : IDisposable
     /// 那个计时器根本不会滴答 —— 结果是「按住触发键不放、不按别的键」永远进不了层
     /// （按别的键能进，因为那条路在钩子回调里）。所以宿主用普通计时器每秒调它 50 次。
     /// </summary>
-    public void TickHold() => CheckHoldThreshold();
+    public void TickHold()
+    {
+        CheckHoldThreshold();
+        FlushPendingSnippet();
+    }
 
     /// <summary>
     /// 启动长按判定计时器。

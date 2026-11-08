@@ -105,10 +105,7 @@ public sealed class SelectionWatcher : IDisposable
 
     private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
 
-    private LowLevelProc? _proc;
     private IntPtr _hook;
-    private Thread? _thread;
-    private uint _threadId;
     private volatile bool _running;
 
     /// <summary>捕获到新选区时触发。参数是选中的文字。</summary>
@@ -173,7 +170,6 @@ public sealed class SelectionWatcher : IDisposable
             UnhookWindowsHookEx(_hook);       // 老版本装过的钩子，兜底卸掉
             _hook = IntPtr.Zero;
         }
-        _proc = null;
         CoreLog.Info("选区监听已停止");
     }
 

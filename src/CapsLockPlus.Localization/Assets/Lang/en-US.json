@@ -2574,5 +2574,7 @@
   "发送 {0}（未绑定应用，发给当前窗口）": "Send {0} (no app bound; to the focused window)",
   "未绑定应用 —— 按下时直接发给当前窗口（任何程序都能用）": "No app bound — the key is sent to the focused window (works in any program)",
   "还差：「要发送的键」": "Still missing: the key to send",
-  "按这个键时：不找应用、不等窗口，直接把键发给当前窗口 —— 任何时候按都生效。": "Pressing this key sends it straight to the focused window — no app lookup, no waiting. Works anytime."
+  "按这个键时：不找应用、不等窗口，直接把键发给当前窗口 —— 任何时候按都生效。": "Pressing this key sends it straight to the focused window — no app lookup, no waiting. Works anytime.",
+  "确定删除宏「{0}」吗？\n\n这一步无法撤销。": "Delete macro \"{0}\"?\n\nThis cannot be undone.",
+  "✓ 本地数据已加密（AES-256-GCM，本机密钥由 Windows DPAPI 保护）。\n设置「备份密码」后，备份与换机恢复也会用密码加密。": "✓ Local data is encrypted (AES-256-GCM; the local key is protected by Windows DPAPI).\nSet a backup password to encrypt backups and restores on another machine as well."
 }

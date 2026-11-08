@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -105,9 +105,7 @@ public static class DataVault
                 ["salt"] = Convert.ToBase64String(salt),
                 ["check"] = Convert.ToBase64String(CheckOf(key)),
             };
-            File.WriteAllText(VaultFile, meta.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
-                Encoding.UTF8);
-
+            WriteVaultText(meta.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             _key = key;
             WriteCache(key);
         }
@@ -148,7 +146,7 @@ public static class DataVault
             try
             {
                 if (_undoVaultText == null) TryDelete(VaultFile);
-                else File.WriteAllText(VaultFile, _undoVaultText, Encoding.UTF8);
+                else WriteVaultText(_undoVaultText);
 
                 if (_undoCacheBytes == null) TryDelete(CacheFile);
                 else File.WriteAllBytes(CacheFile, _undoCacheBytes);
@@ -231,6 +229,13 @@ public static class DataVault
                 if (LooksEncrypted(text)) continue;          // 密文副本留着
                 if (!text.TrimStart().StartsWith('{')) continue;   // 不是 JSON，别乱删
 
+                if (suffix == ".broken")
+                {
+                    /* 损坏副本是用户最后的恢复线索：只加密，不删除。 */
+                    SecureFile.EncryptInPlace(path);
+                    continue;
+                }
+
                 File.Delete(path);
                 removed++;
                 CoreLog.Info($"[加密] 已删除明文副本 {Path.GetFileName(path)}");
@@ -257,9 +262,25 @@ public static class DataVault
             try
             {
                 if (!File.Exists(CacheFile)) return false;
+                if (!TryReadMeta(out _, out _, out byte[] check))
+                {
+                    CoreLog.Warn("[加密] vault.json 元数据无效，缓存密钥不能使用");
+                    return false;
+                }
+
                 byte[] wrapped = File.ReadAllBytes(CacheFile);
                 byte[] key = ProtectedData.Unprotect(wrapped, Entropy, DataProtectionScope.CurrentUser);
                 if (key.Length != KeyLen) return false;
+
+                /* 缓存可能在改密码/写入失败后变成旧的：必须用 vault.json 的校验值确认，
+                 * 否则会用旧密钥去解新密文，表现为“密码正确却永远打不开”。 */
+                if (!CryptographicOperations.FixedTimeEquals(CheckOf(key), check))
+                {
+                    CoreLog.Warn("[加密] 缓存密钥与 vault.json 不匹配，删除旧缓存并要求输入密码");
+                    TryDelete(CacheFile);
+                    return false;
+                }
+
                 _key = key;
                 return true;
             }
@@ -393,13 +414,25 @@ public static class DataVault
         try
         {
             byte[] wrapped = ProtectedData.Protect(key, Entropy, DataProtectionScope.CurrentUser);
-            File.WriteAllBytes(CacheFile, wrapped);
+            string tmp = CacheFile + ".tmp";
+            File.WriteAllBytes(tmp, wrapped);
+            File.Move(tmp, CacheFile, true);
         }
         catch (Exception ex)
         {
-            // 缓存写不了不影响本次会话，只是下次启动要输密码
-            CoreLog.Warn("[加密] 密钥缓存写入失败：" + ex.Message);
+            // 缓存写不了不影响本次会话，只是下次启动要输密码。
+            // 但必须删掉旧缓存：否则旧密钥会残留并被 TryUnlockCached 当成新密钥。
+            CoreLog.Warn("[加密] 密钥缓存写入失败，已删除旧缓存：" + ex.Message);
+            TryDelete(CacheFile);
         }
+    }
+
+    /// <summary>vault.json 必须先写临时文件再原子换位，避免断电留下半个元数据文件。</summary>
+    private static void WriteVaultText(string text)
+    {
+        string tmp = VaultFile + ".tmp";
+        File.WriteAllText(tmp, text, Encoding.UTF8);
+        File.Move(tmp, VaultFile, true);
     }
 
     private static void TryDelete(string path)

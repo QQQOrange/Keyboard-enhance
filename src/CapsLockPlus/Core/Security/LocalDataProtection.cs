@@ -29,15 +29,24 @@ public static class LocalDataProtection
         string settingsBak = Path.Combine(data, "settings.json.bak");
         if (SecureFile.EncryptInPlace(settingsBak)) converted++;
 
-        /* 崩溃时可能留下的明文临时文件：直接删，不留痕迹。 */
-        foreach (string junk in new[] { "settings.json.tmp", "settings.json.broken" })
+        /* 崩溃时可能留下的明文临时文件：直接删，不留痕迹。
+         * `.broken` 是设置损坏时的恢复副本，不能删 —— 即使它已经被截断，
+         * 也要原样转成密文保留，用户还有机会手工修复。 */
+        try
         {
-            try
-            {
-                string path = Path.Combine(data, junk);
-                if (File.Exists(path) && !SecureFile.IsEncryptedFile(path)) File.Delete(path);
-            }
-            catch { }
+            string tmp = Path.Combine(data, "settings.json.tmp");
+            if (File.Exists(tmp)) File.Delete(tmp);
+        }
+        catch { }
+
+        try
+        {
+            foreach (string broken in Directory.GetFiles(data, "settings.json.broken*"))
+                if (SecureFile.EncryptInPlace(broken)) converted++;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("加密设置损坏副本时出错：" + ex.Message);
         }
 
         foreach (string name in new[] { "usage.json", "migrated.txt", "logs/bindings.txt", "logs/hooktest.txt" })

@@ -1416,6 +1416,15 @@ public partial class SettingsView : UserControl
                 Loc.T("没能以管理员身份重启"));
             return;
         }
+
+        /* 当前是管理员、设置却要求普通权限：直接 Process.Start 仍会继承提升后的令牌。
+         * 必须让 explorer 代为启动，才是真正的降权重启。 */
+        if (!wanted && Core.ElevationHelper.IsElevated)
+        {
+            _host.RestartUnelevated();
+            return;
+        }
+
         _host.ExitApp(restart: true);
     }
 

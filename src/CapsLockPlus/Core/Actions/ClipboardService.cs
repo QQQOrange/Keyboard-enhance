@@ -48,13 +48,24 @@ public sealed class ClipboardService
     {
         if (!Enabled || !ClipboardFeatureOn) return false;
         string text = ReadSelection();
+        bool selectedLineFallback = false;
         if (string.IsNullOrEmpty(text))
         {
             // 没有选区时退化为“复制当前行”
+            selectedLineFallback = true;
             Text.TextActions.SelectLine();
             Thread.Sleep(20);
             text = ReadSelection();
         }
+
+        /* 复制完把整行选区收起来。否则下一次输入会替换整行，
+         * 用户会以为“按了复制，行被删了”。 */
+        if (selectedLineFallback)
+        {
+            InputSender.Tap(0x27); // VK_RIGHT
+            Thread.Sleep(8);
+        }
+
         if (string.IsNullOrEmpty(text)) { Notified?.Invoke("没有可复制的内容"); return false; }
         lock (_gate)
         {

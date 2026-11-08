@@ -620,16 +620,18 @@ public partial class HotstringView : UserControl
             var names = (GroupList.ItemsSource as List<GroupRow> ?? new List<GroupRow>())
                 .Where(r => r.IsReal).Select(r => r.Group!).ToList();
 
-            int from = names.FindIndex(g => string.Equals(g, draggedGroup, StringComparison.CurrentCultureIgnoreCase));
+            /* 先移除被拖动的组，再计算目标锚点。否则拖到相邻组下半区时，
+             * before 会正好等于 draggedGroup，Reorder 会把它追加到列表末尾。 */
+            names.RemoveAll(g => string.Equals(g, draggedGroup, StringComparison.CurrentCultureIgnoreCase));
+
             int to = names.FindIndex(g => string.Equals(g, dropRow.Group, StringComparison.CurrentCultureIgnoreCase));
-            if (from < 0 || to < 0 || from == to) return;
+            if (to < 0) return;
 
             /* 指针在目标行下半 → 插到它后面；上半 → 插到它前面。 */
             bool after = dropItem != null && e.GetPosition(dropItem).Y > dropItem.ActualHeight / 2;
             string? before = after
                 ? (to + 1 < names.Count ? names[to + 1] : null)
                 : names[to];
-            if (string.Equals(before, draggedGroup, StringComparison.CurrentCultureIgnoreCase)) before = null;
             SnippetGroupOps.Reorder(_host.Settings, draggedGroup, before);
             _host.SaveSettings();
             _host.Notify(Loc.F("已调整「{0}」的位置", draggedGroup));

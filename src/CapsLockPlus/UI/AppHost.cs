@@ -240,6 +240,17 @@ public sealed class AppHost : IDisposable
     public Core.Macro.MacroRecorder MacroRecorder { get; } = new();
 
     /// <summary>
+    /// 设置/清除引擎上的录制器，并同步宿主的 Suspended 状态。
+    /// 只改主进程会让宿主继续执行热键，录制时按 Caps+Q 仍会弹面板。
+    /// </summary>
+    public void SetMacroRecorder(Core.Macro.MacroRecorder? recorder)
+    {
+        Engine.MacroRecorder = recorder;
+        if (_hookHostReady)
+            SendHookHostCommand(recorder != null ? "SUSPEND 1" : "SUSPEND 0");
+    }
+
+    /// <summary>
     /// 开启 / 关闭宏录制。
     /// 开启后引擎会把所有真实按键透传给录制器（不影响正常输入）。
     /// </summary>
@@ -650,16 +661,29 @@ public sealed class AppHost : IDisposable
                 WorkingDirectory = AppContext.BaseDirectory,
             };
 
-            /* 管理员权限下钩子反复装不上：改成**普通权限**重启。
-             * 实测普通权限下钩子收发正常，而提权进程里经常一个事件都收不到
-             * （安全软件 / UIPI 拦截提权进程的全局钩子）。 */
+            /* 管理员权限下钩子反复装不上：必须真正降低完整性级别重启。
+             * 直接 Process.Start 只会继承当前管理员令牌，CLP_SKIP_ELEVATE
+             * 只是阻止新进程再次提权，并不能降权。交给普通权限的 explorer 拉起，
+             * 并带 --noelevate，避免新进程按设置再次 UAC。 */
             bool wasElevated = Core.ElevationHelper.IsElevated;
             if (wasElevated)
             {
-                psi.Environment["CLP_SKIP_ELEVATE"] = "1";
-                CoreLog.Warn("当前是管理员权限：改用普通权限重启（管理员模式下键盘钩子收不到按键）");
+                string? shellExe = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(shellExe)) return;
+                try { SingleInstance.Release(); } catch { }
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "explorer.exe", $"\"{shellExe}\" --noelevate")
+                {
+                    UseShellExecute = true,
+                    WorkingDirectory = AppContext.BaseDirectory,
+                });
+                CoreLog.Warn("当前是管理员权限：已通过 explorer 以普通权限重启（--noelevate）");
+                _dispatcher.BeginInvoke(() => ExitApp());
+                return;
             }
+
             foreach (var a in Environment.GetCommandLineArgs().Skip(1)) psi.ArgumentList.Add(a);
+            try { SingleInstance.Release(); } catch { }
             System.Diagnostics.Process.Start(psi);
 
             _dispatcher.BeginInvoke(() => ExitApp());
@@ -713,6 +737,15 @@ public sealed class AppHost : IDisposable
             return false;
         }
 
+        /* 宿主没有自己的 Raw Input/设备解析，无法知道按键来自哪只键盘。
+         * 有设备专属基础改键时必须留在主进程（主进程已装 KeyboardDeviceTracker），
+         * 否则这些规则会静默失效。 */
+        if (Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device)))
+        {
+            CoreLog.Info("检测到设备专属改键：本次由主进程安装钩子，避免宿主丢失设备信息");
+            return false;
+        }
+
         string pipeName = $"clp-hook-{Environment.ProcessId}";
         try
         {
@@ -733,6 +766,7 @@ public sealed class AppHost : IDisposable
             if (_hookHost == null) return false;
 
             var ready = new ManualResetEventSlim(false);
+            var hookFailed = new ManualResetEventSlim(false);
             _ = System.Threading.Tasks.Task.Run(() =>
             {
                 try
@@ -784,8 +818,12 @@ public sealed class AppHost : IDisposable
 
                         if (line == "HOOKFAIL")
                         {
-                            CoreLog.Warn("钩子宿主报告：钩子没有生效");
-                            if (Core.ElevationHelper.IsElevated && !_selfRestartTried)
+                            CoreLog.Warn("钩子宿主报告：钩子没有生效，改由主进程安装");
+                            hookFailed.Set();
+
+                            /* 启动阶段由 StartHookHost 立即回退，不再排队重启；
+                             * 只有宿主运行中才走权限自愈。 */
+                            if (_hookHostReady && Core.ElevationHelper.IsElevated && !_selfRestartTried)
                             {
                                 _selfRestartTried = true;
                                 _dispatcher.BeginInvoke(() => RestartSelfForHookRecovery());
@@ -798,6 +836,21 @@ public sealed class AppHost : IDisposable
                         if (parts.Length < 2) continue;
                         string action = parts[1];
                         string arg = parts.Length > 2 ? parts[2] : "";
+
+                        /* 新版宿主把参数 Base64 了；旧版是原文。先按新协议解，
+                         * 解不开再按旧协议用，避免升级瞬间管道两端版本不一致。 */
+                        if (arg.Length > 0)
+                        {
+                            try
+                            {
+                                arg = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(arg));
+                            }
+                            catch (FormatException)
+                            {
+                                /* 旧协议原文，保持原样 */
+                            }
+                        }
+
                         _dispatcher.BeginInvoke(() =>
                         {
                             try { InvokeAction(action, arg); }
@@ -840,7 +893,10 @@ public sealed class AppHost : IDisposable
                 CoreLog.Info(open ? "开始录键：已通知宿主暂停吞键" : "结束录键：宿主恢复吞键");
             };
 
-            if (ready.Wait(2500))
+            int signaled = WaitHandle.WaitAny(
+                new WaitHandle[] { ready.WaitHandle, hookFailed.WaitHandle }, 2500);
+
+            if (signaled == 0 && ready.IsSet)
             {
                 _hookHostReady = true;
                 Engine.HookDelegatedToHost = true;
@@ -848,7 +904,11 @@ public sealed class AppHost : IDisposable
                 return true;
             }
 
-            CoreLog.Warn("钩子宿主 2.5 秒内没有就绪，改由本进程自己装钩子");
+            if (signaled == 1 || hookFailed.IsSet)
+                CoreLog.Warn("钩子宿主未能安装钩子，改由本进程自己装钩子");
+            else
+                CoreLog.Warn("钩子宿主 2.5 秒内没有就绪，改由本进程自己装钩子");
+
             try { _hookHost.Kill(); } catch { }
             _hookHost = null;
             return false;
@@ -1224,6 +1284,11 @@ public sealed class AppHost : IDisposable
         if (Engine.Enabled == enabled) return;
         Engine.Enabled = enabled;
 
+        /* 钩子在宿主进程里时，宿主也有一份 Enabled 状态；只改主进程字段
+         * 会出现“界面显示已暂停、实际热键仍触发”。 */
+        if (_hookHostReady)
+            SendHookHostCommand(enabled ? "ENABLED 1" : "ENABLED 0");
+
         /* 暂停前把可能"按着没抬起来"的键补一次抬起：
          * 暂停后引擎不再管按键，粘住就没人修了。 */
         if (!enabled) Core.Input.InputSafety.ReleaseAll();
@@ -1345,6 +1410,7 @@ public sealed class AppHost : IDisposable
             string? exe = Environment.ProcessPath;
             if (string.IsNullOrEmpty(exe)) return;
 
+            try { SingleInstance.Release(); } catch { }
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{exe}\"")
             {
                 UseShellExecute = true,
@@ -1551,6 +1617,11 @@ public sealed class AppHost : IDisposable
         Context.Mouse.Speed = Settings.Global.MouseSpeed;
         Context.Mouse.Step = Settings.Global.MouseMoveStep;
         Engine.Suspended = false;
+        if (_hookHostReady)
+        {
+            SendHookHostCommand("SUSPEND 0");
+            SendHookHostCommand(Engine.Enabled ? "ENABLED 1" : "ENABLED 0");
+        }
         RebuildActions();
         ApplyStartupSetting();
         // 选区监听器在 Start() 里已启动；RebuildActions 会重建 Context，
@@ -1593,6 +1664,17 @@ public sealed class AppHost : IDisposable
             };
             _wakeWindow = new System.Windows.Interop.HwndSource(p);
             _wakeWindow.AddHook(OnWakeMessage);
+
+            /* 提权实例的窗口默认会过滤掉低权限进程的 WM_COPYDATA 之外的自定义消息。
+             * 普通权限第二次启动时发的是 WmShowWindow，必须显式放行，否则用户
+             * 双击 exe 只会看到进程退出、主窗口永远不出来。 */
+            Core.Interop.NativeMethods.ChangeWindowMessageFilterEx(
+                _wakeWindow.Handle, (uint)SingleInstance.WmShowWindow,
+                Core.Interop.NativeMethods.MSGFLT_ALLOW, IntPtr.Zero);
+
+            /* 命名事件比自定义窗口消息可靠：即使主窗口完全隐藏、处于不同完整性级别，
+             * 第二个实例也能直接唤醒这个托盘实例。 */
+            SingleInstance.StartWakeListener(() => ShowMainWindow());
         }
         catch (Exception ex)
         {
@@ -1958,9 +2040,30 @@ public sealed class AppHost : IDisposable
         return r;
     }
 
+    /// <summary>
+    /// 退出前先停输入：停掉宿主、暂停引擎并补发抬起。
+    /// 退出同步最长 8 秒，期间窗口和托盘已经消失；如果钩子还活着，
+    /// 用户按快捷键会触发看不见的动作，强杀时还可能留下粘住的修饰键。
+    /// </summary>
+    public void StopForExit()
+    {
+        try
+        {
+            _hookHostReady = false;
+            Engine.HookDelegatedToHost = false;
+            try { _hookHost?.Kill(); } catch { }
+            _hookHost = null;
+            Engine.Enabled = false;
+            Engine.Suspended = true;
+            Core.Input.InputSafety.ReleaseAll();
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "退出前停止输入"); }
+    }
+
     public void ExitApp(bool restart = false)
     {
         Exiting = true;
+        StopForExit();
         SaveSettings();
         UsageStats.Flush();      // 统计攒着落盘，退出时补最后一次
         _tray?.Dispose();
@@ -1974,12 +2077,13 @@ public sealed class AppHost : IDisposable
             try
             {
                 var exe = Environment.ProcessPath ?? AppPaths.AppDir.TrimEnd('\\') + "\\KeyboardEnhance.exe";
+                // 先释放互斥体，避免“退出同步”尚未结束时新实例等到超时后退出。
+                try { SingleInstance.Release(); } catch { }
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe)
                 { UseShellExecute = true, WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory });
             }
             catch (Exception ex) { CoreLog.Warn("重启失败：" + ex.Message); }
         }
-        Core.Health.CrashGuard.MarkCleanExit(AppPaths.DataDir);
         Application.Current.Shutdown();
     }
 
@@ -2043,6 +2147,8 @@ public sealed class AppHost : IDisposable
 
     public void Dispose()
     {
+        try { SingleInstance.StopWakeListener(); } catch { }
+        try { _hookHost?.Kill(); _hookHost = null; } catch { }
         try { _foreground?.Dispose(); _foreground = null; } catch { }
         try { _deviceTracker?.Dispose(); _deviceTracker = null; } catch { }
         try { _wakeWindow?.Dispose(); _wakeWindow = null; } catch { }

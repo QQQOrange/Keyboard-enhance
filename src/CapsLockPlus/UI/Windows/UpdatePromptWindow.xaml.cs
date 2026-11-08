@@ -272,7 +272,7 @@ public partial class UpdatePromptWindow : Window
             await Task.Delay(400, ct);
             if (_closed) return;
 
-            if (UpdateService.ApplyAndRestart(path))
+            if (UpdateService.ApplyAndRestart(path, _info.Sha256))
             {
                 _closed = true;   // 主程序马上退出，后续不许再碰界面
                 _host.ExitApp();

@@ -8,6 +8,12 @@ namespace CapsLockPlus.Core.Text;
 /// </summary>
 public static class ExpressionEvaluator
 {
+    /// <summary>输入长度上限，避免超长文本把 GUI 卡住。</summary>
+    public const int MaxExpressionLength = 4096;
+
+    /// <summary>括号/一元运算的递归深度上限，防止恶意输入触发 StackOverflow。</summary>
+    internal const int MaxNestingDepth = 128;
+
     public static bool TryEvaluate(string expression, out double value, out string error)
     {
         value = 0;
@@ -15,6 +21,11 @@ public static class ExpressionEvaluator
         if (string.IsNullOrWhiteSpace(expression))
         {
             error = "空表达式";
+            return false;
+        }
+        if (expression.Length > MaxExpressionLength)
+        {
+            error = "表达式过长";
             return false;
         }
         try
@@ -89,6 +100,7 @@ public static class ExpressionEvaluator
     {
         private readonly string _text;
         private int _pos;
+        private int _depth;
 
         public Parser(string text) { _text = text; _pos = 0; }
 
@@ -146,10 +158,22 @@ public static class ExpressionEvaluator
 
         private double ParseUnary()
         {
-            SkipSpaces();
-            if (Match('-')) return -ParseUnary();
-            if (Match('+')) return ParseUnary();
-            return ParsePower();
+            if (++_depth > MaxNestingDepth)
+            {
+                _depth--;
+                throw new FormatException("表达式嵌套过深");
+            }
+            try
+            {
+                SkipSpaces();
+                if (Match('-')) return -ParseUnary();
+                if (Match('+')) return ParseUnary();
+                return ParsePower();
+            }
+            finally
+            {
+                _depth--;
+            }
         }
 
         private double ParsePower()

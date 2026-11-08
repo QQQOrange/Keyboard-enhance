@@ -130,6 +130,14 @@ public static partial class SelfTest
         Check("非法表达式报错", !ExpressionEvaluator.TryEvaluate("1+", out _, out _));
         CheckEqual("负数", Eval("-5+2"), "-3");
         CheckEqual("科学计数法", Eval("1e3+1"), "1001");
+
+        /* 深层嵌套必须被拒绝而不是 Recursion → StackOverflow（后者 catch 不住，会杀进程）。 */
+        string deep = new string('(', 10000) + "1" + new string(')', 10000);
+        Check("超深括号不崩溃且被拒绝", !ExpressionEvaluator.TryEvaluate(deep, out _, out _));
+        Check("超长一元运算不崩溃且被拒绝",
+            !ExpressionEvaluator.TryEvaluate(new string('-', 10000) + "1", out _, out _));
+        Check("超长表达式被拒绝",
+            !ExpressionEvaluator.TryEvaluate(new string('1', ExpressionEvaluator.MaxExpressionLength + 1), out _, out _));
     }
 
     private static string Eval(string expr) =>

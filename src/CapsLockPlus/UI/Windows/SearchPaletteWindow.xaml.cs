@@ -30,6 +30,7 @@ public partial class SearchPaletteWindow : Window
     private SearchPaletteWindow(List<GlobalHit> all)
     {
         InitializeComponent();
+        PreviewKeyDown += OnWindowKeyDown;
 
         _all = all;
         HintText.Text = Loc.T("↑↓ 选择 · Enter 打开 · Esc 关闭");
@@ -82,7 +83,7 @@ public partial class SearchPaletteWindow : Window
 
     private void OnQueryChanged(object sender, TextChangedEventArgs e) => Refresh(QueryBox.Text);
 
-    private void OnQueryKeyDown(object sender, KeyEventArgs e)
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {

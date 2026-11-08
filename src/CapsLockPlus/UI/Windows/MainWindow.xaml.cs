@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
+using CapsLockPlus.Core.Windows;
 using CapsLockPlus.UI.Theme;
 using CapsLockPlus.UI.Views;
 
@@ -95,6 +96,7 @@ public partial class MainWindow : Window
                                  (ThemeManager.Current == ThemeManager.Mode.System && ThemeManager.IsDarkSystem));
         WindowChrome.EnableRounded(this);
         UpdateStatus();
+        ClampToWorkArea();
         // 首次运行且没有指定页面时，自动停在“快速上手”
         if (_pendingPage == null && !_host.Settings.Global.OnboardingDone)
         {
@@ -105,17 +107,11 @@ public partial class MainWindow : Window
     private void OnStateChanged(object? sender, EventArgs e)
     {
         BorderThickness = WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
+        if (WindowState == WindowState.Normal) ClampToWorkArea();
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        /* 收进托盘这条路径（点 × 或 Alt+F4）也要回收内存 ——
-         * 之前只有标题栏按钮那条路径回收，UIA/系统关窗走的是这里。 */
-        if (!ShouldExitOnClose(_host.Settings.Global.CloseToTray, _host.Exiting))
-        {
-            _host.TrimWorkingSet();
-        }
-
         if (ShouldExitOnClose(_host.Settings.Global.CloseToTray, _host.Exiting))
         {
             /* 用户把「关闭时最小化到托盘」关掉了 —— 这是"点 × 就退出程序"的意思
@@ -136,6 +132,11 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             Hide();
+
+            /* 先隐藏，再等界面空闲时回收工作集。OnClosing 里同步做 GC 会让
+             * 窗口还停在屏幕上时卡住好几百毫秒。 */
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                new Action(_host.TrimWorkingSet));
         }
     }
 
@@ -387,6 +388,28 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 把窗口夹进当前显示器工作区。默认 1240×800 在 1366×768 / 高缩放下会超出屏幕，
+    /// 首次打开时底部的保存/测试按钮会看不见。
+    /// </summary>
+    private void ClampToWorkArea()
+    {
+        if (WindowState != WindowState.Normal) return;
+        if (!ScreenPlacement.TryGetWorkAreaDip(this, out var wa)) return;
+
+        MinWidth = Math.Min(_baseMinWidth, Math.Max(320, wa.Width - 8));
+        MinHeight = Math.Min(_baseMinHeight, Math.Max(300, wa.Height - 8));
+
+        if (!double.IsNaN(Width)) Width = Math.Clamp(Width, MinWidth, wa.Width);
+        if (!double.IsNaN(Height)) Height = Math.Clamp(Height, MinHeight, wa.Height);
+
+        if (!double.IsNaN(Left) && !double.IsNaN(Top))
+        {
+            Left = Math.Clamp(Left, wa.Left, Math.Max(wa.Left, wa.Right - Width));
+            Top = Math.Clamp(Top, wa.Top, Math.Max(wa.Top, wa.Bottom - Height));
+        }
+    }
+
+    /// <summary>
     /// 页面能缩到多小，由页面自己说了算。
     ///
     /// 按键映射页要完整显示一把 108 键键盘：窗口太窄只能把键帽压糊，
@@ -403,9 +426,10 @@ public partial class MainWindow : Window
         if (view is KeysView keys)
         {
             var (needW, needH) = keys.RequiredWindowSize();
-            var wa = SystemParameters.WorkArea;
-            double targetW = Math.Min(needW, Math.Max(480, wa.Width));
-            double targetH = Math.Min(needH, Math.Max(400, wa.Height));
+            if (!ScreenPlacement.TryGetWorkAreaDip(this, out var wa))
+                wa = SystemParameters.WorkArea;   // 极老系统/句柄尚未建立时的兜底
+            double targetW = Math.Min(needW, Math.Max(480, wa.Width - 24));
+            double targetH = Math.Min(needH, Math.Max(400, wa.Height - 24));
 
             /* 记下"撑大之前"的尺寸，离开这一页时还原。
              *
@@ -439,6 +463,13 @@ public partial class MainWindow : Window
         MinWidth = _baseMinWidth;
         MinHeight = _baseMinHeight;
 
+        /* 小屏/高缩放下基础最小尺寸本身也可能大于工作区；始终以当前屏幕为准。 */
+        if (ScreenPlacement.TryGetWorkAreaDip(this, out var baseWa))
+        {
+            MinWidth = Math.Min(MinWidth, Math.Max(320, baseWa.Width - 8));
+            MinHeight = Math.Min(MinHeight, Math.Max(300, baseWa.Height - 8));
+        }
+
         /* 离开按键映射页：把窗口缩回进入前的尺寸。
          *
          * 只在"当前尺寸还是我们撑出来的那个"时还原 ——
@@ -450,8 +481,8 @@ public partial class MainWindow : Window
                 && Math.Abs(Width - _grownWidth) < 1.5
                 && Math.Abs(Height - _grownHeight) < 1.5)
             {
-                Width = Math.Max(_baseMinWidth, _restoreWidth);
-                Height = Math.Max(_baseMinHeight, _restoreHeight);
+                Width = Math.Max(MinWidth, _restoreWidth);
+                Height = Math.Max(MinHeight, _restoreHeight);
             }
         }
     }
@@ -500,8 +531,10 @@ public partial class MainWindow : Window
         {
             Hide();
             /* 藏在托盘里时把工作集还给系统：这时候用户看不到界面，
-             * 下次打开慢几十毫秒完全感觉不到，但常驻内存能少一截。 */
-            _host.TrimWorkingSet();
+             * 下次打开慢几十毫秒完全感觉不到，但常驻内存能少一截。
+             * 必须等 Hide 完成后再做，别让可见窗口卡在 GC 上。 */
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                new Action(_host.TrimWorkingSet));
         }
         else Close();
     }
@@ -516,9 +549,23 @@ public partial class MainWindow : Window
          * 刚操作的设置页（连着他改的那个下拉框）直接消失。 */
         string keep = _current.Length > 0 ? _current : _pendingPage ?? "guide";
 
-        foreach (var page in _pages.Keys.ToList()) _pages.Remove(page);
+        /* 显式发 Unloaded：页面靠它停计时器、退订宿主事件。直接 Remove 不会保证
+         * WPF 发这个事件，旧页面的订阅会继续挂在 AppHost 上。 */
+        foreach (var page in _pages.Values)
+        {
+            if (page is FrameworkElement fe)
+                fe.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+        }
+
+        _pages.Clear();
+        _pageOrder.Clear();
+        PageHost.Content = null;
         _current = "";
-        if (IsVisible) ShowPage(keep);
+        _pendingPage = keep;
+
+        /* 即使窗口正藏在托盘，也要按新设置重建当前页；否则 Show() 回来时
+         * 还是旧页面，页面字段也仍指向被替换掉的旧 AppSettings 对象。 */
+        ShowPage(keep);
         UpdateStatus();
     }
 }

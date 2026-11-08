@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
+using CapsLockPlus.Core.Windows;
 
 namespace CapsLockPlus.Core;
 
@@ -61,6 +62,17 @@ internal static class HookHost
         var queue = new ActionQueue("HookHost.Actions");
         HotkeyEngine? engine = null;
 
+        /* 管道写入不仅来自 writerThread，READY/HOOKFAIL/BYE 也在主线程写。
+         * StreamWriter 不是线程安全的，所有写入统一过这把锁，避免启动握手被拼坏。 */
+        object writeGate = new();
+        void SendLine(string line)
+        {
+            lock (writeGate)
+            {
+                try { writer?.WriteLine(line); } catch { }
+            }
+        }
+
         /* ---- 管道写入：绝不阻塞钩子回调 ----
          *
          * ⚠ 这是"Tab 一直往后跳、层卡住不回"的真正根因（用户日志里
@@ -103,7 +115,10 @@ internal static class HookHost
 
         void Forward(string action, string arg)
         {
-            Enqueue($"ACT\t{action}\t{arg}", droppableWhenFull: false);
+            /* 参数里可能有换行/制表符（typeText 支持多行模板）。协议按行传输，
+             * 直接拼接会把参数截断；统一 Base64 后主进程再解码。 */
+            string payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(arg ?? ""));
+            Enqueue($"ACT\t{action}\t{payload}", droppableWhenFull: false);
         }
 
         var writerThread = new Thread(() =>
@@ -116,13 +131,13 @@ internal static class HookHost
                      * 两者都空时阻塞 50ms，避免忙等。 */
                     if (actQueue.TryTake(out string? act))
                     {
-                        try { writer?.WriteLine(act); } catch { }
+                        SendLine(act);
                         continue;
                     }
 
                     if (outQueue.TryTake(out string? shown, 50))
                     {
-                        try { writer?.WriteLine(shown); } catch { }
+                        SendLine(shown);
                     }
                 }
             }
@@ -132,6 +147,18 @@ internal static class HookHost
         writerThread.Start();
 
         engine = new HotkeyEngine(queue, () => settings, (action, arg) => { Forward(action, arg); return true; });
+
+        /* 钩子在宿主里，但“按应用启用的层”和“只在某程序展开的片段”仍需要
+         * 当前前台进程。主进程的 ForegroundWatcher 管不到宿主引擎，
+         * 这里单独听一份；只取进程名，符合隐私约定。 */
+        using var foreground = new ForegroundWatcher();
+        void ApplyForeground(string process)
+        {
+            engine!.ForegroundProcess = process;
+            engine.AppLayerId = AppLayerRules.Match(settings.Global.AppLayers, process);
+        }
+        foreground.Changed += ApplyForeground;
+        if (foreground.Start()) ApplyForeground(foreground.Current);
 
         /* 诊断：`--trace` 只设了主进程的开关，而钩子在宿主里 ——
          * 不把开关传过来，用户开 --trace 也看不到任何"钩子收到"的日志。
@@ -187,6 +214,18 @@ internal static class HookHost
                             try { engine!.RestartHook(); } catch { }
                             CoreLog.Info("钩子宿主：收到 REHOOK，已重装键盘钩子");
                         }
+                        else if (cmdLine.StartsWith("ENABLED", StringComparison.Ordinal))
+                        {
+                            bool on = cmdLine.Trim().EndsWith("1", StringComparison.Ordinal);
+                            engine!.Enabled = on;
+                            CoreLog.Info($"钩子宿主：引擎{(on ? "启用" : "暂停")}（ENABLED {(on ? 1 : 0)}）");
+                        }
+                        else if (cmdLine.StartsWith("SUSPEND", StringComparison.Ordinal))
+                        {
+                            bool on = cmdLine.Trim().EndsWith("1", StringComparison.Ordinal);
+                            engine!.Suspended = on;
+                            CoreLog.Info($"钩子宿主：引擎{(on ? "挂起（录制中）" : "恢复")}（SUSPEND {(on ? 1 : 0)}）");
+                        }
                     }
                 }
                 catch { Thread.Sleep(500); }
@@ -207,16 +246,22 @@ internal static class HookHost
         {
             try { engine.TickHold(); } catch { }
         }, null, 20, 20);
-        try { writer.WriteLine("READY"); } catch { }
 
-        /* 钩子没装上要立刻告诉主程序：主程序据此决定是否改用普通权限重启
-         * （实测：管理员权限下钩子可能装不上，普通权限下同一台机器是正常的）。 */
+        /* 只有钩子真的装上才发 READY。早先把 READY 固定发在主程序会据此
+         * 认定宿主已接管，HOOKFAIL 随后到达也来不及回退，热键会整体静默失效。 */
         if (!engine.IsHookAlive)
         {
-            try { writer.WriteLine("HOOKFAIL"); } catch { }
-            Trace("钩子未生效，已通知主程序");
+            SendLine("HOOKFAIL");
+            Trace("钩子未生效，已通知主程序并退出");
+            CoreLog.Warn("钩子宿主：SetWindowsHookEx 失败，主程序将改用自身钩子");
+            engine.Dispose();
+            queue.Dispose();
+            TryWriteReport(log);
+            return 3;
         }
-        Trace($"引擎已启动，钩子={(engine.IsHookAlive ? "正常" : "未生效")}");
+
+        SendLine("READY");
+        Trace("引擎已启动，钩子正常");
 
         // 2) 主循环：配置文件变了就重读
         while (true)
@@ -230,6 +275,7 @@ internal static class HookHost
                 try
                 {
                     settings = SettingsStore.Load();
+                    ApplyForeground(foreground.Current);
                     Trace("已重读配置");
                     if (Environment.TickCount64 - lastReloadLog > 5000)
                     {
@@ -263,7 +309,7 @@ internal static class HookHost
             }
         }
 
-        try { writer?.WriteLine("BYE"); } catch { }
+        SendLine("BYE");
         engine.Dispose();
         queue.Dispose();
         TryWriteReport(log);

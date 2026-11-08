@@ -43,7 +43,8 @@
                            Source="pack://application:,,,/Assets/app.png" />
                     <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="{loc:T '按键增强'}" Style="{StaticResource Text.H3}" />
-                        <TextBlock Text="Keyboard Enhance · Win11 x64" Style="{StaticResource Text.Tertiary}" Margin="0,1,0,0" />
+                        <TextBlock Text="Keyboard Enhance" Style="{StaticResource Text.Tertiary}" Margin="0,1,0,0"
+                                   TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </StackPanel>
 

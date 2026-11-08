@@ -254,7 +254,7 @@ public partial class MacrosView : UserControl
             if (rec.EventCount == 0)
             {
                 rec.Abort();
-                _host.Engine.MacroRecorder = null;
+                _host.SetMacroRecorder(null);
                 StopTick();
                 RecordingHudWindow.HideHud();
                 ApplyIdleUi();
@@ -273,7 +273,7 @@ public partial class MacrosView : UserControl
             CoreLog.Info($"宏录制结束：录制到 {rec.EventCount} 个事件" +
                          $"（钩子 {rec.HookEventCount} / Raw Input 补录 {rec.RawEventCount}），" +
                          $"钩子期间累计增加 {_host.Engine.KeyEventCount - _hookCountAtStart} 个");
-            _host.Engine.MacroRecorder = null;          // 告诉引擎：录制结束
+            _host.SetMacroRecorder(null);          // 告诉引擎：录制结束
             _host.Settings.Macros.Add(macro);
             _editing = macro;
             SaveAndRebuild();
@@ -299,7 +299,7 @@ public partial class MacrosView : UserControl
 
         // 开始录制：钩子继续透传，只记录事件
         rec.Start();
-        _host.Engine.MacroRecorder = rec;
+        _host.SetMacroRecorder(rec);
         _hookCountAtStart = _host.Engine.KeyEventCount;
 
         /* 探活：钩子"被系统摘掉"和"线程卡死"时，句柄与 IsHookAlive 都还是正常的，
@@ -329,7 +329,7 @@ public partial class MacrosView : UserControl
     {
         if (_host == null || !Recorder.IsRecording) return;
         Recorder.Abort();
-        _host.Engine.MacroRecorder = null;
+        _host.SetMacroRecorder(null);
         StopTick();
         RecordingHudWindow.HideHud();
         ApplyIdleUi();
@@ -514,6 +514,12 @@ public partial class MacrosView : UserControl
     {
         if (_host == null || _editing == null) return;
         string name = _editing.Name;
+
+        if (!AppDialog.ConfirmDanger(Window.GetWindow(this),
+                Loc.F("确定删除宏「{0}」吗？\n\n这一步无法撤销。", name),
+                Loc.T("删除宏"), Loc.T("删除")))
+            return;
+
         _host.Settings.Macros.RemoveAll(m => m.Id == _editing.Id);
         _editing = null;
         SaveAndRebuild();

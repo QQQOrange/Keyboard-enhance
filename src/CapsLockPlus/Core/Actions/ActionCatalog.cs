@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Text;
 using CapsLockPlus.Core.Windows;
@@ -73,6 +74,9 @@ public sealed record ActionInfo(
 /// </summary>
 public sealed class ActionCatalog
 {
+    /// <summary>正在启动/等待窗口的自定义按键参数，防止连按重复拉起同一个程序。</summary>
+    private static readonly ConcurrentDictionary<string, byte> CustomKeyInFlight =
+        new(StringComparer.Ordinal);
     private readonly Dictionary<string, Func<string, bool>> _handlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ActionInfo> _items = new();
 
@@ -444,9 +448,39 @@ public sealed class ActionCatalog
             "先确认绑定的应用在运行（没运行就先启动），再把设定的键发给它",
             a =>
             {
-                var r = CustomKeyRunner.Run(CustomKeySpec.FromArg(a));
-                if (!string.IsNullOrWhiteSpace(r.Message)) ctx.Notify(r.Message);
-                return r.Ok;
+                var spec = CustomKeySpec.FromArg(a);
+
+                /* 不绑定应用时只是向当前前台发一次键，必须同步、立即完成。
+                 * 绑定应用时可能要等冷启动窗口 6 秒 + 额外等待 10 秒；
+                 * 动作队列是单线程，不能让它把后续所有热键都堵住。
+                 * 放到后台执行，失败仍通过同一个 Toast 出口提示。 */
+                if (!spec.HasApp)
+                {
+                    var r = CustomKeyRunner.Run(spec);
+                    if (!string.IsNullOrWhiteSpace(r.Message)) ctx.Notify(r.Message);
+                    return r.Ok;
+                }
+
+                string inflightKey = a ?? "";
+                if (!CustomKeyInFlight.TryAdd(inflightKey, 0)) return true;
+                _ = System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        var r = CustomKeyRunner.Run(spec);
+                        if (!string.IsNullOrWhiteSpace(r.Message)) ctx.Notify(r.Message);
+                    }
+                    catch (Exception ex)
+                    {
+                        CoreLog.Warn("自定义按键后台执行失败：" + ex.Message);
+                        ctx.Notify(UiText.Failed("自定义按键", ex.Message));
+                    }
+                    finally
+                    {
+                        CustomKeyInFlight.TryRemove(inflightKey, out _);
+                    }
+                });
+                return true;
             },
             needsArg: false, shortTitle: "自定义");
 

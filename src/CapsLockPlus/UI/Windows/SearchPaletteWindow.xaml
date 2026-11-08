@@ -36,7 +36,7 @@
 
                 <TextBox Grid.Column="1" x:Name="QueryBox" Style="{StaticResource TextBox.Base}"
                          MinHeight="38" VerticalContentAlignment="Center" FontSize="14"
-                         TextChanged="OnQueryChanged" PreviewKeyDown="OnQueryKeyDown" />
+                         TextChanged="OnQueryChanged" />
             </Grid>
 
             <!-- 结果 -->

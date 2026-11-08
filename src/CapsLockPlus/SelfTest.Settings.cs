@@ -707,6 +707,18 @@ public static partial class SelfTest
         Check("每个默认绑定都有对应动作", DefaultSettings.Create().Keys.All(k =>
             k.Action.Length > 0));
 
+        /* 备份/恢复使用 CopyInto 原地替换：漏掉 Hotstring 会让用户换机后
+         * 前缀符号和空格触发方式悄悄回到默认值。 */
+        var copySrc = DefaultSettings.Create();
+        copySrc.Hotstring.Prefix = ";";
+        copySrc.Hotstring.ExpandOnSpace = false;
+        copySrc.SchemaVersion = 7;
+        var copyDst = DefaultSettings.Create();
+        SettingsStore.CopyInto(copyDst, copySrc);
+        CheckEqual("覆盖恢复：别名前缀一并恢复", copyDst.Hotstring.Prefix, ";");
+        Check("覆盖恢复：空格触发展开设置一并恢复", !copyDst.Hotstring.ExpandOnSpace);
+        CheckEqual("覆盖恢复：SchemaVersion 一并恢复", copyDst.SchemaVersion, 7);
+
         /* ---- 手改 / 导入的配置里出现 null 字段：必须被洗掉，不能抛 ----
          *
          * 设置文件是纯文本，用户会手改，备份/导入来自另一台机器，
@@ -800,6 +812,56 @@ public static partial class SelfTest
         finally
         {
             try { if (settingsBackup.Length > 0) File.WriteAllText(settingsFile, settingsBackup); }
+            catch { /* 自检数据目录，失败不影响结论 */ }
+        }
+
+        /* ---- 主文件损坏时必须先尝试 .bak，并保留 .broken ----
+         * 这是“用户配置一夜蒸发”的最后一道保险：Load 不再直接返回默认值。 */
+        string primary = AppPaths.SettingsFile;
+        string backup = primary + ".bak";
+        byte[]? oldPrimary = File.Exists(primary) ? File.ReadAllBytes(primary) : null;
+        byte[]? oldBackup = File.Exists(backup) ? File.ReadAllBytes(backup) : null;
+        var existingBroken = Directory.Exists(AppPaths.DataDir)
+            ? Directory.GetFiles(AppPaths.DataDir, "settings.json.broken*")
+            : Array.Empty<string>();
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDir);
+            var good = DefaultSettings.Create();
+            good.Hotstring.Prefix = ";";
+            File.WriteAllText(backup,
+                System.Text.Json.JsonSerializer.Serialize(good, SettingsStore.JsonOptions),
+                System.Text.Encoding.UTF8);
+            File.WriteAllText(primary, "{\"Global\":{\"Theme\":\"dark\"}}", System.Text.Encoding.UTF8);
+
+            var recovered = SettingsStore.Load();
+            Check("主文件损坏时从 .bak 恢复按键", recovered.Keys.Count > 100, recovered.Keys.Count.ToString());
+            CheckEqual("主文件损坏时从 .bak 恢复别名前缀", recovered.Hotstring.Prefix, ";");
+            Check("损坏主文件已另存为 .broken",
+                Directory.GetFiles(AppPaths.DataDir, "settings.json.broken*")
+                    .Except(existingBroken).Any());
+
+            /* Load 内部的修复写盘绝不能把坏主文件复制到 .bak，把唯一好备份覆盖掉。 */
+            string backupNow = File.ReadAllText(backup, System.Text.Encoding.UTF8);
+            Check("好备份没有被坏主文件覆盖",
+                backupNow.Contains("\"Prefix\": \";\"") || backupNow.Contains("\"Prefix\":\";\""));
+        }
+        catch (Exception ex)
+        {
+            Check("主文件损坏时的 .bak 恢复", false, ex.Message);
+        }
+        finally
+        {
+            try
+            {
+                if (oldPrimary != null) File.WriteAllBytes(primary, oldPrimary!);
+                else File.Delete(primary);
+                if (oldBackup != null) File.WriteAllBytes(backup, oldBackup!);
+                else File.Delete(backup);
+                foreach (string f in Directory.GetFiles(AppPaths.DataDir, "settings.json.broken*")
+                             .Except(existingBroken))
+                    File.Delete(f);
+            }
             catch { /* 自检数据目录，失败不影响结论 */ }
         }
     }
@@ -1129,6 +1191,16 @@ public static partial class SelfTest
             t1.Length > 300 ? t1[..300] : t1);
         Check("触发键内容真的写进去了", t1.Contains("capslock"));
 
+        /* 只勾"触发键与层"时不能把 Layers.Keys 一起带走：
+         * 组名只承诺层名称/启用状态，导入时也不应清空本机按键。 */
+        Check("只导出触发键与层时不含按键映射", !t1.Contains("\"Keys\""));
+        var triggerOnly = Core.Sync.ExportImport.Parse(t1);
+        var layerTarget = DefaultSettings.Create();
+        int localBindings = layerTarget.Keys.Count;
+        Core.Sync.ExportImport.Apply(layerTarget, triggerOnly.Groups, triggerOnly.Data);
+        CheckEqual("只导入触发键与层时本机按键不变",
+            layerTarget.Keys.Count, localBindings);
+
         // ---- ② 同步与备份设置：整块 Sync 都要在，密码字段也不例外（加密导出）----
         var (t2, _) = Core.Sync.ExportImport.Build(s, new[] { "syncSettings" }, includeSecrets: true);
         Check("导出含 Sync", t2.Contains("\"Sync\""), t2.Length.ToString());
@@ -1167,6 +1239,17 @@ public static partial class SelfTest
         var (t4, count4) = Core.Sync.ExportImport.Build(s, Array.Empty<string>(), includeSecrets: true);
         CheckEqual("空勾选导出的设置项为 0", count4, 0);
         Check("空勾选不含 Triggers", !t4.Contains("\"Triggers\""));
+
+        // ---- ⑥ 别名替换组必须带上 Hotstring 前缀/空格触发展开设置 ----
+        s.Hotstring.Prefix = ";";
+        s.Hotstring.ExpandOnSpace = false;
+        var (t5, _) = Core.Sync.ExportImport.Build(s, new[] { "snippets" }, includeSecrets: true);
+        Check("别名组导出含 Hotstring 设置", t5.Contains("\"Hotstring\""));
+        var parsed = Core.Sync.ExportImport.Parse(t5);
+        var dst = DefaultSettings.Create();
+        Core.Sync.ExportImport.Apply(dst, parsed.Groups, parsed.Data);
+        CheckEqual("别名组导入恢复前缀", dst.Hotstring.Prefix, ";");
+        Check("别名组导入恢复空格触发展开设置", !dst.Hotstring.ExpandOnSpace);
     }
 
     private static void TestExportImport()

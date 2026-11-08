@@ -86,8 +86,10 @@ public partial class BackupView : UserControl
 
         if (!DataVault.IsEnabled)
         {
-            DataEncText.Text = Loc.T("⚠ 本地数据还是明文 —— 设一个「备份密码」就会立刻转成密文（AES-256-GCM）。");
-            DataEncText.Foreground = PrivateFg;
+            /* 4.20.1 起即使没设备份密码，settings/usage/日志也已经用本机密钥加密。
+             * 旧文案还写“本地数据还是明文”，会把用户吓一跳，也误导排障。 */
+            DataEncText.Text = Loc.T("✓ 本地数据已加密（AES-256-GCM，本机密钥由 Windows DPAPI 保护）。\n设置「备份密码」后，备份与换机恢复也会用密码加密。");
+            DataEncText.Foreground = (Brush)FindResource("Brush.TextTertiary");
             return;
         }
 
@@ -284,12 +286,12 @@ public partial class BackupView : UserControl
     private void ShowVaultStatus(string text, bool ok)
     {
         VaultStatusText.Text = text;
-        VaultStatusBar.Background = new SolidColorBrush(
-            (Color)ColorConverter.ConvertFromString(ok ? "#221D9E75" : "#22E5484D"));
-        VaultStatusBar.BorderBrush = new SolidColorBrush(
-            (Color)ColorConverter.ConvertFromString(ok ? "#551D9E75" : "#55E5484D"));
-        VaultStatusText.Foreground = new SolidColorBrush(
-            (Color)ColorConverter.ConvertFromString(ok ? "#0F6E56" : "#E5484D"));
+        VaultStatusBar.Background = (System.Windows.Media.Brush)FindResource(
+            ok ? "Brush.SuccessSoft" : "Brush.DangerSoft");
+        VaultStatusBar.BorderBrush = (System.Windows.Media.Brush)FindResource(
+            ok ? "Brush.SuccessBorder" : "Brush.DangerBorder");
+        VaultStatusText.Foreground = (System.Windows.Media.Brush)FindResource(
+            ok ? "Brush.Success" : "Brush.Danger");
         VaultStatusBar.Visibility = Visibility.Visible;
     }
 

@@ -630,7 +630,7 @@ public sealed class UpdateService
     /// 做法：当前 exe 先改名（Windows 允许给运行中的 exe 改名），
     /// 再把新文件放到原路径，然后启动新进程并退出。
     /// </summary>
-    public static bool ApplyAndRestart(string downloadedPath)
+    public static bool ApplyAndRestart(string downloadedPath, string? expectedSha256 = null)
     {
         try
         {
@@ -649,6 +649,21 @@ public sealed class UpdateService
              * 它必须在不影响现状的前提下进行 —— 直接往 current 上复制，
              * 一旦失败，程序名已经被改掉，用户手上什么都没有。 */
             File.Copy(downloadedPath, staged, true);
+
+            /* 下载目录是当前用户可写的，下载校验与真正替换之间可能被改写（TOCTOU）。
+             * 真正落位前再对 staged 复核一次；不通过就绝不替换正在运行的程序。 */
+            string expected = NormalizeDigest(expectedSha256);
+            if (expected.Length > 0)
+            {
+                using var check = File.Open(staged, FileMode.Open, FileAccess.Read, FileShare.Read);
+                string actual = Convert.ToHexString(SHA256.HashData(check));
+                if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    CoreLog.Error($"更新包二次校验失败（期望 {expected[..12]}…，实际 {actual[..12]}…）");
+                    try { File.Delete(staged); } catch { }
+                    return false;
+                }
+            }
 
             /* 去掉下载文件自带的"来自互联网"标记（Zone.Identifier 流）。
              * File.Copy 会把这个流一起带过来，不清掉的话第一次程序内更新
@@ -688,6 +703,9 @@ public sealed class UpdateService
             }
 
             // 3) 启动新版本（只有一个 exe，就是它自己）。
+            //    先释放单实例互斥体：否则新进程会等旧实例退出，遇到“退出同步”
+            //    最长 8 秒时可能超时，最终两个进程都没了。
+            try { SingleInstance.Release(); } catch { }
             //    带 --elevated，避免再次弹 UAC
             var psi = new ProcessStartInfo(current) { UseShellExecute = true };
             psi.ArgumentList.Add("--elevated");

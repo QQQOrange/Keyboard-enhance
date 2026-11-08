@@ -210,6 +210,16 @@ public static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    /// <summary>
+    /// 允许低完整性进程向本窗口发送指定消息（UIPI 过滤例外）。
+    /// 用于：提权实例的隐藏唤醒窗口接收普通实例的“再打开一次”。
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool ChangeWindowMessageFilterEx(
+        IntPtr hwnd, uint message, uint action, IntPtr changeInfo);
+
+    public const uint MSGFLT_ALLOW = 1;
+
     /// <summary>取某个线程当前真正有焦点的窗口（顶层窗口不认语言切换消息时改投它）。</summary>
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);

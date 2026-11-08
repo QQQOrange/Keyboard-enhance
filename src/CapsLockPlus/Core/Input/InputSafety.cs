@@ -157,7 +157,7 @@ public static class InputSafety
         var parts = new List<string>();
 
         foreach (int vk in GuardedKeys)
-            if (IsDown(vk)) parts.Add(KeyName.NameOf(vk));
+            if (IsDown(vk)) parts.Add(KeyName.NameOf(vk) ?? $"vk0x{vk:X2}");
 
         foreach (int vk in GuardedMouse)
             if (IsDown(vk)) parts.Add(vk switch

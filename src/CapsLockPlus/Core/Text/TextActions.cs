@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using CapsLockPlus.Core.Input;
 using Clipboard = System.Windows.Clipboard;
 
@@ -100,12 +100,18 @@ public static class TextActions
             /* 完整快照（含图片 / 文件列表），不再只记纯文本 ——
              * 只记文本时，原剪贴板是截图就会在还原阶段被 Clear() 掉。 */
             var backup = ClipboardBackup.Capture();
+            if (!backup.IsUsable)
+            {
+                CoreLog.Warn("[取词] 剪贴板快照失败，跳过会覆盖用户剪贴板的取词通道");
+                return string.Empty;
+            }
 
             /* 记住"我们自己复制出来的内容"。
              * 收尾还原剪贴板时要用它判断：如果剪贴板里已经不是这段文字，
              * 说明期间用户自己按了 Ctrl+C（或者别的程序写了剪贴板），
              * 这时**绝对不能**还原，否则会把用户刚复制的东西搞丢。 */
             string? copiedByUs = null;
+            uint? ownedSequence = null;
 
             try
             {
@@ -114,22 +120,41 @@ public static class TextActions
                 CoreLog.Info($"[取词] WM_COPY 已投递={posted}");
                 string text = TryCopyVia(() => WindowMessageCopier.PostCopyToFocus(), timeoutMs);
                 CoreLog.Info($"[取词] WM_COPY 后剪贴板结果长度={text.Length}");
-                if (!string.IsNullOrEmpty(text)) { copiedByUs = text; return text; }
+                if (!string.IsNullOrEmpty(text))
+                {
+                    copiedByUs = text;
+                    ownedSequence = GetClipboardSequenceNumber();
+                    return text;
+                }
 
                 // ③ SendInput：同权限时有效（0x43 = C）
                 text = TryCopyVia(() => InputSender.CopyChord(0x43), timeoutMs);
-                if (!string.IsNullOrEmpty(text)) { copiedByUs = text; return text; }
+                if (!string.IsNullOrEmpty(text))
+                {
+                    copiedByUs = text;
+                    ownedSequence = GetClipboardSequenceNumber();
+                    return text;
+                }
 
                 /* ④ 线程级注入：attach 到目标输入队列 + 同步键盘状态。
                  * 这是最接近真实键盘的一条路，用于 SendInput 被程序过滤的情况。 */
                 string viaThread = TryCopyVia(() => ThreadKeyboardSender.SendCtrlChord(0x43), timeoutMs);
                 CoreLog.Info($"[取词] 线程级注入结果长度={viaThread.Length}");
-                if (!string.IsNullOrEmpty(viaThread)) { copiedByUs = viaThread; return viaThread; }
+                if (!string.IsNullOrEmpty(viaThread))
+                {
+                    copiedByUs = viaThread;
+                    ownedSequence = GetClipboardSequenceNumber();
+                    return viaThread;
+                }
 
                 // ⑤ 再试 Ctrl+Insert（终端、部分老程序只认这个）
                 string last = TryCopyVia(() => InputSender.CopyChord(VK.Insert), timeoutMs);
                 CoreLog.Info($"[取词] 最终结果长度={last.Length} 内容={Trim4(last)}");
-                if (!string.IsNullOrEmpty(last)) copiedByUs = last;
+                if (!string.IsNullOrEmpty(last))
+                {
+                    copiedByUs = last;
+                    ownedSequence = GetClipboardSequenceNumber();
+                }
                 return last;
             }
             catch (Exception ex)
@@ -139,7 +164,7 @@ public static class TextActions
             }
             finally
             {
-                backup.Restore(copiedByUs);
+                backup.Restore(copiedByUs, ownedSequence);
             }
         }
     }
@@ -229,10 +254,17 @@ public static class TextActions
              * 旧实现只认纯文本，没有文本时 finally 里 Clipboard.Clear() ——
              * 用户刚截的图就这么没了。 */
             var backup = ClipboardBackup.Capture();
+            if (!backup.IsUsable)
+            {
+                CoreLog.Warn("[替换选区] 剪贴板快照失败，放弃写入（避免覆盖用户原剪贴板）");
+                return;
+            }
 
+            uint? expectedSequence = null;
             try
             {
                 Clipboard.SetText(text);
+                expectedSequence = GetClipboardSequenceNumber();
                 Thread.Sleep(18);
                 InputSender.Shift(VK.Insert);   // Shift+Insert == 粘贴
                 Thread.Sleep(40);
@@ -244,7 +276,7 @@ public static class TextActions
             finally
             {
                 Thread.Sleep(90);
-                backup.Restore();
+                backup.Restore(expectedSequence: expectedSequence);
             }
         }
     }
@@ -303,7 +335,14 @@ public static class TextActions
         lock (ClipGate)
         {
             var backup = ClipboardBackup.Capture();
+            if (!backup.IsUsable)
+            {
+                text = string.Empty;
+                CoreLog.Warn("[算式取词] 剪贴板快照失败，放弃本次操作");
+                return;
+            }
 
+            uint? expectedSequence = null;
             try
             {
                 Clipboard.Clear();
@@ -317,6 +356,7 @@ public static class TextActions
                     InputSender.Tap(VK.Right);   // 取消选择，避免影响用户
                     return;
                 }
+                expectedSequence = GetClipboardSequenceNumber();
                 text = Clipboard.GetText();
             }
             catch
@@ -325,7 +365,7 @@ public static class TextActions
             }
             finally
             {
-                backup.Restore();
+                backup.Restore(expectedSequence: expectedSequence);
             }
         }
     }

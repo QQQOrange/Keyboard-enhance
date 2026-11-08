@@ -22,12 +22,19 @@ public static class LocalCrypto
     public const string Prefix = "CLP2:";
     private const int NonceSize = 12;
     private const int TagSize = 16;
+    private const int KeyLen = 32;
     private const string KeyFolder = "keys";
     private const string KeyFileName = "local.key";
 
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CLP.LocalKey.v1");
     private static readonly object Gate = new();
     private static byte[]? _key;
+
+    /// <summary>
+    /// 上次读取/生成密钥失败的原因（供设置加载层展示）。
+    /// 失败时必须保留原密钥文件，绝不自动覆盖 —— 否则所有既有密文都会永久解不开。
+    /// </summary>
+    public static string? LastError { get; private set; }
 
     public static bool IsEncrypted(string? text)
         => text != null && text.StartsWith(Prefix, StringComparison.Ordinal);
@@ -51,12 +58,26 @@ public static class LocalCrypto
                 {
                     try
                     {
-                        _key = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
-                        if (_key.Length == 32) return _key;
+                        byte[] wrapped = File.ReadAllBytes(path);
+                        byte[] loaded = ProtectedData.Unprotect(wrapped, Entropy, DataProtectionScope.CurrentUser);
+                        if (loaded.Length == KeyLen)
+                        {
+                            _key = loaded;
+                            LastError = null;
+                            return _key;
+                        }
+
+                        throw new InvalidOperationException(
+                            $"本地密钥长度不正确（期望 {KeyLen} 字节，实际 {loaded.Length} 字节）");
                     }
                     catch (Exception ex)
                     {
-                        CoreLog.Warn("本地密钥读取失败，将重新生成：" + ex.Message);
+                        /* **绝不覆盖已存在的密钥**。
+                         * DPAPI 暂时不可用、权限变化、文件被截断时，旧密文仍然需要这把钥匙；
+                         * 重新生成只会把用户的数据永久锁死。这里 fail-closed，交给上层提示恢复。 */
+                        LastError = "本地密钥无法读取，已停止写入加密数据（原密钥文件保留）：" + ex.Message;
+                        CoreLog.Error(LastError, ex);
+                        throw new InvalidOperationException(LastError, ex);
                     }
                 }
 
@@ -64,11 +85,19 @@ public static class LocalCrypto
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    File.WriteAllBytes(path, ProtectedData.Protect(_key, Entropy, DataProtectionScope.CurrentUser));
+                    string tmp = path + ".tmp";
+                    File.WriteAllBytes(tmp,
+                        ProtectedData.Protect(_key, Entropy, DataProtectionScope.CurrentUser));
+                    File.Move(tmp, path, true);
+                    LastError = null;
                 }
                 catch (Exception ex)
                 {
-                    CoreLog.Warn("本地密钥保存失败（重启后旧文件将无法解密）：" + ex.Message);
+                    LastError = "本地密钥保存失败，已停止写入加密数据：" + ex.Message;
+                    CoreLog.Error(LastError, ex);
+                    _key = null;
+                    try { File.Delete(path + ".tmp"); } catch { /* 清理失败无额外副作用 */ }
+                    throw new InvalidOperationException(LastError, ex);
                 }
 
                 return _key;

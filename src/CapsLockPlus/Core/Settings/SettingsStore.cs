@@ -94,6 +94,8 @@ public static class SettingsStore
         target.Run = copy.Run;
         target.Web = copy.Web;
         target.HotStrings = copy.HotStrings;
+        target.Hotstring = copy.Hotstring;
+        target.SchemaVersion = copy.SchemaVersion;
         target.BuiltinEnginesVersion = copy.BuiltinEnginesVersion;
     }
 
@@ -183,6 +185,7 @@ public static class SettingsStore
     public static AppSettings Load()    {
         lock (Gate)
         {
+            LoadFailure = null;
             try
             {
                 /* 先把"防抖中 / 排队中"的保存落盘，再读文件。
@@ -223,6 +226,8 @@ public static class SettingsStore
                     if (plainText == null)
                     {
                         _dataLocked = true;
+                        LoadFailure = "设置文件已加密，但本机密钥无法解密，已进入只读保护，不会覆盖原文件。" +
+                                      (LocalCrypto.LastError is { Length: > 0 } ke ? "\n" + ke : "");
                         CoreLog.Error("设置文件已用本机密钥加密，但当前用户解不开 —— 进入只读保护");
                         return DefaultSettings.Create();
                     }
@@ -242,6 +247,7 @@ public static class SettingsStore
                     if (plain == null)
                     {
                         _dataLocked = true;
+                        LoadFailure = "设置已加密，但当前无法解密（密钥缓存可能已失效）。已进入只读保护，请用备份密码解锁。";
                         CoreLog.Error("设置已加密但当前无法解密（密钥缓存失效）—— 进入只读保护，不会覆盖原文件");
                         return DefaultSettings.Create();
                     }
@@ -259,8 +265,25 @@ public static class SettingsStore
                  * 多半是被别的工具截断、或者手改时删多了。宁可给默认值并留一条日志。 */
                 if (IsStructurallyEmpty(s))
                 {
-                    CoreLog.Warn("设置文件里没有任何按键 / 层 / 触发键（可能被截断或手动清空），改用默认设置");
-                    s = DefaultSettings.Create();
+                    CoreLog.Warn("设置文件里没有任何按键 / 层 / 触发键（可能被截断或手动清空），尝试从备份恢复");
+                    string broken = PreserveBrokenCopy();
+
+                    if (TryLoadBackup(out var restored, out string backupError))
+                    {
+                        _skipNextBackupCopy = true;   // 不要让坏主文件覆盖唯一一份好备份
+                        LoadFailure = "设置文件结构不完整，已从上次备份恢复。" +
+                                      (broken.Length > 0 ? "\n损坏的原文件已另存为 " + broken + "。" : "");
+                        CoreLog.Warn("设置结构不完整，已从 .bak 恢复");
+                        TryRepairPrimary(restored);
+                        return restored;
+                    }
+
+                    LoadFailure = "设置文件结构不完整，本次先用默认设置启动。" +
+                                  (broken.Length > 0
+                                      ? "\n原文件已另存为 " + broken + "，可手工修复后换回去。"
+                                      : "") +
+                                  (backupError.Length > 0 ? "\n备份也无法读取：" + backupError : "");
+                    return DefaultSettings.Create();
                 }
 
                 Normalize(s);
@@ -286,24 +309,37 @@ public static class SettingsStore
             }
             catch (Exception ex)
             {
-                CoreLog.Error("读取设置失败，已回退到默认设置", ex);
+                CoreLog.Error("读取设置失败，将尝试从备份恢复", ex);
 
-                string brokenPath = AppPaths.SettingsFile + ".broken";
-                bool backedUp = false;
-                try
+                string brokenPath = PreserveBrokenCopy();
+
+                /* 先尝试 .bak：正常保存每次都会留下上一份完整配置。
+                 * 旧实现直接返回默认值，用户明明有备份却什么都恢复不了。 */
+                if (TryLoadBackup(out var restored, out string backupError))
                 {
-                    if (File.Exists(AppPaths.SettingsFile))
-                    {
-                        File.Copy(AppPaths.SettingsFile, brokenPath, true);
-                        backedUp = true;
-                    }
+                    _skipNextBackupCopy = true;
+                    LoadFailure = "设置文件读不出来，已从上次备份恢复。" +
+                                  (brokenPath.Length > 0 ? "\n损坏的原文件已另存为 " + brokenPath + "。" : "");
+                    CoreLog.Warn("主设置文件损坏，已从 .bak 恢复");
+                    TryRepairPrimary(restored);
+                    return restored;
                 }
-                catch (Exception copyEx) { CoreLog.Swallow(copyEx, "备份损坏的设置文件"); }
 
-                LoadFailure = backedUp
-                    ? Loc.F("设置文件读不出来，已把原文件另存为 {0}，\n", System.IO.Path.GetFileName(brokenPath)) +
-                      "本次先用默认设置启动（原文件没有被删除，可以手工修复后换回去）。"
-                    : "设置文件读不出来，本次先用默认设置启动（原文件可能已被占用或权限不足）。";
+                /* 本机密钥读不出来时，磁盘上的密文都还等着原钥匙，绝不能写入默认值。
+                 * 其它解析错误只保留 .broken 副本并允许用户随后主动修改/重置。 */
+                if (LocalCrypto.LastError is { Length: > 0 })
+                    _dataLocked = true;
+
+                string keyNote = LocalCrypto.LastError is { Length: > 0 }
+                    ? "\n" + LocalCrypto.LastError
+                    : "";
+
+                LoadFailure = (brokenPath.Length > 0
+                                  ? "设置文件读不出来，已把原文件另存为 " + brokenPath + "，\n"
+                                  : "设置文件读不出来（原文件可能已被占用或权限不足）。\n") +
+                              "本次先用默认设置启动（原文件没有被删除，可以手工修复后换回去）。" +
+                              (backupError.Length > 0 ? "\n备份也无法读取：" + backupError : "") +
+                              keyNote;
 
                 var s = DefaultSettings.Create();
                 return s;
@@ -319,6 +355,12 @@ public static class SettingsStore
     public static bool IsDataLocked { get { lock (Gate) return _dataLocked; } }
 
     private static bool _dataLocked;
+
+    /// <summary>
+    /// 主文件损坏、本次从 .bak 恢复时，跳过下一次"把当前主文件复制成 .bak"。
+    /// 否则第一次自动保存会把唯一一份完好备份覆盖成坏文件。
+    /// </summary>
+    private static bool _skipNextBackupCopy;
 
     /// <summary>
     /// 用密码解锁并重新读一遍设置（上层弹完密码框后调用）。
@@ -492,6 +534,98 @@ public static class SettingsStore
         }
     }
 
+    /// <summary>
+    /// 把损坏的主文件另存一份。已有 .broken 时加时间戳，不覆盖上一次的恢复副本。
+    /// 返回副本路径；复制失败或源文件不存在时返回空串。
+    /// </summary>
+    private static string PreserveBrokenCopy()
+    {
+        try
+        {
+            string source = AppPaths.SettingsFile;
+            if (!File.Exists(source)) return "";
+
+            string broken = source + ".broken";
+            if (File.Exists(broken))
+                broken = source + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff");
+
+            File.Copy(source, broken, false);
+            CoreLog.Warn("设置损坏副本已保存：" + broken);
+            return broken;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("保存设置损坏副本失败：" + ex.Message);
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// 尝试从 settings.json.bak 恢复一份完整配置。只读，不修改磁盘。
+    /// 支持当前两种加密格式，也兼容旧版明文备份。
+    /// </summary>
+    private static bool TryLoadBackup(out AppSettings settings, out string error)
+    {
+        settings = DefaultSettings.Create();
+        error = "";
+        try
+        {
+            string path = AppPaths.SettingsFile + ".bak";
+            if (!File.Exists(path))
+            {
+                error = "备份文件不存在";
+                return false;
+            }
+
+            string raw = File.ReadAllText(path);
+            if (LocalCrypto.IsEncrypted(raw))
+            {
+                raw = LocalCrypto.TryDecrypt(raw)
+                      ?? throw new InvalidOperationException("备份用本机密钥加密，当前无法解密");
+            }
+
+            if (DataVault.LooksEncrypted(raw))
+            {
+                if (!DataVault.IsUnlocked) DataVault.TryUnlockCached();
+                raw = DataVault.Decrypt(raw)
+                      ?? throw new InvalidOperationException("备份已加密，当前无法解密");
+            }
+
+            var candidate = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions);
+            if (candidate == null) throw new InvalidOperationException("备份内容为空");
+            if (IsStructurallyEmpty(candidate))
+                throw new InvalidOperationException("备份里没有任何按键、层或宏");
+
+            Normalize(candidate);
+            MigrateBuiltinEngines(candidate);
+            settings = candidate;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            CoreLog.Warn("读取设置备份失败：" + ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 从 .bak 恢复后立刻把主文件修好（同时保留 .bak）。
+    /// 失败也不影响本次启动：内存里已经是恢复出来的配置，下一次保存会再试。
+    /// </summary>
+    private static void TryRepairPrimary(AppSettings settings)
+    {
+        try
+        {
+            if (!Save(settings))
+                CoreLog.Warn("从备份恢复后修复主设置文件失败；本次仍使用内存中的恢复配置");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("从备份恢复后修复主设置文件异常：" + ex.Message);
+        }
+    }
+
     /// <summary>加密 + 原子写入（只在写线程或同步保存时执行）。返回是否写成功。</summary>
     private static bool DrainWritesLocked()
     {
@@ -528,10 +662,20 @@ public static class SettingsStore
             }
 
             var tmp = AppPaths.SettingsFile + ".tmp";
-            File.WriteAllText(tmp, json);
-            if (File.Exists(AppPaths.SettingsFile))
+            using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false)))
+            {
+                writer.Write(json);
+                writer.Flush();
+                stream.Flush(flushToDisk: true);
+            }
+
+            /* 从 .bak 恢复后的第一次保存：主文件仍是坏的，不能拿它覆盖唯一的好备份。 */
+            if (File.Exists(AppPaths.SettingsFile) && !_skipNextBackupCopy)
                 File.Copy(AppPaths.SettingsFile, AppPaths.SettingsFile + ".bak", true);
+
             File.Move(tmp, AppPaths.SettingsFile, true);
+            _skipNextBackupCopy = false;
             return true;
         }
         catch (Exception ex)

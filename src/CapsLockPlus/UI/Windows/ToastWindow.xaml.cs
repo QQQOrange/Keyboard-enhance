@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
@@ -103,20 +102,19 @@ public partial class ToastWindow : Window
         w.Message.Text = message;
         if (kind == "feedback")
         {
-            // 反馈样式：更小、更淡、带强调色左边框，不干扰视线
+            // 反馈样式：更小、更淡、带强调色左边框，不干扰视线。
+            // 颜色全部走 XAML 里的 Brush.Overlay*，浅色主题不会再变成黑板。
             w.Card.Padding = new Thickness(12, 8, 14, 8);
-            w.Card.Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x16, 0x1A, 0x23));
             w.IconBox.Visibility = Visibility.Collapsed;
             w.Message.FontSize = 12.5;
-            w.Message.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xEF, 0xFF));
+            w.Message.Opacity = 0.92;
         }
         else
         {
             w.Card.Padding = new Thickness(16, 11, 16, 11);
-            w.Card.Background = new SolidColorBrush(Color.FromArgb(0xF2, 0x16, 0x1A, 0x23));
             w.IconBox.Visibility = Visibility.Visible;
             w.Message.FontSize = 13;
-            w.Message.Foreground = new SolidColorBrush(Color.FromRgb(0xF2, 0xF5, 0xFA));
+            w.Message.Opacity = 1;
         }
     }
 
