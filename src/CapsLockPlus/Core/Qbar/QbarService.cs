@@ -287,7 +287,11 @@ public sealed class QbarService
         }
 
         // 6) 窗口
-        foreach (var w in WindowService.ZOrderWindows())
+        //
+        // 走带缓存的列表：Qbar 每个字符都会重跑一遍 Query，而枚举窗口要为每个窗口
+        // 打开进程取 exe 名。缓存 700ms 只影响"刚打开/关闭窗口"的即时性，
+        // 不影响选中结果（选中后仍按句柄操作）。
+        foreach (var w in WindowService.ZOrderWindowsCached())
         {
             if (w.Title.Contains(text, StringComparison.OrdinalIgnoreCase) ||
                 w.ExeName.Contains(text, StringComparison.OrdinalIgnoreCase))

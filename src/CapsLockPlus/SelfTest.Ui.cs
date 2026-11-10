@@ -95,6 +95,42 @@ public static partial class SelfTest
         CheckEqual("刚好占满：落在工作区原点", (exact.X, exact.Y), (0, 0));
     }
 
+    /// <summary>
+    /// 窗口搜索缓存（v4.20.5）。
+    ///
+    /// Qbar 每敲一个字符都会拿窗口列表做匹配，而枚举窗口要为每个顶层窗口
+    /// 打开进程取 exe 名。缓存把"连续输入"合并成一次枚举；这里守住两件事：
+    /// ① TTL 判定是纯函数、行为明确；② 走缓存后仍能拿到结果且不抛异常。
+    /// </summary>
+    private static void TestWindowSearchCache()
+    {
+        Check("窗口缓存：刚建立的算新鲜",
+            Core.Windows.WindowService.SearchCacheFresh(nowMs: 1000, builtMs: 900, ttlMs: 700));
+        Check("窗口缓存：超过 TTL 不再新鲜",
+            !Core.Windows.WindowService.SearchCacheFresh(nowMs: 2000, builtMs: 900, ttlMs: 700));
+        Check("窗口缓存：从没建立过不算新鲜",
+            !Core.Windows.WindowService.SearchCacheFresh(nowMs: 1000, builtMs: 0, ttlMs: 700));
+        Check("窗口缓存：TTL<=0 表示从不复用",
+            !Core.Windows.WindowService.SearchCacheFresh(nowMs: 1000, builtMs: 900, ttlMs: 0));
+
+        Core.Windows.WindowService.InvalidateWindowSearchCache();
+        var first = Core.Windows.WindowService.ZOrderWindowsCached();
+        var second = Core.Windows.WindowService.ZOrderWindowsCached();
+
+        /* 两次之间窗口可能刚好开关（其他程序），所以只做"数量接近"的弱断言；
+         * 强断言放在"能拿到列表、不抛异常、作废后还能重取"。 */
+        Check("窗口缓存：重复调用数量一致（±3）",
+            Math.Abs(second.Count - first.Count) <= 3,
+            $"{first.Count} → {second.Count}");
+
+        Core.Windows.WindowService.InvalidateWindowSearchCache();
+        var forced = Core.Windows.WindowService.ZOrderWindowsCached(ttlMs: 0);
+        Check("窗口缓存：作废后可强制现取", forced != null);
+
+        Check("窗口缓存：返回的是独立副本（调用方可安全修改）",
+            !ReferenceEquals(first, second));
+    }
+
     private static void TestWindowBindings()
     {
         var settings = DefaultSettings.Create();

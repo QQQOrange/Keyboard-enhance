@@ -238,6 +238,19 @@ internal static class HookHost
         long lastReloadLog = 0;
         int lastLayer = -1;
 
+        /* ⚠ 重读要节流。
+         *
+         * 主程序保存设置是 400ms 防抖 —— 用户在参数框里打字时，就是每 400ms
+         * 重写一次 settings.json。而 SettingsStore.Load() 是**完整**的解密 +
+         * JSON 反序列化 + Normalize + 内置引擎迁移，全量跑一遍要几十毫秒。
+         * 以前这里是"一有变化就重读"，等于打字期间宿主每秒跑两三次全量加载，
+         * 白烧 CPU 和磁盘读，还会和主进程抢 IO。
+         *
+         * 700ms 只会让"改了设置立刻生效"晚一点点（用户感知不到），
+         * 但把连续保存合并成一次重读。 */
+        long lastReloadAt = Environment.TickCount64;
+        const int ReloadMinIntervalMs = 700;
+
         engine.Start();
 
         /* 宿主没有 WPF 消息循环，引擎里的 DispatcherTimer 不会跑 ——
@@ -269,9 +282,11 @@ internal static class HookHost
             Thread.Sleep(100);
 
             var stamp = SafeStamp();
-            if (stamp != settingsStamp && stamp != default)
+            if (stamp != settingsStamp && stamp != default
+                && Environment.TickCount64 - lastReloadAt >= ReloadMinIntervalMs)
             {
                 settingsStamp = stamp;
+                lastReloadAt = Environment.TickCount64;
                 try
                 {
                     settings = SettingsStore.Load();

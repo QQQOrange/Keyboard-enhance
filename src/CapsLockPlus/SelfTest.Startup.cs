@@ -147,6 +147,38 @@ public static partial class SelfTest
     }
 
     /// <summary>
+    /// UIA 取词的超时保护（v4.20.5）。
+    ///
+    /// UIA 是跨进程 COM 调用，目标程序卡死时会一直等下去，而这条路径跑在
+    /// 单线程动作队列上 —— 卡住就是"所有快捷键几秒钟没反应"。
+    /// 现在调用方只等固定预算，超时后通道冷却 60 秒。
+    /// </summary>
+    private static void TestUiaReaderTimeout()
+    {
+        Check("UIA 超时预算在合理区间",
+            Core.Text.UiaSelectionReader.DefaultTimeoutMs >= 200
+            && Core.Text.UiaSelectionReader.DefaultTimeoutMs <= 1500,
+            Core.Text.UiaSelectionReader.DefaultTimeoutMs.ToString());
+
+        Check("UIA 冷却中判定为跳过",
+            Core.Text.UiaSelectionReader.IsSkippingAt(nowMs: 1000, untilMs: 2000));
+        Check("UIA 冷却结束恢复可用",
+            !Core.Text.UiaSelectionReader.IsSkippingAt(nowMs: 3000, untilMs: 2000));
+
+        /* 真跑一次完整链路（工作线程 + 等待 + 结果回传）：必须**在预算内**返回，
+         * 且绝不抛异常。取不到文本是完全正常的（自检环境不一定有选区）。 */
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        string text = Core.Text.UiaSelectionReader.GetSelectedText(1200);
+        sw.Stop();
+        Check("UIA 调用不抛异常且在预算内返回",
+            sw.ElapsedMilliseconds < 5000,
+            $"{sw.ElapsedMilliseconds}ms，长度={text.Length}");
+
+        // 这次若真的超时了，会把通道冷却 60 秒；必须清掉，否则后面的取词用例全跳过。
+        Core.Text.UiaSelectionReader.ResetSkipForTest();
+    }
+
+    /// <summary>
     /// 剪贴板"先备份、之后还原"。
     ///
     /// 这条链路是"取词 / 替换选区 / 算式结果写回"的中转站：中转完必须把用户

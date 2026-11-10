@@ -950,6 +950,22 @@ public sealed partial class HotkeyEngine : IDisposable
         return nowMs - hookSeenAtMs >= RawFallbackQuietMs;
     }
 
+    /// <summary>
+    /// 停掉本进程的钩子，把输入交给宿主进程（宿主崩溃后重启接管时用）。
+    ///
+    /// 与 <see cref="RestartHook"/> 的区别：这里**不**再安装钩子，而是先把
+    /// <see cref="HookDelegatedToHost"/> 置真再停，避免任何一侧顺手又装回去。
+    /// 调用方负责：宿主没起来时把它置回 false 并 <see cref="RestartHook"/>。
+    /// </summary>
+    public void DetachHookForHost()
+    {
+        try { ReleaseRemappedKeys(); } catch (Exception ex) { CoreLog.Swallow(ex, "切换宿主前松开改键"); }
+        try { ResetTriggerState("切换钩子宿主"); } catch (Exception ex) { CoreLog.Swallow(ex, "切换宿主前复位状态"); }
+
+        HookDelegatedToHost = true;
+        try { _hook.Stop(); } catch (Exception ex) { CoreLog.Swallow(ex, "停用本进程钩子"); }
+    }
+
     /// <summary>重装钩子（自愈用）。</summary>
     public void RestartHook()
     {

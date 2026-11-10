@@ -1,5 +1,7 @@
-﻿using System;
+using System;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Automation;
 
 namespace CapsLockPlus.Core.Text;
@@ -23,19 +25,106 @@ namespace CapsLockPlus.Core.Text;
 ///     Chromium（Chrome / Edge / WebView2 / Electron）是**懒加载**的：
 ///     只有检测到「有 UIA 客户端在听」才真正构建无障碍树。
 ///     被动查询打到的永远是桌面 —— 这就是不唤醒时浏览器里永远读不到的原因。
+///
+///  ③ **调用方必须有硬超时**（v4.20.5）
+///     UIA 是跨进程 COM 调用：目标程序卡死（Electron 卡 UI 线程、远程桌面里的
+///     窗口无响应）时，`FocusedElement` / `TryGetCurrentPattern` 会一直等下去。
+///     这条路径跑在**单线程动作队列**上，卡住就是"所有快捷键几秒钟没反应"。
+///     现在所有 UIA 调用都在一条常驻 STA 工作线程上跑，调用方只等固定预算；
+///     超时后丢弃结果、并让 UIA 通道冷却一段时间，直接走剪贴板通道。
 /// </summary>
 public static class UiaSelectionReader
 {
     /// <summary>最多向上找几层父元素（再多就是桌面/窗口框架了，没意义）。</summary>
     private const int MaxParentLevels = 10;
 
+    /// <summary>默认等待预算（毫秒）。正常 UIA 查询在 10~80ms 内返回。</summary>
+    public const int DefaultTimeoutMs = 600;
+
+    /// <summary>一次超时后，UIA 通道冷却多久（毫秒）。</summary>
+    public const int SkipAfterTimeoutMs = 60_000;
+
+    /// <summary>最多允许排队几个请求（工作线程卡住时别让队列无限长）。</summary>
+    private const int MaxQueued = 4;
+
+    private static readonly BlockingCollection<Request> Pending = new(new ConcurrentQueue<Request>(), MaxQueued);
+    private static readonly object WorkerGate = new();
+    private static Thread? _worker;
+    private static long _skipUntilMs;
+
+    private sealed class Request
+    {
+        public readonly ManualResetEventSlim Done = new(false);
+        public string Result = "";
+    }
+
     /// <summary>
-    /// 读当前选区文本。取不到返回空串。
-    ///
-    /// ⚠ 必须在 **STA** 线程调用（UIAutomationClient 的 COM 要求）。
-    /// 引擎的动作队列本来就是 STA 线程，正常路径没问题。
+    /// 读当前选区文本。取不到（或超时）返回空串，绝不抛异常。
+    /// 可以在任意线程调用，内部会转到 STA 工作线程。
     /// </summary>
-    public static string GetSelectedText()
+    public static string GetSelectedText(int timeoutMs = DefaultTimeoutMs)
+    {
+        if (Environment.TickCount64 < Volatile.Read(ref _skipUntilMs)) return "";
+
+        if (!EnsureWorker())
+        {
+            /* 工作线程起不来（极老系统 / 线程创建被拒）：退回同步调用。
+             * 这时超时保护失效，但至少功能还在，且发生在异常环境里。 */
+            return GetSelectedTextCore();
+        }
+
+        var req = new Request();
+        if (!Pending.TryAdd(req)) return "";     // 上一批还没消化：本次直接放弃
+
+        if (req.Done.Wait(Math.Max(50, timeoutMs))) return req.Result;
+
+        /* 超时：目标程序的 UIA 调用卡住了。工作线程会在将来某刻返回，结果直接丢弃。
+         * 冷却一段时间，避免用户连按热键时每次都往卡死的进程里塞一次 600ms。 */
+        Volatile.Write(ref _skipUntilMs, Environment.TickCount64 + SkipAfterTimeoutMs);
+        CoreLog.Warn($"UIA 取词 {timeoutMs}ms 未返回（目标程序可能无响应），已跳过该通道 " +
+                     $"{SkipAfterTimeoutMs / 1000} 秒");
+        return "";
+    }
+
+    /// <summary>确保常驻 UIA 工作线程已启动。返回 false 表示没能启动。</summary>
+    private static bool EnsureWorker()
+    {
+        if (_worker != null) return true;
+        lock (WorkerGate)
+        {
+            if (_worker != null) return true;
+            try
+            {
+                var thread = new Thread(() =>
+                {
+                    foreach (var req in Pending.GetConsumingEnumerable())
+                    {
+                        string result = "";
+                        try { result = GetSelectedTextCore(); }
+                        catch (Exception ex) { CoreLog.Swallow(ex, "UIA 取词"); }
+                        req.Result = result;
+                        req.Done.Set();
+                    }
+                })
+                {
+                    IsBackground = true,
+                    Name = "CapsLockPlus.UIA",
+                };
+                thread.SetApartmentState(ApartmentState.STA);   // UIAutomationClient 要求 STA
+                thread.Start();
+                _worker = thread;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Warn("UIA 工作线程启动失败，退回同步调用：" + ex.Message);
+                return false;
+            }
+        }
+    }
+
+    /// <summary>真正的 UIA 读取（始终在 STA 工作线程上执行）。</summary>
+    private static string GetSelectedTextCore()
     {
         try
         {
@@ -191,4 +280,10 @@ public static class UiaSelectionReader
         // Chromium 建树是异步的，给它一点时间
         try { System.Threading.Thread.Sleep(60); } catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
+
+    /// <summary>自检用：纯函数形式的冷却判定（避免依赖真实时钟）。</summary>
+    internal static bool IsSkippingAt(long nowMs, long untilMs) => nowMs < untilMs;
+
+    /// <summary>自检用：清掉冷却，避免一次超时影响后续取词用例。</summary>
+    internal static void ResetSkipForTest() => Volatile.Write(ref _skipUntilMs, 0);
 }

@@ -513,6 +513,11 @@ public partial class QbarWindow : Window
         if (_closing) ReopenFromFade();
         ApplyStyle();
         ClearChip();
+
+        /* 每次打开都重取窗口列表：搜索用的缓存只有几百毫秒，
+         * 但用户可能刚切过窗口，这里显式作废一次，第一眼结果更贴近现场。 */
+        Core.Windows.WindowService.InvalidateWindowSearchCache();
+
         if (!IsVisible)
         {
             /* 顺序很重要：**先建句柄 → 再定位 → 最后 Show**。

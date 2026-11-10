@@ -537,7 +537,29 @@ public sealed class AppHost : IDisposable
     private System.Diagnostics.Process? _hookHost;
 
     /// <summary>宿主是否已就绪（就绪后本进程不再装钩子）。</summary>
-    private bool _hookHostReady;
+    private volatile bool _hookHostReady;
+
+    /// <summary>宿主控制管道那条循环的取消源（重启宿主时要把旧循环停掉）。</summary>
+    private System.Threading.CancellationTokenSource? _hostPipeCts;
+
+    /// <summary>录键事件只订阅一次（重启宿主时不能重复挂）。</summary>
+    private bool _captureSinkHooked;
+
+    /// <summary>本场会话里"宿主意外退出 → 尝试重启"的次数（上限 2）。</summary>
+    private int _hostRecoveries;
+
+    /// <summary>上一次恢复尝试的时刻（TickCount64）。</summary>
+    private long _lastHostRecoveryAtMs;
+
+    /// <summary>恢复流程是否正在跑（0/1）。</summary>
+    private int _hostRecovering;
+
+    /// <summary>
+    /// 钩子正在本进程与宿主之间交接。
+    /// 交接期间"本进程钩子计数为 0"是预期状态：流量看护与探针都必须让路，
+    /// 否则它们会抢先重装本进程钩子，与刚起来的宿主形成**两个钩子**。
+    /// </summary>
+    private volatile bool _hookHandover;
 
 
     /// <summary>钩子自检的计时器（首轮失败时要临时提前复查）。</summary>
@@ -702,11 +724,11 @@ public sealed class AppHost : IDisposable
     /// 宿主的控制通道（本进程是服务端，宿主是客户端）。
     /// 目前只用来通知"开始/结束录键"：录键期间宿主不能吞键，否则触发键录不到。
     /// </summary>
-    private void StartHookHostControlPipe(string pipeName)
+    private void StartHookHostControlPipe(string pipeName, System.Threading.CancellationToken ct)
     {
         _ = System.Threading.Tasks.Task.Run(() =>
         {
-            while (true)
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
@@ -716,7 +738,7 @@ public sealed class AppHost : IDisposable
                         System.IO.Pipes.PipeOptions.None);
                     server.WaitForConnection();
                     using var w = new System.IO.StreamWriter(server, System.Text.Encoding.UTF8) { AutoFlush = true };
-                    while (server.IsConnected)
+                    while (server.IsConnected && !ct.IsCancellationRequested)
                     {
                         if (_hookHostCommands.TryDequeue(out string? cmd)) w.WriteLine(cmd);
                         else Thread.Sleep(30);
@@ -727,7 +749,28 @@ public sealed class AppHost : IDisposable
         });
     }
 
+    /// <summary>
+    /// 启动钩子宿主（界面线程入口）：只负责把"设备专属改键"这个需要读设置的判断做完。
+    /// </summary>
     private bool StartHookHost()
+    {
+        bool deviceScoped = false;
+        try
+        {
+            deviceScoped = Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device));
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "读取设备专属改键设置"); }
+
+        return StartHookHost(deviceScoped);
+    }
+
+    /// <param name="deviceScopedRemaps">
+    /// 设置里是否存在"只在某只键盘上生效"的基础改键。为 true 时不能用宿主
+    /// （宿主没有 Raw Input，拿不到设备信息），由主进程自己装钩子。
+    /// 由调用方在界面线程算好再传进来 —— 宿主重启会在后台线程调用本方法，
+    /// 那里不能去枚举可能正被界面修改的集合。
+    /// </param>
+    private bool StartHookHost(bool deviceScopedRemaps)
     {
         /* 自检 / 渲染 / 诊断模式不拉宿主：这些模式跑完就退，
          * 多一个常驻子进程只会在日志里制造噪音，也没有热键需求。 */
@@ -737,10 +780,7 @@ public sealed class AppHost : IDisposable
             return false;
         }
 
-        /* 宿主没有自己的 Raw Input/设备解析，无法知道按键来自哪只键盘。
-         * 有设备专属基础改键时必须留在主进程（主进程已装 KeyboardDeviceTracker），
-         * 否则这些规则会静默失效。 */
-        if (Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device)))
+        if (deviceScopedRemaps)
         {
             CoreLog.Info("检测到设备专属改键：本次由主进程安装钩子，避免宿主丢失设备信息");
             return false;
@@ -880,18 +920,30 @@ public sealed class AppHost : IDisposable
                         }
                         catch (Exception ex) { CoreLog.Swallow(ex, "接管钩子"); }
                     });
+
+                    /* 已经由本进程接管（热键不能有空窗），几秒后再试着把宿主拉起来；
+                     * 成功则把钩子交还宿主，失败就永久留在本进程。 */
+                    ScheduleHookHostRecovery();
                 }
             });
 
-            StartHookHostControlPipe(pipeName);
+            /* 重启宿主时先停掉上一轮的控制管道循环（否则它会带着旧管道名空转重试）。 */
+            try { _hostPipeCts?.Cancel(); } catch { }
+            _hostPipeCts?.Dispose();
+            _hostPipeCts = new System.Threading.CancellationTokenSource();
+            StartHookHostControlPipe(pipeName, _hostPipeCts.Token);
 
             /* 录键期间：本进程引擎与宿主都停止吞键，并把宿主的按键喂进捕获窗。 */
-            KeyCaptureSink.Changed += open =>
+            if (!_captureSinkHooked)
             {
-                Engine.CaptureMode = open;
-                SendHookHostCommand(open ? "CAPTURE 1" : "CAPTURE 0");
-                CoreLog.Info(open ? "开始录键：已通知宿主暂停吞键" : "结束录键：宿主恢复吞键");
-            };
+                _captureSinkHooked = true;
+                KeyCaptureSink.Changed += open =>
+                {
+                    Engine.CaptureMode = open;
+                    SendHookHostCommand(open ? "CAPTURE 1" : "CAPTURE 0");
+                    CoreLog.Info(open ? "开始录键：已通知宿主暂停吞键" : "结束录键：宿主恢复吞键");
+                };
+            }
 
             int signaled = WaitHandle.WaitAny(
                 new WaitHandle[] { ready.WaitHandle, hookFailed.WaitHandle }, 2500);
@@ -922,10 +974,113 @@ public sealed class AppHost : IDisposable
         }
     }
 
+    /// <summary>
+    /// 宿主意外退出后的恢复：立刻由本进程接管（已在调用点做过），几秒后再尝试
+    /// 把宿主拉起来；成功则把钩子交还宿主，失败就永久留在本进程。
+    ///
+    /// 为什么要设上限：宿主如果一启动就崩（环境问题、被杀软拦），无限重启只会
+    /// 变成"每 4 秒起一个进程"。每场会话最多 2 次、且两次之间至少隔 5 分钟。
+    /// 为什么先停本进程钩子再起宿主：两者同时装钩子时，同一个按键会被两个引擎
+    /// 各执行一次（历史上"按一下打开两个程序"的事故）。
+    /// </summary>
+    private void ScheduleHookHostRecovery()
+    {
+        if (Exiting) return;
+        long now = Environment.TickCount64;
+        if (_hostRecoveries >= 2) return;
+        if (_lastHostRecoveryAtMs != 0 && now - _lastHostRecoveryAtMs < 5 * 60_000) return;
+        if (Interlocked.Exchange(ref _hostRecovering, 1) != 0) return;
+
+        _hostRecoveries++;
+        _lastHostRecoveryAtMs = now;
+        CoreLog.Warn($"钩子宿主恢复：4 秒后尝试重启（第 {_hostRecoveries} 次，上限 2 次）");
+
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            bool detached = false;
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(4000).ConfigureAwait(false);
+                if (Exiting || _hookHostReady) return;
+
+                /* 需要读设置里的"设备专属改键"：只能回界面线程读（集合可能正被编辑）。 */
+                bool deviceScoped = false;
+                try
+                {
+                    _dispatcher.Invoke(() => deviceScoped =
+                        Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device)));
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Swallow(ex, "恢复宿主前读取设备改键设置");
+                    return;
+                }
+
+                if (deviceScoped)
+                {
+                    CoreLog.Warn("有设备专属改键：不再尝试宿主，继续由本进程装钩子");
+                    return;
+                }
+
+                /* 先停本进程钩子，避免宿主就绪后短暂出现"双钩子"。
+                 * 这一步会带来最多 2.5 秒的热键空窗 —— 只发生在恢复路径上，
+                 * 比"一个按键执行两次动作"安全得多。 */
+                _hookHandover = true;
+                _dispatcher.Invoke(() =>
+                {
+                    try { Engine.DetachHookForHost(); detached = true; }
+                    catch (Exception ex) { CoreLog.Swallow(ex, "恢复宿主前停用本进程钩子"); }
+                });
+
+                if (!detached || Exiting) return;
+
+                /* StartHookHost 最多等 2.5 秒 READY，所以放后台线程，不卡界面。 */
+                if (!StartHookHost(deviceScopedRemaps: false))
+                {
+                    CoreLog.Warn("钩子宿主重启失败，已恢复本进程钩子");
+                    _ = _dispatcher.BeginInvoke(() =>
+                    {
+                        try
+                        {
+                            Engine.HookDelegatedToHost = false;
+                            Engine.RestartHook();
+                        }
+                        catch (Exception ex) { CoreLog.Swallow(ex, "恢复本进程钩子"); }
+                    });
+                    return;
+                }
+
+                CoreLog.Info("钩子宿主已重启并接管（本进程钩子已停用）" +
+                             (Engine.HookInstalled ? "——警告：本进程钩子仍在，请用 --diag 反馈" : ""));
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Warn("钩子宿主恢复异常：" + ex.Message);
+                if (detached && !Exiting)
+                {
+                    try
+                    {
+                        _ = _dispatcher.BeginInvoke(() =>
+                        {
+                            Engine.HookDelegatedToHost = false;
+                            Engine.RestartHook();
+                        });
+                    }
+                    catch { /* 退出过程中忽略 */ }
+                }
+            }
+            finally
+            {
+                _hookHandover = false;   // 交接结束，自愈逻辑恢复工作
+                Interlocked.Exchange(ref _hostRecovering, 0);
+            }
+        });
+    }
+
     private void ProbeHookOnce(string why, bool verbose = false)
     {
-        /* 宿主模式下本进程没有钩子，探针无意义。 */
-        if (_hookHostReady) return;
+        /* 宿主模式下本进程没有钩子，探针无意义。交接过程中同理。 */
+        if (_hookHostReady || _hookHandover) return;
 
         try
         {
@@ -1041,6 +1196,10 @@ public sealed class AppHost : IDisposable
 
     private void CheckHookTraffic()
     {
+        /* 正在把钩子在本进程与宿主之间交接：这期间"本进程钩子计数为 0"是正常的，
+         * 不能据此判定钩子被摘掉，更不能顺手重装（那会和宿主形成双钩子）。 */
+        if (_hookHandover) return;
+
         long raw = Interlocked.Read(ref _rawKeyCount);
         /* 宿主模式下钩子在**宿主进程**里，本进程的 KeyEventCount 恒为 0 ——
          * 必须用宿主回传的计数，否则会误判"钩子被摘"，把吞键整个关掉。 */
@@ -2051,6 +2210,7 @@ public sealed class AppHost : IDisposable
         {
             _hookHostReady = false;
             Engine.HookDelegatedToHost = false;
+            try { _hostPipeCts?.Cancel(); } catch { }
             try { _hookHost?.Kill(); } catch { }
             _hookHost = null;
             Engine.Enabled = false;

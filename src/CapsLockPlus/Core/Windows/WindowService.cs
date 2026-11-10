@@ -133,6 +133,55 @@ public static class WindowService
         return list;
     }
 
+    /* ---- 搜索用窗口列表缓存 ----
+     *
+     * Qbar 每敲一个字符都要拿窗口列表做匹配，而 EnumerateTopLevel 会为每个顶层窗口
+     * 做 GetWindowText + OpenProcess + QueryFullProcessImageName。开几十个窗口时，
+     * 每次按键就是几十次跨进程查询 —— 打字会明显发涩（界面线程同步执行）。
+     *
+     * 搜索场景对"几百毫秒前"的窗口列表完全够用，所以这里给一份短 TTL 缓存；
+     * 真正要**操作**窗口的路径（激活、绑定、还原、贴边）仍然用 ZOrderWindows() 现取，
+     * 语义不变。 */
+    private static readonly object SearchCacheGate = new();
+    private static List<WindowInfo>? _searchCache;
+    private static long _searchCacheAtMs;
+
+    /// <summary>搜索用窗口列表（带缓存，默认 700ms 内复用上一次枚举结果）。</summary>
+    public static List<WindowInfo> ZOrderWindowsCached(int ttlMs = DefaultSearchCacheMs)
+    {
+        long now = Environment.TickCount64;
+        lock (SearchCacheGate)
+        {
+            if (_searchCache != null && SearchCacheFresh(now, _searchCacheAtMs, ttlMs))
+                return new List<WindowInfo>(_searchCache);
+        }
+
+        var fresh = ZOrderWindows();
+        lock (SearchCacheGate)
+        {
+            _searchCache = fresh;
+            _searchCacheAtMs = Environment.TickCount64;
+        }
+        return new List<WindowInfo>(fresh);
+    }
+
+    /// <summary>作废搜索缓存（Qbar 打开时调用，保证第一眼看到的是最新窗口）。</summary>
+    public static void InvalidateWindowSearchCache()
+    {
+        lock (SearchCacheGate)
+        {
+            _searchCache = null;
+            _searchCacheAtMs = 0;
+        }
+    }
+
+    /// <summary>搜索缓存默认有效期（毫秒）。</summary>
+    public const int DefaultSearchCacheMs = 700;
+
+    /// <summary>纯函数：缓存是否仍然新鲜（自检用）。</summary>
+    internal static bool SearchCacheFresh(long nowMs, long builtMs, int ttlMs)
+        => builtMs != 0 && ttlMs > 0 && nowMs >= builtMs && nowMs - builtMs < ttlMs;
+
     /// <summary>
     /// 把窗口切到前台。
     ///

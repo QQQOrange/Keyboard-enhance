@@ -95,6 +95,7 @@ public static partial class SelfTest
 
         Section("取词代理");
         TestSelectionProxyArgs();
+        TestUiaReaderTimeout();
 
         Section("剪贴板快照");
         TestClipboardBackup();
@@ -163,6 +164,7 @@ public static partial class SelfTest
         Section("窗口绑定");
         TestWindowBindings();
         TestScreenPlacement();
+        TestWindowSearchCache();
         TestCloseBehavior();
 
         Section("打开文件夹");
