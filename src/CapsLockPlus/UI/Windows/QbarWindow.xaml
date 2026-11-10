@@ -137,7 +137,7 @@
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Title}" FontSize="14" Foreground="{DynamicResource Brush.OverlayText}"
                                                TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Subtitle}" FontSize="11.5" Foreground="{DynamicResource Brush.OverlayTextTertiary}"
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="11.5" Foreground="{DynamicResource Brush.OverlayTextSecondary}"
                                                TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
                                 </StackPanel>
 

@@ -343,15 +343,12 @@ public partial class QbarWindow : Window
          *
          * 有 x:Name 的都是模板外的固定元素，它们各自有明确语义，
          * 不该被"按字号猜"这一轮刷掉（ChipLabel 最典型）。 */
-        foreach (var tb in FindAll<TextBlock>(this))
-        {
-            if (!string.IsNullOrEmpty(tb.Name)) continue;
-
-            // 模板内的元素没有 x:Name，按字号/绑定特征分类
-            if (tb.FontSize >= 13.5) tb.Foreground = bPrimary;
-            else if (tb.FontSize >= 11) tb.Foreground = bSecondary;
-            else tb.Foreground = bFaint;
-        }
+        /* 模板里的文字走 DynamicResource，这里直接把**窗口级资源**换掉：
+         * 标题/副标题/角标各用各的角色，不再靠"字号 >= 13.5 就是标题"猜 ——
+         * 那样任何字号微调都会让颜色错位，而且用户改显示缩放时特别明显。 */
+        Resources["Brush.OverlayText"] = bPrimary;
+        Resources["Brush.OverlayTextSecondary"] = bSecondary;
+        Resources["Brush.OverlayTextTertiary"] = bFaint;
 
         // 再按具体名字覆盖一次（上面那轮会把模板外的也刷成近似色）
         ModeIcon.Foreground = bSecondary;

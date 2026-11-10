@@ -521,8 +521,25 @@ public static partial class SelfTest
         Check("浅色与深色的背景色不同", lightBg != darkBg,
             $"light={lightBg} dark={darkBg}");
 
+        /* 托盘菜单以前是一张写死的浅色调色板（名字还叫 DarkColorTable），
+         * 深色主题下弹出来是一片亮白。现在颜色来自主题资源，这里钉住"深色确实更暗"，
+         * 防止哪天又退回固定色。 */
+        var trayLightBg = UI.TrayIcon.MenuBackgroundForTest(false);
+        var trayDarkBg = UI.TrayIcon.MenuBackgroundForTest(true);
+        var trayLightText = UI.TrayIcon.MenuTextForTest(false);
+        var trayDarkText = UI.TrayIcon.MenuTextForTest(true);
+        Check("托盘菜单：深色底比浅色底暗",
+            Luminance(trayDarkBg) < Luminance(trayLightBg),
+            $"{Luminance(trayDarkBg):F2} < {Luminance(trayLightBg):F2}");
+        Check("托盘菜单：深色下文字比底色亮",
+            Luminance(trayDarkText) > Luminance(trayDarkBg),
+            $"{Luminance(trayDarkText):F2} > {Luminance(trayDarkBg):F2}");
+
         TestOverlayPalette();
     }
+
+    private static double Luminance(System.Drawing.Color c)
+        => (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
 
     /// <summary>
     /// 界面文案的统一规则（审视报告 P2-4）。

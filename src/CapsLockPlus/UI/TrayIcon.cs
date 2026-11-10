@@ -16,6 +16,7 @@ public sealed class TrayIcon : IDisposable
 {
     private readonly NotifyIcon _icon;
     private readonly AppHost _host;
+    private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _menuTitle;
     private readonly ToolStripMenuItem _enabledItem;
     private readonly ToolStripMenuItem _capsStateItem;
@@ -65,10 +66,10 @@ public sealed class TrayIcon : IDisposable
 
         var context = new ContextMenuStrip
         {
-            Renderer = new ToolStripProfessionalRenderer(new DarkColorTable()),
             ShowImageMargin = false,
             Font = new Font("Microsoft YaHei UI", 9f),
         };
+        _menu = context;
         context.Items.AddRange(new ToolStripItem[]
         {
             _menuTitle,
@@ -87,6 +88,12 @@ public sealed class TrayIcon : IDisposable
             _exitItem,
         });
         context.Opening += (_, _) => UpdateCapsState();
+
+        /* 菜单配色必须跟着主题走。
+         * 一直是硬编码的浅色表：深色主题下弹出菜单是"一片亮白"，
+         * 和主界面像是两个程序。现在从主题资源里取色，主题变了就重刷。 */
+        ApplyMenuTheme(CurrentIsDark);
+        Theme.ThemeManager.ThemeChanged += OnThemeChanged;
 
         _icon = new NotifyIcon
         {
@@ -317,6 +324,7 @@ public sealed class TrayIcon : IDisposable
     {
         try
         {
+            Theme.ThemeManager.ThemeChanged -= OnThemeChanged;
             _icon.Visible = false;
             _icon.Dispose();
             _customIcon?.Dispose();
@@ -324,16 +332,154 @@ public sealed class TrayIcon : IDisposable
         catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
     }
 
-    private sealed class DarkColorTable : ProfessionalColorTable
+    // ---------------- 菜单主题 ----------------
+
+    /// <summary>当前主题是否深色（跟随系统时按系统设置判）。</summary>
+    private static bool CurrentIsDark =>
+        Theme.ThemeManager.Current == Theme.ThemeManager.Mode.Dark
+        || (Theme.ThemeManager.Current == Theme.ThemeManager.Mode.System && Theme.ThemeManager.IsDarkSystem);
+
+    private void OnThemeChanged(bool dark)
     {
-        public override Color ToolStripDropDownBackground => Color.FromArgb(255, 252, 253, 255);
-        public override Color ImageMarginGradientBegin => Color.FromArgb(255, 252, 253, 255);
-        public override Color ImageMarginGradientMiddle => Color.FromArgb(255, 252, 253, 255);
-        public override Color ImageMarginGradientEnd => Color.FromArgb(255, 252, 253, 255);
-        public override Color MenuBorder => Color.FromArgb(255, 228, 232, 240);
-        public override Color MenuItemBorder => Color.FromArgb(255, 232, 240, 255);
-        public override Color MenuItemSelected => Color.FromArgb(255, 240, 243, 249);
-        public override Color SeparatorDark => Color.FromArgb(255, 232, 236, 244);
-        public override Color SeparatorLight => Color.FromArgb(255, 245, 247, 251);
+        try
+        {
+            var app = Application.Current;
+            if (app == null) { ApplyMenuTheme(dark); return; }
+            app.Dispatcher.BeginInvoke(() => ApplyMenuTheme(dark));
+        }
+        catch (Exception ex) { CoreLog.Warn("刷新托盘菜单主题失败：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 用主题资源给右键菜单上色。
+    ///
+    /// 以前这里是一张写死的浅色调色板（名字还叫 DarkColorTable）——
+    /// 深色主题下弹出的菜单是一片亮白，和旁边的主窗口完全不是一套。
+    /// 现在颜色全部从 Brush.* 里取，取不到才退回内置默认值。
+    /// </summary>
+    private void ApplyMenuTheme(bool dark)
+    {
+        try
+        {
+            var p = MenuPalette.Create(dark);
+            _menu.BackColor = p.Background;
+            _menu.ForeColor = p.Text;
+            _menu.Renderer = new ThemedRenderer(p);
+
+            foreach (ToolStripItem item in _menu.Items)
+                item.ForeColor = item.Enabled ? p.Text : p.Muted;
+
+            _menu.Invalidate();
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("应用托盘菜单配色失败：" + ex.Message);
+        }
+    }
+
+    private static Color BrushColor(string key, Color fallback)
+    {
+        try
+        {
+            if (System.Windows.Application.Current?.TryFindResource(key) is System.Windows.Media.SolidColorBrush b)
+            {
+                var c = b.Color;
+                return Color.FromArgb(c.A, c.R, c.G, c.B);
+            }
+        }
+        catch { }
+        return fallback;
+    }
+
+    /// <summary>自检用：取托盘菜单在某主题下的底色，确认深色确实比浅色暗。</summary>
+    internal static Color MenuBackgroundForTest(bool dark) => MenuPalette.Create(dark).Background;
+
+    /// <summary>自检用：取托盘菜单在某主题下的文字色。</summary>
+    internal static Color MenuTextForTest(bool dark) => MenuPalette.Create(dark).Text;
+
+    private sealed class MenuPalette
+    {
+        public Color Background;
+        public Color Border;
+        public Color Selected;
+        public Color Text;
+        public Color Muted;
+
+        public static MenuPalette Create(bool dark)
+        {
+            /* 只有"请求的主题 == 当前已装载的主题"时，资源字典里的颜色才代表这个主题；
+             * 否则（例如自检里刚切过主题再回头问另一个主题的配色）会读到错的字典。
+             * 这种时候用内置默认值，两份默认值本身就分浅/深。 */
+            bool live = CurrentIsDark == dark;
+            Color C(string key, Color fallback) => live ? BrushColor(key, fallback) : fallback;
+
+            if (dark)
+            {
+                return new MenuPalette
+                {
+                    Background = C("Brush.Surface", Color.FromArgb(30, 36, 48)),
+                    Border = C("Brush.Border", Color.FromArgb(47, 55, 70)),
+                    Selected = C("Brush.Selected", Color.FromArgb(42, 51, 65)),
+                    Text = C("Brush.TextPrimary", Color.FromArgb(232, 237, 246)),
+                    Muted = C("Brush.TextTertiary", Color.FromArgb(154, 167, 188)),
+                };
+            }
+
+            return new MenuPalette
+            {
+                Background = C("Brush.Surface", Color.FromArgb(255, 255, 255)),
+                Border = C("Brush.Border", Color.FromArgb(227, 231, 239)),
+                Selected = C("Brush.Selected", Color.FromArgb(239, 243, 251)),
+                Text = C("Brush.TextPrimary", Color.FromArgb(27, 34, 48)),
+                Muted = C("Brush.TextTertiary", Color.FromArgb(122, 133, 152)),
+            };
+        }
+    }
+
+    private sealed class ThemedColorTable : ProfessionalColorTable
+    {
+        private readonly MenuPalette _p;
+        public ThemedColorTable(MenuPalette p) => _p = p;
+
+        public override Color ToolStripDropDownBackground => _p.Background;
+        public override Color ImageMarginGradientBegin => _p.Background;
+        public override Color ImageMarginGradientMiddle => _p.Background;
+        public override Color ImageMarginGradientEnd => _p.Background;
+        public override Color MenuBorder => _p.Border;
+        public override Color MenuItemBorder => _p.Selected;
+        public override Color MenuItemSelected => _p.Selected;
+        public override Color MenuItemSelectedGradientBegin => _p.Selected;
+        public override Color MenuItemSelectedGradientEnd => _p.Selected;
+        public override Color MenuItemPressedGradientBegin => _p.Selected;
+        public override Color MenuItemPressedGradientEnd => _p.Selected;
+        public override Color SeparatorDark => _p.Border;
+        public override Color SeparatorLight => _p.Background;
+        public override Color ToolStripBorder => _p.Border;
+    }
+
+    private sealed class ThemedRenderer : ToolStripProfessionalRenderer
+    {
+        private readonly MenuPalette _p;
+        public ThemedRenderer(MenuPalette p) : base(new ThemedColorTable(p))
+        {
+            _p = p;
+            RoundedEdges = false;
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            if (e.Item is { Enabled: false }) e.TextColor = _p.Muted;
+            else if (!e.Item.Selected) e.TextColor = _p.Text;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            using var pen = new Pen(_p.Border);
+            var r = e.ToolStrip.ClientRectangle;
+            r.Width -= 1;
+            r.Height -= 1;
+            e.Graphics.DrawRectangle(pen, r);
+        }
     }
 }
