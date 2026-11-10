@@ -1,0 +1,93 @@
+name: build
+
+# 每次推到 main / 每个 PR：先把"能不能编译"和"自检是否还能过"守住。
+# 真正发版（出四个单文件 + 建 Release）在 release.yml，由 tag 触发。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建（${{ matrix.tfm }}）
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tfm: [net10.0-windows, net7.0-windows]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 还原
+        run: dotnet restore src/CapsLockPlus/CapsLockPlus.csproj
+
+      - name: 构建（${{ matrix.tfm }}）
+        # net7 线是 Win7 专用；SDK 会提示"该框架不受支持"，那是预期的，不用当失败。
+        run: >
+          dotnet build src/CapsLockPlus/CapsLockPlus.csproj
+          -c Release -f ${{ matrix.tfm }}
+          -p:RuntimeIdentifier=win-x64 -v:minimal
+          -warnaserror:$false
+
+  selftest:
+    name: 自检（发布产物）
+    runs-on: windows-latest
+    needs: build
+    # ⚠ 提醒性检查：CI 里没有真实桌面，个别用例会因环境限制跳过或失败
+    # （钩子注入、剪贴板、焦点相关）。这里只看"能不能跑完并产出日志"，
+    # 红了先看 selftest.log，不直接拦合并。
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 发布单文件（win10-x64）
+        run: >
+          dotnet publish src/CapsLockPlus/CapsLockPlus.csproj
+          -c Release -f net10.0-windows -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -o dist/ci
+
+      - name: 运行 --selftest
+        shell: pwsh
+        run: |
+          $env:CAPSLOCKPLUS_DATA = Join-Path $env:RUNNER_TEMP 'ke-data'
+          New-Item -ItemType Directory -Path $env:CAPSLOCKPLUS_DATA -Force | Out-Null
+          & .\dist\ci\KeyboardEnhance.exe --selftest --noelevate
+          $code = $LASTEXITCODE
+          $log = Join-Path $env:CAPSLOCKPLUS_DATA 'selftest.log'
+          if (Test-Path $log) {
+            Get-Content $log -Tail 40 | Write-Host
+            Copy-Item $log (Join-Path $env:RUNNER_TEMP 'selftest.log') -Force
+          }
+          exit $code
+
+      - name: 上传自检日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-log
+          path: ${{ runner.temp }}/selftest.log
+          if-no-files-found: warn

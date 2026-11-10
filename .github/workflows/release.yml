@@ -1,0 +1,98 @@
+name: release
+
+# 推一个 v* 标签就出四形态 + 建 GitHub Release：
+#   KeyboardEnhance.exe                                  Win10/11 x64
+#   KeyboardEnhance-<版本>-x86-Win10-Win11.exe           Win10/11 x86
+#   KeyboardEnhance-<版本>-x64-Win7-SelfContained.exe    Win7 SP1 x64
+#   KeyboardEnhance-<版本>-x86-Win7-SelfContained.exe    Win7 SP1 x86
+#   SHA256SUMS.txt / manifest.json
+#
+# 四个形态的构建规则、资产名、清 obj/bin 的坑全在 tools/release.ps1 里 ——
+# 本地发版与 CI 走同一份脚本，避免"本地能出、CI 出不来"。
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布/重发的标签（例如 v4.20.5）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 读取版本号（必须与标签一致）
+        id: ver
+        shell: pwsh
+        run: |
+          [xml]$csproj = Get-Content src/CapsLockPlus/CapsLockPlus.csproj -Encoding utf8
+          $version = $null
+          foreach ($pg in $csproj.Project.PropertyGroup) {
+            $node = $pg.SelectSingleNode('Version')
+            if ($node -and $node.InnerText.Trim()) { $version = $node.InnerText.Trim(); break }
+          }
+          if (-not $version) { throw 'csproj 里没有 <Version>' }
+
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          $tagVersion = $tag -replace '^v', ''
+          Write-Host "工程版本：$version，标签版本：$tagVersion"
+          if ($version -ne $tagVersion) {
+            # 版本号和标签对不上就停：否则会用一个错版本号覆盖已发布产物。
+            throw "csproj 版本 $version 与标签 $tagVersion 不一致，请先更新 csproj 再打标签"
+          }
+
+          "version=$version"        >> $env:GITHUB_OUTPUT
+          "tag=$tag"                >> $env:GITHUB_OUTPUT
+
+      - name: 出齐四个发布形态
+        shell: pwsh
+        run: ./tools/release.ps1
+
+      - name: 核对产物
+        shell: pwsh
+        run: |
+          $dir = "dist/${{ steps.ver.outputs.version }}"
+          Get-ChildItem $dir | Format-Table Name, Length
+          $exes = @(Get-ChildItem $dir -Filter *.exe)
+          if ($exes.Count -ne 4) { throw "期望 4 个 exe，实际 $($exes.Count) 个" }
+          foreach ($e in $exes) {
+            if ($e.Length -lt 1MB) { throw "$($e.Name) 体积异常（$($e.Length) 字节），像发布失败" }
+          }
+          Get-Content (Join-Path $dir 'SHA256SUMS.txt') | Write-Host
+
+      - name: 创建 / 更新 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: 按键增强 v${{ steps.ver.outputs.version }}
+          body_path: dist/${{ steps.ver.outputs.version }}/release-notes.md
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/${{ steps.ver.outputs.version }}/KeyboardEnhance.exe
+            dist/${{ steps.ver.outputs.version }}/KeyboardEnhance-*-x86-Win10-Win11.exe
+            dist/${{ steps.ver.outputs.version }}/KeyboardEnhance-*-Win7-SelfContained.exe
+            dist/${{ steps.ver.outputs.version }}/SHA256SUMS.txt
+            dist/${{ steps.ver.outputs.version }}/manifest.json
+
+      - name: 上传构建清单（排障用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest
+          path: dist/${{ steps.ver.outputs.version }}/manifest.json
+          if-no-files-found: warn

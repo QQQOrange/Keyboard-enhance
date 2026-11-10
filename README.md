@@ -728,11 +728,14 @@ Windows Hello（指纹/PIN）或设置一个短的无操作自动锁定时间。
 需要 **.NET 10 SDK**。详细说明见 [BUILD.md](BUILD.md)。
 
 ```powershell
+# 发版：一次出齐四个形态（x64/x86 × Win10/Win7）+ 哈希清单 + 发布说明
+powershell -ExecutionPolicy Bypass -File tools\release.ps1
+
 # 用法总览（自检 / 诊断 / 出图 / 界面，全部开关都在这里）
 dist\KeyboardEnhance.exe --help
 
-# 自检：2862 项，覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、
-# 横条比例穷举、界面多语言、片段匹配、浮层定位、关闭行为
+# 自检：3389 项，覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、
+# 横条比例穷举、界面多语言、片段匹配、浮层定位、窗口搜索缓存、UIA 超时、关闭行为
 dist\KeyboardEnhance.exe --selftest
 
 # 诊断：全局钩子链路（会自动注入一个 F24 自检 6/6，不用你手工敲键）
@@ -750,7 +753,7 @@ Start-Process "dist\KeyboardEnhance.exe" -ArgumentList "--dump-triggers" -Wait
 # 硬件联调：音量 / 系统音量键 / 亮度，跑完自动还原
 dist\KeyboardEnhance.exe --hwtest
 
-# 离屏渲染全部界面（文档/回归用，不受桌面遮挡与 DPI 影响；共 39 张）
+# 离屏渲染全部界面（文档/回归用，不受桌面遮挡与 DPI 影响；共 41 张）
 dist\KeyboardEnhance.exe --render docs\screenshots
 ```
 

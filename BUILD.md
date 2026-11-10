@@ -1,4 +1,4 @@
-﻿# 构建与运行（Windows 11 x64 / .NET 10）
+# 构建与运行（Windows 11 x64 / .NET 10）
 
 构建需要 **.NET 10 SDK**；**运行不需要任何运行时** —— 发布产物自带。
 
@@ -16,26 +16,51 @@ dotnet publish src\CapsLockPlus\CapsLockPlus.csproj -c Release -r win-x64 --self
 ### 一次出齐四个发布形态
 
 发版用的就是这四条（Win10/11 框架依赖、Win7 自包含，各 x64/x86）。
-**每个形态之间要先清掉 `obj` 与 `bin`** —— 不同 RID 的中间产物混在一个目录里会互相干扰：
+**每个形态之间要先清掉 `obj` 与 `bin`** —— 不同 RID 的中间产物混在一个目录里会互相干扰。
+这一步已经封进脚本，不要手敲：
 
 ```powershell
-$p = "src\CapsLockPlus\CapsLockPlus.csproj"
-$out = "dist"
-foreach ($v in @(
-  @{ n="win10-x64"; f="net10.0-windows"; r="win-x64"; sc="false" },
-  @{ n="win10-x86"; f="net10.0-windows"; r="win-x86"; sc="false" },
-  @{ n="win7-x64";  f="net7.0-windows";  r="win-x64"; sc="true"  },
-  @{ n="win7-x86";  f="net7.0-windows";  r="win-x86"; sc="true"  }
-)) {
-  Remove-Item -Recurse -Force src\CapsLockPlus\obj, src\CapsLockPlus\bin, src\CapsLockPlus.Localization\obj, src\CapsLockPlus.Localization\bin -ErrorAction SilentlyContinue
-  dotnet publish $p -c Release -f $v.f -r $v.r --self-contained $v.sc -o "$out\$($v.n)"
-}
+# 出齐四个形态 + 哈希清单 + 发布说明 + manifest（约 40 秒，产物在 dist\<版本>\）
+powershell -ExecutionPolicy Bypass -File tools\release.ps1
+
+# 只出一个形态（改动小、只验证发布链路时用）
+powershell -ExecutionPolicy Bypass -File tools\release.ps1 -Only win10-x64
+
+# 不重新构建，只按目录里已有的 exe 重算哈希与清单（上传前复核）
+powershell -ExecutionPolicy Bypass -File tools\release.ps1 -SkipBuild
 ```
+
+产物（文件名与 GitHub Release 的资产名一致，可直接上传）：
+
+```
+dist\4.20.5\
+  KeyboardEnhance.exe                                    Win10/11 x64
+  KeyboardEnhance-4.20.5-x86-Win10-Win11.exe             Win10/11 x86
+  KeyboardEnhance-4.20.5-x64-Win7-SelfContained.exe      Win7 SP1 x64
+  KeyboardEnhance-4.20.5-x86-Win7-SelfContained.exe      Win7 SP1 x86
+  SHA256SUMS.txt     每行「哈希  文件名」，certutil / 7-Zip 都能校验
+  manifest.json      版本 / 大小 / 哈希 / 缺了哪个形态（CI 与上传脚本用）
+  release-notes.md   从 CHANGELOG.md 抽出的本版说明（Release 正文）
+```
+
+> 版本号只认 `src\CapsLockPlus\CapsLockPlus.csproj` 里的 `<Version>`；
+> 文件名、页脚版本、更新检查全都跟它走，所以**发版第一步是改 csproj**。
+> 标签和 csproj 版本不一致时，CI 会直接失败（避免用错版本号覆盖已发布资产）。
+
+### 持续集成
+
+`.github/workflows/build.yml`：每次推 main / 开 PR 跑两件事 ——
+两个 TFM 各构建一遍（必过），再用发布产物跑 `--selftest`（提醒性，
+CI 机器没有真实桌面，个别用例会因环境限制跳过）。
+
+`.github/workflows/release.yml`：推 `v*` 标签或手动 Run workflow 时，
+用同一份 `tools/release.ps1` 出齐四个形态并创建 / 更新 GitHub Release，
+附带 `SHA256SUMS.txt` 与 `manifest.json`。
 
 > **只有一个 exe**。曾经拆成"启动器 + 主程序"两个文件来解决
 > "没装 .NET 点了没反应"，但那让用户不知道该双击哪个；
 > 也试过把运行时整个打进去，体积从 5 MB 涨到 75 MB。
-> 现在是一个**框架依赖的单文件**（约 2.8 MB）：体积和"只有一个 exe"都保住了，
+> 现在是一个**框架依赖的单文件**（约 3.8 MB）：体积和"只有一个 exe"都保住了，
 > 代价是机器上要先装 .NET 10 桌面运行时（README 顶部有下载地址）。
 
 ## 自检
