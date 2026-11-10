@@ -73,6 +73,13 @@ jobs:
           }
           Get-Content (Join-Path $dir 'SHA256SUMS.txt') | Write-Host
 
+          # Release 正文必须存在：CHANGELOG 没写这一版时兜一句，避免 action 因缺文件失败。
+          $notes = Join-Path $dir 'release-notes.md'
+          if (-not (Test-Path $notes)) {
+            "按键增强 v${{ steps.ver.outputs.version }}`r`n`r`n请见仓库 CHANGELOG.md。" |
+              Set-Content -LiteralPath $notes -Encoding utf8
+          }
+
       - name: 创建 / 更新 GitHub Release
         uses: softprops/action-gh-release@v2
         with:

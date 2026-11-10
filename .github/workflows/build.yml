@@ -43,7 +43,6 @@ jobs:
           dotnet build src/CapsLockPlus/CapsLockPlus.csproj
           -c Release -f ${{ matrix.tfm }}
           -p:RuntimeIdentifier=win-x64 -v:minimal
-          -warnaserror:$false
 
   selftest:
     name: 自检（发布产物）
