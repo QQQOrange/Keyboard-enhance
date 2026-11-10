@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
+using static CapsLockPlus.Core.Interop.NativeMethods;
 namespace CapsLockPlus.Core.Text;
 
 /// <summary>
@@ -18,11 +19,6 @@ namespace CapsLockPlus.Core.Text;
 /// </summary>
 public static class ThreadKeyboardSender
 {
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
     private static extern uint GetCurrentThreadId();
@@ -38,9 +34,6 @@ public static class ThreadKeyboardSender
 
     [DllImport("user32.dll")]
     private static extern void PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern ushort MapVirtualKey(uint uCode, uint uMapType);
 
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_KEYUP = 0x0101;

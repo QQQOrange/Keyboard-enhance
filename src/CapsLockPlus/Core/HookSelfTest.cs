@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using CapsLockPlus.Core.Input;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core;
 
@@ -18,11 +19,6 @@ namespace CapsLockPlus.Core;
 /// </summary>
 internal static class HookSelfTest
 {
-    [DllImport("user32.dll")]
-    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
 
     public static int Run()
     {

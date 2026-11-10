@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core;
 
@@ -23,13 +24,6 @@ namespace CapsLockPlus.Core;
 /// </summary>
 internal static class CliOutput
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AttachConsole(int dwProcessId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool FreeConsole();
 
     private const int AttachParentProcess = -1;
 

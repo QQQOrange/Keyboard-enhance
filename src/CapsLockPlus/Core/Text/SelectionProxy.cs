@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Text;
 
@@ -213,13 +214,6 @@ public static class SelectionProxy
     private const int LOGON_WITH_PROFILE = 0x00000001;
     private const int CREATE_NO_WINDOW = 0x08000000;
 
-    [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
-    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(int access, bool inherit, uint pid);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr h);
-    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool OpenProcessToken(IntPtr proc, int access, out IntPtr token);
-    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool DuplicateTokenEx(
-        IntPtr existing, int access, IntPtr attrs, int impLevel, int tokenType, out IntPtr newToken);
     [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool CreateProcessWithTokenW(
         IntPtr token, int logonFlags, string? app, string cmdLine, int flags,

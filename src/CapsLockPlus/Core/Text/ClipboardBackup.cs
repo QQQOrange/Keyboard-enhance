@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Text;
 
@@ -208,6 +209,4 @@ internal sealed class ClipboardBackup
         }
     }
 
-    [DllImport("user32.dll")]
-    private static extern uint GetClipboardSequenceNumber();
 }

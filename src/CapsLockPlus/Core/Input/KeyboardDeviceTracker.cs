@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Input;
 
@@ -299,7 +300,4 @@ public sealed class KeyboardDeviceTracker : IDisposable
     private static extern bool RegisterRawInputDevices(
         RawInputDevice[] devices, uint count, uint size);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint GetRawInputData(
-        IntPtr rawInput, uint command, IntPtr data, ref uint size, uint headerSize);
 }

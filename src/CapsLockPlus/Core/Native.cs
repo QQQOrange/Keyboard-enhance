@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core;
 
@@ -8,8 +9,6 @@ namespace CapsLockPlus.Core;
 /// </summary>
 internal static class Native
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr min, IntPtr max);
 
     /// <summary>
     /// 让系统回收本进程的工作集（内存占用会明显下降，代价是下次访问要重新缺页）。

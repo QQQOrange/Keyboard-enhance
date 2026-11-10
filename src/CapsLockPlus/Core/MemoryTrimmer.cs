@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core;
 
@@ -13,12 +14,6 @@ namespace CapsLockPlus.Core;
 /// </summary>
 public static class MemoryTrimmer
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize,
-        IntPtr dwMaximumWorkingSetSize);
-
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr GetCurrentProcess();
 
     private static DateTime _lastTrim = DateTime.MinValue;
 

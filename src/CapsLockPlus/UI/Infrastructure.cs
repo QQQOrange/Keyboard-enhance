@@ -1,7 +1,8 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using CapsLockPlus.Core;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.UI;
 
@@ -32,7 +33,7 @@ public sealed class ClipboardWatcher : IDisposable
         };
         _source = new HwndSource(parameters);
         _source.AddHook(WndProc);
-        NativeMethodsShim.AddClipboardFormatListener(_source.Handle);
+        AddClipboardFormatListener(_source.Handle);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -53,24 +54,13 @@ public sealed class ClipboardWatcher : IDisposable
         {
             if (_source != null)
             {
-                NativeMethodsShim.RemoveClipboardFormatListener(_source.Handle);
+                RemoveClipboardFormatListener(_source.Handle);
                 _source.RemoveHook(WndProc);
                 _source.Dispose();
                 _source = null;
             }
         }
         catch { }   /* 预期内：探测/重试型，失败即视为无结果 */
-    }
-
-    private static class NativeMethodsShim
-    {
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool AddClipboardFormatListener(IntPtr hwnd);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
     }
 }
 

@@ -8,6 +8,7 @@ using System.Windows.Media;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Input;
 using KeyModifiers = CapsLockPlus.Core.Input.KeyModifiers;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.UI.Windows;
 
@@ -42,18 +43,6 @@ public partial class KeyCaptureWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint threadId);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr GetModuleHandle(string? name);
-
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
 
     /// <summary>某个虚拟键当前是否处于按下状态。</summary>
     private static bool IsKeyDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;

@@ -13,6 +13,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CapsLockPlus.Core.Settings;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Icons;
 
@@ -26,9 +27,6 @@ public static class IconCache
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern uint ExtractIconEx(string lpszFile, int nIconIndex, nint[] phiconLarge, nint[] phiconSmall, uint nIcons);
-
-    [DllImport("user32.dll")]
-    private static extern bool DestroyIcon(nint hIcon);
 
     public static ImageSource? ForEntry(QEntry entry)
     {

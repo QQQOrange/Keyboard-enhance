@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Automation;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Text;
 
@@ -233,11 +234,6 @@ public static class UiaSelectionReader
     // ---- 唤醒 Chromium 无障碍树 ----
 
     private static bool _woken;
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr SendMessageTimeoutW(
-        IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
-        uint flags, uint timeout, out IntPtr result);
 
     private const uint WM_GETOBJECT = 0x003D;
     private const uint OBJID_CLIENT = 0xFFFFFFFC;

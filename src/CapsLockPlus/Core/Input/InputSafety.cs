@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using CapsLockPlus.Core;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Input;
 
@@ -20,8 +21,6 @@ namespace CapsLockPlus.Core.Input;
 /// </summary>
 public static class InputSafety
 {
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct LASTINPUTINFO

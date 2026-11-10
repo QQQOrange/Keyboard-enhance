@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Windows;
 
@@ -33,34 +34,6 @@ public sealed class ForegroundWatcher : IDisposable
     [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod,
         WinEventDelegate proc, uint pid, uint tid, uint flags);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWinEvent(IntPtr hook);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowTextLength(IntPtr hWnd);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int max);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsHungAppWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(int access, bool inherit, uint pid);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr h);
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern bool QueryFullProcessImageName(IntPtr proc, int flags,
-        System.Text.StringBuilder name, ref int size);
 
     /// <summary>前台进程变化（参数是规范化的进程名，如 code.exe）。</summary>
     public event Action<string>? Changed;

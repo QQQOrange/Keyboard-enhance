@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
+using static CapsLockPlus.Core.Interop.NativeMethods;
 namespace CapsLockPlus.Core.Text;
 
 /// <summary>
@@ -16,15 +17,6 @@ namespace CapsLockPlus.Core.Text;
 public static class WindowMessageCopier
 {
     private const uint WM_COPY = 0x0301;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);

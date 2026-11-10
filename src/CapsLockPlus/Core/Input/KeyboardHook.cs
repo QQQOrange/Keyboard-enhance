@@ -102,7 +102,6 @@ public sealed class KeyboardHook : IDisposable
             return;
         }
 
-
         /* 上一轮线程还没退干净时**等它退出**再装。
          * 注意：这里**不能**"等不到就放弃安装" —— 那等于把钩子彻底弄没了，
          * 而调用方（自愈逻辑）以为已经重装成功。 */
@@ -365,9 +364,6 @@ public sealed class KeyboardHook : IDisposable
     [DllImport("user32.dll")]
     private static extern IntPtr DispatchMessage(ref MSG lpmsg);
 
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-
     [StructLayout(LayoutKind.Sequential)]
     private struct MSG
     {
@@ -592,6 +588,4 @@ public sealed class KeyboardHook : IDisposable
         Start();
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
 }

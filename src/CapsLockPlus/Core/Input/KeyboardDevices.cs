@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using CapsLockPlus.Core.Localization;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Input;
 
@@ -304,7 +305,4 @@ public static class KeyboardDevices
     private static extern uint GetRawInputDeviceList(
         [Out] RawInputDeviceList[]? devices, ref uint count, uint size);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetRawInputDeviceInfo(
-        IntPtr device, uint command, IntPtr data, ref uint size);
 }

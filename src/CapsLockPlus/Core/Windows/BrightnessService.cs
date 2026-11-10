@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Management;
 using System.Runtime.InteropServices;
+using static CapsLockPlus.Core.Interop.NativeMethods;
 
 namespace CapsLockPlus.Core.Windows;
 
@@ -1103,24 +1104,4 @@ public static class BrightnessService
     private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip,
         MonitorEnumProc proc, IntPtr data);
 
-    [DllImport("dxva2.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint number);
-
-    [DllImport("dxva2.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint arraySize, IntPtr monitors);
-
-    [DllImport("dxva2.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr hMonitor, byte vcpCode,
-        out int vcpType, out uint current, out uint max);
-
-    [DllImport("dxva2.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetVCPFeature(IntPtr hMonitor, byte vcpCode, uint value);
-
-    [DllImport("dxva2.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DestroyPhysicalMonitor(IntPtr hMonitor);
 }

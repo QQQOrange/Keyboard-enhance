@@ -222,9 +222,6 @@ public static class WindowService
         }
     }
 
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-
     /// <summary>
     /// 强行把窗口抢到前台并拿到键盘焦点 —— 用于"面板弹出后必须能立刻打字"。
     ///
@@ -354,15 +351,10 @@ public static class WindowService
         ShowWindowAsync(hwnd, IsZoomed(hwnd) ? SW_RESTORE : 3 /*SW_MAXIMIZE*/);
     }
 
-    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr hWnd);
-
     public static void Close(IntPtr hwnd)
     {
         if (hwnd != IntPtr.Zero) PostMessage(hwnd, 0x0010 /*WM_CLOSE*/, IntPtr.Zero, IntPtr.Zero);
     }
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
     public static void SetTopmost(IntPtr hwnd, bool topmost)
     {
@@ -934,7 +926,4 @@ public static class WindowService
 
     // 必须显式点名 AssocQueryStringW：Shlwapi 里没有无后缀的 AssocQueryString，
     // 之前写了 ExactSpelling = true 就按裸名去导出表找，运行时直接 "Unable to find an entry point"。
-    [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode, EntryPoint = "AssocQueryStringW")]
-    private static extern uint AssocQueryString(uint flags, uint str,
-        string pszAssoc, string? pszExtra, StringBuilder pszOut, ref uint pcchOut);
 }
