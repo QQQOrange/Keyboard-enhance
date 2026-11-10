@@ -43,6 +43,9 @@ public static class DataVault
     public static string VaultFile => Path.Combine(AppPaths.DataDir, "vault.json");
     private static string CacheFile => Path.Combine(AppPaths.DataDir, "vault.cache");
 
+    /// <summary>DPAPI 缓存文件路径（换密钥的断点恢复需要直接读写它）。</summary>
+    internal static string CachePath => CacheFile;
+
     /// <summary>是否已启用加密（存在 vault.json）。</summary>
     public static bool IsEnabled => File.Exists(VaultFile);
 
@@ -94,6 +97,10 @@ public static class DataVault
             _undoKey = _key;
             _keyChangePending = true;
 
+            /* 落盘保护：进程在中途被强杀时，下次启动靠它回滚。
+             * 必须在写 vault.json 之前写。 */
+            VaultRecovery.WritePending("enable");
+
             byte[] salt = RandomNumberGenerator.GetBytes(SaltLen);
             byte[] key = Derive(password, salt, Iterations);
 
@@ -129,6 +136,7 @@ public static class DataVault
             _undoKey = null;
             _undoVaultText = null;
             _undoCacheBytes = null;
+            VaultRecovery.ClearPending();     // 新密钥已落盘成功，断电保护现场可以撤了
         }
     }
 
@@ -162,6 +170,7 @@ public static class DataVault
             _undoKey = null;
             _undoVaultText = null;
             _undoCacheBytes = null;
+            VaultRecovery.ClearPending();   // 已经回滚到一致状态，断电保护现场不需要了
         }
     }
 
@@ -182,6 +191,9 @@ public static class DataVault
             _undoCacheBytes = File.Exists(CacheFile) ? File.ReadAllBytes(CacheFile) : null;
             _undoKey = _key;
             _keyChangePending = true;
+
+            /* 和 Enable 一样：先落盘旧状态，删 vault 之后才断电也能救回来。 */
+            VaultRecovery.WritePending("disable");
 
             _key = null;
             TryDelete(VaultFile);
@@ -298,6 +310,56 @@ public static class DataVault
     /// Save 会用新密钥加密。
     /// </summary>
     public static void ChangePassword(string newPassword) => Enable(newPassword);
+
+    // ---------------- 断点恢复用的小工具 ----------------
+
+    /// <summary>
+    /// 直接读出 DPAPI 缓存里的密钥（**不**与 vault.json 校验）。
+    ///
+    /// 只给 <see cref="VaultRecovery"/> 用：换密钥中途崩溃时，缓存里可能已经是
+    /// 新密钥而 vault.json 还是旧的（或反过来），正是要靠这个"不对齐"来判断
+    /// 当时到底写完了没有。日常路径必须继续走 <see cref="TryUnlockCached"/>。
+    /// </summary>
+    internal static byte[]? ReadCachedKeyForRecovery()
+    {
+        try
+        {
+            if (!File.Exists(CacheFile)) return null;
+            byte[] key = ProtectedData.Unprotect(
+                File.ReadAllBytes(CacheFile), Entropy, DataProtectionScope.CurrentUser);
+            return key.Length == KeyLen ? key : null;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("[加密] 读取缓存密钥失败：" + ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>自检用：DPAPI 的附加熵（与真实缓存文件保持同一份）。</summary>
+    internal static byte[] EntropyForTest => Entropy;
+
+    /// <summary>用**指定**密钥试解一段 vault 信封（不动当前会话密钥）。</summary>
+    internal static bool CanDecryptEnvelope(byte[] key, string text)
+    {
+        if (!LooksEncrypted(text)) return false;
+        try
+        {
+            var node = JsonNode.Parse(text)!;
+            byte[] nonce = Convert.FromBase64String(node["nonce"]!.GetValue<string>());
+            byte[] tag = Convert.FromBase64String(node["tag"]!.GetValue<string>());
+            byte[] data = Convert.FromBase64String(node["data"]!.GetValue<string>());
+
+            byte[] plain = new byte[data.Length];
+            using var aes = AesGcmFactory.Create(key.AsSpan());
+            aes.Decrypt(nonce, data, tag, plain);
+            return true;
+        }
+        catch
+        {
+            return false;   // 密钥不对 / 被篡改：都算"解不开"
+        }
+    }
 
     // ---------------- 加解密 ----------------
 

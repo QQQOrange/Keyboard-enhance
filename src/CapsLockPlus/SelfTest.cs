@@ -285,6 +285,7 @@ public static partial class SelfTest
         TestAuditFixes();
         Section("本地文件加密");
         TestLocalEncryption();
+        TestVaultRecovery();
 
         Section("宏可绑定");
         TestMacroIsBindable();

@@ -214,4 +214,128 @@ public static partial class SelfTest
             try { Directory.Delete(dir, true); } catch { }
         }
     }
+
+    /// <summary>
+    /// 换密钥的断点续做（v4.20.6）。
+    ///
+    /// 真实事故形态：改密码时新密钥已经写进 vault.json，settings.json 还是旧密文的，
+    /// 这时断电/被强杀 —— 重启后新密码打不开旧密文、旧密码已被覆盖，配置永久丢失。
+    ///
+    /// 这里用真实的三个文件模拟三种现场，验证 <see cref="Core.Settings.VaultRecovery.Recover"/>
+    /// 分别做出"收尾 / 回滚"的正确判断，且回滚能把旧 vault 与 DPAPI 缓存**逐字节**还原。
+    /// 自检跑在临时数据目录里，结束时把四个文件原样还回去。
+    /// </summary>
+    private static void TestVaultRecovery()
+    {
+        string settingsFile = Core.AppPaths.SettingsFile;
+        string vaultFile = Core.Settings.DataVault.VaultFile;
+        string cacheFile = Core.Settings.DataVault.CachePath;
+        string pendingFile = Core.Settings.VaultRecovery.PendingPath;
+        var utf8 = new System.Text.UTF8Encoding(false);
+
+        // 现场拍照（不存在记 null），finally 里逐字节还原
+        byte[]? SavedOrNull(string path) => File.Exists(path) ? File.ReadAllBytes(path) : null;
+        void RestoreOrDelete(string path, byte[]? bytes)
+        {
+            if (bytes == null) { if (File.Exists(path)) File.Delete(path); }
+            else File.WriteAllBytes(path, bytes);
+        }
+
+        byte[]? sSettings = SavedOrNull(settingsFile);
+        byte[]? sVault = SavedOrNull(vaultFile);
+        byte[]? sCache = SavedOrNull(cacheFile);
+        byte[]? sPending = SavedOrNull(pendingFile);
+
+        string PendingJson(string stage, string? oldVault, byte[]? oldCache) =>
+            ("{\"Version\":1,\"Stage\":\"" + stage + "\",\"OldVaultText\":" +
+             (oldVault == null ? "null" : System.Text.Json.JsonSerializer.Serialize(oldVault)) +
+             ",\"OldCacheBase64\":" +
+             (oldCache == null ? "null" : "\"" + Convert.ToBase64String(oldCache) + "\"") +
+             ",\"CreatedUtc\":\"2026-01-01T00:00:00Z\"}");
+
+        // 造一段"需要 vault 密钥"的信封（内容随便，只要格式对）
+        const string envelope = "{\"clpVault\":1,\"alg\":\"aes-256-gcm\"," +
+                                "\"nonce\":\"AAAAAAAAAAAAAAAA\",\"tag\":\"AAAAAAAAAAAAAAAAAAAAAA==\"," +
+                                "\"data\":\"AAAAAAAAAAAA\"}";
+
+        try
+        {
+            Directory.CreateDirectory(Core.AppPaths.DataDir);
+
+            // ⓪ 没有 pending：什么都不做
+            if (File.Exists(pendingFile)) File.Delete(pendingFile);
+            Check("vault 恢复：没有 pending 时不做任何事",
+                Core.Settings.VaultRecovery.Recover() == Core.Settings.VaultRecovery.Outcome.None);
+
+            /* ① 关闭加密已经写完：设置已是明文 → 收尾，不动 vault.json 现状 */
+            File.WriteAllText(settingsFile, "{\"Global\":{}}", utf8);
+            File.WriteAllText(pendingFile, PendingJson("disable", "{\"v\":1,\"old\":true}", new byte[] { 9, 9 }), utf8);
+            File.WriteAllText(vaultFile, "{\"v\":1,\"new\":true}", utf8);
+            if (File.Exists(cacheFile)) File.Delete(cacheFile);
+
+            var r1 = Core.Settings.VaultRecovery.Recover();
+            Check("vault 恢复：设置已明文 → 按已完成收尾",
+                r1 == Core.Settings.VaultRecovery.Outcome.Completed);
+            Check("vault 恢复：收尾后 pending 被删除", !File.Exists(pendingFile));
+            CheckEqual("vault 恢复：收尾不改 vault.json", File.ReadAllText(vaultFile), "{\"v\":1,\"new\":true}");
+
+            /* ② 新密钥没生效：设置还是 vault 密文，而缓存里没有能解它的密钥 → 回滚 */
+            byte[] oldCacheBytes = { 1, 2, 3, 4 };
+            const string oldVaultText = "{\"v\":1,\"salt\":\"OLD\"}";
+            File.WriteAllText(settingsFile, Core.Security.LocalCrypto.Encrypt(envelope), utf8);
+            if (File.Exists(cacheFile)) File.Delete(cacheFile);
+            File.WriteAllText(pendingFile, PendingJson("enable", oldVaultText, oldCacheBytes), utf8);
+            File.WriteAllText(vaultFile, "{\"v\":1,\"salt\":\"NEW\"}", utf8);
+
+            var r2 = Core.Settings.VaultRecovery.Recover();
+            Check("vault 恢复：新密钥解不开 → 回滚",
+                r2 == Core.Settings.VaultRecovery.Outcome.RolledBack);
+            CheckEqual("vault 恢复：回滚后 vault.json 逐字还原",
+                File.ReadAllText(vaultFile), oldVaultText);
+            Check("vault 恢复：回滚后 DPAPI 缓存逐字节还原",
+                File.Exists(cacheFile) && File.ReadAllBytes(cacheFile).SequenceEqual(oldCacheBytes));
+            Check("vault 恢复：回滚后 pending 被删除", !File.Exists(pendingFile));
+
+            /* ③ 新密钥已生效：缓存里的密钥能解开设置 → 收尾，不动 vault.json */
+            byte[] newKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+            File.WriteAllText(settingsFile,
+                Core.Security.LocalCrypto.Encrypt(MakeVaultEnvelope(newKey, "{\"Global\":{}}")), utf8);
+            File.WriteAllBytes(cacheFile, System.Security.Cryptography.ProtectedData.Protect(
+                newKey, Core.Settings.DataVault.EntropyForTest,
+                System.Security.Cryptography.DataProtectionScope.CurrentUser));
+            File.WriteAllText(pendingFile, PendingJson("enable", "{\"v\":1,\"salt\":\"OLD\"}", null), utf8);
+            File.WriteAllText(vaultFile, "{\"v\":1,\"salt\":\"NEW\"}", utf8);
+
+            var r3 = Core.Settings.VaultRecovery.Recover();
+            Check("vault 恢复：新密钥已生效 → 收尾",
+                r3 == Core.Settings.VaultRecovery.Outcome.Committed);
+            Check("vault 恢复：收尾后 vault.json 仍是新内容",
+                File.ReadAllText(vaultFile).Contains("\"NEW\""));
+            Check("vault 恢复：收尾后不会把旧缓存写回去",
+                File.ReadAllBytes(cacheFile).Length > 4);
+        }
+        finally
+        {
+            RestoreOrDelete(settingsFile, sSettings);
+            RestoreOrDelete(vaultFile, sVault);
+            RestoreOrDelete(cacheFile, sCache);
+            RestoreOrDelete(pendingFile, sPending);
+            Core.Settings.DataVault.ForgetKeyForTest();
+        }
+    }
+
+    /// <summary>构造一段真实的 vault 信封（供断点恢复用例使用）。</summary>
+    private static string MakeVaultEnvelope(byte[] key, string plain)
+    {
+        byte[] nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+        byte[] data = System.Text.Encoding.UTF8.GetBytes(plain);
+        byte[] cipher = new byte[data.Length];
+        byte[] tag = new byte[16];
+        using (var aes = Core.Security.AesGcmFactory.Create(key))
+            aes.Encrypt(nonce, data, cipher, tag);
+
+        return "{\"clpVault\":1,\"alg\":\"aes-256-gcm\",\"nonce\":\"" +
+               Convert.ToBase64String(nonce) + "\",\"tag\":\"" + Convert.ToBase64String(tag) +
+               "\",\"data\":\"" + Convert.ToBase64String(cipher) + "\"}";
+    }
 }

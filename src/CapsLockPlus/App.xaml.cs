@@ -57,6 +57,26 @@ public partial class App : Application
          *
          * 放在单实例与启动密码之前 —— 那两道门都可能让"看帮助"这件事被拦住
          * （主程序开着时会被单实例判掉、设了启动密码会要求先输密码）。 */
+        /* ---- 换密钥的断点续做：必须在**读设置之前** ----
+         *
+         * `vault.json` 与 `settings.json` 是两个文件，改密码/开关加密时必然有中间态：
+         * 中途断电或强杀，重启后"新密钥打不开旧密文、旧密钥已被覆盖"，配置就永久丢了。
+         * 上次操作前把旧状态写进了 vault.pending.json，这里据它判断是收尾还是回滚。
+         * 没有 pending 时只是一次 File.Exists，开销可以忽略。 */
+        try
+        {
+            var recovery = Core.Settings.VaultRecovery.Recover();
+            if (recovery != Core.Settings.VaultRecovery.Outcome.None &&
+                recovery != Core.Settings.VaultRecovery.Outcome.Failed)
+            {
+                CoreLog.Info("[加密] 未完成的密钥切换已收尾：" + recovery);
+            }
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("[加密] 启动时检查未完成的密钥切换失败：" + ex.Message);
+        }
+
         /* `--dump-triggers`：把**解密后的**触发键/层配置打印出来（排查"触发键没生效"用）。
          * 用户配置是加密的，光看 settings.json 看不出配了什么。 */
         if (Core.CliFlags.Has(e.Args, "--dump-triggers"))
