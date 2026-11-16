@@ -866,7 +866,7 @@ powershell -ExecutionPolicy Bypass -File tools\release.ps1
 # 用法总览（自检 / 诊断 / 出图 / 界面，全部开关都在这里）
 dist\KeyboardEnhance.exe --help
 
-# 自检：3920 项，覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、
+# 自检：3920 项左右（随系统环境浮动），覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、
 # 横条比例穷举、界面多语言、片段匹配、浮层定位、窗口搜索缓存、UIA 超时、关闭行为
 dist\KeyboardEnhance.exe --selftest
 
@@ -914,7 +914,7 @@ dist\KeyboardEnhance.exe --render docs\screenshots
 > 永远一致。
 
 ```powershell
-# 自检（3920 项，覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、横条比例穷举、界面多语言、片段匹配、浮层定位、关闭行为）
+# 自检（3920 项左右（随系统环境浮动），覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、横条比例穷举、界面多语言、片段匹配、浮层定位、关闭行为）
 dist\KeyboardEnhance.exe --selftest
 
 # 离屏渲染所有界面（文档/回归用，不受桌面遮挡与 DPI 影响）

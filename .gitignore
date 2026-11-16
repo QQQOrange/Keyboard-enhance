@@ -74,3 +74,5 @@ $RECYCLE.BIN/
 
 # 临时渲染/自检产物
 artifacts/
+.rel-tmp/
+.selftest-*/

@@ -593,7 +593,7 @@ powershell -ExecutionPolicy Bypass -File tools\release.ps1
 # All command-line switches
 dist\KeyboardEnhance.exe --help
 
-# Self-test: 3920 checks (key model, expressions, Qbar, chips, migration, hooks,
+# Self-test: ~3920 checks (varies slightly by system environment) (key model, expressions, Qbar, chips, migration, hooks,
 # combo state machine, OSD ratios, localisation, snippets, popups, window cache, UIA, shutdown)
 dist\KeyboardEnhance.exe --selftest
 
@@ -666,7 +666,7 @@ Design notes:
 | Idle CPU | 0 % |
 | Tray footprint | ~60 MB private |
 | Executable | 2.9 MB (single file, framework-dependent) |
-| Self-test | 3920 checks, all passing |
+| Self-test | ~3920 checks, all passing |
 
 The hot path is micro-optimised because the hook has a hard 300 ms budget: trigger matching
 uses a cached `HashSet<int>`, layer lookup a prebuilt case-insensitive dictionary, and layer
