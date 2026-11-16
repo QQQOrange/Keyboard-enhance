@@ -114,6 +114,20 @@ public static partial class SelfTest
         while (player.IsPlaying && DateTime.UtcNow < deadline) Thread.Sleep(50);
         Check("播放后结束", !player.IsPlaying);
         player.Dispose();
+
+        /* 固定延迟必须在播放时覆盖录制延迟，而不是只在录制时写入。
+         * 用户改完固定延迟再播旧宏，最容易踩到这个坑。 */
+        var fixedMacro = new Core.Settings.Macro { Name = "固定延迟测试" };
+        fixedMacro.Steps.Add(new Core.Settings.MacroStep { Kind = "delay", DelayMs = 5000 });
+        var fixedPlayer = new Core.Macro.MacroPlayer { FixedDelayProvider = () => 80 };
+        var sw = Stopwatch.StartNew();
+        fixedPlayer.Play(fixedMacro);
+        var fixedDeadline = DateTime.UtcNow.AddSeconds(3);
+        while (fixedPlayer.IsPlaying && DateTime.UtcNow < fixedDeadline) Thread.Sleep(20);
+        sw.Stop();
+        Check("固定延迟覆盖录制延迟", sw.ElapsedMilliseconds < 1500,
+            $"{sw.ElapsedMilliseconds}ms，期望 <1500ms");
+        fixedPlayer.Dispose();
     }
 
     /// <summary>

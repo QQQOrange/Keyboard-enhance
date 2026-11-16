@@ -266,6 +266,15 @@
                         <TextBlock Grid.Column="0" Text="{loc:T '开源协议'}" Style="{StaticResource Text.Secondary}" />
                         <TextBlock Grid.Column="1" Style="{StaticResource Text.Body}" Text="GPL-3.0" />
                     </Grid>
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{loc:T '系统要求'}" Style="{StaticResource Text.Secondary}" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource Text.Body}" TextWrapping="Wrap"
+                                   Text="{loc:T 'Windows 10 1809+ / Windows 11（x64、x86）；Win7 SP1 版为自包含包'}" />
+                    </Grid>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="110" />
@@ -288,6 +297,43 @@
                                Text="{loc:T '支持 10 个独立图层，每层可以有自己的触发键和整套按键绑定。所有配置都在图形界面里完成，也支持 WebDAV 同步与导入导出。'}" />
                     <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,12,0,0"
                                Text="{loc:T '本程序的按键语义源自 Junkai Chen 的 AutoHotkey 版 CapsLock+，界面、引擎与全部设置系统为重新实现。'}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 帮助与反馈：文档、更新日志、issue、数据目录都放在一屏内，
+                 不用让用户去猜 GitHub 的哪个角落、也不用翻开始菜单找数据 -->
+            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="{loc:T '帮助与反馈'}" Style="{StaticResource Text.H3}" Margin="0,0,0,6" />
+                    <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                               Text="{loc:T '遇到问题先看「使用说明」的常见问题，再查「更新日志」；确定是 bug 就到 GitHub 提 issue，附上诊断信息最快。'}" />
+
+                    <WrapPanel Margin="0,12,0,0">
+                        <Button Content="{loc:T '使用说明'}" Style="{StaticResource Button.Base}"
+                                Padding="14,6" Margin="0,0,6,6" Click="OnOpenReadme"
+                                ToolTip="{loc:T '在浏览器中打开 README（中文，含全部快捷键与常见问题）'}" />
+                        <Button Content="{loc:T '更新日志'}" Style="{StaticResource Button.Base}"
+                                Padding="14,6" Margin="0,0,6,6" Click="OnOpenChangelog"
+                                ToolTip="{loc:T '每个版本改了什么'}" />
+                        <Button Content="{loc:T '问题反馈'}" Style="{StaticResource Button.Primary}"
+                                Padding="14,6" Margin="0,0,0,6" Click="OnOpenIssues"
+                                ToolTip="{loc:T '在 GitHub 上新建 issue'}" />
+                    </WrapPanel>
+
+                    <WrapPanel Margin="0,2,0,0">
+                        <Button Content="{loc:T '打开数据目录'}" Style="{StaticResource Button.Ghost}"
+                                Padding="12,6" Margin="0,0,6,6" Click="OnOpenDataDir"
+                                ToolTip="{loc:T '设置、图标缓存、备份都在这个文件夹里'}" />
+                        <Button Content="{loc:T '打开日志'}" Style="{StaticResource Button.Ghost}"
+                                Padding="12,6" Margin="0,0,6,6" Click="OnOpenLogs"
+                                ToolTip="{loc:T '热键失灵时，日志里的最后几行通常就能说明原因'}" />
+                        <Button Content="{loc:T '复制诊断信息'}" Style="{StaticResource Button.Ghost}"
+                                Padding="12,6" Margin="0,0,0,6" Click="OnCopyDiagnostics"
+                                ToolTip="{loc:T '版本、系统、数据目录、钩子状态，粘到 issue 里即可'}" />
+                    </WrapPanel>
+
+                    <TextBlock x:Name="HelpStatusText" Style="{StaticResource Text.Tertiary}"
+                               TextWrapping="Wrap" Margin="0,6,0,0" />
                 </StackPanel>
             </Border>
             </StackPanel>

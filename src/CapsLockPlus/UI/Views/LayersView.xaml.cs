@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.UI.Windows;
@@ -131,18 +132,10 @@ public partial class LayersView : UserControl
 
         // 动作下拉（带"无"选项）
         TapActionBox.Items.Clear();
-        DoubleTapBox.Items.Clear();
         foreach (var item in ActionItems(t))
-        {
             TapActionBox.Items.Add(item);
-            DoubleTapBox.Items.Add(new ComboBoxItem
-            {
-                Content = item.Content,
-                Tag = item.Tag,
-            });
-        }
         SelectByTag(TapActionBox, t.TapAction, "keepKey");
-        SelectByTag(DoubleTapBox, string.IsNullOrEmpty(t.DoubleTapAction) ? "none" : t.DoubleTapAction, "none");
+        LoadDoubleTapPicker(t);
 
         _suppress = false;
     }
@@ -346,12 +339,167 @@ public partial class LayersView : UserControl
         RefreshRows();
     }
 
-    private void OnDoubleTapActionChanged(object sender, SelectionChangedEventArgs e)
+    private bool _doubleTapLoading;
+
+    private void LoadDoubleTapPicker(TriggerKey trigger)
     {
-        if (_host == null || _suppress || _editing == null) return;
-        if (DoubleTapBox.SelectedItem is not ComboBoxItem { Tag: string tag }) return;
-        _editing.DoubleTapAction = tag == "none" ? "" : tag;
+        if (DoubleTapCategoryBox == null || DoubleTapActionBox == null) return;
+
+        _doubleTapLoading = true;
+        try
+        {
+            DoubleTapSearchBox.Text = "";
+            DoubleTapCategoryBox.Items.Clear();
+            DoubleTapActionBox.Items.Clear();
+
+            var actions = (_host?.Actions.Items ?? Array.Empty<ActionInfo>())
+                .Where(a => !a.Hidden)
+                .ToList();
+
+            foreach (string category in actions
+                         .Select(a => a.DisplayCategory)
+                         .Where(c => !string.IsNullOrWhiteSpace(c))
+                         .Distinct(StringComparer.CurrentCulture)
+                         .OrderBy(c => c, StringComparer.CurrentCulture))
+            {
+                DoubleTapCategoryBox.Items.Add(new ComboBoxItem
+                {
+                    Content = category,
+                    Tag = category,
+                });
+            }
+
+            var current = trigger.DoubleTapAction.Length == 0
+                ? null
+                : actions.FirstOrDefault(a => string.Equals(a.Id, trigger.DoubleTapAction, StringComparison.OrdinalIgnoreCase));
+
+            if (current != null)
+            {
+                foreach (ComboBoxItem item in DoubleTapCategoryBox.Items)
+                {
+                    if (item.Tag as string == current.DisplayCategory)
+                    {
+                        DoubleTapCategoryBox.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+            if (DoubleTapCategoryBox.SelectedIndex < 0 && DoubleTapCategoryBox.Items.Count > 0)
+            {
+                // 没有已选动作时，默认停在使用频率最高的一组，至少让用户看到
+                // “分类 → 具体功能”这条路径是通的。
+                DoubleTapCategoryBox.SelectedIndex = 0;
+            }
+
+            FillDoubleTapActions(trigger.DoubleTapAction);
+        }
+        finally
+        {
+            _doubleTapLoading = false;
+        }
+
+        UpdateDoubleTapLabel(trigger);
+    }
+
+    private void FillDoubleTapActions(string? selectId = null)
+    {
+        if (DoubleTapActionBox == null) return;
+
+        string search = DoubleTapSearchBox?.Text.Trim() ?? "";
+        string category = (DoubleTapCategoryBox?.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+
+        var actions = (_host?.Actions.Items ?? Array.Empty<ActionInfo>())
+            .Where(a => !a.Hidden);
+
+        if (search.Length > 0)
+        {
+            actions = actions.Where(a =>
+                a.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                || a.DisplayCategory.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                || a.Id.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+        else if (category.Length > 0)
+        {
+            actions = actions.Where(a => string.Equals(a.DisplayCategory, category, StringComparison.CurrentCulture));
+        }
+
+        var list = actions
+            .OrderBy(a => a.DisplayCategory, StringComparer.CurrentCulture)
+            .ThenBy(a => a.Title, StringComparer.CurrentCulture)
+            .ToList();
+
+        DoubleTapActionBox.Items.Clear();
+        foreach (var action in list)
+        {
+            DoubleTapActionBox.Items.Add(new ComboBoxItem
+            {
+                Content = action.Title,
+                Tag = action.Id,
+                ToolTip = $"[{action.DisplayCategory}] {action.Description}",
+            });
+        }
+
+        if (selectId != null)
+        {
+            foreach (ComboBoxItem item in DoubleTapActionBox.Items)
+            {
+                if (item.Tag as string == selectId)
+                {
+                    DoubleTapActionBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        if (DoubleTapActionBox.SelectedIndex < 0 && DoubleTapActionBox.Items.Count > 0)
+            DoubleTapActionBox.SelectedIndex = 0;
+    }
+
+    private void OnDoubleTapCategoryChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_doubleTapLoading) return;
+        FillDoubleTapActions();
+    }
+
+    private void OnDoubleTapSearchChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_doubleTapLoading) return;
+        FillDoubleTapActions();
+    }
+
+    private void OnApplyDoubleTapAction(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var trigger = _editing ?? Selected;
+        if (trigger == null) return;
+        if (DoubleTapActionBox.SelectedItem is not ComboBoxItem { Tag: string id } || id.Length == 0) return;
+
+        trigger.DoubleTapAction = id;
         _host.SaveSettings();
+        UpdateDoubleTapLabel(trigger);
+        RefreshRows();
+    }
+
+    private void UpdateDoubleTapLabel(TriggerKey? trigger = null)
+    {
+        if (DoubleTapCurrentLabel == null) return;
+
+        string id = (trigger ?? _editing ?? Selected)?.DoubleTapAction ?? "";
+        var info = id.Length == 0 ? null : _host?.Actions.Get(id);
+        DoubleTapCurrentLabel.Text = id.Length == 0
+            ? Loc.T("当前：关闭双击")
+            : Loc.F("当前：[{0}] {1}", info?.DisplayCategory ?? Loc.T("动作"),
+                info?.Title ?? ActionCatalog.TitleOf(id) ?? id);
+    }
+
+    private void OnClearDoubleTapAction(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var trigger = _editing ?? Selected;
+        if (trigger == null) return;
+        trigger.DoubleTapAction = "";
+        _host.SaveSettings();
+        UpdateDoubleTapLabel(trigger);
         RefreshRows();
     }
 

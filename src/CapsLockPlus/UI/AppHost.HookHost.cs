@@ -258,7 +258,8 @@ public sealed partial class AppHost
         bool deviceScoped = false;
         try
         {
-            deviceScoped = Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device));
+            deviceScoped = Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device))
+                           || Core.Settings.DeviceProfiles.NeedsDeviceTracking(Settings);
         }
         catch (Exception ex) { CoreLog.Swallow(ex, "读取设备专属改键设置"); }
 
@@ -509,7 +510,8 @@ public sealed partial class AppHost
                 try
                 {
                     _dispatcher.Invoke(() => deviceScoped =
-                        Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device)));
+                        Settings.Global.BaseRemaps.Any(r => !string.IsNullOrWhiteSpace(r.Device))
+                        || Core.Settings.DeviceProfiles.NeedsDeviceTracking(Settings));
                 }
                 catch (Exception ex)
                 {

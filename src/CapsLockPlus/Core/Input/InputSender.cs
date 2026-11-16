@@ -74,9 +74,9 @@ public static class InputSender
     private static int _injectLogged;
     private static bool _quietBlockLogged;
 
-    private static void Send(params INPUT[] inputs)
+    private static bool Send(params INPUT[] inputs)
     {
-        if (inputs.Length == 0 || DryRun) return;
+        if (inputs.Length == 0 || DryRun) return true;
 
         if (DateTime.Now < QuietUntil)
         {
@@ -85,10 +85,22 @@ public static class InputSender
                 _quietBlockLogged = true;
                 CoreLog.Warn("[注入] 启动静默期内拦下一次注入（可能是这次启动的杂键来源）");
             }
-            return;
+            return true;
         }
 
-        SendInput((uint)inputs.Length, inputs, InputSize);
+        /* SendInput 会返回"真正插入队列的条数"。返回 0 通常就是 UIPI 拒绝
+         * （前台窗口比我们完整性高，错误码 5），以前这里不看返回值，宏播放
+         * 看起来"执行了"却什么都没发生。把错误留给 MacroPlayer 转成用户能
+         * 看懂的提示，比静默失败强。 */
+        uint sent = SendInput((uint)inputs.Length, inputs, InputSize);
+        if (sent != inputs.Length)
+        {
+            LastInjectError = Marshal.GetLastWin32Error();
+            CoreLog.Warn($"[注入] SendInput 失败：写入 {sent}/{inputs.Length}，错误 {LastInjectError}");
+            return false;
+        }
+
+        LastInjectError = 0;
         LastInjectAt = DateTime.Now;
         Interlocked.Increment(ref _injectSeq);
         InjectCount++;
@@ -118,6 +130,25 @@ public static class InputSender
             }
             catch { }
         }
+
+        return true;
+    }
+
+    /// <summary>宏播放前清掉上一次的注入错误，避免旧错误误伤本次。</summary>
+    public static void ResetInjectError() => LastInjectError = 0;
+
+    /// <summary>
+    /// 当前前台窗口是否属于更高完整性级别（管理员进程）。
+    /// UIPI 下 SendInput 可能直接返回成功但按键被丢弃，先发一个 WM_NULL 探路：
+    /// 被 UIPI 拦下时 SendMessageTimeout 返回 0 且 LastError=5。
+    /// </summary>
+    public static bool IsForegroundHigherIntegrity()
+    {
+        var hwnd = NativeMethods.GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) return false;
+        var ok = NativeMethods.SendMessageTimeoutW(hwnd, 0, IntPtr.Zero, IntPtr.Zero,
+            NativeMethods.SMTO_ABORTIFHUNG | NativeMethods.SMTO_BLOCK, 80, out _);
+        return ok == IntPtr.Zero && Marshal.GetLastWin32Error() == 5;
     }
 
     private static INPUT KeyInput(int vk, bool up, bool unicode = false, ushort scan = 0)
@@ -385,9 +416,15 @@ public static class InputSender
         return true;
     }
 
-    /// <summary>完整敲击一个虚拟键（按下+抬起）。</summary>
+    /// <summary>完整敲击一个虚拟键（按下+抬起）。鼠标键 0x01~0x06 走鼠标注入。</summary>
     public static void Tap(int vk)
     {
+        if (IsMouseVk(vk))
+        {
+            Press(vk, down: true);
+            Press(vk, down: false);
+            return;
+        }
         Send(KeyInput(vk, false), KeyInput(vk, true));
     }
 
@@ -395,6 +432,11 @@ public static class InputSender
     public static void Tap(int vk, int times)
     {
         if (times <= 0) return;
+        if (IsMouseVk(vk))
+        {
+            for (int i = 0; i < times; i++) Tap(vk);
+            return;
+        }
         var arr = new INPUT[times * 2];
         for (int i = 0; i < times; i++)
         {
@@ -403,6 +445,10 @@ public static class InputSender
         }
         Send(arr);
     }
+
+    /// <summary>这个虚拟键码是不是鼠标按键（左/右/中/侧 1/侧 2）。</summary>
+    public static bool IsMouseVk(int vk)
+        => vk is >= VK.LButton and <= 0x06 or VK.WheelLeft or VK.WheelRight;
 
     /// <summary>按住一组修饰键，执行动作，再按相反顺序释放。</summary>
     public static void WithModifiers(IEnumerable<int> modifiers, Action action)
@@ -911,18 +957,26 @@ public static class InputSender
     }
 
     /// <summary>
-    /// 只发鼠标键的"抬起"。
+    /// 只发鼠标键的"按下"。
     ///
-    /// 善后必须用这个（而不是裸 mouse_event）：抬起带上 <see cref="InjectionTag"/> 之后，
-    /// 我们自己的钩子会按"注入"直接放行，不会被改键 / 层逻辑误当成用户按下的键吞掉。
+    /// 侧键（0x05 / 0x06）在 SendInput 里不是独立 flag，而是
+    /// XDOWN/XUP + mouseData = 1 / 2（XBUTTON1 / XBUTTON2）。
     /// </summary>
-    public static void MouseUp(int vk)
+    public static void MouseDown(int vk)
     {
+        /* 自检钩子：鼠标也会真的点下去（点一下桌面可能选中图标、点一下浏览器可能跳转），
+         * 所以测试时必须拦在这里，和键盘的 SenderForTest 一个待遇。 */
+        if (SenderForTest is { } spy) { spy(vk, false); return; }
+
         uint flag = vk switch
         {
-            0x01 => MOUSEEVENTF_LEFTUP,
-            0x02 => MOUSEEVENTF_RIGHTUP,
-            0x04 => MOUSEEVENTF_MIDDLEUP,
+            0x01 => MOUSEEVENTF_LEFTDOWN,
+            0x02 => MOUSEEVENTF_RIGHTDOWN,
+            0x04 => MOUSEEVENTF_MIDDLEDOWN,
+            0x05 or 0x06 => MOUSEEVENTF_XDOWN,
+            /* 水平滚轮没有"按住"这回事：一次拨动就是一个 HWHEEL 事件。
+             * 方向看 mouseData 的正负（负＝左拨，正＝右拨）。 */
+            VK.WheelLeft or VK.WheelRight => MOUSEEVENTF_HWHEEL,
             _ => 0,
         };
         if (flag == 0) return;
@@ -932,10 +986,94 @@ public static class InputSender
             type = INPUT_MOUSE,
             U = new InputUnion
             {
-                mi = new MOUSEINPUT { dwFlags = flag, dwExtraInfo = InjectionTag },
+                mi = new MOUSEINPUT
+                {
+                    dwFlags = flag,
+                    mouseData = vk switch
+                    {
+                        0x05 => 1u,
+                        0x06 => 2u,
+                        VK.WheelLeft => unchecked((uint)-120),
+                        VK.WheelRight => 120u,
+                        _ => 0u,
+                    },
+                    dwExtraInfo = InjectionTag,
+                },
             },
         };
         Send(input);
+        NoteInjected(vk);
+    }
+
+    /// <summary>
+    /// 只发鼠标键的"抬起"。
+    ///
+    /// 善后必须用这个（而不是裸 mouse_event）：抬起带上 <see cref="InjectionTag"/> 之后，
+    /// 我们自己的钩子会按"注入"直接放行，不会被改键 / 层逻辑误当成用户按下的键吞掉。
+    /// </summary>
+    public static void MouseUp(int vk)
+    {
+        if (SenderForTest is { } spy) { spy(vk, true); return; }
+
+        /* 滚轮没有抬起：拨一下就已经结束了。这里直接返回，不再补一条 HWHEEL，
+         * 否则一次"发送滚轮"会真的滚两格。 */
+        if (vk is VK.WheelLeft or VK.WheelRight) return;
+
+        uint flag = vk switch
+        {
+            0x01 => MOUSEEVENTF_LEFTUP,
+            0x02 => MOUSEEVENTF_RIGHTUP,
+            0x04 => MOUSEEVENTF_MIDDLEUP,
+            0x05 or 0x06 => MOUSEEVENTF_XUP,
+            _ => 0,
+        };
+        if (flag == 0) return;
+
+        var input = new INPUT
+        {
+            type = INPUT_MOUSE,
+            U = new InputUnion
+            {
+                mi = new MOUSEINPUT
+                {
+                    dwFlags = flag,
+                    mouseData = vk switch { 0x05 => 1u, 0x06 => 2u, _ => 0u },
+                    dwExtraInfo = InjectionTag,
+                },
+            },
+        };
+        Send(input);
+        NoteInjected(vk);
+    }
+
+    /// <summary>
+    /// 按下 / 抬起一个"输入键" —— 键盘键与鼠标键统一入口。
+    ///
+    /// 改键既能把键盘键换成鼠标键（Caps → 左键），也能反过来（侧键 → Ctrl），
+    /// 所以发送端不能再假设参数一定是键盘虚拟码。
+    /// </summary>
+    public static void Press(int vk, bool down)
+    {
+        if (vk is >= 0x01 and <= 0x06)
+        {
+            if (down) MouseDown(vk); else MouseUp(vk);
+            return;
+        }
+
+        if (down) KeyDown(vk); else KeyUp(vk);
+    }
+
+    /// <summary>统一松手（善后路径用）。</summary>
+    public static void ReleaseInput(int vk) => Press(vk, down: false);
+
+    /// <summary>记一条"这个键刚被我们注入过"（回声识别用；鼠标键也要记）。</summary>
+    private static void NoteInjected(int vk)
+    {
+        lock (InjectedGate)
+        {
+            if (InjectedAt.Count > 128) InjectedAt.Clear();
+            InjectedAt[vk] = Environment.TickCount64;
+        }
     }
 
     /// <summary>相对移动鼠标（像素）。</summary>

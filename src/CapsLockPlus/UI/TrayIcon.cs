@@ -265,6 +265,12 @@ public sealed class TrayIcon : IDisposable
                 if (remaps.Count > 2) pairs += "…";
                 text += Environment.NewLine + Loc.F("改键生效：{0}", pairs);
             }
+
+            /* 设备专属改键不进全局表（这正是不想"换个键盘还在改"的原因），
+             * 所以托盘这里得单独提一句，否则用户会以为规则丢了。 */
+            int deviceRules = _host.Settings.Profiles.Where(p => !p.Shared).Sum(p => p.Remaps.Count);
+            if (deviceRules > 0)
+                text += Environment.NewLine + Loc.F("另有 {0} 条设备专属改键", deviceRules);
         }
         catch { }
 

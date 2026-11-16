@@ -1,3 +1,5 @@
+using CapsLockPlus.Core.Input;
+
 namespace CapsLockPlus.Core.Settings;
 
 /// <summary>
@@ -17,7 +19,8 @@ public static class SnippetAudit
         var issues = new List<Issue>();
         var snippets = settings.Global.Snippets;
 
-        string prefix = settings.Hotstring?.EffectivePrefix ?? "";
+        var prefixes = settings.Hotstring?.EffectivePrefixes ?? new List<string>();
+        string prefix = prefixes.Count > 0 ? prefixes[0] : "";
 
         /* 已登记的分组（忽略大小写）；空分组名不算。 */
         var groups = new HashSet<string>(
@@ -62,12 +65,13 @@ public static class SnippetAudit
             if (string.IsNullOrEmpty(s.Text))
                 issues.Add(new Issue("内容为空", $"{trigger} 没有替换内容", s));
 
-            /* 4) 触发词没带前缀：引擎只认"前缀 + 触发词"，这种永远命中不了。 */
+            /* 4) 触发词没带前缀：引擎只认"前缀 + 触发词"，这种永远命中不了。
+             *    配了多个前缀时，任一个都算带前缀。 */
             if (prefix.Length > 0 &&
-                !trigger.StartsWith(prefix, StringComparison.Ordinal) &&
+                !SnippetMatcher.StartsWithAnyPrefix(trigger, prefixes) &&
                 SnippetPrefixOps.IsSymbol(trigger[0]))
             {
-                issues.Add(new Issue("前缀不对", $"{trigger} 用的不是当前前缀「{prefix}」", s));
+                issues.Add(new Issue("前缀不对", $"{trigger} 用的不是当前前缀「{string.Join("", prefixes)}」", s));
             }
 
             /* 5) 触发词里带空格：空格本身是"展开"的快捷键，永远打不出来。 */
@@ -101,7 +105,8 @@ public static class SnippetAudit
     public static FixResult Fix(AppSettings settings)
     {
         var snippets = settings.Global.Snippets;
-        string prefix = settings.Hotstring?.EffectivePrefix ?? "";
+        var prefixes = settings.Hotstring?.EffectivePrefixes ?? new List<string>();
+        string prefix = prefixes.Count > 0 ? prefixes[0] : "";
 
         int prefixFixed = 0, groupsAdded = 0, renamed = 0;
 
@@ -117,6 +122,8 @@ public static class SnippetAudit
             string trigger = (snippet.Trigger ?? "").Trim();
             if (trigger.Length < 2) continue;
             if (!SnippetPrefixOps.IsSymbol(trigger[0])) continue;
+            /* 已经带任一前缀（`、` 也算）就不用动。 */
+            if (prefixes.Count > 0 && SnippetMatcher.StartsWithAnyPrefix(trigger, prefixes)) continue;
             if (prefix.Length > 0 && trigger[0] == prefix[0]) continue;
 
             string rest = trigger[1..];

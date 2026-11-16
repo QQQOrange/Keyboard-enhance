@@ -1,0 +1,72 @@
+<Window x:Class="CapsLockPlus.UI.Windows.ActionPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
+        Title="{loc:T '选择动作'}"
+        Width="820" Height="620" MinWidth="680" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Brush.Surface}"
+        Foreground="{DynamicResource Brush.TextPrimary}"
+        FontFamily="{StaticResource Font.Ui}">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="{loc:T '选择双击动作'}" FontSize="17" FontWeight="SemiBold" />
+
+        <TextBox Grid.Row="1" x:Name="SearchBox" Style="{StaticResource TextBox.Base}"
+                 Height="38" Margin="0,14,0,0" VerticalContentAlignment="Center"
+                 TextChanged="OnSearchChanged" />
+
+        <TextBlock Grid.Row="2" Text="{loc:T '一级分类'}" Margin="0,16,0,6"
+                   Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" />
+        <WrapPanel Grid.Row="3" x:Name="GroupPanel" />
+
+        <TextBlock Grid.Row="4" Text="{loc:T '二级分类'}" Margin="0,12,0,6"
+                   Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" />
+        <WrapPanel Grid.Row="5" x:Name="SubPanel" />
+
+        <ListBox Grid.Row="6" x:Name="ActionList" Margin="0,12,0,0"
+                 Background="{DynamicResource Brush.SurfaceAlt}"
+                 BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
+                 MouseDoubleClick="OnListDoubleClick"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="10,7">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
+                        <TextBlock Text="{Binding Description}" FontSize="11.5" Margin="0,3,0,0"
+                                   Foreground="{DynamicResource Brush.TextSecondary}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding DisplayCategory}" FontSize="10.5" Margin="0,3,0,0"
+                                   Foreground="{DynamicResource Brush.TextTertiary}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Grid Grid.Row="7" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Content="{loc:T '清除（关闭双击）'}"
+                    Style="{StaticResource Button.Ghost}" Padding="12,7" Click="OnClear" />
+            <Button Grid.Column="2" Content="{loc:T '取消'}" IsCancel="True"
+                    Style="{StaticResource Button.Ghost}" Padding="16,7" Margin="0,0,8,0" />
+            <Button Grid.Column="3" Content="{loc:T '选择'}" IsDefault="True"
+                    Style="{StaticResource Button.Primary}" Padding="22,7" Click="OnOk" />
+        </Grid>
+    </Grid>
+</Window>

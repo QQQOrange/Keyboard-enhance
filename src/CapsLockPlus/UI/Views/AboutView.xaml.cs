@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -371,6 +374,87 @@ public partial class AboutView : UserControl
 
     private void OnOpenUpstream(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
         OpenUrl("https://github.com/wo52616111/capslock-plus");
+
+    /* 文档与反馈：都放在 GitHub 仓库里，不另建站点 —— 版本一发布，
+       README / CHANGELOG 就跟着当前 tag 走，不会出现「软件里的说明比发布页旧」。 */
+    private void OnOpenReadme(object sender, RoutedEventArgs e) =>
+        OpenUrl(UpdateService.GitHubUrl + "/blob/main/README.md");
+
+    private void OnOpenChangelog(object sender, RoutedEventArgs e) =>
+        OpenUrl(UpdateService.GitHubUrl + "/blob/main/CHANGELOG.md");
+
+    private void OnOpenIssues(object sender, RoutedEventArgs e) =>
+        OpenUrl(UpdateService.GitHubUrl + "/issues/new/choose");
+
+    private void OnOpenDataDir(object sender, RoutedEventArgs e) => OpenFolder(AppPaths.DataDir);
+
+    private void OnOpenLogs(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string dir = Path.GetDirectoryName(CoreLog.LogPath) ?? AppPaths.DataDir;
+            Directory.CreateDirectory(dir);
+            OpenFolder(dir);
+        }
+        catch (Exception ex)
+        {
+            _host?.Notify(UiText.Failed(Loc.T("打开日志"), ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// 复制一段可以直接贴进 issue 的诊断信息。
+    ///
+    /// 只放版本、系统、路径和计数 —— **不读配置内容、不读日志正文**：
+    /// 日志里会有用户敲过的字，粘到公开 issue 里不合适。
+    /// </summary>
+    private void OnCopyDiagnostics(object sender, RoutedEventArgs e)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Keyboard Enhance 诊断信息");
+        sb.AppendLine("版本: " + UpdateService.CurrentVersion);
+        sb.AppendLine("系统: " + RuntimeInformation.OSDescription.Trim());
+        sb.AppendLine("架构: " + RuntimeInformation.ProcessArchitecture +
+                      " · .NET " + Environment.Version.ToString(3));
+        sb.AppendLine("数据目录: " + AppPaths.DataDir +
+                      (AppPaths.DataDirIsFallback ? "（回落到 LocalAppData）" : ""));
+        sb.AppendLine("设置文件: " + AppPaths.SettingsFile);
+        sb.AppendLine("日志: " + CoreLog.LogPath);
+
+        if (_host != null)
+        {
+            var s = _host.Settings;
+            int bound = 0;
+            foreach (var layer in s.Layers) foreach (var k in layer.Keys) if (k.IsBound) bound++;
+            sb.AppendLine("配置: " + s.Layers.Count + " 层 · " +
+                          s.Triggers.Count(t => t.Enabled) + " 个触发键 · " +
+                          bound + " 条绑定 · " + s.Macros.Count + " 个宏");
+        }
+
+        try
+        {
+            Clipboard.SetText(sb.ToString());
+            HelpStatusText.Text = Loc.T("诊断信息已复制，直接粘到 issue 里即可。");
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "复制诊断信息");
+            HelpStatusText.Text = Loc.T("复制失败：剪贴板正被其它程序占用，稍后再试。");
+        }
+    }
+
+    private void OpenFolder(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo("explorer.exe", "\"" + path + "\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            _host?.Notify(UiText.Failed(Loc.T("打开文件夹"), ex.Message));
+        }
+    }
 
     private void OpenUrl(string url)
     {

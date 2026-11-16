@@ -152,6 +152,19 @@ public static partial class SelfTest
         Section("按设备改键");
         TestDeviceRemap();
 
+        Section("设备方案");
+        TestDeviceProfiles();
+        TestDeviceAliasAndDefaults();
+
+        Section("原键替换层");
+        TestReplacementLayer();
+
+        Section("动作分类");
+        TestKeyAndMouseCategories();
+
+        Section("别名前缀与找回");
+        TestSnippetPrefixes();
+
         Section("启动密码");
         TestStartupPassword();
 

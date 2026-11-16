@@ -1,0 +1,43 @@
+<UserControl x:Class="CapsLockPlus.UI.Controls.AppPickButtons"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
+             Focusable="False">
+    <!--
+        「挑一个程序」的统一控件：两个按钮 + 中间一条竖线。
+
+        为什么要统一：这个动作散落在四处（按应用卡片、窗口绑定、别名的程序范围、
+        设置里的文本片段范围），以前每处的高度、图标、有无文字都不一样 ——
+        有的只有准星图标，用户根本看不出那是"点一下目标窗口"。现在一处定义、
+        四处引用，分隔线明确表示"这是两个并列的入口"，不是一整个按钮。
+    -->
+    <Border CornerRadius="9" BorderThickness="1"
+            BorderBrush="{DynamicResource Brush.BorderStrong}"
+            Background="{DynamicResource Brush.Surface}"
+            Padding="3" VerticalAlignment="Center" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal">
+            <Button x:Name="FileButton" Style="{StaticResource Button.Ghost}" Padding="10,4"
+                    Click="OnFileClick"
+                    ToolTip="{loc:T '从文件管理器里挑一个 exe：程序还没启动也能加'}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE8E5;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="{loc:T '选择程序…'}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <!-- 竖线：两个按钮是并列关系，不是"主按钮 + 附属图标" -->
+            <Rectangle Width="1" Margin="6,3" Fill="{DynamicResource Brush.Border}" />
+
+            <Button x:Name="WindowButton" Style="{StaticResource Button.Ghost}" Padding="10,4"
+                    Click="OnWindowClick"
+                    ToolTip="{loc:T '点一下，然后在目标程序窗口上点一下就能选中它'}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE7C9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="{loc:T '点选窗口'}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Border>
+</UserControl>

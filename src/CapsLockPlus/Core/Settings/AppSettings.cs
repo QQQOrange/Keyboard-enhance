@@ -148,14 +148,61 @@ public sealed class Snippet
 public sealed class HotstringOptions
 {
     /// <summary>
-    /// 触发前缀符号（**只有一个**）。空字符串 = 不需要前缀，直接打触发词。
+    /// 触发前缀符号（第一个）。空字符串 = 不需要前缀，直接打触发词。
     ///
-    /// 以前是"好几个符号都认"，实际用起来很别扭：打到句末的逗号、问号
-    /// 都可能把后面的词凑成一个片段。现在只有一个，用户自己定。
+    /// 真正的来源是 <see cref="Prefixes"/>；这个字段保留是为了**兼容老配置**
+    /// （4.25.0 及以前只存一个字符），读盘时会被并进列表。
     /// </summary>
-    public string Prefix { get; set; } = "/";
+    public string Prefix { get; set; } = ":";
 
-    /// <summary>用全角符号（把 <see cref="Prefix"/> 按全角输出，如 "/" → "／"）。</summary>
+    /// <summary>
+    /// 展开之后替用户按一下 Shift。
+    ///
+    /// 别名基本都用英文打（触发词不能以字母开头，但整串通常是 ASCII），而正文多数是中文；
+    /// 打完拼音再切回来，每展开一次就得多按一次 Shift。勾上这个开关，展开完由软件补这一下。
+    /// 默认开：一次单独的 Shift 抬起/按落在别的程序里几乎无副作用。
+    /// </summary>
+    public bool RestoreImeAfterExpand { get; set; } = true;
+
+    /// <summary>
+    /// 界面上可选的触发符号（全是半角）。
+    ///
+    /// 只列这一组是因为它们在中文/英文输入法下都是同一个键、同一个字符，
+    /// 不会出现"看得到打不出"的情况；顺序就是胶囊里显示的顺序。
+    /// </summary>
+    public static readonly (string Symbol, string Label)[] SymbolChoices =
+    {
+        (":", "冒号"),
+        ("`", "反引号"),
+        ("~", "波浪号"),
+        ("!", "感叹号"),
+        ("-", "短横线"),
+        (",", "逗号"),
+        (".", "句号"),
+        (";", "分号"),
+    };
+
+    /// <summary>符号对应的中文名字（不在列表里时返回空串，界面直接把符号本身当名字）。</summary>
+    public static string LabelOf(string? symbol)
+    {
+        if (string.IsNullOrEmpty(symbol)) return "";
+        foreach (var (s, label) in SymbolChoices)
+        {
+            if (string.Equals(s, symbol, StringComparison.Ordinal)) return label;
+        }
+        return "";
+    }
+
+    /// <summary>
+    /// 全部前缀符号（每个字符一个）。可以配多个：`;` `/` `、` 都能带出别名。
+    ///
+    /// 为什么要多个：中文输入法里全角/半角是同一个键打出来的，
+    /// 但屏幕上显示成两个字符（`\` 和 `、`）。只认一个符号时，
+    /// 用户改成 `、` 就会发现"怎么打都不触发"。
+    /// </summary>
+    public List<string> Prefixes { get; set; } = new();
+
+    /// <summary>用全角符号（4.26.0 起不再有界面开关，只用于读取老配置）。</summary>
     public bool FullWidth { get; set; }
 
     /// <summary>打完触发词再按空格就替换（推荐）；关掉则只认触发键（Caps+Tab）。</summary>
@@ -184,8 +231,55 @@ public sealed class HotstringOptions
     /// </summary>
     public bool ListModeMigrated { get; set; } = true;
 
-    /// <summary>实际生效的前缀字符（考虑全角设置）。</summary>
-    public string EffectivePrefix => FullWidth ? ToFullWidthOrSelf(Prefix) : (Prefix ?? "");
+    /// <summary>
+    /// 实际生效的前缀列表：先取 <see cref="Prefixes"/>，为空时用老字段
+    /// <see cref="Prefix"/>（并把全角设置换算进去）。
+    ///
+    /// 每个字符一个前缀，最长 4 个字符（留出 `;;` 这类双符号前缀的余地），
+    /// 去重且保持用户书写的顺序 —— 第一个是"默认前缀"，
+    /// 新建条目、显示用到的都是它。
+    /// </summary>
+    public IReadOnlyList<string> EffectivePrefixes
+    {
+        get
+        {
+            var list = new List<string>();
+            void Add(string? s)
+            {
+                string t = (s ?? "").Trim();
+                if (t.Length == 0 || t.Length > 4) return;
+                if (list.Contains(t, StringComparer.Ordinal)) return;
+                list.Add(t);
+            }
+
+            foreach (string p in Prefixes ?? new List<string>()) Add(p);
+
+            /* 老配置里只有 Prefix（可能还开着全角）。
+             * 新配置读进来时 Prefixes 已经有值，这里就不会再插手。 */
+            if (list.Count == 0)
+                Add(FullWidth ? ToFullWidthOrSelf(Prefix ?? "") : (Prefix ?? ""));
+
+            return list;
+        }
+    }
+
+    /// <summary>第一个前缀（老代码用它；新代码请用 <see cref="EffectivePrefixes"/>）。</summary>
+    public string EffectivePrefix => EffectivePrefixes.Count > 0 ? EffectivePrefixes[0] : "";
+
+    /// <summary>
+    /// 把前缀整理成规范形态：列表去空去重，<see cref="Prefix"/> 同步成第一个，
+    /// 老的全角开关收编成实际的字面字符后关掉。
+    ///
+    /// 读盘与"用户改完前缀"两条路径都要调它，否则会出现
+    /// "列表里有一份、Prefix 里还是旧的"这种自相矛盾的配置。
+    /// </summary>
+    public void NormalizePrefixes()
+    {
+        var list = EffectivePrefixes.ToList();
+        Prefixes = list;
+        Prefix = list.Count > 0 ? list[0] : "";
+        FullWidth = false;
+    }
 
     /// <summary>把半角符号换成全角（只处理常见 ASCII 符号）。</summary>
     public static string ToFullWidthOrSelf(string s)
@@ -433,6 +527,37 @@ public sealed class GlobalOptions
     /// </summary>
     public List<KeyRemap> BaseRemaps { get; set; } = new();
 
+    /// <summary>
+    /// 「全部生效」：勾上之后，所有插在电脑上的键盘/鼠标都受本软件影响，
+    /// 逐台设备的勾选**不再起作用**。
+    ///
+    /// 默认 true —— 老用户升级上来看到的行为必须和以前完全一致，
+    /// 不能因为新增了"设备范围"就悄悄把某台设备关掉。
+    /// </summary>
+    public bool DeviceScopeAll { get; set; } = true;
+
+    /// <summary>
+    /// 设备备注：设备 key（VID/PID 或完整路径）→ 用户自己起的名字。
+    ///
+    /// 为什么要这个：同一批键盘在系统里的设备名经常一模一样 —— 五条
+    /// 「HID Keyboard Device」，五条「USB Input Device」。用户在设置里根本分不清
+    /// 哪一条是手里这只，于是"按设备分别设置"就变成了盲选。备注之后，
+    /// 界面上所有出现设备名的地方（胶囊、清单、改键说明、托盘）都用这个名字。
+    ///
+    /// 键一定先经 <see cref="Input.InputDevices.Normalize"/> 归一，
+    /// 否则换个小写的设备路径就查不到备注了。
+    /// </summary>
+    public Dictionary<string, string> DeviceAliases { get; set; } = new();
+
+    /// <summary>
+    /// 一次性迁移标记：基础层的 Caps+Q / Caps+R 补齐成 Qbar / Delete 已经做过。
+    ///
+    /// 默认方案里这两条本来就是 qbar / delete，但老配置里可能被写成空绑定
+    /// （doNothing）或被删掉过 —— 升级上来的用户看到的就是"Caps+Q 按了没反应"。
+    /// 补一次就置位，之后用户自己改成什么都不再动。
+    /// </summary>
+    public bool BaseLayerDefaultsFixed { get; set; }
+
     /// <summary>主题：system / light / dark。</summary>
     public string Theme { get; set; } = "system";
 
@@ -679,6 +804,15 @@ public sealed class LayerOptions
 
     /// <summary>是否启用。</summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 这一页的鼠标键改动是否生效。
+    ///
+    /// 关掉后，本层（含子层）的 mouseLeft/Right/Middle/X1/X2 绑定全部放行，
+    /// 不会执行动作，也不会被层吞掉。键盘绑定不受影响。
+    /// 默认开，保证老配置升级后行为不变。
+    /// </summary>
+    public bool MouseKeysEnabled { get; set; } = true;
 
     /// <summary>该层的按键绑定列表。</summary>
     public List<KeyBinding> Keys { get; set; } = new();
@@ -1009,6 +1143,29 @@ public sealed class QbarOptions
     public string AccentColor { get; set; } = "#4C8DFF";
     public double Width { get; set; } = 760;
     public bool ShowIcons { get; set; } = true;
+
+    /// <summary>
+    /// 面板一出来就先切到英文输入。
+    ///
+    /// 引擎关键字（bd / gg / zhihu）只能用英文字母打，而中文输入法下敲下去是拼音，
+    /// 面板里根本拼不出 "bd"。勾上之后打开面板会替你按一下 Shift 切到英文。
+    /// </summary>
+    public bool SwitchToEnglishOnOpen { get; set; }
+
+    /// <summary>
+    /// 引擎标签定下来之后切回中文。
+    ///
+    /// 关键字认出来之后要打的通常是搜索内容（中文），不切回来还得手动按一次 Shift。
+    /// 和 <see cref="SwitchToEnglishOnOpen"/> 配对使用最顺手，但两者可以单独开。
+    /// </summary>
+    public bool SwitchBackOnEngine { get; set; }
+
+    /// <summary>
+    /// 固定在 Qbar 空面板/搜索里的文件、文件夹、网址或程序。
+    /// 和搜索/程序/网址三张表分开：这里不参与“关键字+空格”的标签解析，
+    /// 只是把常用目标直接摆在候选里，输入名称就能命中。
+    /// </summary>
+    public List<QEntry> Pinned { get; set; } = new();
 }
 
 public sealed class AppSettings
@@ -1023,6 +1180,12 @@ public sealed class AppSettings
     /// 否则老用户永远看不到新引擎 —— 因为设置文件已经存在，不会再走默认值分支。
     /// </summary>
     public int BuiltinEnginesVersion { get; set; }
+
+    /// <summary>内置常用网址表的版本号；新增网址时 +1，老用户启动时自动补齐。</summary>
+    public int BuiltinWebVersion { get; set; }
+
+    /// <summary>内置启动程序表的版本号；新增程序时 +1，老用户启动时自动补齐。</summary>
+    public int BuiltinRunVersion { get; set; }
 
     public GlobalOptions Global { get; set; } = new();
     public QbarOptions Qbar { get; set; } = new();
@@ -1047,6 +1210,34 @@ public sealed class AppSettings
 
     /// <summary>宏列表。</summary>
     public List<Macro> Macros { get; set; } = new();
+
+    /// <summary>
+    /// 原键替换层：**不需要触发键**的一组绑定。
+    ///
+    /// 与 <see cref="Layers"/> 的区别只有一条：层要按住触发键才生效，
+    /// 这里按下去就执行，等于"这个物理键现在就是这个功能"。
+    /// 一条 <c>space → 1</c> 的绑定写进来，空格就直接变成 1；
+    /// 鼠标中键写成一组快捷键，按中键就打出那组快捷键。
+    ///
+    /// 与 <see cref="GlobalOptions.BaseRemaps"/> 的区别：改键只能换成
+    /// 另一个键，这里可以绑任意动作（发送组合键、宏、打开程序、文本…）。
+    /// 两者都命中同一个键时，替换层优先（见 HotkeyEngine.Replacement.cs）。
+    /// </summary>
+    public List<KeyBinding> Replacements { get; set; } = new();
+
+    /// <summary>
+    /// 原键替换页的鼠标键改动是否生效。
+    /// 关掉后替换层对 mouseLeft/Right/Middle/X1/X2 全部放行，键盘替换不受影响。
+    /// </summary>
+    public bool ReplaceMouseKeysEnabled { get; set; } = true;
+
+    /// <summary>
+    /// 设备方案：按键盘 / 鼠标分开的一套设置（含「通用设置」那一份）。
+    ///
+    /// 老配置里没有这一段时，<see cref="Keys"/> + <see cref="GlobalOptions.BaseRemaps"/>
+    /// 就是全部行为，升级上来不会有任何变化。
+    /// </summary>
+    public List<DeviceProfile> Profiles { get; set; } = new();
 
     public KeyBinding? FindBinding(string combo) =>
         Keys.FirstOrDefault(k => string.Equals(k.Combo, combo, StringComparison.OrdinalIgnoreCase));

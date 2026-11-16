@@ -115,4 +115,90 @@ public static class SnippetPrefixOps
         return changed;
     }
 
+    /// <summary>列表里显示触发词：把**任意一个**前缀剥掉（长的优先，`;;` 不会只剥一半）。</summary>
+    public static string StripAny(string? trigger, IReadOnlyList<string>? prefixes)
+    {
+        string t = trigger ?? "";
+        if (prefixes == null) return t;
+
+        string best = "";
+        foreach (string p in prefixes)
+        {
+            if (string.IsNullOrEmpty(p)) continue;
+            if (!t.StartsWith(p, StringComparison.Ordinal)) continue;
+            if (p.Length > best.Length) best = p;
+        }
+        return best.Length > 0 ? t[best.Length..] : t;
+    }
+
+    /// <summary>
+    /// 保存时把前缀补回去：用户只打了 <c>mail</c>，存的还是 `;mail`。
+    /// 已经带任一前缀的原样保留。
+    /// </summary>
+    public static string ApplyAny(string? typed, IReadOnlyList<string>? prefixes)
+    {
+        string name = typed?.Trim() ?? "";
+        if (name.Length == 0) return "";
+        if (prefixes == null || prefixes.Count == 0) return name;
+
+        foreach (string p in prefixes)
+        {
+            if (!string.IsNullOrEmpty(p) && name.StartsWith(p, StringComparison.Ordinal)) return name;
+        }
+        return prefixes[0] + name;
+    }
+
+    /// <summary>
+    /// 多前缀版迁移：旧前缀（可能不止一个）统一换成新前缀里的第一个。
+    ///
+    /// 规则与单前缀版一致，只是"旧"和"新"都成了集合：
+    ///   · 已经带任一**新**前缀 → 不动；
+    ///   · 带某个**旧**前缀 → 换成默认前缀；
+    ///   · 两边都不沾（手写的裸词）→ 补上默认前缀。
+    /// </summary>
+    public static int MigrateAll(AppSettings settings,
+                                IEnumerable<string>? oldPrefixes,
+                                IReadOnlyList<string>? newPrefixes)
+    {
+        var news = (newPrefixes ?? Array.Empty<string>())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        string primary = news.Count > 0 ? news[0] : "";
+
+        var olds = (oldPrefixes ?? Array.Empty<string>())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Where(p => !news.Contains(p, StringComparer.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(p => p.Length)
+            .ToList();
+
+        int changed = 0;
+        foreach (var snippet in settings.Global.Snippets)
+        {
+            string trigger = snippet.Trigger ?? "";
+            if (trigger.Length == 0) continue;
+
+            string? matchedNew = news.FirstOrDefault(p => trigger.StartsWith(p, StringComparison.Ordinal));
+            string next;
+            if (matchedNew != null)
+            {
+                next = trigger;                                  // 已经是新前缀
+            }
+            else
+            {
+                string? matchedOld = olds.FirstOrDefault(p => trigger.StartsWith(p, StringComparison.Ordinal));
+                string rest = matchedOld != null ? trigger[matchedOld.Length..] : trigger;
+                next = primary + rest;
+            }
+
+            if (next != trigger)
+            {
+                snippet.Trigger = next;
+                changed++;
+            }
+        }
+
+        return changed;
+    }
 }

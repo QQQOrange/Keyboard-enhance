@@ -76,7 +76,22 @@ public sealed partial class HotkeyEngine
                     System.Threading.Thread.Sleep(6);
                 }
                 InputSender.Text(text);
+
+                /* 替用户补一下 Shift：别名用英文打、正文多半是中文，
+                 * 不补的话每展开一次都得手动按 Shift 切回输入法。
+                 * 等 40ms 让前面的注入文本先被前台吃掉，再切换输入法状态。 */
+                try
+                {
+                    if (_settings().Hotstring?.RestoreImeAfterExpand == true)
+                    {
+                        System.Threading.Thread.Sleep(40);
+                        InputSender.Tap(0x10);          // VK_SHIFT
+                    }
+                }
+                catch (Exception ex) { CoreLog.Swallow(ex, "展开后切回输入法"); }
+
                 CoreLog.Info($"片段展开：{hit.Trigger} → {text.Length} 字");
+
             }
             catch (Exception ex) { CoreLog.Warn("片段展开失败：" + ex.Message); }
         });
@@ -116,7 +131,7 @@ public sealed partial class HotkeyEngine
         };
     }
 
-    private bool OnKeyDownInLayer(int vk, bool wasPhysicallyDown)
+    private bool OnKeyDownInLayer(int vk, bool wasPhysicallyDown, string? device = null)
     {
         /* 「欠着的抬起」只在**本次按下的第一次**记账。
          *
@@ -242,8 +257,8 @@ public sealed partial class HotkeyEngine
          * 走的是下面的 comboId，不受这条影响。 */
         string comboId = KeyName.BuildComboEx(mods, keyName);
         KeyBinding? binding = string.IsNullOrEmpty(_subLayerKeyDown)
-            ? FindInLayer(settings, _activeLayer, comboId)
-            : FindInLayer(settings, _activeLayer, ComboForSubLayer(_subLayerKeyDown, mods, keyName));
+            ? FindInLayer(settings, _activeLayer, comboId, device)
+            : FindInLayer(settings, _activeLayer, ComboForSubLayer(_subLayerKeyDown, mods, keyName), device);
 
         if (binding == null || !binding.IsBound)
         {
@@ -265,6 +280,20 @@ public sealed partial class HotkeyEngine
             return true;
         }
 
+        return ExecuteBinding(binding, vk, oweUp: !wasPhysicallyDown);
+    }
+
+    /// <summary>
+    /// 执行一条绑定：动作节流、吞键记账、连续量动作登记，然后返回 true（吞掉这个键）。
+    ///
+    /// 抽出来是因为「原键替换层」要走**完全一样**的执行路径 —— 层里能做的
+    /// （可重复动作、连续量、150ms 去重）替换层里也能做，用户不该感到两套语义。
+    /// 唯一的前提是调用方已经决定"这个键归这条绑定管"。
+    /// </summary>
+    private bool ExecuteBinding(KeyBinding binding, int vk, bool oweUp)
+    {
+        var settings = _settings();
+
         string action = binding.Action;
         string arg = binding.Arg;
 
@@ -283,7 +312,9 @@ public sealed partial class HotkeyEngine
 
         _lastRepeatVk = vk;
         _swallowedDown.TryAdd(vk, 0);
-        OweUp(vk);
+        /* 「欠着的抬起」只在**本次按下的第一次**记账（见 OnKeyDownInLayer 里的同名逻辑）：
+         * 系统自动重复的 down 不能重复记账，否则松手时补吞一个前台从没收到过的 up。 */
+        if (oweUp) _swallowedUp.TryAdd(vk, 0);
         _usedCombo = true;
 
         /* 同一个动作在 150ms 内重复请求 → 丢弃。
@@ -333,7 +364,7 @@ public sealed partial class HotkeyEngine
     }
 
     /// <summary>层模式下松开某个键。返回 true 表示吞掉。</summary>
-    private bool OnKeyUpInLayer(int vk)
+    private bool OnKeyUpInLayer(int vk, string? device = null)
     {
         bool swallow = _swallowedUp.TryRemove(vk, out _);
         _swallowedDown.TryRemove(vk, out _);

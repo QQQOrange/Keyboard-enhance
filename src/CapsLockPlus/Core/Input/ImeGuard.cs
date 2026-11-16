@@ -106,6 +106,121 @@ internal static class ImeGuard
     }
 
     /// <summary>
+    /// 确保目标窗口所在线程处于“会拼候选”的输入语言（中文/日文/韩文…）。
+    ///
+    /// Qbar 的引擎标签是通过 <c>qbar:bd</c> 这类动作带出来的：面板一打开
+    /// 就已经是“等待输入关键词”的状态，此时用户要打的是中文，不是英文。
+    /// 不能再盲目按 Shift —— 中文输入法下按一下 Shift 只会切成英文。
+    ///
+    /// 只从**已安装**的布局里挑，不强行加载简中布局：用户可能用繁体、
+    /// 日文或自定义中文布局；一个都没有时返回 false，保持原状。
+    /// </summary>
+    public static bool EnsureComposing(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+
+        uint tid = GetWindowThreadProcessId(hwnd, out _);
+        if (tid == 0) return false;
+
+        IntPtr current = GetKeyboardLayout(tid);
+        if (!IsComposing(current))
+        {
+            IntPtr target = FindInstalledComposing();
+            if (target == IntPtr.Zero) return false;
+            /* 100ms 足够 PostMessage 落地。原来 400ms 会在 Qbar 打开时
+             * 卡住 UI 线程（两个选项都开时会连续切两次），用户能明显感觉到。
+             * 布局切换本身是异步的，后面还会用 WPF 的 InputMethod 兜底。 */
+            if (!SwitchTo(hwnd, target, 100)) return false;
+        }
+
+        /* 关键补丁：中文输入法在“英文模式”下 HKL 仍然是 0x0804，
+         * IsComposing 已经为 true，但用户打出来还是英文。
+         * Qbar 带引擎标签唤出时用户下一步就是打中文，所以这里直接
+         * 把输入上下文的 conversion mode 拉回 IME_CMODE_NATIVE。
+         *
+         * ImmGetContext 对 TSF-only 窗口可能返回 NULL；此时保持布局结果，
+         * 不把“拿不到上下文”误判成失败。 */
+        return ForceNativeMode(hwnd) || ForceNativeMode(FocusOf(tid)) || IsComposing(current);
+    }
+
+    /// <summary>把输入上下文切到“本地语言”（中文/日文假名等）模式。</summary>
+    private static bool ForceNativeMode(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        IntPtr himc = IntPtr.Zero;
+        try
+        {
+            himc = ImmGetContext(hwnd);
+            if (himc == IntPtr.Zero) return false;
+
+            if (!ImmGetConversionStatus(himc, out uint conversion, out uint sentence))
+                return false;
+
+            const uint ImeCmodeNative = 0x0001;
+            if ((conversion & ImeCmodeNative) != 0) return true;
+
+            /* 保留全角/软键盘等其它位，只把 NATIVE 置上。 */
+            return ImmSetConversionStatus(himc, conversion | ImeCmodeNative, sentence);
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (himc != IntPtr.Zero) ImmReleaseContext(hwnd, himc);
+        }
+    }
+
+    /// <summary>
+    /// 确保目标窗口处于不会拼候选的输入语言（英文）。
+    ///
+    /// 只在“当前是中文/日文等”时才切；已经是英文布局就什么都不做。
+    /// 这一条对应 Qbar 的“打开时切英文”选项：用于直接打引擎关键字。
+    /// </summary>
+    public static bool EnsureEnglish(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+
+        uint tid = GetWindowThreadProcessId(hwnd, out _);
+        if (tid == 0) return false;
+
+        IntPtr current = GetKeyboardLayout(tid);
+        if (current != IntPtr.Zero && !IsComposing(current)) return true;
+
+        IntPtr english = EnglishLayout;
+        if (english == IntPtr.Zero) return false;
+        return SwitchTo(hwnd, english, 100);
+    }
+
+    /// <summary>从系统已加载的键盘布局里找第一个会拼候选的（优先当前用户默认）。</summary>
+    private static IntPtr FindInstalledComposing()
+    {
+        try
+        {
+            int count = GetKeyboardLayoutList(0, null);
+            if (count <= 0) return IntPtr.Zero;
+
+            var list = new IntPtr[count];
+            count = GetKeyboardLayoutList(count, list);
+
+            /* 先找简体中文（0x0804）。系统里往往同时装了中日韩，
+             * 直接拿第一个 composing 布局会命中日文/韩文，
+             * 用户按 CapsLock 出来的是假名输入，比英文还难用。 */
+            foreach (var layout in list)
+                if (((int)(layout.ToInt64() & 0xFFFF)) == 0x0804) return layout;
+
+            for (int i = 0; i < count; i++)
+                if (IsComposing(list[i])) return list[i];
+        }
+        catch
+        {
+            /* 预期内：枚举失败就当系统没有可用中文布局 */
+        }
+        return IntPtr.Zero;
+    }
+
+    /// <summary>
     /// 把输入语言切回去。换岗失败会留在英文布局上，对用户是可见的打扰，
     /// 所以这里多重试一轮。
     /// </summary>

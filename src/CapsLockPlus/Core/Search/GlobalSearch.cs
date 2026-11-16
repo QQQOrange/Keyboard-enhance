@@ -52,10 +52,10 @@ public static class GlobalSearch
         }
 
         /* 别名：显示时去掉前缀（和列表一致）。 */
-        string prefix = settings.Hotstring?.EffectivePrefix ?? "";
+        var prefixes = settings.Hotstring?.EffectivePrefixes ?? new List<string>();
         foreach (var snippet in settings.Global.Snippets)
         {
-            string name = SnippetPrefixOps.Strip(snippet.Trigger, prefix);
+            string name = SnippetPrefixOps.StripAny(snippet.Trigger, prefixes);
             if (name.Length == 0) continue;
 
             string detail = !string.IsNullOrWhiteSpace(snippet.Comment)

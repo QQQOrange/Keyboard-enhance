@@ -79,6 +79,36 @@ public sealed class QbarService
 
     public sealed record BuiltinCommand(string Key, string Title, string Description, string Action);
 
+    /// <summary>
+    /// 不带斜杠的快捷命令：输入关键字后按空格立即执行。
+    /// 这些词故意选得短，且和普通程序名区分开；它们优先于同名 Run 条目。
+    /// </summary>
+    public sealed record QuickCommand(
+        string Key,
+        string Title,
+        string Description,
+        string Target,
+        string Arguments = "",
+        bool RunAsAdmin = false,
+        bool IsCommand = false);
+
+    public static readonly QuickCommand[] QuickCommands =
+    {
+        new("cmd", "打开命令行窗口", "cmd.exe", "cmd.exe"),
+        new("cmda", "打开命令行窗口（管理员）", "以管理员身份运行 cmd.exe", "cmd.exe", RunAsAdmin: true),
+        new("psh", "PowerShell", "powershell.exe", "powershell.exe", "-NoExit"),
+        new("psha", "PowerShell（管理员）", "以管理员身份运行 PowerShell", "powershell.exe", "-NoExit", true),
+        new("touch", "创建文件", "在桌面新建一个空文件", "touch", IsCommand: true),
+        new("shutdown", "关机", "立即关闭计算机", "shutdown.exe", "/s /t 0"),
+        new("reboot", "重启计算机", "立即重启计算机", "shutdown.exe", "/r /t 0"),
+        new("uninstall", "卸载程序", "打开「应用和功能」", "ms-settings:appsfeatures"),
+        new("connections", "管理网络连接", "打开「网络连接」", "ncpa.cpl"),
+        new("hosts", "编辑 Hosts", "以管理员身份打开 hosts 文件", "notepad.exe",
+            @"C:\Windows\System32\drivers\etc\hosts", true),
+        new("lock", "锁定计算机", "立即锁定当前会话", "rundll32.exe", "user32.dll,LockWorkStation"),
+        new("sleep", "睡眠", "让计算机进入睡眠", "rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0"),
+    };
+
     public static readonly BuiltinCommand[] Commands =
     {
         new("/settings", "打开设置", "按键增强 设置窗口", "openSettings"),
@@ -102,16 +132,22 @@ public sealed class QbarService
         if (key.Length == 0) return null;
         var settings = _settings();
 
-        var search = settings.Search.FirstOrDefault(x =>
-            !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
-            x.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
-        if (search != null) return QbarChip.FromEntry(ChipKind.Search, search);
+        /* 先查“常用网址”，再查启动程序，最后才是搜索指令。
+         *
+         * 同一个关键字可能同时存在于三张表里：例如 bili 既是 B 站搜索，
+         * 也是 B 站首页。用户输入 bili 再按空格，期望的是打开 B 站，
+         * 而不是把 bili 变成“搜索 B 站”的标签；网址表优先最符合这个直觉。
+         * 只存在于搜索表的 bd / zh 等不受影响。 */
+        var web = settings.Web.FirstOrDefault(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
+        if (web != null) return QbarChip.FromEntry(ChipKind.Web, web);
 
         var run = settings.Run.FirstOrDefault(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
         if (run != null) return QbarChip.FromEntry(ChipKind.Run, run);
 
-        var web = settings.Web.FirstOrDefault(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
-        if (web != null) return QbarChip.FromEntry(ChipKind.Web, web);
+        var search = settings.Search.FirstOrDefault(x =>
+            !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+            x.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
+        if (search != null) return QbarChip.FromEntry(ChipKind.Search, search);
 
         return null;
     }
@@ -126,6 +162,70 @@ public sealed class QbarService
             yield return (r.Key, r.DisplayName, ChipKind.Run);
         foreach (var w in settings.Web)
             yield return (w.Key, w.DisplayName, ChipKind.Web);
+    }
+
+    /// <summary>输入框内容恰好是快捷命令关键字时返回它（按空格直接执行）。</summary>
+    public static QuickCommand? FindQuickCommand(string text)
+    {
+        string key = (text ?? "").Trim();
+        return QuickCommands.FirstOrDefault(q => q.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>把快捷命令转成结果行；touch 走内置命令分支，其余直接启动程序。</summary>
+    public static QbarResult ToResult(QuickCommand q)
+    {
+        if (q.IsCommand)
+            return new QbarResult(QbarKind.Command, q.Title, q.Description, "快捷", q.Key) { Score = -70 };
+
+        return new QbarResult(QbarKind.Run, q.Title, q.Description, "快捷", q.Target,
+            null, q.RunAsAdmin, q.Arguments) { Score = -70 };
+    }
+
+    /// <summary>
+    /// 参数模板展开：`{q}` 换成用户输入；没有 `{q}` 时把输入追加到末尾。
+    /// 带空格的词会自动加引号，否则 `eudic -w hello world` 会被拆成两个参数。
+    /// </summary>
+    public static string ExpandArguments(string template, string tail)
+    {
+        tail = (tail ?? "").Trim();
+        template ??= "";
+        if (template.Contains("{q}", StringComparison.Ordinal))
+        {
+            /* 模板里已经写了引号（例如 --query="{q}"）时只做转义，不再套一层引号。 */
+            int at = template.IndexOf("{q}", StringComparison.Ordinal);
+            bool quoted = (at > 0 && template[at - 1] == '"') ||
+                          (at + 2 < template.Length && template[at + 2] == '"');
+            return template.Replace("{q}", quoted ? EscapeArgument(tail) : QuoteArgument(tail));
+        }
+        if (tail.Length == 0) return template;
+        return (template.Length == 0 ? "" : template + " ") + QuoteArgument(tail);
+    }
+
+    private static string QuoteArgument(string value)
+    {
+        if (value.Length == 0) return "\"\"";
+        return value.Any(char.IsWhiteSpace) || value.Contains('"')
+            ? "\"" + EscapeArgument(value) + "\""
+            : value;
+    }
+
+    private static string EscapeArgument(string value) => value.Replace("\"", "\\\"");
+
+    /// <summary>
+    /// 搜索条目既可以是网址模板，也可以是一个程序的 exe（例如欧路词典 `-w {q}`）。
+    /// 只有明确像本地程序/脚本/快捷方式时才走启动分支，避免把 `https://...` 误判。
+    /// </summary>
+    public static bool LooksLikeProgram(string value)
+    {
+        string s = (value ?? "").Trim().Trim('"');
+        if (s.Length == 0 || s.Contains("://", StringComparison.Ordinal)) return false;
+        string ext = System.IO.Path.GetExtension(s);
+        return ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
+               ext.Equals(".bat", StringComparison.OrdinalIgnoreCase) ||
+               ext.Equals(".cmd", StringComparison.OrdinalIgnoreCase) ||
+               ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ||
+               ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase) ||
+               ext.Equals(".py", StringComparison.OrdinalIgnoreCase);
     }
 
     public List<QbarResult> Query(string raw, int limit = 12) => Query(raw, null, limit);
@@ -146,6 +246,23 @@ public sealed class QbarService
             {
                 case ChipKind.Search:
                 {
+                    /* 搜索条目可能是网址模板，也可能是本地词典/程序的 exe：
+                     *   eudic.exe  +  -w {q}
+                     * 后者不能拼成 URL，直接把查询词展开进参数并启动程序。 */
+                    if (LooksLikeProgram(chip.Value))
+                    {
+                        string args = ExpandArguments(chip.Arguments, tail);
+                        list.Add(new QbarResult(QbarKind.Run,
+                            tail.Length == 0 ? Loc.F("用 {0} 查询…", chip.Label) : tail,
+                            string.IsNullOrEmpty(args) ? chip.Value : $"{chip.Value} {args}",
+                            chip.Label, chip.Value.Trim('"'), chip.IconPath, chip.RunAsAdmin, args)
+                        {
+                            Score = -100,
+                            Chip = chip,
+                        });
+                        break;
+                    }
+
                     string url = chip.Value.Replace("{q}", Uri.EscapeDataString(tail));
                     list.Add(new QbarResult(QbarKind.Search,
                         tail.Length == 0 ? Loc.F("在 {0} 中搜索…", chip.Label) : tail,
@@ -170,10 +287,8 @@ public sealed class QbarService
                 }
                 case ChipKind.Run:
                 {
-                    string args = string.IsNullOrEmpty(chip.Arguments)
-                        ? tail
-                        : (tail.Length == 0 ? chip.Arguments : chip.Arguments + " " + tail);
-                    list.Add(new QbarResult(QbarKind.Run, chip.Label, chip.Value, chip.Label, chip.Value,
+                    string args = ExpandArguments(chip.Arguments, tail);
+                    list.Add(new QbarResult(QbarKind.Run, chip.Label, chip.Value, chip.Label, chip.Value.Trim('"'),
                         chip.IconPath, chip.RunAsAdmin, args)
                     {
                         Score = -100,
@@ -205,6 +320,17 @@ public sealed class QbarService
             return results.Take(limit).ToList();
         }
 
+        /* 0) 快捷命令：cmd / cmda / psh / psha / touch / shutdown / reboot /
+         *    uninstall / connections / hosts。
+         *    输入完整关键字后按空格会直接执行（见 QbarWindow.OnInputKeyDown），
+         *    这里先把它们放进候选，保证用户能看到提示、也能用方向键选中后回车。 */
+        foreach (var q in QuickCommands)
+        {
+            if (q.Key.StartsWith(text, StringComparison.OrdinalIgnoreCase))
+                results.Add(ToResult(q));
+        }
+        if (FindQuickCommand(text) != null) return results.Take(limit).ToList();
+
         // 1) 内置命令
         if (text.StartsWith('/'))
         {
@@ -234,6 +360,39 @@ public sealed class QbarService
             }
         }
 
+        /* 2.5) PowerShell 直通：
+         *   ps Get-Process
+         *   $ Get-Date
+         * 只生成一条“在 PowerShell 里执行”的结果，真正启动发生在回车之后；
+         * 不在 Query 阶段执行任何命令，避免每敲一个字符就跑一次进程。 */
+        string psCommand = "";
+        if (text.StartsWith("ps ", StringComparison.OrdinalIgnoreCase)) psCommand = text[3..].Trim();
+        else if (text.StartsWith("$ ", StringComparison.Ordinal)) psCommand = text[2..].Trim();
+        if (psCommand.Length > 0)
+        {
+            string escaped = psCommand.Replace("\"", "\\\"");
+            results.Insert(0, new QbarResult(QbarKind.Run,
+                Loc.F("PowerShell：{0}", Shorten(psCommand, 48)),
+                Loc.T("在 PowerShell 窗口中执行这条命令"),
+                "PS", "powershell.exe", null, false, $"-NoExit -Command \"{escaped}\"")
+            { Score = -15 });
+        }
+
+        /* 2.6) cmd 直通：> ipconfig /all
+         * 和 ps 一样，只在回车后启动，不在 Query 阶段执行。 */
+        if (text.StartsWith("> ", StringComparison.Ordinal))
+        {
+            string cmdCommand = text[2..].Trim();
+            if (cmdCommand.Length > 0)
+            {
+                results.Insert(0, new QbarResult(QbarKind.Run,
+                    Loc.F("CMD：{0}", Shorten(cmdCommand, 48)),
+                    Loc.T("在命令提示符窗口中执行这条命令"),
+                    "CMD", "cmd.exe", null, false, $"/k {cmdCommand}")
+                { Score = -14 });
+            }
+        }
+
         // 3) 第一段是已定义的搜索 / 网址 / 程序关键字
         int space = text.IndexOf(' ');
         string head = space > 0 ? text[..space] : text;
@@ -243,6 +402,17 @@ public sealed class QbarService
             x.Key.Equals(head, StringComparison.OrdinalIgnoreCase) && x.Key != "default");
         if (searchHit != null && space > 0)
         {
+            if (LooksLikeProgram(searchHit.Value))
+            {
+                string args = ExpandArguments(searchHit.Arguments, tail);
+                results.Insert(0, new QbarResult(QbarKind.Run,
+                    Loc.F("{0}：{1}", searchHit.Key, tail),
+                    string.IsNullOrEmpty(args) ? searchHit.Value : $"{searchHit.Value} {args}",
+                    searchHit.Key, searchHit.Value.Trim('"'), searchHit.IconPath,
+                    searchHit.RunAsAdmin, args) { Score = -20 });
+                return results.Take(limit).ToList();
+            }
+
             string url = searchHit.Value.Replace("{q}", Uri.EscapeDataString(tail));
             results.Insert(0, new QbarResult(QbarKind.Search,
                 Loc.F("{0}：{1}", searchHit.Key, tail),
@@ -253,6 +423,11 @@ public sealed class QbarService
 
         // 4) 模糊匹配：程序 / 网址 / 搜索指令 / 内置命令
         results.AddRange(MatchEntries(settings, text));
+
+        /* 4.1) 本地内容源：固定项、开始菜单应用、浏览器书签、Windows 设置、文件。
+         * 它们比“动作/剪贴板/窗口”更像是用户要找的目标，所以排在前面；
+         * 具体分数由各 Provider 决定，默认搜索仍然兜底。 */
+        results.AddRange(QbarProviders.Search(settings, text, limit));
 
         /* 4.5) 动作目录：把 124 个动作变成"可搜索、可执行"的能力。
          *
@@ -354,11 +529,18 @@ public sealed class QbarService
 
     private static IEnumerable<QbarResult> DefaultResults(AppSettings settings)
     {
-        yield return new QbarResult(QbarKind.Command, "输入关键字搜索，或直接回车用默认搜索引擎", "输入 =算式 可以直接计算", "", "", null) { Score = 1 };
+        yield return new QbarResult(QbarKind.Command,
+            "输入关键字搜索，或直接回车用默认搜索引擎",
+            "支持应用/文件/书签/设置；=算式 直接计算，ps 命令走 PowerShell，Ctrl+P 固定选中项",
+            "", "", null) { Score = 1 };
+        foreach (var pinned in QbarProviders.MatchPinned(settings.Qbar.Pinned, "").Take(6))
+            yield return pinned with { Score = 1 };
         foreach (var cmd in Commands.Take(5))
             yield return new QbarResult(QbarKind.Command, cmd.Title, cmd.Description, cmd.Key, cmd.Action) { Score = 2 };
+        foreach (var q in QuickCommands.Take(4))
+            yield return ToResult(q) with { Score = 2 };
         foreach (var run in settings.Run.Take(4))
-            yield return new QbarResult(QbarKind.Run, run.Key, run.Value, "程序", run.Value) { Score = 3 };
+            yield return new QbarResult(QbarKind.Run, run.Key, run.Value, "程序", run.Value, run.IconPath) { Score = 3 };
     }
 
     /// <summary>
@@ -442,7 +624,7 @@ public sealed class QbarService
             {
                 yield return new QbarResult(QbarKind.Run,
                     string.IsNullOrEmpty(run.Comment) ? run.Key : $"{run.Key}  ·  {run.Comment}",
-                    run.Value, "程序", run.Value, null, run.RunAsAdmin, run.Arguments)
+                    run.Value, "程序", run.Value, run.IconPath, run.RunAsAdmin, run.Arguments)
                 { Score = 10 + (run.Key.StartsWith(text, StringComparison.OrdinalIgnoreCase) ? 0 : 15) };
             }
         }
@@ -455,7 +637,7 @@ public sealed class QbarService
                 yield return new QbarResult(QbarKind.Web,
                     string.IsNullOrEmpty(web.Comment) ? web.Key : $"{web.Key}  ·  {web.Comment}",
                     web.Value, "网址", web.Value)
-                { Score = 20 };
+                { Score = 20, IconPath = web.IconPath };
             }
         }
         foreach (var s in settings.Search)
@@ -581,6 +763,14 @@ public sealed class QbarService
                 OpenFileTarget(result);
                 break;
             case QbarKind.Run:
+                /* 程序参数里可能带 {q}（欧路词典的 -w {q}）。
+                 * 用户只按了回车、还没输入关键词时，绝不能把字面量 {q}
+                 * 传给程序 —— 那会打开一个查 "{q}" 的错误窗口。 */
+                if (result.Arguments.Contains("{q}", StringComparison.Ordinal))
+                {
+                    cb.Notify(Loc.T("先输入要搜索的内容：关键字后面加一个空格"));
+                    break;
+                }
                 cb.RunTarget(result.Payload, result.RunAsAdmin, result.Arguments);
                 break;
             case QbarKind.Command:

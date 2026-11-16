@@ -58,6 +58,19 @@ public sealed class KeyboardHook : IDisposable
     /// </summary>
     public event Action<int, int, int>? MouseDownEvent;
 
+    /// <summary>
+    /// 鼠标按键的"按下/抬起"，与键盘的 <see cref="KeyEvent"/> 完全同构：
+    /// 参数 (vk, down, injected) → 返回 true 表示吞掉这次事件。
+    ///
+    /// vk 用 0x01~0x06（VK_LBUTTON / RBUTTON / MBUTTON / XBUTTON1 / XBUTTON2），
+    /// 与 <see cref="KeyName"/> 里的 mouseLeft… 一一对应 —— 这样改键、层绑定、
+    /// 触发键都能复用同一套按键名，不必再维护第二套标识。
+    ///
+    /// 只在 nCode 有效时触发；注入事件也会送进来（injected = true），
+    /// 由引擎统一放行，保证"自己注入的键不会被自己再改一次"。
+    /// </summary>
+    public event Func<int, bool, bool, bool>? MouseButtonEvent;
+
     private HookProc? _mouseProc;
     private IntPtr _mouseHook = IntPtr.Zero;
 
@@ -341,11 +354,47 @@ public sealed class KeyboardHook : IDisposable
                         WheelEvent?.Invoke(delta > 0 ? 1 : -1, false, false);
                 }
             }
-            else if (msg is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN)
+            else if (msg == WM_MOUSEHWHEEL)
             {
+                /* 水平滚轮（滚轮左右拨 / 触摸板左右滑）。
+                 *
+                 * 它和左右键不一样：没有"按住"，一次拨动就是一个事件。这里把它
+                 * 拆成 按下 + 抬起 两条，复用同一套改键 / 替换层逻辑 —— 用户就
+                 * 可以像配鼠标中键那样配"滚轮左拨 → 音量减"。
+                 *
+                 * delta 的正负约定和 Windows 一致：正 = 右拨，负 = 左拨。 */
                 var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-                if (data.dwExtraInfo != InputSender.InjectionTag)
+                int delta = (short)((data.mouseData >> 16) & 0xFFFF);
+                if (delta != 0)
+                {
+                    int wheelVk = delta > 0 ? VK.WheelRight : VK.WheelLeft;
+                    if (MouseButtonEvent is { } wheelHandler)
+                    {
+                        bool injected = data.dwExtraInfo == InputSender.InjectionTag;
+                        bool swallowed = wheelHandler(wheelVk, true, injected);
+                        wheelHandler(wheelVk, false, injected);
+                        if (swallowed) return new IntPtr(1);
+                    }
+                }
+            }
+            else if (TryMouseButton(msg, lParam, out int vk, out bool down, out var data))
+            {
+                /* Qbar 的"点面板外面就收起"只关心按下，且**只认真人操作** ——
+                 * 自己注入的点击不能把面板关掉。 */
+                if (down && msg is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN
+                    && data.dwExtraInfo != InputSender.InjectionTag)
+                {
                     MouseDownEvent?.Invoke(data.pt.X, data.pt.Y, msg);
+                }
+
+                /* 改键 / 层绑定对鼠标键的处理：与键盘同一个回调约定（返回 true = 吞）。
+                 * 放在 Qbar 之后 —— 面板要不要收起是"观察"，改键是"接管"，
+                 * 观察必须先看到原始事件。 */
+                if (MouseButtonEvent is { } handler)
+                {
+                    bool injected = data.dwExtraInfo == InputSender.InjectionTag;
+                    if (handler(vk, down, injected)) return new IntPtr(1);
+                }
             }
         }
         catch (Exception ex)
@@ -353,6 +402,43 @@ public sealed class KeyboardHook : IDisposable
             CoreLog.Error("鼠标钩子回调异常", ex);
         }
         return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// 鼠标消息 → (虚拟键, 是否按下)。不是按键消息返回 false。
+    /// 侧键从 mouseData 的高位字取 XBUTTON1 / XBUTTON2。
+    /// </summary>
+    private static bool TryMouseButton(int msg, IntPtr lParam, out int vk, out bool down,
+        out MSLLHOOKSTRUCT data)
+    {
+        vk = 0;
+        down = false;
+        data = default;
+
+        switch (msg)
+        {
+            case WM_LBUTTONDOWN: vk = 0x01; down = true; break;
+            case WM_LBUTTONUP: vk = 0x01; down = false; break;
+            case WM_RBUTTONDOWN: vk = 0x02; down = true; break;
+            case WM_RBUTTONUP: vk = 0x02; down = false; break;
+            case WM_MBUTTONDOWN: vk = 0x04; down = true; break;
+            case WM_MBUTTONUP: vk = 0x04; down = false; break;
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP:
+                {
+                    var x = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                    int button = (int)((x.mouseData >> 16) & 0xFFFF);
+                    vk = button == 2 ? 0x06 : 0x05;    // XBUTTON2 / XBUTTON1
+                    down = msg == WM_XBUTTONDOWN;
+                    data = x;
+                    return true;
+                }
+            default:
+                return false;
+        }
+
+        data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+        return true;
     }
 
     [DllImport("user32.dll")]

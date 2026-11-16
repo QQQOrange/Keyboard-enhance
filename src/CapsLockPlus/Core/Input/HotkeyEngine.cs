@@ -127,6 +127,13 @@ public sealed partial class HotkeyEngine : IDisposable
     private DateTime _lastTapTime = DateTime.MinValue;
     private bool _hasLastTap;
 
+    /// <summary>
+    /// 上一次短按是否已经补发了触发键本身。
+    /// doubletap 打开 Qbar 时，第一次 CapsLock 已经把大写状态翻转了；
+    /// 双击命中后要再补一次，把状态还原，否则面板一打开就是大写。
+    /// </summary>
+    private bool _lastTapReplayed;
+
     private bool _laltDown;
 
     /// <summary>当前按住的"非修饰键子层键"的键名（空 = 没有）。</summary>
@@ -199,6 +206,51 @@ public sealed partial class HotkeyEngine : IDisposable
 
     private bool _enabled = true;
     private bool _suspended;
+
+    /// <summary>
+    /// 上一次判定**吞掉**这个键的原因（放行时为 null）。
+    ///
+    /// 纯诊断用途：`--probe-key 4` 会把它打出来。用户问"这个键我没配过，凭什么被接管"
+    /// 时，光看代码只能猜是哪一层接管的 —— 有了这个字段就能直接说出是哪条规则。
+    /// 不要拿它做业务判断（下一个事件就会覆盖）。
+    /// </summary>
+    public string? LastDecision { get; private set; }
+
+    /// <summary>记下原因并返回 true（吞键）。所有吞键出口都应走这里。</summary>
+    private bool SwallowFor(string reason)
+    {
+        LastDecision = reason;
+        return true;
+    }
+
+    /// <summary>鼠标事件日志开关（环境变量 CLP_MOUSE_LOG=1 才开）。</summary>
+    private static readonly bool MouseLogOn =
+        Environment.GetEnvironmentVariable("CLP_MOUSE_LOG") == "1";
+
+    private int _mouseLogLines;
+
+    /// <summary>
+    /// 把一次鼠标按键事件写进 %TEMP%\clp-mouse.log（最多 5000 行）。
+    ///
+    /// 键盘有 --probe-key 可以拿配置静态判定，鼠标串键却常常取决于
+    /// "系统到底报了哪个 vk / 我们的注入有没有被驱动抹掉标记" —— 那只能看现场。
+    /// </summary>
+    internal void LogMouseEvent(int vk, bool down, bool injected, string? decision)
+    {
+        if (!MouseLogOn) return;
+        if (vk is < 0x01 or > 0x0B) return;          // 只记鼠标键（含滚轮左右拨）
+        if (_mouseLogLines > 5000) return;
+        try
+        {
+            string path = Path.Combine(Path.GetTempPath(), "clp-mouse.log");
+            File.AppendAllText(path,
+                $"{DateTime.Now:HH:mm:ss.fff} vk=0x{vk:X2} {(down ? "↓" : "↑")} " +
+                $"inj={(injected ? 1 : 0)} {(decision == null ? "放行" : "吞：" + decision)}" +
+                Environment.NewLine);
+            _mouseLogLines++;
+        }
+        catch { /* 日志失败绝不能影响按键 */ }
+    }
 
     /// <summary>
     /// 是否启用。切到 false（托盘"暂停"）时**必须复位触发键状态**：
@@ -433,6 +485,7 @@ public sealed partial class HotkeyEngine : IDisposable
         _settings = settings;
         _invoke = invoke;
         _hook.KeyEvent += OnKeyEvent;
+        _hook.MouseButtonEvent += OnMouseButton;
         _hook.WheelEvent += OnWheel;
         /* 回调异常时的兜底决策：处于层语义就吞掉，别把按键漏给前台。
          * 见 KeyboardHook.SwallowOnError 的注释。 */

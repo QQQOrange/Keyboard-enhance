@@ -75,9 +75,30 @@ public sealed partial class HotkeyEngine
     private readonly Dictionary<int, (Dictionary<string, KeyBinding> Map, List<KeyBinding> Src, int Version)>
         _layerMapCache = new();
 
-    private KeyBinding? FindInLayer(AppSettings s, int layerId, string comboId)
+    /// <summary>
+    /// 查这一层里某个组合键绑了什么。设备方案优先于全局层绑定。
+    ///
+    /// 继承规则（和改键一致）：
+    ///   · 这台设备有专属方案，且方案里绑了这个组合 → 用方案里的；
+    ///   · 方案里没绑 → <see cref="DeviceProfile.Inherit"/> 为真才回退全局，
+    ///     否则视为"空操作"（独立方案的语义就是不继承）；
+    ///   · 设备没有专属方案 → 先用通用方案里的绑定，再回退全局。
+    ///
+    /// 拿不到设备（null）时行为与改动前完全一致。
+    /// </summary>
+    private KeyBinding? FindInLayer(AppSettings s, int layerId, string comboId, string? device = null)
     {
+        if (device != null)
+        {
+            var hit = DeviceProfiles.ResolveDeviceBinding(s, layerId, comboId, device, out bool blocked);
+            if (hit is { IsBound: true }) return hit;
+
+            /* 独立方案、或者这台设备上显式清了这条键：到此为止。
+             * 再往下看全局层绑定的话，"给这只键盘另起一套键位"会一直漏。 */
+            if (blocked) return null;
+        }
+
         var map = LayerBindingMap(s, layerId);
-        return map != null && map.TryGetValue(comboId, out var hit) ? hit : null;
+        return map != null && map.TryGetValue(comboId, out var found) ? found : null;
     }
 }

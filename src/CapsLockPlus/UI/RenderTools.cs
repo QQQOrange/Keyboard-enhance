@@ -33,6 +33,23 @@ public static class RenderTools
         Directory.CreateDirectory(outDir);
         int count = 0;
 
+        /* 截图是给人看"正常长什么样"的：老配置里可能还留着 `/`、`、` 这类
+         * 不在候选里的旧符号，截出来胶囊旁边会写「旧符号」，容易被当成 bug。
+         * 所以只在渲染这一轮里临时换成冒号，**不写盘**。 */
+        try
+        {
+            var hs = host.Settings.Hotstring;
+            if (hs != null && Core.Settings.HotstringOptions.LabelOf(hs.EffectivePrefix).Length == 0)
+            {
+                hs.Prefixes = new List<string> { ":" };
+                hs.NormalizePrefixes();
+            }
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn("渲染：整理触发符号失败：" + ex.Message);
+        }
+
         var main = host.CreateMainWindow();
         main.WindowStartupLocation = WindowStartupLocation.Manual;
         main.Left = -32000;
@@ -171,6 +188,94 @@ public static class RenderTools
 
                 kv.ResetRenderState();
                 Pump(120);
+
+                /* 设备胶囊的弹层。Popup 不进主窗口截图，只能单独截；
+                 * 这张图同时也是"设备清单真的填进去了"的回归 —— 一台设备都没有时，
+                 * 弹层里只剩那行「通用设置」，图上一眼就能看出来。 */
+                if (kv.OpenDeviceScopeForRender() is { } scope)
+                {
+                    Pump(250);
+                    try
+                    {
+                        SaveElement(scope, Path.Combine(outDir, "keys-device-scope.png"));
+                    }
+                    catch (Exception ex)
+                    {
+                        CoreLog.Warn("渲染设备弹层失败：" + ex.Message);
+                    }
+                    finally
+                    {
+                        kv.CloseDeviceScopeForRender();
+                        Pump(80);
+                    }
+                }
+
+                /* 「设备备注」：系统里五条同名设备，只能靠备注分清。
+                 *
+                 * 备注按钮只在选中某台设备后出现，所以先切到第一台真设备再开弹层。 */
+                try
+                {
+                    var first = CapsLockPlus.Core.Input.InputDevices.All().FirstOrDefault(d => d.Key.Length > 0);
+                    if (first != null && kv.OpenAliasForRender(first.Key) is { } aliasCard)
+                    {
+                        Pump(250);
+                        SaveElement(aliasCard, Path.Combine(outDir, "keys-device-alias.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染备注弹层失败：" + ex.Message);
+                }
+                finally
+                {
+                    try { kv.CloseAliasForRender(); Pump(80); } catch { /* 预期内：收尾 */ }
+                }
+
+                /* 「找回丢失的别名」：只有真丢过条目才弹出来的窗口，
+                 * 平时谁也没见过它长什么样。用假数据渲染一张，保证列表、来源、按钮都对齐。 */
+                try
+                {
+                    var fake = new CapsLockPlus.Core.Settings.SnippetRecovery.ScanResult(
+                        new List<CapsLockPlus.Core.Settings.SnippetRecovery.Candidate>
+                        {
+                            new("、mail", "someone@example.com", "工作", "settings.json.bak", DateTime.Now.AddDays(-2)),
+                            new("、tel", "13800000000", "工作", "settings-20261112.json", DateTime.Now.AddDays(-4)),
+                            new(";addr", "广东省潮州市湘桥区…", "地址", "settings.json.2026-11-14", DateTime.Now.AddDays(-6)),
+                        }, 7, 1);
+                    var recoverDlg = CapsLockPlus.UI.Windows.SnippetRecoverWindow.CreateForRender(fake);
+                    if (recoverDlg.Content is FrameworkElement recoverCard)
+                    {
+                        recoverCard.Measure(new Size(516, double.PositiveInfinity));
+                        recoverCard.Arrange(new Rect(0, 0, 516, recoverCard.DesiredSize.Height));
+                        recoverCard.UpdateLayout();
+                        Pump(120);
+                        SaveElement(recoverCard, Path.Combine(outDir, "hotstrings-recover.png"));
+                    }
+                    recoverDlg.Close();
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染找回别名窗口失败：" + ex.Message);
+                }
+
+                /* 「原键替换」层：不需要触发键的一层。
+                 *
+                 * 它是伪层（Id=0，不在 Settings.Layers 里），最容易坏的地方是
+                 * 下拉项、层名、提示语、计数这四处各说各话 —— 全都在这张图里。 */
+                try
+                {
+                    kv.SelectLayerForRender(CapsLockPlus.UI.Views.KeysView.ReplaceLayerId);
+                    Pump(160);
+                    Save(main, Path.Combine(outDir, "keys-replace-layer.png"));
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染原键替换层失败：" + ex.Message);
+                }
+                finally
+                {
+                    try { kv.SelectLayerForRender(1); Pump(100); } catch { /* 预期内：恢复默认层 */ }
+                }
 
                 /* 「恢复默认」的二次确认框。
                  *
@@ -399,6 +504,16 @@ public static class RenderTools
         qbar.UpdateLayout();
         Pump(120);
         Save(qbar, Path.Combine(outDir, "qbar-chip-typing.png"));
+        count++;
+
+        // 网址关键字：不建标签，整条 URL 直接进输入框
+        qbar.OpenForRender("bili");
+        qbar.ParkOffScreenForRender();
+        Pump(260);
+        qbar.Height = qbar.ActualHeight;
+        qbar.UpdateLayout();
+        Pump(120);
+        Save(qbar, Path.Combine(outDir, "qbar-web-url.png"));
         count++;
 
         // 程序标签（自动取 exe 图标）
@@ -807,6 +922,50 @@ public static class RenderTools
         }
 
         bmp.Render(root);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bmp));
+        using var fs = File.Create(path);
+        encoder.Save(fs);
+    }
+
+    /// <summary>
+    /// 把**一个元素**（而不是整个窗口）渲染成 PNG —— 给 Popup 用：
+    /// 弹层挂在独立顶层窗口上，主窗口的截图里永远没有它。
+    /// </summary>
+    private static void SaveElement(FrameworkElement element, string path)
+    {
+        element.UpdateLayout();
+
+        if (element.ActualWidth < 1 || element.ActualHeight < 1)
+        {
+            element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            element.Arrange(new Rect(element.DesiredSize));
+            element.UpdateLayout();
+        }
+
+        double dpiScale = VisualTreeHelper.GetDpi(element).DpiScaleX;
+        double dpi = 96 * dpiScale;
+
+        int w = (int)Math.Ceiling(element.ActualWidth * dpiScale);
+        int h = (int)Math.Ceiling(element.ActualHeight * dpiScale);
+        if (w <= 0 || h <= 0) return;
+
+        /* 弹层内容自带底（Card 样式），但仍先把"页面底色"铺一层：
+         * AllowsTransparency 的 Popup 在离屏渲染里没有桌面可叠，
+         * 圆角以外会是纯透明，PNG 看起来像缺了一块。 */
+        var background = element.TryFindResource("Brush.Surface") as Brush;
+        var bmp = new RenderTargetBitmap(w, h, dpi, dpi, PixelFormats.Pbgra32);
+
+        if (background != null)
+        {
+            var backdrop = new DrawingVisual();
+            using (var dc = backdrop.RenderOpen())
+                dc.DrawRectangle(background, null, new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+            bmp.Render(backdrop);
+        }
+
+        bmp.Render(element);
+
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bmp));
         using var fs = File.Create(path);

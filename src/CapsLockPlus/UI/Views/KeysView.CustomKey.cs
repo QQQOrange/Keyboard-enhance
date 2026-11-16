@@ -159,6 +159,11 @@ public partial class KeysView : UserControl
             });
         }
 
+        /* 两个大分类：键盘按键 / 鼠标功能。
+         * 用户找键时先想到的是"这是键盘上的还是鼠标上的"，所以大分类先立住，
+         * 键盘里再按区段细分（字母/数字/功能键…），滚起来才好找。 */
+        Group(Loc.T("键盘按键"));
+
         Group(Loc.T("字母键"));
         foreach (char c in "abcdefghijklmnopqrstuvwxyz") Item(c.ToString());
 
@@ -186,6 +191,23 @@ public partial class KeysView : UserControl
 
         Group(Loc.T("小键盘"));
         for (int i = 0; i <= 9; i++) Item("numpad" + i);
+
+        /* 修饰键与系统键：以前这个列表里没有它们，"把 Ctrl 发给对面"这类需求
+         * 只能靠捕获窗；捕获窗一旦被别的程序抢了键就录不进来，所以这里补全。 */
+        Group(Loc.T("修饰键与系统键"));
+        foreach (var name in new[]
+                 {
+                     "ctrl", "shift", "alt", "lctrl", "rctrl", "lshift", "rshift",
+                     "lalt", "ralt", "lwin", "rwin", "capslock", "apps",
+                     "printScreen", "scrollLock", "pause", "numLock",
+                 })
+            Item(name);
+
+        /* 鼠标键：键盘图上没有它们，只能在这里挑（或在捕获窗里直接按一下鼠标）。
+         * 键名和捕获窗、改键表用的是同一套（mouseLeft…），发键时会走鼠标注入。 */
+        Group(Loc.T("鼠标功能"));
+        foreach (var name in new[] { "mouseLeft", "mouseRight", "mouseMiddle", "mouseX1", "mouseX2" })
+            Item(name);
     }
 
     /// <summary>从列表里挑了一个键（和按一下捕获等价）。</summary>
@@ -353,6 +375,39 @@ public partial class KeysView : UserControl
     private void OnResetClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
+
+        /* 选中了某台设备时，"本页"指的是**这台设备的这一层**。
+         * 绝不能顺手把通用设置也清了 —— 那会影响所有设备，
+         * 而用户此刻明确只对着这一只键盘说话。 */
+        if (_editDevice.Length > 0) { ResetDeviceLayer(); return; }
+
+        /* 原键替换层不是"层"：它没有触发键、也不存在 Layers 里，
+         * 所以「恢复本页默认设置」对它的含义就是"把这一层清空"。 */
+        if (_layerId == ReplaceLayerId)
+        {
+            var list = DeviceProfiles.ReplacementsFor(_host.Settings, "");
+            int n = list.Count(b => b != null);
+            if (n == 0)
+            {
+                _host.Notify(Loc.T("原键替换层本来就是空的"));
+                return;
+            }
+
+            string ask = Loc.F("把原键替换层里的 {0} 条设置清空？\n", n) +
+                         Loc.T("· 清空后这些键恢复成原来的输入；\n") +
+                         Loc.T("· 层、触发键、宏、基础改键都不动；\n") +
+                         Loc.T("· 这一步不能撤销。");
+            if (!AppDialog.ConfirmDanger(Window.GetWindow(this), ask,
+                    Loc.T("清空原键替换层"), okText: Loc.T("清空"))) return;
+
+            list.Clear();
+            DeviceProfiles.InvalidateBindings();
+            _host.Settings.Global.BindingsVersion++;
+            _host.SaveSettings();
+            Refresh();
+            _host.Notify(Loc.F("原键替换层已清空（{0} 条）", n));
+            return;
+        }
 
         var layerObj = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
         string layerName = LayerName.Display(_layerId, layerObj?.Name);

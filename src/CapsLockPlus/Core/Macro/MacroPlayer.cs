@@ -1,4 +1,4 @@
-﻿using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Localization;
 using CapsLockPlus.Core.Settings;
 
@@ -77,6 +77,15 @@ public sealed class MacroPlayer : IDisposable
     /// <summary>动作 id → 可读名称（失败提示用）。没注入就退回显示 id。</summary>
     public Func<string, string>? ActionTitle { get; set; }
 
+    /// <summary>
+    /// 播放时的固定延迟（毫秒，0 = 用每一步录下来的 <c>DelayMs</c>）。
+    ///
+    /// 录制时勾选固定延迟会把间隔直接写进步骤，但用户经常是**录完之后**
+    /// 才在宏页面勾上“固定延迟”，这时旧步骤里仍是录制时的真实间隔。
+    /// 播放阶段再读一次设置，才能让这个开关对已有宏也生效。
+    /// </summary>
+    public Func<int>? FixedDelayProvider { get; set; }
+
     /// <summary>自检用：替换条件求值，避免依赖真实的前台窗口/剪贴板。</summary>
     internal static Func<Core.Settings.MacroStep, MacroContext, bool>? ConditionForTest { get; set; }
 
@@ -129,6 +138,7 @@ public sealed class MacroPlayer : IDisposable
         _cancelRequested = false;
         _callback = onCompleted;
         CurrentStep = -1;
+        InputSender.ResetInjectError();
 
         _thread = new Thread(() =>
         {
@@ -178,7 +188,21 @@ public sealed class MacroPlayer : IDisposable
                                 int vk = KeyName.VkOf(step.Key) ?? 0;
                                 if (vk != 0)
                                 {
+                                    /* UIPI 下 SendInput 有时返回成功但按键被丢掉，
+                                     * 先探一下前台是不是更高完整性，避免"宏像播了却没效果"。 */
+                                    if (InputSender.IsForegroundHigherIntegrity())
+                                    {
+                                        abort = true;
+                                        failReason = UipiMessage;
+                                        break;
+                                    }
                                     InputSender.KeyDown(vk);
+                                    if (InputSender.LastInjectError == 5)
+                                    {
+                                        abort = true;
+                                        failReason = UipiMessage;
+                                        break;
+                                    }
                                     held.Add(vk);
                                 }
                                 break;
@@ -189,6 +213,12 @@ public sealed class MacroPlayer : IDisposable
                                 if (vk != 0)
                                 {
                                     InputSender.KeyUp(vk);
+                                    if (InputSender.LastInjectError == 5)
+                                    {
+                                        abort = true;
+                                        failReason = UipiMessage;
+                                        break;
+                                    }
                                     held.Remove(vk);
                                 }
                                 break;
@@ -196,6 +226,12 @@ public sealed class MacroPlayer : IDisposable
 
                             case "text":
                                 // 文本里可以写 `{i}`：循环计数、setVar 写入的值都在这里展开
+                                if (InputSender.IsForegroundHigherIntegrity())
+                                {
+                                    abort = true;
+                                    failReason = UipiMessage;
+                                    break;
+                                }
                                 SendText(vars.Expand(step.Text));
                                 break;
 
@@ -207,7 +243,7 @@ public sealed class MacroPlayer : IDisposable
                                 break;
 
                             case "delay":
-                                Wait(step.DelayMs);
+                                Wait(PlaybackDelay(step.DelayMs));
                                 break;
 
                             case "delayRandom":
@@ -383,6 +419,13 @@ public sealed class MacroPlayer : IDisposable
     ///   · 动作 id 为空（用户刚插入还没选）→ 记日志跳过；
     ///   · 动作抛异常 → **算失败**（这是真的执行出错，和返回 false 同类）。
     /// </summary>
+    /// <summary>
+    /// SendInput 被 UIPI 拒绝时的提示。前台窗口以管理员运行时，普通权限的
+    /// 本程序发不过去；这不是宏内容的问题，必须让用户知道该提权。
+    /// </summary>
+    private static string UipiMessage => Loc.T(
+        "目标窗口以管理员身份运行，按键被系统拦截。请右键以管理员身份运行 KeyboardEnhance，或在设置里开启“以管理员身份运行”。");
+
     private bool RunActionStep(Core.Settings.MacroStep step, MacroVars vars)
     {
         var invoke = ActionInvoker;
@@ -480,6 +523,18 @@ public sealed class MacroPlayer : IDisposable
             r = flow.ParentRetry(r);
         }
         return -1;
+    }
+
+    /// <summary>
+    /// 这一步实际等多久：固定延迟开启时覆盖步骤里录下的值。
+    /// 夹在 20~5000ms，和录制页面的输入范围保持一致。
+    /// </summary>
+    private int PlaybackDelay(int recorded)
+    {
+        int fixedMs = 0;
+        try { fixedMs = FixedDelayProvider?.Invoke() ?? 0; }
+        catch { /* 读设置失败就退回录制的间隔 */ }
+        return fixedMs > 0 ? Math.Clamp(fixedMs, 20, 5000) : recorded;
     }
 
     /// <summary>等待一段时间，期间可被取消。</summary>

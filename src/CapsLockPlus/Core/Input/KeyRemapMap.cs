@@ -103,9 +103,134 @@ public static class KeyRemapMap
         return table;
     }
 
-    /// <summary>解析一条配置的显示文案（用于界面与通知）。</summary>
-    public static string Describe(IEnumerable<KeyRemap> list)
+    /// <summary>
+    /// 把一份配置完整编译成改键表（全局规则 + 通用设置 + 每台设备自己的覆盖）。
+    ///
+    /// 三种来源的合成顺序（后者覆盖前者）：
+    ///   ① 全局 <see cref="GlobalOptions.BaseRemaps"/> 里 Device 为空的老规则；
+    ///   ② 「通用设置」方案里的规则 —— 对所有设备生效；
+    ///   ③ 设备自己方案里的规则。
+    ///
+    /// 独立方案（<see cref="DeviceProfile.Inherit"/> = false）不做 ② 的继承，
+    /// 而且查找时也不会回退到 ① —— 用户选了"这套键位完全另起一套"就该真的另起。
+    /// </summary>
+    public static RemapTable BuildTable(AppSettings s)
     {
+        var table = new RemapTable();
+
+        var shared = DeviceProfiles.SharedOrNull(s);
+
+        /* 全局与通用设置默认进"所有设备"那张表：任何设备查它都会得到同一个结果，
+         * 所以**不能**把它们记进 DeviceScopedKeys —— 记了等于让这些键每次按下都去
+         * 等十几毫秒的设备解析，而那份答案永远是"哪台都行"。
+         *
+         * 但条目自带的 Device 字段必须尊重：那是 v4.20 之前"设备专属改键"的唯一
+         * 实现方式，老配置和老用户都还在用。这类条目只能进那台设备的表 ——
+         * 顺手倒进 All 是致命的：换个键盘 Caps 照样是 Esc。 */
+        SplitByDevice(table, s.Global?.BaseRemaps);
+        if (shared != null) SplitByDevice(table, shared.Remaps);
+
+        foreach (var p in s.Profiles)
+        {
+            if (p.Shared) continue;
+            if (p.Devices == null || p.Devices.Count == 0) continue;
+
+            foreach (var raw in p.Devices)
+            {
+                string dev = NormalizeDevice(raw);
+                if (dev.Length == 0) continue;
+
+                var map = DeviceMap(table, dev);
+
+                /* 继承：先把通用设置铺进来，再用自己的规则盖掉同名的键。
+                 * 这一步不能省 —— 运行时只查这张表，不会回头再查通用设置。
+                 * 铺通用那一步不记 DeviceScopedKeys：这些键在 All 里已有同样的答案，
+                 * 要不要问设备由"这台设备自己的规则"决定（下一行）。 */
+                if (p.Inherit && shared != null) Fill(map, shared.Remaps, null);
+                Fill(map, p.Remaps, table.DeviceScopedKeys);
+
+                if (!p.Inherit) table.Independent.Add(dev);
+            }
+        }
+
+        return table;
+    }
+
+    /// <summary>
+    /// 把一批规则按"条目自带的 Device 字段"分流：
+    /// 没写设备的进全局表，写了设备的只进那台设备的表。
+    /// </summary>
+    private static void SplitByDevice(RemapTable table, IEnumerable<KeyRemap>? list)
+    {
+        if (list == null) return;
+
+        List<KeyRemap>? plain = null;
+        foreach (var r in list)
+        {
+            string dev = NormalizeDevice(r.Device);
+            if (dev.Length == 0) { (plain ??= new List<KeyRemap>()).Add(r); continue; }
+
+            /* 设备专属：只进这台设备的表，并且**必须**记进 DeviceScopedKeys ——
+             * 不记的话运行时不会去问"这是哪只键盘"，那条规则就静默失效了。 */
+            Fill(DeviceMap(table, dev), new[] { r }, table.DeviceScopedKeys);
+        }
+
+        Fill(table.All, plain, null);
+    }
+
+    /// <summary>取（必要时新建）某台设备的规则表。</summary>
+    private static Dictionary<int, int> DeviceMap(RemapTable table, string dev)
+    {
+        if (!table.ByDevice.TryGetValue(dev, out var map))
+        {
+            map = new Dictionary<int, int>();
+            table.ByDevice[dev] = map;
+        }
+        return map;
+    }
+
+    /// <summary>把一批规则解析进字典（跳过无效条目与"自己映射自己"）。</summary>
+    private static void Fill(Dictionary<int, int> map, IEnumerable<KeyRemap>? list, HashSet<int>? scoped)
+    {
+        if (list == null) return;
+
+        foreach (var r in list)
+        {
+            if (string.IsNullOrWhiteSpace(r.From) || string.IsNullOrWhiteSpace(r.To)) continue;
+
+            int? from = KeyName.VkOf(r.From);
+            int? to = KeyName.VkOf(r.To);
+            if (from == null || to == null) continue;
+            if (from == to) continue;
+
+            map[from.Value] = to.Value;
+            scoped?.Add(from.Value);
+        }
+    }
+
+    /// <summary>
+    /// 整份配置的指纹（全局规则 + 每个方案的设备/继承/规则）。
+    ///
+    /// 少了设备那一段，"把键盘拖到另一个方案"这种改动不会让缓存失效，
+    /// 表现为改完要重启才生效。
+    /// </summary>
+    public static string Stamp(AppSettings s)
+    {
+        var sb = new System.Text.StringBuilder(128);
+        sb.Append(Stamp(s.Global?.BaseRemaps ?? new List<KeyRemap>()));
+
+        foreach (var p in s.Profiles)
+        {
+            sb.Append('#').Append(p.Id).Append(p.Shared ? "S" : "D").Append(p.Inherit ? "I" : "X");
+            foreach (var d in p.Devices) sb.Append(',').Append(NormalizeDevice(d));
+            sb.Append(':').Append(Stamp(p.Remaps));
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>解析一条配置的显示文案（用于界面与通知）。</summary>
+    public static string Describe(IEnumerable<KeyRemap> list)    {
         var parts = new List<string>();
         foreach (var r in list)
         {

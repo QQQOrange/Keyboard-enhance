@@ -529,69 +529,56 @@ public partial class KeysView : UserControl
     {
         if (_host == null || _suppressEvents) return;
         if (ActionBox.SelectedItem is not ComboBoxItem item || item.Tag is not string actionId) return;
-        string combo = CurrentCombo();
-        var binding = FindInCurrentLayer(combo);
-        if (binding == null)
-        {
-            // 必须加进**当前层**的列表。写进 Settings.Keys 会让
-            // 第 2~10 层新建的绑定跑到第 1 层去（这个 bug 之前就是这样）。
-            binding = new KeyBinding { Combo = combo };
-            CurrentLayerKeys.Add(binding);
-        }
-        binding.Action = actionId;
-        if (actionId == "doNothing") binding.Arg = "";
-        _host.SaveSettings();
+
+        /* 只预览，不落盘。
+         *
+         * 以前这里一选中就写配置，于是"翻一遍功能列表"等于把每个看过的功能
+         * 依次绑到当前键上；加上分类切换也会写第一项，用户根本分不清自己
+         * 到底绑定成功了没有。现在统一成：选＝看，点「确定绑定」＝写。 */
         var info = _host.Actions.Get(actionId);
         ActionDesc.Text = info?.Description ?? "";
+        ShowArgPanelFor(actionId, info?.NeedsArg == true || IsStepArgAction(actionId));
 
-        /* 从**搜索结果**里选了一个功能 → 要把分类切到它所属的那一类。
-         *
-         * 否则会出现：搜"删除"选中「删除整行」，但左边的分类还停在
-         * 「面板」，功能下拉里显示的又是搜索结果 —— 用户看不出
-         * 这个功能到底属于哪个分类。
-         *
-         * 切分类之前先清空搜索框（否则 BuildActionBox 仍按搜索过滤）。 */
-        if (info != null && !string.IsNullOrEmpty(ActionSearchBox?.Text))
+        if (actionId == "doNothing")
+            ShowBindStatus(Loc.T("点「确定绑定」＝清除这个键在本层的绑定"));
+        else
+            ShowBindStatus(Loc.F("已选「{0}」，点「确定绑定」才会生效", info?.Title ?? actionId));
+    }
+
+    /// <summary>「确定绑定」：把当前选中的功能真正写到这个键上。</summary>
+    private void OnConfirmBindClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        string combo = CurrentCombo();
+        if (ActionBox.SelectedItem is ComboBoxItem { Tag: string actionId })
         {
-            _suppressEvents = true;
-            try
-            {
-                ActionSearchBox.Text = "";
+            ApplySelectedAction();
 
-                foreach (ComboBoxItem it in CategoryBox.Items)
-                {
-                    if (it.Tag as string == info.Category)
-                    {
-                        CategoryBox.SelectedItem = it;
-                        CategoryBoxWinBind.SelectedItem = it;
-                        CategoryBoxWeb.SelectedItem = it;
-                        CategoryBoxType.SelectedItem = it;
-                        break;
-                    }
-                }
-                BuildActionBox();
-
-                // 把刚选的动作重新选上（BuildActionBox 会重置到第一项）
-                foreach (ComboBoxItem it in ActionBox.Items)
-                {
-                    if (it.Tag is string tag && tag.Equals(actionId, StringComparison.OrdinalIgnoreCase))
-                    {
-                        ActionBox.SelectedItem = it;
-                        break;
-                    }
-                }
-            }
-            finally
+            if (actionId == "doNothing")
             {
-                _suppressEvents = false;
+                ShowBindStatus(Loc.F("已清除「{0}」在本层的绑定", KeyName.Display(_selectedKey)));
+                return;
             }
 
-            // 不要走 SelectKey（它会重新按分类定位），这里已经同步好了
-            BuildKeyboard();
+            var info = _host.Actions.Get(actionId);
+            string title = info?.Title ?? actionId;
+            ShowBindStatus(Loc.F("已绑定「{0}」→ {1}", SelectedKeyLabel(), title));
+            _host.Notify(Loc.F("{0} → {1}", KeyName.Display(_selectedKey), title));
             return;
         }
 
-        SelectKey(_selectedKey);
+        /* 窗口绑定 / 输入文本这类模式没有"功能"下拉：参数框里的内容已经
+         * 由各自的 TextChanged 写进去了，这里只做一次落盘确认。 */
+        var binding = FindInCurrentLayer(combo);
+        if (binding == null)
+        {
+            ShowBindStatus(Loc.T("先选一个功能，再点「确定绑定」"));
+            return;
+        }
+
+        _host.SaveSettings();
+        ShowBindStatus(Loc.F("已保存 {0} 的绑定", SelectedKeyLabel()));
     }
 
     private void OnArgChanged(object sender, TextChangedEventArgs e)

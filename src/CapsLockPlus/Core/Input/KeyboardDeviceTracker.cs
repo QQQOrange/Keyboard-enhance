@@ -36,7 +36,9 @@ public sealed class KeyboardDeviceTracker : IDisposable
     private const uint RIDEV_INPUTSINK = 0x00000100;
     private const ushort HID_USAGE_PAGE_GENERIC = 0x01;
     private const ushort HID_USAGE_KEYBOARD = 0x06;
+    private const ushort HID_USAGE_MOUSE = 0x02;
     private const int RIM_TYPEKEYBOARD = 1;
+    private const int RIM_TYPEMOUSE = 2;
 
     /// <summary>钩子里最多等这么久（毫秒）。</summary>
     public const int ResolveTimeoutMs = 12;
@@ -89,7 +91,18 @@ public sealed class KeyboardDeviceTracker : IDisposable
                 Target = _source.Handle,
             };
 
-            if (!RegisterRawInputDevices(new[] { device }, 1, (uint)Marshal.SizeOf<RawInputDevice>()))
+            /* 鼠标也要注册：改键现在支持"侧键 → Ctrl"这类规则，
+             * 而低级鼠标钩子和键盘钩子一样看不到设备信息，
+             * 同样得靠 Raw Input 补上"这次点击来自哪只鼠标"。 */
+            var mouse = new RawInputDevice
+            {
+                UsagePage = HID_USAGE_PAGE_GENERIC,
+                Usage = HID_USAGE_MOUSE,
+                Flags = RIDEV_INPUTSINK,
+                Target = _source.Handle,
+            };
+
+            if (!RegisterRawInputDevices(new[] { device, mouse }, 2, (uint)Marshal.SizeOf<RawInputDevice>()))
             {
                 CoreLog.Warn($"注册 Raw Input 失败（Win32 错误 {Marshal.GetLastWin32Error()}）：" +
                              "按设备区分改键将不可用，其余功能不受影响");
@@ -145,7 +158,14 @@ public sealed class KeyboardDeviceTracker : IDisposable
             if (got == uint.MaxValue || got < headerSize) return;
 
             var header = Marshal.PtrToStructure<RawInputHeader>(buffer);
-            if (header.Type != RIM_TYPEKEYBOARD) return;      // 鼠标等直接忽略
+
+            if (header.Type == RIM_TYPEMOUSE)
+            {
+                ReadMouse(buffer + headerSize, header);
+                return;
+            }
+
+            if (header.Type != RIM_TYPEKEYBOARD) return;
 
             var kb = Marshal.PtrToStructure<RawKeyboard>(buffer + headerSize);
             if (kb.VKey == 0) return;                          // 部分设备用扫描码，忽略
@@ -182,6 +202,68 @@ public sealed class KeyboardDeviceTracker : IDisposable
             }
         }
         finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    /// <summary>
+    /// 鼠标的 Raw Input：只取"哪个键按下/抬起了"，移动与滚轮不管。
+    ///
+    /// 一个 RAWMOUSE 的 usButtonFlags 可能是**多个按键同时**的位或
+    /// （按下左键的同时抬起中键），所以按位拆成多条记录，
+    /// 而不是取一个"主按键"。
+    /// </summary>
+    private void ReadMouse(IntPtr ptr, RawInputHeader header)
+    {
+        var mouse = Marshal.PtrToStructure<RawMouse>(ptr);
+
+        string path;
+        try { path = KeyboardDevices.PathOf(header.Device); }
+        catch { path = ""; }
+
+        string device = MouseDevices.KeyOf(path);
+        if (device.Length == 0) return;
+
+        long now = Environment.TickCount64;
+        ushort flags = mouse.ButtonFlags;
+        if (flags == 0) return;
+
+        lock (_gate)
+        {
+            /* 左右中侧键 → 0x01~0x06（与 KeyName 里的 mouseLeft/mouseRight/... 一致）。
+             * 顺序固定，方便自检按固定顺序比对。 */
+            Add(MouseButtonFlag.LeftDown, 0x01, true);
+            Add(MouseButtonFlag.LeftUp, 0x01, false);
+            Add(MouseButtonFlag.RightDown, 0x02, true);
+            Add(MouseButtonFlag.RightUp, 0x02, false);
+            Add(MouseButtonFlag.MiddleDown, 0x04, true);
+            Add(MouseButtonFlag.MiddleUp, 0x04, false);
+            Add(MouseButtonFlag.Button4Down, 0x05, true);
+            Add(MouseButtonFlag.Button4Up, 0x05, false);
+            Add(MouseButtonFlag.Button5Down, 0x06, true);
+            Add(MouseButtonFlag.Button5Up, 0x06, false);
+
+            if (_recent.Count > MaxEntries) _recent.RemoveRange(0, _recent.Count - MaxEntries);
+
+            void Add(ushort bit, int vk, bool isDown)
+            {
+                if ((flags & bit) == 0) return;
+                _recent.Add(new Entry(device, vk, isDown, now));
+            }
+        }
+    }
+
+    /// <summary>RAWMOUSE.usButtonFlags 的位定义。</summary>
+    private static class MouseButtonFlag
+    {
+        public const ushort LeftDown = 0x0001;
+        public const ushort LeftUp = 0x0002;
+        public const ushort RightDown = 0x0004;
+        public const ushort RightUp = 0x0008;
+        public const ushort MiddleDown = 0x0010;
+        public const ushort MiddleUp = 0x0020;
+        public const ushort Button4Down = 0x0040;
+        public const ushort Button4Up = 0x0080;
+        public const ushort Button5Down = 0x0100;
+        public const ushort Button5Up = 0x0200;
     }
 
     /// <summary>
@@ -296,8 +378,26 @@ public sealed class KeyboardDeviceTracker : IDisposable
         public uint ExtraInformation;
     }
 
+    /// <summary>
+    /// RAWMOUSE（x64 下 24 字节）。
+    ///
+    /// 用**显式偏移**而不是顺序布局：原生结构里 usFlags 后面有一个 2 字节空洞，
+    /// 联合体从偏移 4 开始。按顺序写的话 usButtonFlags 会落在偏移 2，
+    /// 读出来的按键标志永远错位（表现为"鼠标改键时好时坏"）。
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit)]
+    private struct RawMouse
+    {
+        [FieldOffset(0)] public ushort Flags;
+        [FieldOffset(4)] public ushort ButtonFlags;
+        [FieldOffset(6)] public ushort ButtonData;
+        [FieldOffset(8)] public uint RawButtons;
+        [FieldOffset(12)] public int LastX;
+        [FieldOffset(16)] public int LastY;
+        [FieldOffset(20)] public uint ExtraInformation;
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterRawInputDevices(
         RawInputDevice[] devices, uint count, uint size);
-
 }

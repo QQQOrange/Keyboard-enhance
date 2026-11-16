@@ -1,7 +1,8 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.KeysView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
+             xmlns:controls="clr-namespace:CapsLockPlus.UI.Controls"
              FontFamily="{StaticResource Font.Ui}">
     <Grid Margin="24,4,20,20">
         <Grid.RowDefinitions>
@@ -16,6 +17,9 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!-- 布局方案固定为新版（Capslox），不再提供切换 —— 旧方案
@@ -26,9 +30,105 @@
                            Style="{StaticResource Text.Secondary}" TextTrimming="CharacterEllipsis"
                            Text="{loc:T '点击键盘上任意键即可编辑它的功能，修改立即生效'}" />
 
-                <Button Grid.Column="1" Content="{loc:T '恢复本页默认设置'}" Style="{StaticResource Button.Base}"
+                <!-- 设备胶囊：左边那个圆角按钮显示"现在在改谁"，点开是设备清单。
+                     放在「恢复本页默认设置」左边，是因为它决定**这一页改的是谁** ——
+                     先选设备、再改键，顺序和用户的动作一致。 -->
+                <Button x:Name="DeviceCapsuleButton" Grid.Column="1" Style="{StaticResource Button.Base}"
+                        Margin="16,0,0,0" Padding="12,5" Click="OnDeviceCapsuleClick"
+                        ToolTip="{loc:T '选择要编辑的设备：通用设置对所有设备生效，单台设备只对它生效'}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="DeviceCapsuleIcon" Text="⌨" FontSize="14" VerticalAlignment="Center"
+                                   Margin="0,0,6,0" />
+                        <TextBlock x:Name="DeviceCapsuleText" Text="{loc:T '通用设置'}" VerticalAlignment="Center"
+                                   MaxWidth="200" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="▾" Margin="6,0,0,0" VerticalAlignment="Center" Opacity="0.7" />
+                    </StackPanel>
+                </Button>
+
+                <!-- 设备备注：只在选中某台设备时才有意义（通用设置不需要名字）。
+                     系统里的设备名经常五条一模一样，备注是唯一能分清"哪只是手里这只"的办法。 -->
+                <Button x:Name="DeviceAliasButton" Grid.Column="2" Style="{StaticResource Button.Base}"
+                        Margin="8,0,0,0" Padding="12,5" Click="OnDeviceAliasClick" Visibility="Collapsed"
+                        ToolTip="{loc:T '给这台键盘/鼠标起个名字：系统里五条同名设备，只有备注能分清哪只是哪只'}">
+                    <TextBlock Text="{loc:T '备注'}" VerticalAlignment="Center" />
+                </Button>
+
+                <!-- 「全部生效」：勾上＝不区分设备，所有插到电脑上的键盘鼠标都吃这一份规则。
+                     这是老行为，也是绝大多数人的用法，所以默认勾着。 -->
+                <CheckBox x:Name="ScopeAllBox" Grid.Column="3" Content="{loc:T '全部生效'}"
+                          Margin="10,0,0,0" VerticalAlignment="Center" Click="OnScopeAllClick"
+                          ToolTip="{loc:T '勾上：所有键盘和鼠标都生效。取消：只有下面打勾的设备生效。'}" />
+
+                <Button Grid.Column="4" Content="{loc:T '恢复本页默认设置'}" Style="{StaticResource Button.Base}"
                         Margin="16,0,0,0" Click="OnResetClick"
                         ToolTip="{loc:T '只把「按键映射」这一页的基础层绑定恢复成默认；层、触发键、宏、别名都不动'}" />
+
+                <Popup x:Name="DevicePopup" PlacementTarget="{Binding ElementName=DeviceCapsuleButton}"
+                       Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade"
+                       HorizontalOffset="0" VerticalOffset="6">
+                    <Border Style="{StaticResource Card}" Padding="14,12" Width="380">
+                        <StackPanel>
+                            <TextBlock Text="{loc:T '在这台设备上编辑'}" Style="{StaticResource Text.Body}" />
+                            <TextBlock Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,3,0,0"
+                                       Text="{loc:T '点名字＝切过去，之后改的键只属于它；右边的方框＝这台设备归不归本软件管。'}" />
+
+                            <ScrollViewer MaxHeight="320" Margin="0,10,0,0"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="DeviceScopeList" />
+                            </ScrollViewer>
+
+                            <Separator Margin="0,10" />
+
+                            <CheckBox x:Name="ScopeAllCheck" Content="{loc:T '全部生效（所有插上的键盘鼠标）'}"
+                                      Click="OnScopeAllClick" />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="DeviceHintText" Style="{StaticResource Text.Tertiary}"
+                                           TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="{loc:T '刷新'}" Style="{StaticResource Button.Base}"
+                                        Padding="12,4" Click="OnRefreshDevicesClick" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- 备注弹层：一个输入框 + 三个按钮，就是全部。
+                     系统名单独一行摆出来，用户改完还能对照着认出是哪只设备。 -->
+                <Popup x:Name="DeviceAliasPopup" PlacementTarget="{Binding ElementName=DeviceAliasButton}"
+                       Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade"
+                       HorizontalOffset="0" VerticalOffset="6">
+                    <Border Style="{StaticResource Card}" Padding="14,12" Width="340">
+                        <StackPanel>
+                            <TextBlock Text="{loc:T '给这台设备备注'}" Style="{StaticResource Text.Body}" />
+                            <TextBlock x:Name="DeviceAliasSystemText" Style="{StaticResource Text.Tertiary}"
+                                       TextWrapping="Wrap" Margin="0,3,0,0" />
+                            <TextBox x:Name="DeviceAliasBox" Margin="0,10,0,0" MaxLength="40"
+                                     KeyDown="OnDeviceAliasKeyDown" />
+                            <TextBlock Text="{loc:T '留空＝恢复成系统里的名字'}"
+                                       Style="{StaticResource Text.Tertiary}" Margin="0,6,0,0" />
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="{loc:T '恢复系统名称'}"
+                                        Style="{StaticResource Button.Ghost}" Padding="10,4"
+                                        Click="OnDeviceAliasClear" />
+                                <Button Grid.Column="2" Content="{loc:T '取消'}" Style="{StaticResource Button.Base}"
+                                        Padding="14,4" Margin="0,0,8,0" Click="OnDeviceAliasCancel" />
+                                <Button Grid.Column="3" Content="{loc:T '确定'}" Style="{StaticResource Button.Primary}"
+                                        Padding="16,4" Click="OnDeviceAliasConfirm" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Popup>
             </Grid>
         </Border>
 
@@ -44,17 +144,24 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="AppLayerProcessBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
-                             ToolTip="{loc:T '进程名，如 Code.exe（大小写不敏感）'}" />
+                    <!-- 高度跟旁边「基础层」下拉（ComboBox.Base 固定 36）和 AppPickButtons 对齐：
+                         只设 MinHeight 不写 Height，字号变大时仍能自然长高，不会裁字。 -->
+                    <TextBox x:Name="AppLayerProcessBox" Style="{StaticResource TextBox.Base}"
+                             MinHeight="36" Padding="10,4"
+                             ToolTip="{loc:T '进程名，如 Code.exe（大小写不敏感）；输入后按回车添加'}"
+                             KeyDown="OnAppLayerProcessKeyDown" />
                     <ComboBox x:Name="AppLayerLayerBox" Grid.Column="1" Width="150" Margin="8,0,0,0"
                               Style="{StaticResource ComboBox.Base}" />
-                    <Button x:Name="AppLayerAddButton" Grid.Column="2" Content="{loc:T '添加'}"
-                            Margin="8,0,0,0" Padding="14,6"
-                            Style="{StaticResource Button.Base}" Click="OnAppLayerAddClick" />
-                    <TextBlock Grid.Column="3" x:Name="AppLayerHint" Text="" Style="{StaticResource Text.Tertiary}"
+                    <!-- 两个入口统一成一个控件：两个带文字的按钮 + 中间一条竖线 -->
+                    <controls:AppPickButtons Grid.Column="2" Grid.ColumnSpan="2" Margin="8,0,0,0"
+                                             PickFile="OnAppLayerPickFile"
+                                             PickWindow="OnAppLayerPickWindow" />
+                    <TextBlock Grid.Column="4" x:Name="AppLayerHint" Text="" Style="{StaticResource Text.Tertiary}"
                                VerticalAlignment="Center" Margin="10,0,0,0" />
                 </Grid>
+
                 <ItemsControl x:Name="AppLayerList" Margin="0,6,0,0" />
             </StackPanel>
         </Border>
@@ -97,6 +204,7 @@
                 -->
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -176,8 +284,23 @@
                                  HorizontalAlignment="Center" VerticalAlignment="Top" />
                     </ScrollViewer>
 
+                    <!-- ②.5 鼠标按键：键盘图上没有它们，但改键规则一样适用 -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Margin="0,10,0,0">
+                        <CheckBox x:Name="MouseKeysToggle" Content="{loc:T '启用本页鼠标键'}"
+                                  VerticalAlignment="Center" Margin="0,0,10,0"
+                                  Click="OnMouseKeysToggle"
+                                  ToolTip="{loc:T '关掉后，这一页（含子层）对左/右/中/侧键的改动全部不生效，鼠标事件原样放行；键盘绑定不受影响。'}" />
+                        <TextBlock Text="{loc:T '鼠标'}" Style="{StaticResource Text.Tertiary}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <WrapPanel x:Name="MouseKeyPanel" Orientation="Horizontal" />
+                        <TextBlock x:Name="MouseHintText" Style="{StaticResource Text.Tertiary}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
                     <!-- ③ 控制条 -->
-                    <StackPanel Grid.Row="2" VerticalAlignment="Bottom" Margin="0,8,0,0">
+                    <StackPanel Grid.Row="3" VerticalAlignment="Bottom" Margin="0,8,0,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:T '层'}" Style="{StaticResource Text.Secondary}"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -273,12 +396,77 @@
                                 编辑区搬到键盘下方之后，两者离得远了 ——
                                 不再有"右边面板永远显示当前键"的空间暗示，
                                 这里必须明确写出来，否则用户滚下来会忘了在改谁。
+
+                                原来这里画的是一个「键帽」：白底圆角里只放一个 12px 的 Q。
+                                远看那个 Q 像放大镜，整块胶囊又像一个空搜索框 ——
+                                用户直接把它当成了"比正常搜索框大一号的输入框"。
+                                现在键名只做标题旁的灰字，这个位置让给真正的搜索框。
                             -->
-                            <Border Grid.Column="1" Style="{StaticResource Keycap}" Padding="9,3" Margin="10,0,0,0"
-                                    VerticalAlignment="Center">
-                                <TextBlock x:Name="EditorKeyText" Text="Q" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Brush.Accent}" />
-                            </Border>
+                            <TextBlock x:Name="EditorKeyText" Grid.Column="1" Text="Q" Margin="10,0,0,0"
+                                       Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
+
+                            <!-- 真正的搜索框：搜当前层已绑定的键（键名 / 功能名 / 备注 / 网址 / 程序名），
+                                 选中即跳到那条绑定。样式照抄其它页：左侧放大镜 + 空内容时的占位提示。 -->
+                            <Grid Grid.Column="2" Width="210" Margin="14,0,0,0" HorizontalAlignment="Left"
+                                  VerticalAlignment="Center">
+                                <TextBox x:Name="BindingSearchBox" Style="{StaticResource TextBox.Base}"
+                                         MinHeight="32" Padding="30,4,8,4" VerticalContentAlignment="Center"
+                                         ToolTip="{loc:T '搜索当前层里已绑定的键：键名或功能名都行'}"
+                                         TextChanged="OnBindingSearchChanged"
+                                         PreviewKeyDown="OnBindingSearchKeyDown" />
+                                <TextBlock Text="&#xE721;"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource Brush.TextTertiary}"
+                                           VerticalAlignment="Center" HorizontalAlignment="Left"
+                                           Margin="10,0,0,0" IsHitTestVisible="False" />
+                                <TextBlock Text="{loc:T '搜索按键或功能'}"
+                                           Foreground="{DynamicResource Brush.TextTertiary}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center" HorizontalAlignment="Left"
+                                           Margin="30,0,10,0" IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=BindingSearchBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <Popup x:Name="BindingSearchPopup" AllowsTransparency="True" Placement="Bottom"
+                                       PlacementTarget="{Binding ElementName=BindingSearchBox}"
+                                       StaysOpen="False" PopupAnimation="Fade"
+                                       VerticalOffset="4" Width="310">
+                                    <Border Style="{StaticResource Card}" Padding="4" MaxHeight="320">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
+                                            <ItemsControl x:Name="BindingSearchList">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Style="{StaticResource Button.Ghost}"
+                                                                HorizontalContentAlignment="Stretch"
+                                                                HorizontalAlignment="Stretch"
+                                                                Padding="10,6" Margin="0,1"
+                                                                Click="OnBindingSearchPick">
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding Key}"
+                                                                           Style="{StaticResource Text.Body}" />
+                                                                <TextBlock Text="{Binding Description}"
+                                                                           Style="{StaticResource Text.Tertiary}"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
 
                             <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button HorizontalAlignment="Left" x:Name="TestBindButton" Content="{loc:T '测试一下'}"
@@ -288,6 +476,16 @@
                                 <Button HorizontalAlignment="Left" x:Name="ClearBindButton" Content="{loc:T '清除绑定'}"
                                         Style="{StaticResource Button.Danger}" Padding="11,5" Margin="6,0,0,0"
                                         Click="OnClearClick" />
+                                <!--
+                                    显式「确定绑定」：选功能、切分类都只是"看看"，
+                                    点这个才写进配置。没有它的时候，用户选了功能却
+                                    不确定到底生效没有（改分类曾经会顺手把第一项写进去）。
+                                -->
+                                <Button HorizontalAlignment="Left" x:Name="ConfirmBindButton"
+                                        Content="{loc:T '确定绑定'}"
+                                        Style="{StaticResource Button.Primary}" Padding="13,5" Margin="6,0,0,0"
+                                        Click="OnConfirmBindClick"
+                                        ToolTip="{loc:T '把当前选中的功能写到这个键上（选完不点它不会生效）'}" />
                             </StackPanel>
                         </Grid>
 
@@ -295,106 +493,34 @@
 
                     <!-- 编辑主体：内容多高就多高，由整页滚动（不再自己套 ScrollViewer） -->
                     <StackPanel Grid.Row="1" Margin="0,18,0,0">
-                        <!-- ================= 普通分类：搜索 + 分类 + 功能 一行三组 =================
-                             搜索框以前独占一整行，下面再一行分类 + 功能 —— 编辑区首屏被吃掉
-                             两行高度。它本来就是"跨分类直接找功能"的快捷入口，和右边两个下拉
-                             是同一件事的两种走法（先搜，搜不到再翻分类），并排才顺手。
+                        <!-- ================= 普通分类：分类 + 功能 =================
+                             搜索框原来在这一行最左边，和标题行的搜索重复了：
+                             两处都能搜，用户不知道该用哪个。现在只留标题行那一个
+                             （它同时搜"已绑定的键"和"全部功能"），这里回到两列。
 
-                             宽度分配：搜索固定 240（够放下四五个字的搜索结果摘要）、分类固定
-                             150（最长"自定义按键"五个字）、功能吃满剩余 —— 它的值最长
-                             （"直达链接 · 直达文件"这种），也最需要看全。
-                             三组都走"标签在上、控件在下"，所以基线天然对齐。
+                             宽度分配：分类固定 150（最长"自定义按键"五个字），
+                             功能吃满剩余 —— 它的值最长（"直达链接 · 直达文件"这种），
+                             也最需要看全。两组都走"标签在上、控件在下"，基线天然对齐。
                         -->
                         <Grid x:Name="NormalActionPicker">
-                            <!-- 两行是为了窄窗口降级：搜索放不下时下沉到第二行（见 OnPageScrollSizeChanged） -->
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="240" />
                                 <ColumnDefinition Width="150" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
-                            <!--
-                                快速搜索：输入后弹出**独立的结果列表**，
-                                点一条就把「分类」「功能」「参数」三项一起跳过去。
-                                不是把结果塞进功能下拉 —— 那样看不出分类，也没法直接跳。
-                            -->
-                            <StackPanel x:Name="SearchGroup" Grid.Column="0" Margin="0,0,12,0">
-                                <TextBlock Text="{loc:T '搜索'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
-                                <Grid>
-                                    <TextBox x:Name="ActionSearchBox" Style="{StaticResource TextBox.Base}"
-                                             MinHeight="34" VerticalContentAlignment="Center"
-                                             TextChanged="OnActionSearchChanged"
-                                             ToolTip="{loc:T '搜索功能名、分类、宏名或网址，例如 删除 / 宏 / github'}" />
-
-                                    <!-- 占位提示：空框里给个例子，比只写"搜索"两个字更能让人知道能搜什么 -->
-                                    <TextBlock Text="{loc:T '例如 删除 / 宏 / github'}" IsHitTestVisible="False"
-                                               Margin="12,0,0,0" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource Brush.TextTertiary}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Text, ElementName=ActionSearchBox}" Value="">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-
-                                    <!-- 搜索结果浮层：贴在搜索框下方 -->
-                                    <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=ActionSearchBox}"
-                                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
-                                           PopupAnimation="Fade" IsOpen="False">
-                                        <Border Margin="0,4,0,0" CornerRadius="10" Padding="4"
-                                                MaxHeight="320"
-                                                Background="{DynamicResource Brush.Surface}"
-                                                BorderBrush="{DynamicResource Brush.BorderStrong}"
-                                                BorderThickness="1">
-                                            <Border.Effect>
-                                                <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.18" />
-                                            </Border.Effect>
-                                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="312">
-                                                <ListBox x:Name="SearchResultList" Background="Transparent"
-                                                         BorderThickness="0" Width="360"
-                                                         ItemContainerStyle="{StaticResource RowItem}"
-                                                         SelectionChanged="OnSearchResultSelected">
-                                                    <ListBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <StackPanel Margin="2,3">
-                                                                <TextBlock Text="{Binding Title}"
-                                                                           Foreground="{DynamicResource Brush.TextPrimary}"
-                                                                           TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock Text="{Binding Subtitle}"
-                                                                           Style="{StaticResource Text.Tertiary}"
-                                                                           TextTrimming="CharacterEllipsis" />
-                                                            </StackPanel>
-                                                        </DataTemplate>
-                                                    </ListBox.ItemTemplate>
-                                                </ListBox>
-                                            </ScrollViewer>
-                                        </Border>
-                                    </Popup>
-                                </Grid>
-                            </StackPanel>
-
-                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                 <TextBlock Text="{loc:T '分类'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                 <ComboBox x:Name="CategoryBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnCategoryChanged" MaxDropDownHeight="420" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="2">
+                            <StackPanel Grid.Column="1">
                                 <TextBlock Text="{loc:T '功能'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,7" />
                                 <!--
                                     普通下拉（不设 IsEditable）。
                                     可编辑模式下 WPF 不会自动把选中项填进显示区，
                                     会出现"下拉空白"的问题；而且 300 多个引擎
-                                    靠上面的搜索框过滤更好用。
+                                    靠标题行那个搜索框找更快（它同时搜功能和已绑定的键）。
                                 -->
                                 <ComboBox x:Name="ActionBox" Style="{StaticResource ComboBox.Base}"
                                           SelectionChanged="OnActionChanged" MaxDropDownHeight="420" />
@@ -427,31 +553,8 @@
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Text="{loc:T '绑定方式'}" Style="{StaticResource Text.Secondary}"
                                                Margin="0,0,0,7" />
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button HorizontalAlignment="Left" x:Name="PickWindowButton" Style="{StaticResource Button.Primary}"
-                                                Padding="14,6" MinHeight="34" Click="OnPickWindowClick"
-                                                ToolTip="{loc:T '鼠标变成准星，点哪个窗口就绑哪个程序'}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE7B3;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="14" VerticalAlignment="Center" />
-                                                <TextBlock Text="{loc:T '点选窗口'}" Margin="8,0,0,0"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold" />
-                                            </StackPanel>
-                                        </Button>
-                                        <Button HorizontalAlignment="Left" x:Name="PickExeButton" Style="{StaticResource Button.Base}"
-                                                Padding="14,6" MinHeight="34" Margin="10,0,0,0"
-                                                Click="OnPickExeClick"
-                                                ToolTip="{loc:T '从资源管理器挑一个 exe（程序没在运行也能绑）'}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE8B7;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="14" VerticalAlignment="Center" />
-                                                <TextBlock Text="{loc:T '选择程序文件'}" Margin="8,0,0,0"
-                                                           VerticalAlignment="Center" FontWeight="SemiBold" />
-                                            </StackPanel>
-                                        </Button>
-                                    </StackPanel>
+                                    <controls:AppPickButtons PickFile="OnPickExeClick"
+                                                             PickWindow="OnPickWindowClick" />
                                 </StackPanel>
                             </Grid>
 

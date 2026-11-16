@@ -29,6 +29,12 @@ public partial class KeyCaptureWindow : Window
     private IntPtr _hook = IntPtr.Zero;
     private HookProc? _proc;
 
+    /* 鼠标钩子：让"把某个键改成鼠标侧键"能靠按一下鼠标录进来。
+     * 键盘钩子收不到鼠标，光标停在窗口上按左键更是只会点到按钮。 */
+    private IntPtr _mouseHook = IntPtr.Zero;
+    private HookProc? _mouseProc;
+    private const int WH_MOUSE_LL = 14;
+
     private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -36,6 +42,17 @@ public partial class KeyCaptureWindow : Window
     {
         public uint vkCode;
         public uint scanCode;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT
+    {
+        public int ptX;
+        public int ptY;
+        public uint mouseData;
         public uint flags;
         public uint time;
         public IntPtr dwExtraInfo;
@@ -252,6 +269,12 @@ public partial class KeyCaptureWindow : Window
             };
 
             _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
+
+            /* 鼠标钩子单独一条：装不上不影响键盘录制，顶多是"鼠标键只能从列表里挑"。 */
+            _mouseProc = MouseHookCallback;
+            _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, GetModuleHandle(null), 0);
+            if (_mouseHook == IntPtr.Zero)
+                CoreLog.Warn($"鼠标捕获钩子没装上（错误码 {Marshal.GetLastWin32Error()}），鼠标键只能从列表里挑");
             if (_hook == IntPtr.Zero)
             {
                 /* 不再把这当成"功能不可用"：钩子只是三路来源之一，
@@ -275,8 +298,8 @@ public partial class KeyCaptureWindow : Window
             _noInputTimer.Tick += (_, _) =>
             {
                 _noInputTimer!.Stop();
-                if (HookHits + RawHits + WpfHits > 0) return;
-                CoreLog.Warn($"录键 3 秒没收到任何按键：钩子={HookHits} RawInput={RawHits} 窗口事件={WpfHits} " +
+                if (HookHits + MouseHits + RawHits + WpfHits > 0) return;
+                CoreLog.Warn($"录键 3 秒没收到任何按键：钩子={HookHits} 鼠标={MouseHits} RawInput={RawHits} 窗口事件={WpfHits} " +
                              $"（管理员={Core.ElevationHelper.IsElevated}）");
                 DetailText.Text = Loc.T("还没收到按键。可以再按一次；如果一直没反应，把日志发给我们（日志里记了三路来源的计数）。");
             };
@@ -290,6 +313,11 @@ public partial class KeyCaptureWindow : Window
             {
                 UnhookWindowsHookEx(_hook);
                 _hook = IntPtr.Zero;
+            }
+            if (_mouseHook != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_mouseHook);
+                _mouseHook = IntPtr.Zero;
             }
         };
     }
@@ -403,6 +431,49 @@ public partial class KeyCaptureWindow : Window
 
     /// <summary>低级钩子收到的事件数。</summary>
     internal int HookHits { get; set; }
+
+    /// <summary>鼠标钩子收到的事件数。</summary>
+    internal int MouseHits { get; private set; }
+
+    /// <summary>
+    /// 鼠标按键也当"一个键"来录：左/右/中/侧 1/侧 2 → 0x01/0x02/0x04/0x05/0x06。
+    ///
+    /// 这里**不吞**事件：捕获窗里还得用鼠标点「确定绑定」，
+    /// 把左键吞掉用户会以为窗口死了。读一下不会影响别的程序。
+    /// </summary>
+    private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode < 0) return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+
+        int msg = (int)wParam;
+        int vk;
+        bool down;
+        switch (msg)
+        {
+            case 0x0201: vk = 0x01; down = true; break;    // WM_LBUTTONDOWN
+            case 0x0202: vk = 0x01; down = false; break;   // WM_LBUTTONUP
+            case 0x0204: vk = 0x02; down = true; break;    // WM_RBUTTONDOWN
+            case 0x0205: vk = 0x02; down = false; break;
+            case 0x0207: vk = 0x04; down = true; break;    // WM_MBUTTONDOWN
+            case 0x0208: vk = 0x04; down = false; break;
+            case 0x020B:                                   // WM_XBUTTONDOWN
+            case 0x020C:                                   // WM_XBUTTONUP
+            {
+                var x = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                vk = ((x.mouseData >> 16) & 0xFFFF) == 2 ? 0x06 : 0x05;
+                down = msg == 0x020B;
+                break;
+            }
+            default:
+                return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+        }
+
+        MouseHits++;
+        if (Environment.GetEnvironmentVariable("CLP_CAPTURE_LOG") == "1")
+            CoreLog.Info($"[捕获] 鼠标 vk=0x{vk:X2} down={down}");
+        HandleKey(vk, down);
+        return CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+    }
 
     /// <summary>Raw Input 送进来的事件数。</summary>
     internal int RawHits { get; private set; }

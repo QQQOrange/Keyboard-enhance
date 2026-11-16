@@ -525,7 +525,7 @@ public static partial class SelfTest
         Check("迁移后版本号已更新",
             old.BuiltinEnginesVersion == DefaultSettings.BuiltinEnginesVersion);
         Check("补齐了 go 引擎", old.Search.Any(e => e.Key == "go"));
-        Check("补齐了 bili 引擎", old.Search.Any(e => e.Key == "bili"));
+        Check("补齐了 bilis 引擎", old.Search.Any(e => e.Key == "bilis"));
         Check("用户原有的 bd 未被覆盖", old.Search.Any(e => e.Key == "bd"));
 
         // 一次又一次迁移应当是幂等的
@@ -1747,7 +1747,7 @@ public static partial class SelfTest
         Check("所有动作都有描述", cat.Items.All(i => i.Description != null));
 
         // 常用分类必须存在
-        foreach (string want in new[] { "基础", "光标移动", "选择", "编辑", "宏", "窗口绑定" })
+        foreach (string want in new[] { "基础", "光标移动", "文本编辑", "宏", "窗口功能", "窗口绑定" })
             Check($"分类「{want}」存在", categories.Contains(want),
                 string.Join(",", categories));
     }

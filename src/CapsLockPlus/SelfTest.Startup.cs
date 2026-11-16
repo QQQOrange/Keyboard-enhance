@@ -752,7 +752,7 @@ public static partial class SelfTest
         var s = DefaultSettings.Create();
         var actions = new List<ActionInfo>
         {
-            new("qbar", "面板", "打开 Qbar", "命令面板"),
+            new("qbar", "基础", "打开 Qbar", "命令面板"),
             new("tab", "基础", "Tab", "发送 Tab"),
         };
 
@@ -763,7 +763,7 @@ public static partial class SelfTest
             hits.Any(r => r.Kind == QbarKind.Action && r.Payload == "qbar"),
             string.Join(",", hits.Select(h => h.Title)));
 
-        var byCategory = svc.Query("面板", null, 12);
+        var byCategory = svc.Query("基础", null, 12);
         Check("Qbar：按分类也能搜到", byCategory.Any(r => r.Payload == "qbar"));
 
         var none = svc.Query("zzzz-不存在", null, 12);
@@ -1733,8 +1733,10 @@ public static partial class SelfTest
         // ---- 设备标识一致性 ----
         CheckEqual("设备标识：VID/PID 优先",
             KeyboardDevices.KeyOf(@"\\?\HID#VID_1532&PID_00A4&MI_01#x#{g}"), devA);
-        CheckEqual("设备标识：没有 VID/PID 用路径",
-            KeyboardDevices.KeyOf(@"\\?\ACPI#PNP0303#0"), @"\\?\ACPI#PNP0303#0");
+        /* 没有 VID/PID 时用「枚举器\硬件ID」：实例段（插的哪个口）会变，
+         * 标识必须稳住，否则用户换个 USB 口规则就"丢了"。 */
+        CheckEqual("设备标识：没有 VID/PID 用枚举器+硬件ID",
+            KeyboardDevices.KeyOf(@"\\?\ACPI#PNP0303#0"), @"ACPI\PNP0303");
 
         // ---- 体检：规则指向的键盘不在线 ----
         var offline = new AppSettings();

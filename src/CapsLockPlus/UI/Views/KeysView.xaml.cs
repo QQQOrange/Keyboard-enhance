@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
@@ -17,8 +17,17 @@ public partial class KeysView : UserControl
 {
     private AppHost? _host;
 
-    /// <summary>当前编辑的层 ID（1~10）。</summary>
+    /// <summary>当前编辑的层 ID（1~10；<see cref="ReplaceLayerId"/> = 原键替换层）。</summary>
     private int _layerId = 1;
+
+    /// <summary>
+    /// 「原键替换层」在下拉里的伪层 ID。
+    ///
+    /// 它**不是**真正的层：没有触发键、不在 <c>Settings.Layers</c> 里、
+    /// 绑定也不按层存。但用户的心智是"在层里改键"，所以让它跟层共用一个下拉，
+    /// 用 0 这个层号永远不会撞车的值来表示。
+    /// </summary>
+    internal const int ReplaceLayerId = 0;
 
     /// <summary>层内的修饰键子层：直接按 / LAlt / Win。</summary>
     private KeyModifiers _layer = KeyModifiers.None;
@@ -47,6 +56,19 @@ public partial class KeysView : UserControl
         get
         {
             if (_host == null) return new List<KeyBinding>();
+
+            /* 原键替换层：不是"层"，而是"不用触发键的一组绑定"。
+             * 数据单独存一份（设备方案里也各有一份），所以这里直接分流，
+             * 不能落进下面的 Layers 查找 —— 否则会得到一个永远为空的列表。 */
+            if (_layerId == ReplaceLayerId)
+                return DeviceProfiles.ReplacementsFor(_host.Settings, _editDevice);
+
+            /* 选了某台设备 → 改的是它自己的那一层。
+             * 方案缺就按需建一个（点开胶囊选设备＝明确要在这台设备上配东西），
+             * 层缺就懒建 —— 这样"第一次用某台键盘"不会一上来就写 10 个空层。 */
+            if (_editDevice.Length > 0)
+                return DeviceProfiles.EnsureFor(_host.Settings, _editDevice).EnsureLayer(_layerId);
+
             var layer = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
             if (layer != null) return layer.Keys;
             // 老设置没有层结构时，Keys 即第 1 层
@@ -439,7 +461,7 @@ public partial class KeysView : UserControl
          * 用户把页面滚走时本来也不是在看那几条结果。 */
         PageScroll.ScrollChanged += (_, e) =>
         {
-            if (e.VerticalChange != 0 && SearchPopup.IsOpen) SearchPopup.IsOpen = false;
+            if (e.VerticalChange != 0 && BindingSearchPopup.IsOpen) BindingSearchPopup.IsOpen = false;
         };
     }
 
@@ -475,11 +497,13 @@ public partial class KeysView : UserControl
         BuildCategoryBox();
         _suppressEvents = false;
         BuildLayerBox();
+        RefreshDeviceScope();
         /* 每次进这个页面都重新读档位 —— 用户选过"特大"之后，
          * 下次打开（甚至重启程序）就该直接是特大，不用再选一次。 */
         BuildSizeBox();
         ApplyKeyboardSize();
         BuildKeyboard();
+        BuildMouseKeys();
         SelectKey(_selectedKey);
     }
 
@@ -609,99 +633,6 @@ public partial class KeysView : UserControl
         return false;
     }
 
-    /// <summary>搜索框内容变化：重建功能下拉。</summary>
-        // ---------------- 搜索结果 ----------------
-
-    /// <summary>一条搜索结果：点它会跳到对应的分类 + 功能。</summary>
-    private sealed record SearchHit(string ActionId, string Category, string Title)
-    {
-        public string Subtitle => Category;
-    }
-
-    /// <summary>
-    /// 搜索框内容变化：构建结果列表并弹出浮层。
-    ///
-    /// 搜索是**独立的结果下拉**，不干扰下面的分类/功能下拉 ——
-    /// 用户点中一条之后，才把三项一起切过去。
-    /// </summary>
-    private void OnActionSearchChanged(object sender, TextChangedEventArgs e)
-    {
-        if (_host == null || _suppressEvents) return;
-
-        string filter = ActionSearchBox.Text?.Trim() ?? "";
-        if (filter.Length == 0)
-        {
-            SearchPopup.IsOpen = false;
-            SearchResultList.ItemsSource = null;
-            return;
-        }
-
-        var hits = _host.Actions.Items
-            .Where(i => !i.Hidden && MatchesAction(i, filter))
-            .OrderBy(i => i.Category)
-            .ThenBy(i => i.Title)
-            .Take(60)
-            .Select(i => new SearchHit(i.Id, i.DisplayCategory, i.Title))
-            .ToList();
-
-        SearchResultList.ItemsSource = hits;
-        SearchPopup.IsOpen = hits.Count > 0;
-    }
-
-    /// <summary>
-    /// 点了某条搜索结果 → 分类、功能、参数面板一起跳过去。
-    /// </summary>
-    private void OnSearchResultSelected(object sender, SelectionChangedEventArgs e)
-    {
-        if (_host == null || _suppressEvents) return;
-        if (SearchResultList.SelectedItem is not SearchHit hit) return;
-
-        _suppressEvents = true;
-        try
-        {
-            // ① 切分类（四个分类下拉都要同步）
-            var info = _host.Actions.Get(hit.ActionId);
-            if (info != null)
-            {
-                foreach (var box in new[] { CategoryBox, CategoryBoxWinBind, CategoryBoxWeb, CategoryBoxType })
-                    SelectTag(box, info.Category);
-            }
-
-            // ② 按分类决定用哪种编辑模式
-            var mode = ModeOf(info?.Category);
-            ApplyEditorMode(mode);
-
-            // ③ 普通模式下把功能下拉选中到目标项
-            if (mode == EditorMode.Normal)
-            {
-                BuildActionBox();
-                foreach (ComboBoxItem it in ActionBox.Items)
-                {
-                    if (it.Tag is string tag && tag.Equals(hit.ActionId, StringComparison.OrdinalIgnoreCase))
-                    {
-                        ActionBox.SelectedItem = it;
-                        break;
-                    }
-                }
-                ApplySelectedAction();
-            }
-            else
-            {
-                // 窗口绑定 / 直达网页 / 输入文本：把当前键的动作设过去
-                EnsureActionForCategory(hit.ActionId);
-            }
-
-            // ④ 收起搜索
-            ActionSearchBox.Text = "";
-            SearchPopup.IsOpen = false;
-            SearchResultList.ItemsSource = null;
-        }
-        finally
-        {
-            _suppressEvents = false;
-        }
-    }
-
     /// <summary>界面当前处于哪种编辑模式。</summary>
     private enum EditorMode
     {
@@ -786,16 +717,6 @@ public partial class KeysView : UserControl
         {
             SyncCategoryBoxes(sender);
 
-            /* 用户**手动**换了分类 → 清掉搜索框。
-             *
-             * 否则会出现"我搜了「删除」，再选「面板」分类，
-             * 功能下拉里还是搜索的结果"这种矛盾状态 ——
-             * 手动选分类是更强的意图，应该覆盖之前的搜索。 */
-            if (ActionSearchBox != null && !string.IsNullOrEmpty(ActionSearchBox.Text))
-            {
-                ActionSearchBox.Text = "";
-            }
-
             var mode = ModeOf(SelectedCategory);
 
             /* 先把"动作"定下来，再铺面板。
@@ -809,7 +730,14 @@ public partial class KeysView : UserControl
             if (mode == EditorMode.Normal)
             {
                 BuildActionBox();
-                ApplySelectedAction();       // 让下方参数面板跟着刷新
+
+                /* 只铺面板，**不写配置**。
+                 *
+                 * 这里原先是 ApplySelectedAction()：BuildActionBox 会把下拉
+                 * 选中到新分类的第一项，紧接着就被"应用"到当前键上 —— 于是
+                 * 光是切个分类、"看看有什么功能"，键就悄悄绑上了（替换层里
+                 * 若第一项是「不绑定」，等于把这个键彻底锁死）。 */
+                RefreshActionPanelsOnly();
             }
             else if (mode == EditorMode.WinBind)
             {
@@ -847,11 +775,15 @@ public partial class KeysView : UserControl
         if (_host == null) return;
         string combo = CurrentCombo();
         var binding = FindInCurrentLayer(combo);
-        if (binding == null)
-        {
-            binding = new KeyBinding { Combo = combo };
-            CurrentLayerKeys.Add(binding);
-        }
+
+        /* 这个键还没绑定 → 什么都不做。
+         *
+         * 方法名是"确保分类对应的动作"，但它是**切分类时**被调用的：这里若
+         * 顺手建一条绑定，用户只是点开「窗口绑定」看看，键就已经被占用了
+         * （窗口绑定还没选程序 → 按下去什么也不发生；替换层里更糟，直接吞键）。
+         * 真正落盘留给用户点「选择程序」/填路径那一步。 */
+        if (binding == null) return;
+
         if (binding.Action == actionId) return;      // 已经是了，别覆盖 Arg
 
         /* 换成音量 / 亮度时，上一个动作的参数（比如"移动 5 个字符"的 5）
@@ -1021,6 +953,22 @@ public partial class KeysView : UserControl
 
         string combo = CurrentCombo();
         var binding = FindInCurrentLayer(combo);
+
+        /* 「不绑定」不是一条规则，是"没有规则"。
+         *
+         * 这条分支以前会顺手 add 一条 Action=doNothing 的绑定：切个分类、
+         * 或者只是打开某个键看看，就把这个键"记成已配置"。在普通层里它只让
+         * 触发键 + 这个键变成空操作，还算可控；但在**原键替换层**里 doNothing
+         * 会被当成"吞掉这个键"，于是用户什么都没配，鼠标中键就再也到不了别的
+         * 程序（wGesture 那次就是这么丢的）。所以：替换层上选「不绑定」＝删掉
+         * 这条规则，其它层上也不新建空绑定。 */
+        if (actionId == "doNothing")
+        {
+            if (binding != null) RemoveBinding(combo, binding);
+            else RefreshActionPanelsOnly();
+            return;
+        }
+
         if (binding == null)
         {
             binding = new KeyBinding { Combo = combo };
@@ -1029,11 +977,50 @@ public partial class KeysView : UserControl
         binding.Action = actionId;
         if (actionId == "doNothing") binding.Arg = "";
         else if (IsStepArgAction(actionId) && !IsValidStep(binding.Arg)) binding.Arg = "";
+        /* 改的是**已存在**的绑定：条数没变、列表引用也没变，层绑定缓存
+         * （ReferenceEquals + Count + BindingsVersion）会认成"还是老样子"，
+         * 键帽上显示的仍是旧功能，直到用户去点别的键把缓存冲掉 ——
+         * 这就是"点了确定绑定，界面没反应"的根因。 */
+        DeviceProfiles.InvalidateBindings();
+        if (_host.Settings.Global != null) _host.Settings.Global.BindingsVersion++;
+
         _host.SaveSettings();
 
         var info = _host.Actions.Get(actionId);
         ActionDesc.Text = info?.Description ?? "";
         ShowArgPanelFor(actionId, info?.NeedsArg == true || IsStepArgAction(actionId));
+
+        /* 立刻重画：键盘键帽和下面那排鼠标键帽是两套控件，只刷前者的话，
+         * 改完鼠标键要等用户去点另一个键才看得到变化。 */
         BuildKeyboard();
+        BuildMouseKeys();
+    }
+
+    /// <summary>
+    /// 删掉当前层里这个组合键的绑定（不是改成 doNothing —— 那仍算一条规则）。
+    ///
+    /// 原键替换层尤其需要：替换层里任何一条规则都会吞键，把"清空"实现成
+    /// 写 doNothing 等于把键锁死。
+    /// </summary>
+    private void RemoveBinding(string combo, KeyBinding binding)
+    {
+        CurrentLayerKeys.Remove(binding);
+        DeviceProfiles.InvalidateBindings();
+        _host!.Settings.Global.BindingsVersion++;
+        _host.SaveSettings();
+
+        ActionDesc.Text = "";
+        ShowArgPanelFor("", false);
+        BuildKeyboard();
+        ShowBindStatus(Loc.F("已清除「{0}」在这个层里的绑定", KeyName.Display(_selectedKey)));
+    }
+
+    /// <summary>只刷新右侧的说明/参数面板，不碰配置。</summary>
+    private void RefreshActionPanelsOnly()
+    {
+        string actionId = ActionBox.SelectedItem is ComboBoxItem { Tag: string t } ? t : "";
+        var info = _host?.Actions.Get(actionId);
+        ActionDesc.Text = info?.Description ?? "";
+        ShowArgPanelFor(actionId, info?.NeedsArg == true || IsStepArgAction(actionId));
     }
 }

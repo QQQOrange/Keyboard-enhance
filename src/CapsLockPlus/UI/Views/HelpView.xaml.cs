@@ -1,6 +1,8 @@
+﻿using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CapsLockPlus.Core.Input;
 
 namespace CapsLockPlus.UI.Views;
@@ -15,6 +17,12 @@ namespace CapsLockPlus.UI.Views;
 public partial class HelpView : UserControl
 {
     private AppHost? _host;
+
+    /// <summary>当前速查表内容：复制按钮用的就是这一份（跟着筛选走）。</summary>
+    private List<HelpGroup> _groups = new();
+
+    /// <summary>顶部提示的默认文案；有筛选时会被替换成「命中 N 条」。</summary>
+    private string _defaultHint = "";
 
     public HelpView()
     {
@@ -73,13 +81,15 @@ public partial class HelpView : UserControl
         if (primary == null)
         {
             TriggerKeyText.Text = Loc.T("（未设置）");
-            HintText.Text = Loc.T("还没有触发键 —— 到「触发键与层」页给某一层分配一个。");
+            _defaultHint = Loc.T("还没有触发键 —— 到「触发键与层」页给某一层分配一个。");
+            HintText.Text = _defaultHint;
             return;
         }
 
         TriggerKeyText.Text = DescribeKey(primary.Key);
-        HintText.Text = Loc.T("再看下面的按键 —— 未绑定的键可以到「按键映射」里自己加。")
-                      + Loc.T("每一层可以用不同的触发键，速查表按层分列。");
+        _defaultHint = Loc.T("再看下面的按键 —— 未绑定的键可以到「按键映射」里自己加。")
+                     + Loc.T("每一层可以用不同的触发键，速查表按层分列。");
+        HintText.Text = _defaultHint;
     }
 
     private static string DescribeKey(string key)
@@ -133,7 +143,7 @@ public partial class HelpView : UserControl
         {
             Loc.T("左半是完整 108 键键盘：点任意键即可编辑它的功能，修改立刻生效。"),
             Loc.T("深蓝色键帽 = 已绑定功能；浅蓝色 = 未绑定。键帽上方的小字是「功能分类」，中间是功能名，下方是键名。"),
-            Loc.T("右侧「编辑绑定」顶部的搜索框可以按功能名、分类、宏名、网址快速找到要绑的功能。"),
+            Loc.T("右侧编辑区只有一个搜索框：「编辑绑定」标题旁带放大镜的那个。打字时先列当前层已绑定的键（点中跳过去），再列全部功能（点中直接应用到当前键）。"),
             Loc.T("「分类」决定功能下拉里显示哪一类；「窗口绑定」「直达链接」「输入文本」这三类会换成专用的编辑界面。"),
         });
 
@@ -150,7 +160,7 @@ public partial class HelpView : UserControl
             Loc.T("【先填好】分类选「直达链接」，再选类型：直达网址用默认浏览器打开，直达文件夹在资源管理器里打开，直达文件用系统默认程序打开（和双击一样）。"),
             Loc.T("网址写成 github.com 也行，会自动补 https://；填完会自动抓网页标题当备注。文件夹和文件都能点「浏览…」直接挑。"),
             Loc.T("路径支持 %USERPROFILE%\\Desktop、~\\Downloads、shell:Downloads 这些写法；备注会显示在键帽上，不写备注时显示域名 / 文件夹名 / 文件名。"),
-            Loc.T("【选中什么就开什么】分类选「智能直达」（这一类里只有它一个动作）：在任意程序里选中一段文字，按这个键 —— 是网址就开浏览器、是文件夹就开资源管理器、是文件就用默认程序打开。不用预先配置。"),
+            Loc.T("【选中什么就开什么】分类选「智能直达」（这一类里只有它一个动作）：在任意程序里选中一段文字，按这个键 —— 是网址就开浏览器、是文件夹就开资源管理器、是文件就用默认程序打开。没有选中文字时，它会看你剪贴板里最新的一条：刚复制过网址、文件或文件夹，按一下就打开；两样都不是链接就什么都不做。不用预先配置。"),
             Loc.T("智能识别支持带协议的网址、裸域名、盘符路径、UNC 网络路径、环境变量路径，以及 file:/// 开头的地址；选中普通句子时会明确告诉你「这不是链接」，不会乱开浏览器。"),
         });
 
@@ -203,7 +213,25 @@ public partial class HelpView : UserControl
             Loc.T("同时配了 ;m 和 ;mail 时，命中会先等 120ms 看你会不会接着打 —— 所以长触发词也有机会生效。"),
         });
 
-        AddSection(Loc.T("⑨ 常见问题"), new[]
+        AddSection(Loc.T("⑨ Qbar 快捷启动"), new[]
+        {
+            Loc.T("双击触发键（默认 CapsLock）打开 Qbar：一个输入框同时管搜索、启动程序、算数、打开网址。"),
+            Loc.T("输入网址关键字再按空格：地址会整条填进输入框（例如 bili → https://www.bilibili.com），回车直接在浏览器打开 —— 不会再变成一个小标签。"),
+            Loc.T("输入搜索关键字再按空格（例如 bd）：会变成一个引擎标签，接着打关键词、回车就是搜索。"),
+            Loc.T("输入程序名再按空格（例如 calc）：变成程序标签，回车启动；输入框里直接粘完整网址、算式也能用。"),
+            Loc.T("↑ ↓ 选择结果，Tab 补全关键字，Esc 关闭；结果里同时会列出浏览器历史，方便回到刚看过的页面。"),
+            Loc.T("不记得关键字？双击触发键打开后直接打几个字母，按空格试一次 —— 认不出来就还在输入框里，不会丢字。"),
+        });
+
+        AddSection(Loc.T("⑩ 找东西：四个搜索框"), new[]
+        {
+            Loc.T("窗口右上角「搜索」：跨全应用找功能、宏、网址，回车直接执行或跳过去。"),
+            Loc.T("按键映射 → 编辑绑定标题旁（放大镜）：先找当前层已绑定的键，再找全部功能；点一条就跳过去或直接绑上。"),
+            Loc.T("本页（快捷键速查）右上：按组合键、功能名、说明筛选；「复制速查表」可以把结果整段复制走。"),
+            Loc.T("Qbar 面板页右上：在几百条搜索引擎 / 常用网址 / 启动程序里按关键字、备注过滤。"),
+        });
+
+        AddSection(Loc.T("⑪ 常见问题"), new[]
         {
             Loc.T("改了按键没生效？确认当前在正确的层（看键盘上方的层下拉），以及引擎没有处于「暂停」状态。"),
             Loc.T("锁屏（Win+L）后热键失效是系统限制 —— 锁屏界面在独立的安全桌面上，任何程序都无法在上面拦截键盘。"),
@@ -304,8 +332,8 @@ public partial class HelpView : UserControl
         }
 
         // 内置的固定说明
-        byCategory.TryAdd(Loc.T("面板"), new List<HelpItem>());
-        var panel = byCategory[Loc.T("面板")];
+        byCategory.TryAdd(Loc.T("按键小技巧"), new List<HelpItem>());
+        var panel = byCategory[Loc.T("按键小技巧")];
         if (filter.Length == 0)
         {
             panel.Add(new HelpItem(Loc.T("短按触发键"), Loc.T("切换大小写"),
@@ -318,8 +346,9 @@ public partial class HelpView : UserControl
 
         string[] order =
         {
-            Loc.T("光标移动"), Loc.T("选择"), Loc.T("编辑"), Loc.T("剪贴板"), Loc.T("面板"), Loc.T("窗口"), Loc.T("窗口绑定"),
-            Loc.T("智能直达"), Loc.T("直达链接"), Loc.T("自定义按键"), Loc.T("宏"), Loc.T("鼠标"), Loc.T("系统功能"), Loc.T("基础"),
+            Loc.T("光标移动"), Loc.T("文本编辑"), Loc.T("剪贴板"), Loc.T("窗口功能"), Loc.T("窗口绑定"),
+            Loc.T("智能直达"), Loc.T("直达链接"), Loc.T("自定义按键"), Loc.T("宏"),
+            Loc.T("键盘按键"), Loc.T("鼠标功能"), Loc.T("系统功能"), Loc.T("基础"),
         };
         foreach (var cat in order)
         {
@@ -343,7 +372,73 @@ public partial class HelpView : UserControl
             });
         }
 
+        _groups = groups;
+        int total = 0;
+        foreach (var g in groups) total += g.Items.Count;
+
+        /* 空态与计数：以前筛不到东西时只剩一张空白卡片，
+           用户分不清是「没搜到」还是「页面没加载」。 */
+        EmptyHint.Visibility = total == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (total == 0)
+        {
+            EmptyTitle.Text = filter.Length > 0 ? Loc.T("没有匹配的快捷键") : Loc.T("还没有任何绑定");
+            EmptyDesc.Text = filter.Length > 0
+                ? Loc.T("换个关键词试试 —— 可以搜按键名、功能名或说明。")
+                : Loc.T("到「按键映射」页点一个键、选一个功能，这里就会多一条。");
+        }
+
+        HintText.Text = filter.Length > 0
+            ? Loc.F("筛选「{0}」· 命中 {1} 条", filter, total)
+            : _defaultHint;
+        CopySheetButton.IsEnabled = total > 0;
+
         Groups.ItemsSource = groups;
+    }
+
+    /// <summary>
+    /// 把当前速查表（含筛选结果）复制成纯文本。
+    ///
+    /// 速查表最常见的用途是发给别人或贴进笔记 —— 截图会被裁、会糊，
+    /// 纯文本可以直接改。格式保持一层一条，方便粘到 Markdown 里。
+    /// </summary>
+    private void OnCopySheet(object sender, RoutedEventArgs e)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(Loc.F("按键增强 · 快捷键速查（v{0}）", Core.Update.UpdateService.CurrentVersion));
+        sb.AppendLine();
+
+        int total = 0;
+        foreach (var g in _groups)
+        {
+            sb.AppendLine("## " + g.Title + "（" + g.Items.Count + "）");
+            foreach (var item in g.Items)
+            {
+                sb.Append("- ").Append(item.Combo).Append("  ").Append(item.Title);
+                if (item.Desc.Length > 0) sb.Append(" —— ").Append(item.Desc);
+                sb.AppendLine();
+                total++;
+            }
+            sb.AppendLine();
+        }
+
+        try
+        {
+            Clipboard.SetText(sb.ToString());
+            CopySheetButton.Content = Loc.T("已复制");
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.6) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                CopySheetButton.Content = Loc.T("复制速查表");
+            };
+            timer.Start();
+        }
+        catch (Exception ex)
+        {
+            /* 剪贴板被别的程序独占时 SetText 会抛 —— 只在提示条上说明，不弹窗打断。 */
+            Core.CoreLog.Swallow(ex, "复制速查表");
+            HintText.Text = Loc.T("复制失败：剪贴板正被其它程序占用，稍后再试。");
+        }
     }
 
     /// <summary>

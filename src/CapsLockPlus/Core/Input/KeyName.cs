@@ -1,4 +1,4 @@
-﻿namespace CapsLockPlus.Core.Input;
+namespace CapsLockPlus.Core.Input;
 
 /// <summary>虚拟键码常量。</summary>
 public static class VK
@@ -6,6 +6,10 @@ public static class VK
     public const int LButton = 0x01;
     public const int RButton = 0x02;
     public const int MButton = 0x04;
+    /* 0x0A / 0x0B 在 Windows 里没有定义（VK 表里是空洞），拿来当"水平滚轮"的
+     * 内部键码：滚轮不是按键，天然没有 down/up，这里约定一次拨动＝一次按下+抬起。 */
+    public const int WheelLeft = 0x0A;
+    public const int WheelRight = 0x0B;
     public const int Back = 0x08;
     public const int Tab = 0x09;
     public const int Return = 0x0D;
@@ -123,6 +127,24 @@ public static class KeyName
         [VK.CapsLock] = "capslock",
         [VK.Space] = "space",
 
+        // ---- 鼠标按键 ----
+        //
+        // 鼠标键在 Windows 里的"虚拟码"就是 0x01~0x06，钩子里 WM_LBUTTONDOWN 这类
+        // 消息也是换算成这几个值送进引擎的，所以直接登记进同一张表：
+        // 改键、层绑定、触发键、宏录制全都能认，不必再走第二套逻辑。
+        //
+        // 侧键 0x05 / 0x06 是 XBUTTON1 / XBUTTON2（大多数鼠标上是"前进/后退"）。
+        [VK.LButton] = "mouseLeft",
+        [VK.RButton] = "mouseRight",
+        [VK.MButton] = "mouseMiddle",
+        [0x05] = "mouseX1",
+        [0x06] = "mouseX2",
+
+        // 水平滚轮（倾斜滚轮 / 触摸板左右滑）。Windows 只发 WM_MOUSEHWHEEL，
+        // 没有"按住"的概念，钩子里把一次拨动拆成按下 + 抬起两条事件。
+        [VK.WheelLeft] = "wheelLeft",
+        [VK.WheelRight] = "wheelRight",
+
         // ---- 修饰键必须全部登记 ----
         //
         // 少了任何一个，"自定义按键"就录不到 Ctrl/Shift/Alt/Win：
@@ -206,6 +228,12 @@ public static class KeyName
     /// <summary>该键是否可以作为 Caps 组合键的一部分（可绑定的按键）。</summary>
     public static bool IsBindable(int vk) => ToName.ContainsKey(vk);
 
+    /// <summary>
+    /// 全部已登记的键（按 vk 升序），供动作目录生成「发送某个键」。
+    /// 键名里的鼠标键（0x01~0x06）也在表里，调用方自己按需过滤。
+    /// </summary>
+    public static IReadOnlyList<int> BindableKeys => ToName.Keys.OrderBy(k => k).ToList();
+
     public static string? NameOf(int vk) => ToName.TryGetValue(vk, out var n) ? n : null;
 
     /// <summary>
@@ -260,6 +288,13 @@ public static class KeyName
         "esc" => "Esc",
         "space" => "Space",
         "capslock" => "CapsLock",
+        "mouseLeft" => "鼠标左键",
+        "mouseRight" => "鼠标右键",
+        "mouseMiddle" => "鼠标中键",
+        "mouseX1" => "鼠标侧键 1",
+        "mouseX2" => "鼠标侧键 2",
+        "wheelLeft" => "滚轮左拨",
+        "wheelRight" => "滚轮右拨",
         "lctrl" => "左 Ctrl",
         "rctrl" => "右 Ctrl",
         "lshift" => "左 Shift",

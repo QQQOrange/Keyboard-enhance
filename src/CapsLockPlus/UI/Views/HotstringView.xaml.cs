@@ -107,6 +107,58 @@ public partial class HotstringView : UserControl
         SortBox.Items.Add(Loc.T("自定义顺序"));
         SortBox.SelectedIndex = 0;
 
+        /* 别名框要用输入法打中文，这里显式打开 IME（有些系统设置会把非编辑类窗口的
+         * IME 关掉，WPF 不会自己再打开），并盯着"组字"状态。
+         *
+         * 关键在组字期间**什么都不做**：拼音没提交时 TextChanged 已经在连着触发，
+         * 以前每个字母都会 RefreshList()（重设 ItemsSource）+ SaveSettings()，
+         * 输入法的组合串被反复打断 —— 用户看到的就是"只能打英文，汉字出不来"。 */
+        InputMethod.SetIsInputMethodEnabled(KeyBox, true);
+
+        TextCompositionManager.AddPreviewTextInputStartHandler(KeyBox, (_, _) => _composing = true);
+
+        TextCompositionManager.AddPreviewTextInputUpdateHandler(KeyBox, (_, args) =>
+        {
+            if ((args.TextComposition?.CompositionText?.Length ?? 0) == 0) _composing = false;
+        });
+
+        TextCompositionManager.AddPreviewTextInputHandler(KeyBox, (_, _) => _composing = false);
+
+        KeyBox.LostKeyboardFocus += (_, _) =>
+        {
+            if (!_composing) return;
+            _composing = false;
+            OnEditorChanged(KeyBox, new RoutedEventArgs());
+        };
+
+    }
+
+    /// <summary>别名框正在输入法组字（拼音还没提交成汉字）。</summary>
+    private bool _composing;
+
+    /// <summary>把剪贴板里的文字直接填进别名框：输入法在我们窗口里不工作时也能写中文。</summary>
+    private void OnPasteTriggerClick(object sender, RoutedEventArgs e)
+    {
+        string text = "";
+        try
+        {
+            if (Clipboard.ContainsText()) text = Clipboard.GetText()?.Trim() ?? "";
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "读取剪贴板");
+        }
+
+        if (text.Length == 0)
+        {
+            _host?.Notify(Loc.T("剪贴板里没有文字"));
+            return;
+        }
+
+        KeyBox.Text = text;
+        KeyBox.Focus();
+        KeyBox.CaretIndex = KeyBox.Text.Length;
+        OnEditorChanged(KeyBox, new RoutedEventArgs());
     }
 
     public void Initialize(AppHost host)
@@ -117,10 +169,10 @@ public partial class HotstringView : UserControl
         _suppress = true;
         try
         {
-            PrefixBox.Text = opt.Prefix ?? "";
-            FullWidthBox.IsChecked = opt.FullWidth;
+            RefreshPrefixCapsule();
             SpaceBox.IsChecked = opt.ExpandOnSpace;
             SwallowBox.IsChecked = opt.SwallowSpace;
+            ImeBackBox.IsChecked = opt.RestoreImeAfterExpand;
             opt.ShowTextInList = false;      // 列表只显示备注，永远不显示替换内容
         }
         finally { _suppress = false; }
@@ -146,9 +198,121 @@ public partial class HotstringView : UserControl
         FocusPendingAlias();
 
         if (_host == null) return;
+        RefreshPrefixCapsule();
         RefreshGroups();
         RefreshList();
         SyncEditorToSelection();
+    }
+
+    /// <summary>
+    /// 胶囊上显示当前触发符号 + 它的中文名字（多前缀时加个 "+N"）。
+    /// 前缀为空 = 不需要前缀，显示一个中点，避免胶囊里出现空白。
+    /// </summary>
+    private void RefreshPrefixCapsule()
+    {
+        if (PrefixCapsule == null || _host == null) return;
+
+        var prefixes = _host.Settings.Hotstring.EffectivePrefixes;
+        string symbol = prefixes.Count > 0 ? prefixes[0] : "";
+        PrefixGlyphText.Text = symbol.Length > 0 ? symbol : "·";
+
+        string label = HotstringOptions.LabelOf(symbol);
+        string name = label.Length > 0
+            ? Loc.T(label)
+            : symbol.Length == 0 ? Loc.T("不需要前缀") : Loc.T("旧符号");
+        if (prefixes.Count > 1) name += " +" + (prefixes.Count - 1).ToString();
+        PrefixNameText.Text = name;
+        PrefixCapsule.ToolTip = prefixes.Count == 0
+            ? Loc.T("不需要前缀")
+            : Loc.F("当前触发符号：{0}。点开可以换成别的", string.Join(" ", prefixes));
+    }
+
+    /// <summary>点胶囊：把可选符号列出来，当前那个打勾。</summary>
+    private void OnPrefixCapsuleClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        BuildPrefixChoices();
+        PrefixPopup.IsOpen = true;
+    }
+
+    private void BuildPrefixChoices()
+    {
+        PrefixChoiceList.Children.Clear();
+        var prefixes = _host?.Settings.Hotstring.EffectivePrefixes ?? new List<string>();
+        string current = prefixes.Count > 0 ? prefixes[0] : "";
+
+        foreach (var (symbol, label) in HotstringOptions.SymbolChoices)
+        {
+            bool active = string.Equals(symbol, current, StringComparison.Ordinal);
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock
+            {
+                Text = symbol,
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Width = 22,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = Loc.T(label),
+                Style = (Style)FindResource("Text.Body"),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            if (active)
+            {
+                row.Children.Add(new TextBlock
+                {
+                    Text = "✓",
+                    Margin = new Thickness(12, 0, 0, 0),
+                    Foreground = (Brush)FindResource("Brush.Accent"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            }
+
+            var item = new Button
+            {
+                Style = (Style)FindResource("Button.Ghost"),
+                Padding = new Thickness(10, 5, 10, 5),
+                Margin = new Thickness(0, 1, 0, 1),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Tag = symbol,
+                Content = row,
+                Focusable = false,
+            };
+            item.Click += OnPrefixChoiceClick;
+            PrefixChoiceList.Children.Add(item);
+        }
+    }
+
+    private void OnPrefixChoiceClick(object sender, RoutedEventArgs e)
+    {
+        PrefixPopup.IsOpen = false;
+        if (sender is Button { Tag: string symbol }) ApplyPrefixSymbol(symbol);
+    }
+
+    /// <summary>
+    /// 换触发符号：条目里的触发词要跟着搬（`;mail` → `:mail`），否则列表剥不掉旧前缀。
+    /// 新符号与当前一致时什么都不做。
+    /// </summary>
+    private void ApplyPrefixSymbol(string symbol)
+    {
+        if (_host == null || symbol.Length == 0) return;
+
+        var opt = _host.Settings.Hotstring;
+        var before = opt.EffectivePrefixes.ToList();
+        if (before.Count == 1 && string.Equals(before[0], symbol, StringComparison.Ordinal)) return;
+
+        opt.Prefixes = new List<string> { symbol };
+        opt.NormalizePrefixes();
+
+        int moved = SnippetPrefixOps.MigrateAll(_host.Settings, before, opt.EffectivePrefixes);
+        CoreLog.Info($"改触发符号：{string.Join("", before)} → {string.Join("", opt.EffectivePrefixes)}，迁移 {moved} 条");
+
+        _host.SaveSettings();
+        Refresh();
+        _host.Notify(Loc.F("触发符号已改为「{0}」", symbol));
     }
 
     private void RefreshGroups()
@@ -226,10 +390,12 @@ public partial class HotstringView : UserControl
             .Select(x => new Row
             {
                 Snippet = x,
-                KeyLabel = SnippetPrefixOps.Strip(x.Trigger, opt.EffectivePrefix),
-                Initial = InitialOf(x.Trigger, opt.EffectivePrefix),
+                KeyLabel = SnippetPrefixOps.StripAny(x.Trigger, opt.EffectivePrefixes),
+                Initial = InitialOf(SnippetPrefixOps.StripAny(x.Trigger, opt.EffectivePrefixes)),
                 GroupLabel = string.IsNullOrWhiteSpace(x.Group) ? "" : x.Group!.Trim(),
-                PrefixLabel = string.IsNullOrEmpty(opt.EffectivePrefix) ? "·" : opt.EffectivePrefix,
+                PrefixLabel = opt.EffectivePrefixes.Count == 0
+                    ? "·"
+                    : string.Join("", opt.EffectivePrefixes),
                 Preview = BuildPreview(x),
             })
             .ToList();
@@ -291,7 +457,12 @@ public partial class HotstringView : UserControl
         if (_prefixAlignedOnce || _host == null) return;
         _prefixAlignedOnce = true;
 
-        string current = _host.Settings.Hotstring.EffectivePrefix ?? "";
+        var prefixes = _host.Settings.Hotstring.EffectivePrefixes;
+
+        /* 配了多个前缀时不再自动"对齐"：用户可能就是想同时用 `;` 和 `、`，
+         * 猜错会把好好的条目全搬走。 */
+        if (prefixes.Count != 1) return;
+        string current = prefixes[0];
 
         /* 新旧符号混着的时候 DetectStale 会返回 null —— 那种情况不猜，
          * 交给用户改一次前缀（改前缀一定会整批迁移）。 */
@@ -308,9 +479,10 @@ public partial class HotstringView : UserControl
 
     // ---------------- 小工具 ----------------
 
-    private static string InitialOf(string? trigger, string? prefix)
+    /// <summary>列表左侧那个圆形首字（已经剥掉前缀的显示名传进来）。</summary>
+    private static string InitialOf(string? name)
     {
-        string s = SnippetPrefixOps.Strip(trigger, prefix);
+        string s = name ?? "";
         if (s.Length == 0) return "?";
         char c = char.ToUpperInvariant(s[0]);
         return char.IsLetterOrDigit(c) ? c.ToString() : s[..1];
@@ -351,7 +523,7 @@ public partial class HotstringView : UserControl
         _suppress = true;
         try
         {
-            KeyBox.Text = SnippetPrefixOps.Strip(entry.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
+            KeyBox.Text = SnippetPrefixOps.StripAny(entry.Trigger, _host?.Settings.Hotstring.EffectivePrefixes);
             EditTitle.Text = Loc.F("正在编辑：{0}", KeyBox.Text.Length == 0 ? Loc.T("（新别名）") : KeyBox.Text);
             ValueBox.Text = entry.Text ?? "";
             CommentBox.Text = entry.Comment ?? "";
@@ -450,7 +622,7 @@ public partial class HotstringView : UserControl
          *   · 位置由 60fps 的定时器从 Mouse.GetPosition 直接读取，
          *     不再依赖 DragOver 事件 —— 那样只有在拖过目标控件时才会更新。
          */
-        string label = SnippetPrefixOps.Strip(snippet.Trigger, _host?.Settings.Hotstring.EffectivePrefix);
+        string label = SnippetPrefixOps.StripAny(snippet.Trigger, _host?.Settings.Hotstring.EffectivePrefixes);
         if (string.IsNullOrEmpty(label))
             label = Shorten(snippet.Comment, 24);
 
@@ -965,44 +1137,12 @@ public partial class HotstringView : UserControl
         if (_host == null || _suppress) return;
         var opt = _host.Settings.Hotstring;
 
-        /* 全角开关会改变"实际生效的前缀"（; ↔ ；），触发词里存的还是旧的那个 ——
-         * 和改前缀符号是同一个坑，这里一并迁移。 */
-        string oldPrefix = opt.EffectivePrefix ?? "";
-
-        opt.FullWidth = FullWidthBox.IsChecked == true;
         opt.ExpandOnSpace = SpaceBox.IsChecked == true;
         opt.SwallowSpace = SwallowBox.IsChecked == true;
-
-        string newPrefix = opt.EffectivePrefix ?? "";
-        if (oldPrefix != newPrefix)
-        {
-            int moved = SnippetPrefixOps.Migrate(_host.Settings, oldPrefix, newPrefix);
-            if (moved > 0) CoreLog.Info($"切换全角符号：{oldPrefix} → {newPrefix}，已迁移 {moved} 条别名");
-        }
+        opt.RestoreImeAfterExpand = ImeBackBox.IsChecked == true;
 
         _host.SaveSettings();
         RefreshList();
-        if (_editing != null) LoadEditor(_editing);
-    }
-
-    private void OnPrefixChanged(object sender, TextChangedEventArgs e)
-    {
-        if (_host == null || _suppress) return;
-
-        string oldPrefix = _host.Settings.Hotstring.EffectivePrefix ?? "";
-        string newPrefix = PrefixBox.Text ?? "";
-
-        _host.Settings.Hotstring.Prefix = newPrefix;
-
-        /* 前缀是**存在每条触发词里**的（;mail）。改前缀时必须把已有条目一起搬，
-         * 否则列表按新前缀剥不掉 → 每条别名前面都多出一个旧前缀。 */
-        int moved = SnippetPrefixOps.Migrate(_host.Settings, oldPrefix, newPrefix);
-        if (moved > 0) CoreLog.Info($"改前缀符号：{oldPrefix} → {newPrefix}，已迁移 {moved} 条别名");
-
-        _host.SaveSettings();
-        Refresh();
-
-        /* 编辑区里的触发词也要跟着刷新（它显示的是剥掉前缀后的值）。 */
         if (_editing != null) LoadEditor(_editing);
     }
 
@@ -1111,6 +1251,10 @@ public partial class HotstringView : UserControl
     {
         if (_host == null || _suppress || _editing == null) return;
 
+        /* 输入法正在组字：这时候的 Text 是"拼音半成品"，落盘和刷新都没有意义，
+         * 而且会打断输入法的组合串（汉字永远提交不了）。等提交后再走一次。 */
+        if (_composing) return;
+
         /* 编辑区可能指向一条"已经不在配置里"的条目：
          * 同步恢复覆盖了配置、或者这条在别处被删掉了。
          * 继续往里写只会改到一个游离对象，存进去也会在下一次刷新时消失 ——
@@ -1131,7 +1275,7 @@ public partial class HotstringView : UserControl
             LoadEditor(again);
         }
 
-        _editing.Trigger = SnippetPrefixOps.Apply(KeyBox.Text, _host.Settings.Hotstring.EffectivePrefix);
+        _editing.Trigger = SnippetPrefixOps.ApplyAny(KeyBox.Text, _host.Settings.Hotstring.EffectivePrefixes);
         _editing.Text = ValueBox.Text ?? "";
         _editing.Comment = CommentBox.Text ?? "";
         _editing.Apps = AppsBox.Text?.Trim() ?? "";
@@ -1148,7 +1292,7 @@ public partial class HotstringView : UserControl
         RefreshList();
         RefreshGroups();
         EditTitle.Text = Loc.F("正在编辑：{0}",
-            SnippetPrefixOps.Strip(_editing.Trigger, _host.Settings.Hotstring.EffectivePrefix));
+            SnippetPrefixOps.StripAny(_editing.Trigger, _host.Settings.Hotstring.EffectivePrefixes));
 
         /* 触发词撞车：两条同触发词时只有其中一条会命中，用户很难自己发现。 */
         bool duplicate = _editing.Trigger.Length > 0 && Entries.Any(x =>
@@ -1467,13 +1611,13 @@ public partial class HotstringView : UserControl
     {
         if (_host == null) return;
 
-        string prefix = _host.Settings.Hotstring.EffectivePrefix ?? "";
-        string baseName = SnippetPrefixOps.Strip(source.Trigger, prefix);
+        var prefixes = _host.Settings.Hotstring.EffectivePrefixes;
+        string baseName = SnippetPrefixOps.StripAny(source.Trigger, prefixes);
         if (baseName.Length == 0) baseName = Loc.T("副本");
 
         string candidate = baseName + "2";
         int n = 2;
-        while (Entries.Any(x => string.Equals(SnippetPrefixOps.Strip(x.Trigger, prefix), candidate,
+        while (Entries.Any(x => string.Equals(SnippetPrefixOps.StripAny(x.Trigger, prefixes), candidate,
                                                StringComparison.CurrentCultureIgnoreCase)))
         {
             n++;
@@ -1482,7 +1626,7 @@ public partial class HotstringView : UserControl
 
         var copy = new Snippet
         {
-            Trigger = SnippetPrefixOps.Apply(candidate, prefix),
+            Trigger = SnippetPrefixOps.ApplyAny(candidate, prefixes),
             Text = source.Text,
             Comment = source.Comment,
             Group = source.Group,
@@ -1594,6 +1738,35 @@ public partial class HotstringView : UserControl
     }
 
     /// <summary>别名体检：重复触发词 / 空内容 / 前缀不对 / 分组未登记。</summary>
+    /// <summary>
+    /// 「找回丢失的别名」：扫历史副本，把当前配置里没有的条目列出来让用户勾。
+    ///
+    /// 这个功能存在的理由见 <see cref="SnippetRecovery"/> 的注释：丢条目时界面
+    /// 不会有任何痕迹，只有磁盘上的旧副本还留着证据。
+    /// </summary>
+    private void OnRecoverClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+
+        var result = SnippetRecovery.Scan(_host.Settings);
+        if (result.Candidates.Count == 0)
+        {
+            string detail = result.FilesScanned == 0
+                ? Loc.T("还没有可用的历史副本：从下一次启动开始，程序每天会留一份设置快照。")
+                : Loc.F("看过了 {0} 份历史副本，没有发现当前缺失的别名。", result.FilesScanned);
+            UI.Windows.AppDialog.Success(Owner, detail, Loc.T("找回丢失的别名"));
+            return;
+        }
+
+        var picks = UI.Windows.SnippetRecoverWindow.Ask(Owner, result);
+        if (picks == null || picks.Count == 0) return;
+
+        int added = SnippetRecovery.Restore(_host.Settings, picks);
+        _host.SaveSettings();
+        Refresh();
+        _host.Notify(Loc.F("已恢复 {0} 条别名", added));
+    }
+
     private void OnAuditClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
@@ -1707,10 +1880,9 @@ public partial class HotstringView : UserControl
     {
         if (_host == null) return;
 
-        string prefix = _host.Settings.Hotstring.EffectivePrefix ?? "";
         var entry = new Snippet
         {
-            Trigger = prefix,
+            Trigger = "",       // 前缀等用户输入完触发词再补（ApplyAny 会用默认前缀）
             Text = "",
             Comment = Loc.T("新别名"),
             Group = CurrentGroup ?? "",
@@ -1797,7 +1969,7 @@ public partial class HotstringView : UserControl
 
         FillMoveMenu(menu, row.Snippet);
 
-        string name = SnippetPrefixOps.Strip(row.Snippet.Trigger, _host.Settings.Hotstring.EffectivePrefix);
+        string name = SnippetPrefixOps.StripAny(row.Snippet.Trigger, _host.Settings.Hotstring.EffectivePrefixes);
 
         var copyText = new MenuItem { Header = Loc.T("复制内容") };
         copyText.Click += (_, _) => CopyToClipboard(row.Snippet.Text, Loc.T("内容已复制"));

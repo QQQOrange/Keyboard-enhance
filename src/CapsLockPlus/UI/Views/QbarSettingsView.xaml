@@ -87,7 +87,7 @@
                     <TabItem Header="{loc:T '搜索指令'}" Tag="search" />
                     <TabItem Header="{loc:T '启动程序'}" Tag="run" />
                     <TabItem Header="{loc:T '常用网址'}" Tag="web" />
-                    <TabItem Header="{loc:T '文字替换'}" Tag="hotstring" />
+                    <TabItem Header="{loc:T '固定项'}" Tag="pinned" />
                 </TabControl>
 
                 <!-- 过滤框：按关键字或备注模糊搜索当前标签下的条目 -->
@@ -125,11 +125,11 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <!-- 有图标显示图标，没有则显示首字母色块 -->
+                                <!-- 二选一：有图标只显示图标，没有图标只显示首字母色块。
+                                     两个元素各自由 HasIconVisibility / NoIconVisibility 控制，
+                                     绝不会同时叠在同一个位置。 -->
                                 <Grid Grid.Column="0" Width="20" Height="20" Margin="0,0,8,0"
                                       VerticalAlignment="Center">
-                                    <Image Source="{Binding Icon}" Stretch="Uniform"
-                                           RenderOptions.BitmapScalingMode="HighQuality" />
                                     <Border Background="{Binding LetterBrush}" CornerRadius="5"
                                             Visibility="{Binding NoIconVisibility}">
                                         <TextBlock Text="{Binding Initial}" FontSize="10"
@@ -137,6 +137,9 @@
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center" />
                                     </Border>
+                                    <Image Source="{Binding Icon}" Stretch="Uniform"
+                                           Visibility="{Binding HasIconVisibility}"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
                                 </Grid>
 
                                 <TextBlock Grid.Column="1" Text="{Binding Key}" FontWeight="SemiBold"
@@ -180,6 +183,16 @@
                         <TextBox x:Name="ValueBox" Style="{StaticResource TextBox.Base}" MinHeight="70"
                                  TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
                                  TextChanged="OnFieldChanged" />
+
+                        <StackPanel x:Name="ArgumentsRow">
+                            <TextBlock Text="{loc:T '参数（可选）'}" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
+                            <TextBox x:Name="ArgumentsBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                                     VerticalContentAlignment="Center" TextChanged="OnFieldChanged"
+                                     ToolTip="{loc:T '传给程序的命令行参数。用 {q} 代表用户输入，例如欧路词典填 -w {q}。'}" />
+                            <CheckBox x:Name="AdminBox" Content="{loc:T '以管理员身份运行'}"
+                                      Style="{StaticResource CheckBox.Text}" Margin="0,8,0,0"
+                                      Click="OnFlagsChanged" />
+                        </StackPanel>
 
                         <TextBlock Text="{loc:T '备注（可选）'}" Style="{StaticResource Text.Secondary}" Margin="0,12,0,6" />
                         <TextBox x:Name="CommentBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
@@ -249,6 +262,16 @@
                         <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                             <CheckBox x:Name="ShowIconsBox" Content="{loc:T '显示图标'}" Style="{StaticResource CheckBox.Text}"
                                       VerticalAlignment="Center" Click="OnAppearanceChanged" />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,16,0,0">
+                            <TextBlock Text="{loc:T '输入法'}" Style="{StaticResource Text.Tertiary}" Margin="0,0,0,7" />
+                            <CheckBox x:Name="ImeOnOpenBox" Content="{loc:T '面板打开时切到英文输入'}"
+                                      Style="{StaticResource CheckBox.Text}" Click="OnAppearanceChanged"
+                                      ToolTip="{loc:T '引擎关键字只能用英文字母打；勾上之后打开面板就替你按一下 Shift。'}" />
+                            <CheckBox x:Name="ImeBackBox" Content="{loc:T '认出引擎后切回中文'}"
+                                      Style="{StaticResource CheckBox.Text}" Margin="0,6,0,0" Click="OnAppearanceChanged"
+                                      ToolTip="{loc:T '按空格把关键字变成标签之后，替你按一下 Shift 切回中文，直接打搜索内容。'}" />
                         </StackPanel>
                         <Button Content="{loc:T '恢复默认外观'}" Style="{StaticResource Button.Ghost}" HorizontalAlignment="Left"
                                 Margin="-10,10,0,0" Click="OnResetAppearance" />

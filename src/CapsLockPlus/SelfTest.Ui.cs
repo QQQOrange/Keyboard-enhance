@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -1061,7 +1061,7 @@ public static partial class SelfTest
         // KeycapTitle 逻辑：有短名用短名，没有退回全名
         var withShort = cat.Get("deleteWord");
         Check("deleteWord 有短名", withShort != null,
-            string.Join(",", cat.Items.Where(i => i.Category == "编辑").Select(i => i.Id)));
+            string.Join(",", cat.Items.Where(i => i.Category == "文本编辑").Select(i => i.Id)));
         CheckEqual("deleteWord 短名", withShort?.ShortTitle, "删词");
         CheckEqual("deleteWord 全名保留", withShort?.Title, "删除前一个单词");
     }
@@ -1597,22 +1597,28 @@ public static partial class SelfTest
         view.UpdateLayout();
 
         var picker = view.FindName("NormalActionPicker") as System.Windows.Controls.Grid;
-        var search = view.FindName("SearchGroup") as System.Windows.Controls.StackPanel;
         var category = view.FindName("CategoryBox") as System.Windows.Controls.ComboBox;
+        var action = view.FindName("ActionBox") as System.Windows.Controls.ComboBox;
         var clear = view.FindName("ClearBindButton") as System.Windows.Controls.Button;
+        var headerSearch = view.FindName("BindingSearchBox") as System.Windows.Controls.TextBox;
 
-        Check("编辑区有普通分类行", picker != null && search != null && category != null && clear != null);
-        if (picker == null || search == null || category == null || clear == null) return;
+        Check("编辑区有普通分类行", picker != null && category != null && action != null && clear != null);
+        if (picker == null || category == null || action == null || clear == null) return;
 
-        /* 一行 = 标签(约 24) + 控件(34) + 余量；退回"搜索一行、分类+功能一行"
+        /* 搜索只留标题行那一个。分类行原来还有一个，两处都能搜，
+           用户分不清该用哪个 —— 这条断言防止第二个又被加回来。 */
+        Check("分类行没有第二个搜索框", view.FindName("ActionSearchBox") == null);
+        Check("标题行有搜索框", headerSearch != null);
+
+        /* 一行 = 标签(约 24) + 控件(34) + 余量；退回"分类一行、功能一行"
          * 会是 100 以上 —— 这条断言就是防止那种退化。 */
-        Check("搜索/分类/功能挤在同一行", picker.ActualHeight is > 40 and < 80,
+        Check("分类与功能挤在同一行", picker.ActualHeight is > 40 and < 80,
             $"行高 {picker.ActualHeight:F0}");
 
-        double searchTop = search.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
         double categoryTop = category.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
-        Check("搜索框与分类在同一行（顶部差 < 30）", Math.Abs(searchTop - categoryTop) < 30,
-            $"搜索组 {searchTop:F0}，分类控件 {categoryTop:F0}");
+        double actionTop = action.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
+        Check("分类与功能在同一行（顶部差 < 30）", Math.Abs(actionTop - categoryTop) < 30,
+            $"分类 {categoryTop:F0}，功能 {actionTop:F0}");
 
         // 两个操作按钮提到标题行：必须比分类控件更靠上
         double clearTop = clear.TranslatePoint(new System.Windows.Point(0, 0), view).Y;
@@ -1621,14 +1627,10 @@ public static partial class SelfTest
 
         // ---- 宽/窄两种形态（同一批控件重排，不是两套视图）----
         var wide = view.EditorLayoutForTest(compact: false);
-        CheckEqual("宽窗口：搜索留在主行", wide.SearchRow, 0);
-        CheckEqual("宽窗口：搜索只占一列", wide.SearchSpan, 1);
         CheckEqual("宽窗口：备注留在主行", wide.NoteRow, 0);
         CheckEqual("宽窗口：备注只占一列", wide.NoteSpan, 1);
 
         var narrow = view.EditorLayoutForTest(compact: true);
-        CheckEqual("窄窗口：搜索下沉到第二行", narrow.SearchRow, 1);
-        CheckEqual("窄窗口：搜索横跨整行", narrow.SearchSpan, 3);
         CheckEqual("窄窗口：备注下沉到第二行", narrow.NoteRow, 1);
         CheckEqual("窄窗口：备注横跨整行", narrow.NoteSpan, 3);
         Check("窄窗口：下沉的备注有上方间距", narrow.NoteMarginTop > 0, $"{narrow.NoteMarginTop:F0}");

@@ -1,13 +1,18 @@
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using CapsLockPlus.Core;
 using CapsLockPlus.Core.Icons;
 using CapsLockPlus.Core.Qbar;
+using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Windows;
 using CapsLockPlus.UI.Theme;
 
@@ -27,6 +32,13 @@ public partial class QbarWindow : Window
     private QbarChip? _chip;
     private bool _closing;
     private bool _suppressTextChanged;
+    private bool _imeApplied;
+    private string _imeKey = "";
+    private DateTime _imeAt = DateTime.MinValue;
+    private int _imeRetry;
+    private string _imeLoggedMode = "";
+    private DispatcherTimer? _imeTimer;
+    private DispatcherTimer? _imeVerify;
 
     public QbarWindow(AppHost host)
     {
@@ -70,11 +82,168 @@ public partial class QbarWindow : Window
             Focus();
             Keyboard.Focus(Input);
             Input.CaretIndex = Input.Text.Length;
+
+            /* 输入法只在**焦点真正拿到之后**切：盲按 Shift 是"切换"，不是"确保"，
+             * 现在已经是中文时再按一下反而变英文。这里用 ImeGuard 查布局后按需切。 */
+            if (!_imeApplied && IsActive)
+            {
+                /* EnsureComposing 会同时检查“布局”和“输入法的中/英模式”。
+                 * 只有真的成功才记账；失败时保持 false，等下一次激活/焦点
+                 * 事件再试一次（中文输入法刚启动时 IMM 上下文可能还没就绪）。 */
+                _imeApplied = ApplyImePreference();
+                if (!_imeApplied) QueueImePreference(180);
+            }
         }
         catch
         {
             // 焦点操作失败不该影响面板本身
         }
+    }
+
+    /// <summary>
+    /// 按当前面板状态决定输入语言：
+    ///   已有引擎标签 → 中文（用户接下来要打的是搜索内容）；
+    ///   空面板       → 按“打开时切英文”选项，方便直接打 bd / gg 这类关键字。
+    ///
+    /// 只做“确保”，不做“切换”：已经是目标语言时什么都不发，避免把
+    /// 用户手工切好的中/英状态又翻回去。
+    /// </summary>
+    private bool ApplyImePreference(bool force = false)
+    {
+        try
+        {
+            /* 空面板不碰输入法：用户系统当前是什么中/英状态，就保持什么状态。
+             * 唯一要做的是把上一次“引擎标签”可能遗留的禁用状态恢复回来。 */
+            if (_chip == null)
+            {
+                if (!InputMethod.GetIsInputMethodEnabled(Input))
+                    InputMethod.SetIsInputMethodEnabled(Input, true);
+                return true;
+            }
+
+            /* 只有“已经带出引擎标签”并且用户勾了“认出引擎后切回中文”
+             * 时才切中文。 */ 
+            string want = "zh:" + _chip.Key;
+            if (!force && _imeKey == want && (DateTime.UtcNow - _imeAt).TotalMilliseconds < 800)
+                return true;
+
+            bool Done(bool ok)
+            {
+                if (ok)
+                {
+                    _imeKey = want;
+                    _imeAt = DateTime.UtcNow;
+                }
+                return ok;
+            }
+
+            InputMethod.SetIsInputMethodEnabled(Input, true);
+            if (!_host.Settings.Qbar.SwitchBackOnEngine)
+            {
+                // 用户关掉了“认出引擎后切回中文”：保持输入法现状。
+                return Done(true);
+            }
+
+            return Done(ShiftImeTo(true));
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "切换输入法");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 用 Shift 把当前输入法拨到中文/英文模式，不切换键盘布局。
+    /// 先读 WPF 的 ImeConversionMode，已经是目标状态就什么都不发；
+    /// 读不到明确状态（DoNotCare）时也不盲按，交给下一轮重试。
+    /// </summary>
+    private bool ShiftImeTo(bool chinese)
+    {
+        InputMethod.SetPreferredImeState(Input, InputMethodState.On);
+        var ime = InputMethod.Current;
+        if (ime == null) return false;
+
+        if (ime.ImeState != InputMethodState.On)
+            ime.ImeState = InputMethodState.On;
+
+        var mode = ime.ImeConversionMode;
+        bool nowChinese = (mode & ImeConversionModeValues.Native) != 0;
+        bool nowEnglish = (mode & ImeConversionModeValues.Alphanumeric) != 0;
+
+        string actual = mode.ToString();
+        if (_imeLoggedMode != actual)
+        {
+            _imeLoggedMode = actual;
+            CoreLog.Info($"[Qbar] IME 当前={actual}，目标={(chinese ? "中文" : "英文")}");
+        }
+
+        if (chinese ? nowChinese : nowEnglish) return true;
+        if (!nowChinese && !nowEnglish) return false;   // DoNotCare / 还没挂好
+
+        Core.Input.InputSender.Tap(0x10);   // VK_SHIFT：只切中英模式，不换布局
+        try
+        {
+            /* 搜狗/微软拼音对合成 Shift 的反应有延迟，而且 WPF 的
+             * ImeConversionMode 有时要到下一次输入才刷新。这里再直接
+             * 把 TSF 的转换模式拨到目标值作为兜底 —— 仍然不换键盘布局。 */
+            var target = chinese ? ImeConversionModeValues.Native : ImeConversionModeValues.Alphanumeric;
+            InputMethod.SetPreferredImeConversionMode(Input, target);
+            ime.ImeConversionMode = target;
+        }
+        catch { }
+        return true;
+    }
+
+    /// <summary>
+    /// 焦点刚拿到时 TSF 有时还没挂好，立刻设 IME 会被随后到来的
+    /// 焦点消息覆盖。延迟一拍再强制应用一次，只延后不阻塞面板显示。
+    /// </summary>
+    private void QueueImePreference(int delayMs = 140)
+    {
+        _imeRetry = 0;
+        StartImeTimer(delayMs);
+    }
+
+    private void StartImeTimer(int delayMs)
+    {
+        _imeTimer?.Stop();
+        _imeTimer = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(Math.Max(30, delayMs)),
+        };
+        _imeTimer.Tick += (_, _) =>
+        {
+            _imeTimer?.Stop();
+            if (!IsVisible) return;
+            _imeApplied = ApplyImePreference(force: true);
+            if (!_imeApplied && _imeRetry++ < 5)
+                StartImeTimer(250);
+            else if (_imeApplied)
+                ScheduleImeVerify();
+        };
+        _imeTimer.Start();
+    }
+
+    /// <summary>
+    /// TSF 有时在面板刚显示时先报 Alphanumeric，等焦点稳定/开始输入后又变回
+    /// 中文（搜狗、微软拼音都见过）。这里在 700ms 后再核对一次：只读状态，
+    /// 真的变回中文才补按一次 Shift；已经是目标状态就什么都不做。
+    /// </summary>
+    private void ScheduleImeVerify()
+    {
+        _imeVerify?.Stop();
+        _imeVerify = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(700),
+        };
+        _imeVerify.Tick += (_, _) =>
+        {
+            _imeVerify?.Stop();
+            if (IsVisible)
+                _imeApplied = ApplyImePreference(force: true);
+        };
+        _imeVerify.Start();
     }
 
     /// <summary>
@@ -508,6 +677,9 @@ public partial class QbarWindow : Window
     public void Open(string? prefill = null)
     {
         if (_closing) ReopenFromFade();
+        _imeApplied = false;
+        _imeKey = "";
+        _imeAt = DateTime.MinValue;
         ApplyStyle();
         ClearChip();
 
@@ -546,7 +718,6 @@ public partial class QbarWindow : Window
         _openedAt = DateTime.Now;
         AttachEscInterceptor();
         StartOutsideWatch();
-        BeginForceFocus();
 
         /* prefill 有两种形态：
          *   ① "bd "           —— 引擎关键字（由 qbar:<key> 动作传入）
@@ -557,24 +728,42 @@ public partial class QbarWindow : Window
          * 才变标签 —— 等于"绑定没生效"。这里直接判定并转换。 */
         string pre = prefill ?? "";
         SetInputText(pre);
-        if (pre.Length > 0 && TryMakeChip())
+        bool chipped = pre.Length > 0 && TryMakeChip();
+        if (chipped && _chip != null)
         {
-            // 已变成引擎标签：清空输入，让用户直接打关键词
+            // 真的变成了引擎标签：清空输入，让用户直接打关键词。
+            // 记下“面板是带着引擎标签打开的”，输入法必须回到中文，
+            // 不能依赖用户另外勾了“选中引擎后切回中文”。
             SetInputText("");
-            RunQuery();
-        }
-        else if (pre.Length == 0)
-        {
             RunQuery();
         }
         else
         {
-            RunQuery();       // 普通预填：按内容正常搜
+            /* 普通预填，或者网址预填：网址不再变标签，整条 URL 就留在输入框里，
+             * 这里不能清 —— 清掉等于 qbar:bili 打开是个空面板。 */
+            RunQuery();
         }
+
+        /* 先把预填内容变成引擎标签，再抢焦点。
+         * 反过来的话，FocusInputNow 可能在 _chip 还没建立时先按“空面板”
+         * 应用一次输入法，并把 _imeApplied 置 true；等标签建立后
+         * 就没有第二次机会了 —— 这正是“qbar:google 打开仍是英文”的竞态。 */
+        BeginForceFocus();
 
         Input.Focus();
         Keyboard.Focus(Input);
         Input.CaretIndex = Input.Text.Length;
+
+        /* 输入法不在打开瞬间盲按 Shift：此时面板还没拿到前台焦点，
+         * Shift 会打给上一个窗口；而且“按一下”是切换而不是确保，
+         * 当前已经是中文时反而被切成英文。统一交给 ImeGuard 按当前标签状态
+         * 决定“中文还是英文”。 */
+        _imeApplied = false;
+        _imeKey = "";
+        if (IsActive)
+            _imeApplied = ApplyImePreference();
+        QueueImePreference(120);
+
         PlayShowAnimation();
     }
 
@@ -650,6 +839,8 @@ public partial class QbarWindow : Window
     public void HideQbar()
     {
         if (!IsVisible || _closing) return;
+        _imeTimer?.Stop();
+        _imeVerify?.Stop();
         DetachEscInterceptor();
         StopFocusTimer();
         StopOutsideWatch();
@@ -671,6 +862,18 @@ public partial class QbarWindow : Window
     // ---------------- 标签（Chip） ----------------
 
     /// <summary>
+    /// 输入框整段等于一条快捷命令时直接执行（空格触发）。
+    /// 返回 false 表示不是快捷命令，交给普通“变标签 / 搜索”流程。
+    /// </summary>
+    private bool TryRunQuickCommand()
+    {
+        var q = QbarService.FindQuickCommand(Input.Text);
+        if (q == null) return false;
+        ExecuteResult(QbarService.ToResult(q));
+        return true;
+    }
+
+    /// <summary>
     /// 把 "bd" 变成标签。触发时机：输入空格 / Tab 时，
     /// 且当前整段文本恰好是一个已定义的关键字。
     /// </summary>
@@ -681,8 +884,29 @@ public partial class QbarWindow : Window
         if (text.Length == 0) return false;
         var chip = _host.Qbar.ResolveChip(text);
         if (chip == null) return false;
+
+        /* 网址关键字（bili / gh / bd…）不再变成标签，直接把完整地址写进输入框。
+         *
+         * 标签的毛病是：地址被藏进那个小胶囊里，输入框被清空且变成只读 ——
+         * 用户看不到自己要去哪，也接不上"打开后继续输路径"。
+         * 把 URL 摊开在输入框里，回车就走普通的"打开这个网址"那条路，
+         * 行为和手打网址完全一致（还看得见、能改）。 */
+        if (chip.Kind == ChipKind.Web && !string.IsNullOrWhiteSpace(chip.Value))
+        {
+            ClearChip();
+            SetInputText(chip.Value);
+            Input.Focus();
+            Input.CaretIndex = Input.Text.Length;
+            RunQuery();
+            return true;
+        }
+
         SetChip(chip);
         SetInputText("");
+        // 关键字已经变成引擎标签，立刻按“空关键词”刷新一次：
+        // 网址类（如 bili）会直接显示首页，搜索类会显示待输入的提示，
+        // 不会把上一个关键字留下的结果继续挂在下面。
+        RunQuery();
         return true;
     }
 
@@ -690,6 +914,13 @@ public partial class QbarWindow : Window
     {
         _chip = chip;
         ChipLabel.Text = chip.Label;
+
+        /* 网址标签没有“后面的搜索词”这回事：bili + 空格 之后
+         * 输入框里再打字也不会参与网址拼接，只会让人误以为还能搜。
+         * 这里直接锁住输入框，只保留 Enter（打开）/ Backspace（退回关键字）
+         * 这类窗口级按键；搜索/程序标签仍然可以继续输入。 */
+        Input.IsReadOnly = chip.Kind == ChipKind.Web;
+        Input.IsReadOnlyCaretVisible = chip.Kind != ChipKind.Web;
 
         if (chip.HasIcon)
         {
@@ -709,6 +940,25 @@ public partial class QbarWindow : Window
              * 这里必须跟着底色一起设 —— 否则换一个引擎后，
              * 牌子换了、字色还是上一家的，又会出现"看不见"。 */
             ChipInitial.Foreground = Frozen(BestTextOn(chip.Accent));
+
+            /* 标签本身也要真实图标：启动程序从 exe/lnk 取，
+             * 网站从 favicon 取；拿不到才保留首字。 */
+            if (chip.Kind == ChipKind.Run)
+            {
+                var runIcon = IconCache.FromExecutable(chip.Value);
+                if (runIcon != null) SetChipIcon(runIcon);
+            }
+            else if (chip.Kind == ChipKind.Web)
+            {
+                IconCache.LoadWebIconAsync(chip.Value, image =>
+                {
+                    if (image == null) return;
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        if (ReferenceEquals(_chip, chip)) SetChipIcon(image);
+                    });
+                });
+            }
         }
 
         ChipBox.Visibility = Visibility.Visible;
@@ -719,11 +969,27 @@ public partial class QbarWindow : Window
             _ => "\uE756",
         };
         UpdateMode();
+
+        /* 引擎认出来了，接下来要打的是搜索内容 —— 多半是中文。
+         * 只在面板已经拿到焦点时切；否则留给 FocusInputNow 的首次应用，
+         * 免得把键发到上一个窗口（这就是“带引擎打开却还是英文”的根因）。 */
+        if (IsActive)
+            _imeApplied = ApplyImePreference();
+        QueueImePreference(100);
+    }
+
+    private void SetChipIcon(ImageSource image)
+    {
+        ChipIcon.Source = image;
+        ChipIconBox.Visibility = Visibility.Visible;
+        ChipInitialBox.Visibility = Visibility.Collapsed;
     }
 
     private void ClearChip()
     {
         _chip = null;
+        Input.IsReadOnly = false;
+        Input.IsReadOnlyCaretVisible = true;
         ChipBox.Visibility = Visibility.Collapsed;
         ChipIcon.Source = null;
         ModeIcon.Text = "\uE721";
@@ -739,6 +1005,11 @@ public partial class QbarWindow : Window
         else RunQuery();
         Input.Focus();
         Input.CaretIndex = Input.Text.Length;
+        if (IsActive)
+        {
+            _imeApplied = ApplyImePreference();
+            QueueImePreference(100);
+        }
     }
 
     private void OnChipClose(object sender, RoutedEventArgs e) => RemoveChip();
@@ -755,11 +1026,27 @@ public partial class QbarWindow : Window
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { HideQbar(); e.Handled = true; }
+        if (e.Key == Key.Escape) { HideQbar(); e.Handled = true; return; }
+
+        /* 网址标签会把输入框设为只读；某些 WPF/输入法组合下只读 TextBox
+         * 收不到 PreviewKeyDown，退格就“卡死”在标签状态。窗口级再兜一层：
+         * 输入框为空时退格 → 拆掉标签、把关键字放回输入框。 */
+        if (e.Key == Key.Back && _chip != null && Input.Text.Length == 0)
+        {
+            RemoveChip();
+            e.Handled = true;
+        }
     }
 
     private void OnInputKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.P && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            PinSelected();
+            e.Handled = true;
+            return;
+        }
+
         switch (e.Key)
         {
             case Key.Escape:
@@ -767,6 +1054,9 @@ public partial class QbarWindow : Window
                 e.Handled = true;
                 break;
             case Key.Space:
+                /* 快捷命令优先：cmd / psh / hosts 这类词打完后按空格就直接执行，
+                 * 不再要求“先变成标签、再按一次回车”。 */
+                if (TryRunQuickCommand()) { e.Handled = true; break; }
                 // 空格：如果整段正好是关键字，就转成标签（之后空格用于分词）
                 if (TryMakeChip()) { e.Handled = true; break; }
                 break;
@@ -945,15 +1235,67 @@ public partial class QbarWindow : Window
         };
     }
 
+    /// <summary>Ctrl+P：把当前选中的文件/文件夹/网址/程序固定到 Qbar 空面板。</summary>
+    private void PinSelected()
+    {
+        if (Results.SelectedItem is not QbarItem item) return;
+        var r = item.Result;
+        if (r.Kind is not (QbarKind.File or QbarKind.Run or QbarKind.Web))
+        {
+            _host.Notify(Loc.T("这条结果不能固定：请选择文件、文件夹、网址或程序"));
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(r.Payload)) return;
+
+        var pinned = _host.Settings.Qbar.Pinned;
+        if (pinned.Any(x => x.Value.Equals(r.Payload, StringComparison.OrdinalIgnoreCase)))
+        {
+            _host.Notify(Loc.T("这个目标已经固定过了"));
+            return;
+        }
+
+        string title = string.IsNullOrWhiteSpace(r.Title)
+            ? (System.IO.Path.GetFileName(r.Payload.TrimEnd('\\', '/')) is { Length: > 0 } name ? name : r.Payload)
+            : r.Title;
+        string key = title;
+        int n = 2;
+        while (pinned.Any(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase))) key = $"{title} {n++}";
+
+        pinned.Add(new QEntry
+        {
+            Key = key,
+            Value = r.Payload,
+            Comment = title,
+            IconPath = r.IconPath ?? "",
+            Arguments = r.Arguments,
+            RunAsAdmin = r.RunAsAdmin,
+        });
+        _host.SaveSettings();
+        /* 固定是"立刻要生效"的动作：不能等 400ms 防抖。
+         * 用户按完 Ctrl+P 可能马上就关面板/退程序，没 flush 的话
+         * 这一条只活在内存里，重启后固定项就凭空消失了。 */
+        _host.FlushSettings();
+        _host.Notify(Loc.F("已固定到 Qbar：{0}", title));
+    }
+
     private void ExecuteSelected()
+    {
+        if (_closing) return;
+        if (Results.SelectedItem is not QbarItem item) return;
+        ExecuteResult(item.Result);
+    }
+
+    /// <summary>
+    /// 执行一条结果。`ExecuteSelected` 和“空格直接触发快捷命令”共用，
+    /// 保证两条路径的收尾（隐藏面板、日志、异常提示）完全一致。
+    /// </summary>
+    private void ExecuteResult(QbarResult result)
     {
         /* 面板一开始淡出就不再执行：双击手势的两次点击间隔很短
          * （第二次抬起常常落在 90ms 淡出还没结束的时间里），没有这道
          * 闸门的话同一个结果会被执行两遍 —— 启动程序开两个窗口、
          * 打开网址开两个标签页。淡出期间的 Enter 同理。 */
         if (_closing) return;
-        if (Results.SelectedItem is not QbarItem item) return;
-        var result = item.Result;
 
         /* 记一行日志：这是"到底执行了几次"的唯一可靠观测量。
          * e2e 曾经靠"新起几个记事本进程"判断双击是否只执行一次，
@@ -967,18 +1309,7 @@ public partial class QbarWindow : Window
         {
             try
             {
-                var cb = new QbarService.QbarCallbacks(
-                    Notify: _host.Notify,
-                    CopyToClipboard: text =>
-                    {
-                        try { System.Windows.Clipboard.SetText(text); } catch { }   /* 预期内：清理动作，失败无副作用 */
-                    },
-                    Paste: text => _host.Clipboard.PasteText(text),
-                    OpenTarget: OpenTarget,
-                    RunTarget: RunTarget,
-                    RunCommand: RunCommand,
-                    RunAction: action => _host.InvokeAction(action, ""));
-                _host.Qbar.Execute(result, cb);
+                _host.Qbar.Execute(result, BuildCallbacks());
             }
             catch (Exception ex)
             {
@@ -987,6 +1318,127 @@ public partial class QbarWindow : Window
             }
         }), System.Windows.Threading.DispatcherPriority.Background);
     }
+
+    /// <summary>
+    /// 在文件结果上右键：给出文件管理器里最常用的那一组操作。
+    ///
+    /// 这里不直接调用 Explorer 的原生 IContextMenu —— Qbar 是无边框弹窗，
+    /// 原生菜单的 owner 消息循环和它的关闭逻辑容易互相踩。先覆盖用户
+    /// 明确要的“打开位置 / 复制 / 剪切 / 复制路径 / 属性”，行为稳定且可测。
+    /// </summary>
+    private void OnResultsRightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (Results.ContainerFromElement(e.OriginalSource as DependencyObject) is not ListBoxItem row ||
+            row.DataContext is not QbarItem item)
+            return;
+
+        var r = item.Result;
+        string path = r.Payload;
+        if (r.Kind != QbarKind.File || path.Length == 0) return;
+
+        Results.SelectedItem = item;
+        var menu = BuildFileMenu(r, path);
+        Results.ContextMenu = menu;
+        menu.PlacementTarget = row;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private ContextMenu BuildFileMenu(QbarResult result, string path)
+    {
+        var menu = new ContextMenu();
+        bool exists = File.Exists(path) || Directory.Exists(path);
+
+        MenuItem Add(string text, Action action, bool enabled = true)
+        {
+            var mi = new MenuItem { Header = Loc.T(text), IsEnabled = enabled };
+            mi.Click += (_, _) => action();
+            menu.Items.Add(mi);
+            return mi;
+        }
+
+        Add("打开", () => ExecuteResult(result));
+        Add("打开所在文件夹", () => OpenContainingFolder(path), exists);
+        menu.Items.Add(new Separator());
+        Add("复制", () => SetFileClipboard(path, cut: false), exists);
+        Add("剪切", () => SetFileClipboard(path, cut: true), exists);
+        Add("复制路径", () => CopyText(path));
+        menu.Items.Add(new Separator());
+        Add("属性", () => ShowProperties(path), exists);
+        return menu;
+    }
+
+    private void OpenContainingFolder(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                string? parent = Directory.GetParent(path)?.FullName;
+                Process.Start(new ProcessStartInfo("explorer.exe", parent is null ? $"\"{path}\"" : $"\"{parent}\"")
+                {
+                    UseShellExecute = true,
+                });
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"")
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            _host.Notify(Loc.T("打开文件夹失败：") + ex.Message);
+        }
+    }
+
+    private void SetFileClipboard(string path, bool cut)
+    {
+        try
+        {
+            var data = new DataObject();
+            data.SetFileDropList(new StringCollection { path });
+            // Explorer 用这个 DWORD 区分“复制”和“剪切”：1=复制，2=剪切。
+            data.SetData("Preferred DropEffect", new MemoryStream(cut ? new byte[] { 2, 0, 0, 0 } : new byte[] { 1, 0, 0, 0 }));
+            Clipboard.SetDataObject(data, copy: true);
+            _host.Notify(cut ? Loc.T("已剪切到剪贴板") : Loc.T("已复制到剪贴板"));
+        }
+        catch (Exception ex)
+        {
+            _host.Notify(Loc.T("写入剪贴板失败：") + ex.Message);
+        }
+    }
+
+    private void CopyText(string text)
+    {
+        try { Clipboard.SetText(text); _host.Notify(Loc.T("路径已复制")); }
+        catch (Exception ex) { _host.Notify(Loc.T("复制失败：") + ex.Message); }
+    }
+
+    private void ShowProperties(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, Verb = "properties" });
+        }
+        catch (Exception ex)
+        {
+            _host.Notify(Loc.T("打开属性失败：") + ex.Message);
+        }
+    }
+
+    private QbarService.QbarCallbacks BuildCallbacks() => new(
+        Notify: _host.Notify,
+        CopyToClipboard: text =>
+        {
+            try { System.Windows.Clipboard.SetText(text); } catch { }   /* 预期内：清理动作，失败无副作用 */
+        },
+        Paste: text => _host.Clipboard.PasteText(text),
+        OpenTarget: OpenTarget,
+        RunTarget: RunTarget,
+        RunCommand: RunCommand,
+        RunAction: action => _host.InvokeAction(action, ""));
 
     private void OpenTarget(string target)
     {
@@ -1033,9 +1485,57 @@ public partial class QbarWindow : Window
             case "openHelp": _host.ShowMainWindow("help"); break;
             case "openClipboard": _host.ShowClipboardHistory(); break;
             case "openMath": _host.ShowMathBoard(); break;
+            case "touch": CreateDesktopFile(); break;
             case "reload": _host.ReloadAll(); break;
             case "toggleEnabled": _host.ToggleEnabled(); break;
             case "exit": _host.ExitApp(); break;
+        }
+    }
+
+    /// <summary>
+    /// 快捷命令 touch：在桌面新建一个空文件。
+    /// 只收文件名（去掉任何目录部分），避免把文件写到用户没预期的地方。
+    /// </summary>
+    private void CreateDesktopFile()
+    {
+        string? name = TextPromptWindow.Ask(this, Loc.T("创建文件"), Loc.T("文件名"), "新建文件.txt");
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        name = System.IO.Path.GetFileName(name.Trim());
+        if (name.Length == 0) return;
+
+        string dir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        /* 桌面可以被用户重定向到 D:\Desktop 等位置，而 SpecialFolder 仍返回
+         * C:\Users\...\Desktop。优先读 shell 的 User Shell Folders，保证
+         * “桌面新建文件”真的出现在用户看到的桌面上。 */
+        try
+        {
+            if (Microsoft.Win32.Registry.GetValue(
+                    @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+                    "Desktop", null) is string redirected && redirected.Length > 0)
+            {
+                string expanded = Environment.ExpandEnvironmentVariables(redirected);
+                if (System.IO.Directory.Exists(expanded)) dir = expanded;
+            }
+        }
+        catch { }
+        string path = System.IO.Path.Combine(dir, name);
+        if (System.IO.File.Exists(path))
+        {
+            string stem = System.IO.Path.GetFileNameWithoutExtension(name);
+            string ext = System.IO.Path.GetExtension(name);
+            for (int i = 1; i < 1000 && System.IO.File.Exists(path); i++)
+                path = System.IO.Path.Combine(dir, $"{stem} ({i}){ext}");
+        }
+
+        try
+        {
+            System.IO.File.WriteAllText(path, "");
+            _host.Notify(Loc.T("已创建：") + path);
+        }
+        catch (Exception ex)
+        {
+            _host.Notify(Loc.T("创建失败：") + ex.Message);
         }
     }
 
@@ -1060,8 +1560,11 @@ public partial class QbarWindow : Window
         return null;
     }
 
-    private sealed class QbarItem
+    private sealed class QbarItem : INotifyPropertyChanged
     {
+        private ImageSource? _iconSource;
+        private bool _hasIcon;
+
         public QbarItem(QbarResult result, bool showIcons = true)
         {
             Result = result;
@@ -1076,14 +1579,18 @@ public partial class QbarWindow : Window
             }
             else if (chip is { HasIcon: true })
             {
-                IconSource = chip.Icon;
-                HasIcon = true;
+                SetIcon(chip.Icon);
             }
             else if (chip != null)
             {
                 Letter = chip.Initial;
                 LetterBrush = new SolidColorBrush(chip.Accent);
                 HasLetter = true;
+                TryResolveIcon(result);
+            }
+            else
+            {
+                TryResolveIcon(result);
             }
 
             IconGlyph = result.Kind switch
@@ -1100,11 +1607,54 @@ public partial class QbarWindow : Window
             Badge = result.Kind == QbarKind.Command ? result.Payload : result.KindLabel;
         }
 
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void TryResolveIcon(QbarResult result)
+        {
+            ImageSource? icon = null;
+            if (!string.IsNullOrWhiteSpace(result.IconPath))
+            {
+                icon = IconCache.FromFile(result.IconPath);
+            }
+            if (icon == null && result.Kind is QbarKind.Run or QbarKind.File or QbarKind.Window)
+            {
+                icon = IconCache.FromExecutable(result.Payload);
+            }
+            if (icon == null && result.Kind == QbarKind.File)
+            {
+                icon = IconCache.FromFile(result.Payload);
+            }
+            if (icon != null)
+            {
+                SetIcon(icon);
+            }
+            else if (result.Kind == QbarKind.Web && !string.IsNullOrWhiteSpace(result.Payload))
+            {
+                /* favicon 必须联网，不能卡住 Qbar 的查询/打开。
+                 * 先给字形，图标到了再通过 PropertyChanged 刷新这一行。 */
+                string url = result.Payload;
+                IconCache.LoadWebIconAsync(url, image =>
+                {
+                    if (image == null) return;
+                    Application.Current?.Dispatcher.BeginInvoke(() => SetIcon(image));
+                });
+            }
+        }
+
+        private void SetIcon(ImageSource? icon)
+        {
+            if (icon == null) return;
+            _iconSource = icon;
+            _hasIcon = true;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IconSource)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasIcon)));
+        }
+
         public QbarResult Result { get; }
         public string IconGlyph { get; }
         public string Badge { get; }
-        public ImageSource? IconSource { get; }
-        public bool HasIcon { get; }
+        public ImageSource? IconSource => _iconSource;
+        public bool HasIcon => _hasIcon;
         public bool HasLetter { get; }
         public string Letter { get; } = "";
         public Brush LetterBrush { get; } = Brushes.Transparent;

@@ -49,6 +49,26 @@ public static class RemapCheck
             foreach (var t in s.Triggers)
                 sb.AppendLine($"  {t.Key} -> 层 {t.LayerId}  启用={t.Enabled}");
 
+            /* 设备方案：按设备分开设置之后，"我的 Caps 为什么在这只键盘上没改"这类问题
+             * 八成答案在这里 —— 某台设备被取消勾选、或者它有一份独立方案没配这个键。 */
+            sb.AppendLine();
+            sb.AppendLine($"=== 设备方案（{s.Profiles.Count} 份，全部生效={s.Global.DeviceScopeAll}）===");
+            if (s.Profiles.Count == 0) sb.AppendLine("(空：所有设备共用一份设置)");
+            foreach (var p in s.Profiles)
+            {
+                sb.AppendLine($"  [{(p.Shared ? "通用" : p.Active ? "生效" : "不接管")}] " +
+                              $"{(string.IsNullOrWhiteSpace(p.Name) ? p.Id : p.Name)}  " +
+                              $"继承={p.Inherit}  设备={string.Join(",", p.Devices)}");
+                foreach (var r in p.Remaps)
+                    sb.AppendLine($"      改键 {r.From} -> {r.To}");
+                foreach (var l in p.Layers)
+                {
+                    sb.AppendLine($"      层{l.Id}：{l.Keys.Count} 条绑定");
+                    foreach (var k in l.Keys)
+                        sb.AppendLine($"        {k.Combo} => {k.Action} {k.Arg}");
+                }
+            }
+
             string path = Path.Combine(Path.GetTempPath(), "clp-remaps.txt");
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
             Console.WriteLine(path);

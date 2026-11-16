@@ -59,7 +59,25 @@ public sealed partial class HotkeyEngine
     private long _remapBurstWindowStart;
     private long _remapSuppressedUntil;
 
-    private bool TryApplyRemap(AppSettings s, int vk, bool down)
+    /// <summary>
+    /// 按当前配置取改键表（配置没变就复用）。
+    ///
+    /// 不止改键要用它：设备判定（<see cref="NeedsDevice"/>）也得先知道"哪些键有设备规则"，
+    /// 否则第一次按键时表还没建出来，那个键会被当成"不归设备管"，
+    /// 于是设备专属改键整场失效 —— 而且看起来像"有时候生效有时候不生效"。
+    /// </summary>
+    private RemapTable EnsureRemapTable(AppSettings s)
+    {
+        string stamp = KeyRemapMap.Stamp(s);
+        if (_remapTable == null || !string.Equals(stamp, _remapStamp, StringComparison.Ordinal))
+        {
+            _remapTable = KeyRemapMap.BuildTable(s);
+            _remapStamp = stamp;
+        }
+        return _remapTable;
+    }
+
+    private bool TryApplyRemap(AppSettings s, int vk, bool down, string? device)
     {
         /* ---- 防回声 ----
          * 我们自己刚注入的键（含被别的工具复制后丢了标记的事件）一律不参与改键。
@@ -91,25 +109,17 @@ public sealed partial class HotkeyEngine
             return false;
         }
 
-        var list = s.Global.BaseRemaps;
-        if (list == null || list.Count == 0)
-        {
-            _remapTable = null;
-            return false;
-        }
+        /* 表里现在有三层来源：全局老规则、通用设置、设备自己的方案。
+         * 全都在 KeyRemapMap 里编译成一张"查表即得"的结构，
+         * 这里只按指纹判断要不要重建 —— 每次按键重建是不可能的。 */
+        var remapTable = EnsureRemapTable(s);
 
-        string stamp = KeyRemapMap.Stamp(list);
-        if (_remapTable == null || !string.Equals(stamp, _remapStamp, StringComparison.Ordinal))
-        {
-            _remapTable = KeyRemapMap.BuildTable(list);
-            _remapStamp = stamp;
-        }
+        if (remapTable.IsEmpty) return false;
 
-        /* 只有"配了设备专属规则"的键才去问设备：问设备最多要等十几毫秒
-         * （等 Raw Input 到达），摊到每个按键上打字会发涩。 */
-        string? device = null;
-        if (down && _remapTable.DeviceScopedKeys.Contains(vk))
-            device = DeviceResolver?.Invoke(vk, down);
+        /* 设备信息由调用方（OnKeyEvent）统一解析一次，改键与层绑定共用 ——
+         * 各解析各的话，同一次按键会把 Raw Input 里那条记录消费两次，
+         * 第二次必然拿不到设备，于是"改键认得这只键盘、层绑定认不得"。
+         * 这里还留了一道兜底：调用方没解析（设备无关的键）就是 null。 */
 
         /* 抬起**先看记账**。 */
         if (!down)
@@ -147,8 +157,9 @@ public sealed partial class HotkeyEngine
                 if (family != null)
                     foreach (int k in family) _physDown.TryRemove(k, out _);
 
-                /* 同步直发，不走 ActionQueue —— 见文件头说明。 */
-                SendDirect(() => InputSender.KeyUp(entry.Target));
+                /* 同步直发，不走 ActionQueue —— 见文件头说明。
+                 * 用统一入口：目标可能是鼠标键（Caps → 左键）。 */
+                SendDirect(() => InputSender.ReleaseInput(entry.Target));
                 return true;
             }
 
@@ -163,12 +174,12 @@ public sealed partial class HotkeyEngine
             return false;
         }
 
-        if (!_remapTable.TryGet(vk, device, out int target)) return false;
+        if (!remapTable.TryGet(vk, device, out int target)) return false;
 
         lock (_remapGate)
             _remappedDown[vk] = new RemapEntry(target, Environment.TickCount64);
 
-        SendDirect(() => InputSender.KeyDown(target));
+        SendDirect(() => InputSender.Press(target, down: true));
         return true;
     }
 
@@ -221,7 +232,7 @@ public sealed partial class HotkeyEngine
 
         if (release == null) return 0;
 
-        foreach (int t in release) SendDirect(() => InputSender.KeyUp(t));
+        foreach (int t in release) SendDirect(() => InputSender.ReleaseInput(t));
 
         CoreLog.Warn($"[注入] 改键抬起超时兜底：{release.Count} 个目标键已松开（{string.Join(",", release.Select(KeyName.NameOf))}）");
         return release.Count;
@@ -256,6 +267,6 @@ public sealed partial class HotkeyEngine
 
         /* 同步直发：复位/暂停/退出这些路径上，队列可能已经停了或者正忙，
          * 再往队列里排等于把这几个键永远按着。 */
-        foreach (int t in targets) SendDirect(() => InputSender.KeyUp(t));
+        foreach (int t in targets) SendDirect(() => InputSender.ReleaseInput(t));
     }
 }

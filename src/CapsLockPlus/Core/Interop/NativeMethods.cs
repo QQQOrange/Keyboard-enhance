@@ -16,6 +16,11 @@ public static class NativeMethods
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_RBUTTONDOWN = 0x0204;
     public const int WM_MBUTTONDOWN = 0x0207;
+    public const int WM_LBUTTONUP = 0x0202;
+    public const int WM_RBUTTONUP = 0x0205;
+    public const int WM_MBUTTONUP = 0x0208;
+    public const int WM_XBUTTONDOWN = 0x020B;
+    public const int WM_XBUTTONUP = 0x020C;
 
     public const int WH_KEYBOARD_LL = 13;
     public const int WH_MOUSE_LL = 14;
@@ -42,6 +47,9 @@ public static class NativeMethods
     public const uint MOUSEEVENTF_RIGHTUP = 0x0010;
     public const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
     public const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+    /* 侧键：不是独立 flag，而是 XDOWN/XUP + mouseData = XBUTTON1 / XBUTTON2。 */
+    public const uint MOUSEEVENTF_XDOWN = 0x0080;
+    public const uint MOUSEEVENTF_XUP = 0x0100;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct INPUT
@@ -207,6 +215,29 @@ public static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr LoadKeyboardLayout(string pwszKLID, uint flags);
 
+    /* 枚举当前线程/系统里已加载的键盘布局：用来找“用户平时用的中文布局”，
+     * 而不是硬编码 0x0804（简中）—— 用户可能用繁体、日文或自定义中文布局。 */
+    [DllImport("user32.dll")]
+    public static extern int GetKeyboardLayoutList(int nBuff, [Out] IntPtr[]? lpList);
+
+    /* IME 的“中/英模式”不是键盘布局：中文输入法在英文模式下 HKL 仍然是 0x0804。
+     * 只切布局会让 Qbar 带着引擎标签打开、实际却打出英文，所以还要直接改
+     * 输入上下文的 conversion mode（IME_CMODE_NATIVE）。 */
+    [DllImport("imm32.dll")]
+    public static extern IntPtr ImmGetContext(IntPtr hwnd);
+
+    [DllImport("imm32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ImmReleaseContext(IntPtr hwnd, IntPtr himc);
+
+    [DllImport("imm32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ImmGetConversionStatus(IntPtr himc, out uint conversion, out uint sentence);
+
+    [DllImport("imm32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ImmSetConversionStatus(IntPtr himc, uint conversion, uint sentence);
+
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
@@ -219,6 +250,13 @@ public static class NativeMethods
         IntPtr hwnd, uint message, uint action, IntPtr changeInfo);
 
     public const uint MSGFLT_ALLOW = 1;
+
+    /* 读控件文本（TextMirror 用）：中文别名只能从"控件里真有什么字"拿到，
+     * 因为输入法组字对键盘钩子是不可见的。 */
+    public const int WM_GETTEXT = 0x000D;
+    public const int WM_GETTEXTLENGTH = 0x000E;
+    public const uint SMTO_BLOCK = 0x0001;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
 
     /// <summary>取某个线程当前真正有焦点的窗口（顶层窗口不认语言切换消息时改投它）。</summary>
     [DllImport("user32.dll", SetLastError = true)]
@@ -735,5 +773,15 @@ public static class NativeMethods
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    /// <summary>
+    /// 把 "@%SystemRoot%\System32\xxx.dll,-123" 这种**资源引用**解析成人类能读的名字。
+    ///
+    /// 设备管理器里看到的 "HID Keyboard Device" 就存在注册表的 DeviceDesc 里，
+    /// 但现代 HID 设备的 DeviceDesc 全是资源引用，直接读只有一串 @...dll,-123。
+    /// SHLoadIndirectString 正是系统自己解析这个格式的入口，一次调用、无 COM 初始化。
+    /// </summary>
+    [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode, EntryPoint = "SHLoadIndirectString")]
+    public static extern int SHLoadIndirectString(string pszSource, StringBuilder pszOutBuf, int cchOutBuf, IntPtr ppvReserved);
 
 }

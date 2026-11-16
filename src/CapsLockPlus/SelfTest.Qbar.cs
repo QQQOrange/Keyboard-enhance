@@ -41,7 +41,7 @@ public static partial class SelfTest
         // 国内引擎：关键字应为拼音首字母（小写字母）
         var domestic = new (string Key, string Name)[]
         {
-            ("bd", "百度"), ("tb", "淘宝"), ("zh", "知乎"), ("bili", "哔哩哔哩"),
+            ("bd", "百度"), ("tb", "淘宝"), ("zh", "知乎"), ("bilis", "哔哩哔哩搜索"),
             ("wx", "微信"), ("wb", "微博"), ("jd", "京东"), ("xhs", "小红书"),
             ("dy", "抖音"), ("db", "豆瓣"), ("csdn", "CSDN"), ("juejin", "掘金"),
             ("gitee", "Gitee"), ("pdd", "拼多多"), ("tx", "腾讯视频"), ("iqy", "爱奇艺"),
@@ -160,9 +160,6 @@ public static partial class SelfTest
         var cmd = qbar.Query("/set");
         Check("内置命令补全", cmd.Any(r => r.Kind == QbarKind.Command && r.Payload == "openSettings"));
 
-        var run = qbar.Query("calc");
-        Check("程序名可被搜到", run.Any(r => r.Kind == QbarKind.Run && r.Payload.Contains("calc")));
-
         var fallback = qbar.Query("一个不存在的关键词");
         Check("兜底默认搜索", fallback.Count > 0 && fallback.Last().Kind == QbarKind.Search);
 
@@ -187,6 +184,101 @@ public static partial class SelfTest
         Check("算式识别", QbarService.LooksLikeMath("12*34+5"));
         Check("普通单词不误判为算式", !QbarService.LooksLikeMath("hello world"));
         Check("带等号算式识别", QbarService.LooksLikeMath("1+1="));
+
+        /* 快捷命令：输入关键字后按空格就该直接执行，
+         * 而不是先变成标签、再让用户按一次回车。 */
+        var quickCmd = qbar.Query("cmd");
+        Check("cmd 命中快捷命令", quickCmd.Count > 0 && quickCmd[0].Kind == QbarKind.Run,
+            quickCmd.FirstOrDefault()?.Title);
+        CheckEqual("cmd 直接启动 cmd.exe", quickCmd[0].Payload, "cmd.exe");
+        var quickHosts = qbar.Query("hosts");
+        Check("hosts 带管理员参数", quickHosts.Count > 0 && quickHosts[0].RunAsAdmin);
+        Check("hosts 指向系统 hosts 文件",
+            quickHosts.Count > 0 && quickHosts[0].Arguments.EndsWith(@"\drivers\etc\hosts",
+                StringComparison.OrdinalIgnoreCase), quickHosts.FirstOrDefault()?.Arguments);
+        Check("快捷命令大小写不敏感", QbarService.FindQuickCommand("CMD") != null);
+        Check("未知词不是快捷命令", QbarService.FindQuickCommand("cmdx") == null);
+
+        /* 搜索条目也可以是一个 EXE：欧路词典的 -w {q}。
+         * 这正是用户要的“给程序发送搜索词”，不能再拼成网址。 */
+        var eudicEntry = new QEntry
+        {
+            Key = "eu",
+            Comment = "欧路词典",
+            Value = @"C:\Program Files\Eudic\eudic.exe",
+            Arguments = "-w {q}",
+        };
+        settings.Search.Add(eudicEntry);
+        var eudicChip = qbar.ResolveChip("eu");
+        Check("程序型搜索条目能变成标签", eudicChip?.Kind == ChipKind.Search);
+        var eudicHit = qbar.Query("hello world", eudicChip);
+        Check("程序型搜索走 Run 而不是 URL",
+            eudicHit.Count > 0 && eudicHit[0].Kind == QbarKind.Run);
+        CheckEqual("程序型搜索保留 EXE 路径", eudicHit[0].Payload, eudicEntry.Value);
+        CheckEqual("程序型搜索的参数替换了 {q}",
+            eudicHit[0].Arguments, "-w \"hello world\"");
+
+        var eudicInline = qbar.Query("eu apple");
+        Check("关键字+空格也能直接调用 EXE",
+            eudicInline.Count > 0 && eudicInline[0].Kind == QbarKind.Run &&
+            eudicInline[0].Arguments == "-w apple");
+        CheckEqual("参数模板展开带引号",
+            QbarService.ExpandArguments("-w {q}", "hello world"), "-w \"hello world\"");
+        CheckEqual("无 {{q}} 模板自动追加参数",
+            QbarService.ExpandArguments("--flag", "value"), "--flag value");
+
+        // 每条默认表都要够丰富，且关键字不能互相遮挡（ResolveChip 是按顺序找的）。
+        var defaults = DefaultSettings.Create();
+        Check("默认网址 >= 100 条", defaults.Web.Count >= 100, defaults.Web.Count.ToString());
+        Check("默认启动程序表为空（改为按需搜索）", defaults.Run.Count == 0, defaults.Run.Count.ToString());
+        var chipKeys = defaults.Search.Where(e => !e.Key.Equals("default", StringComparison.OrdinalIgnoreCase))
+            .Select(e => e.Key)
+            .Concat(defaults.Run.Select(e => e.Key))
+            .Concat(defaults.Web.Select(e => e.Key))
+            .GroupBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        Check("搜索/程序/网址关键字互不重复", chipKeys.Count == 0,
+            string.Join(",", chipKeys.Take(8)));
+
+        var biliChip = qbar.ResolveChip("bili");
+        Check("bili 解析为常用网址首页", biliChip?.Kind == ChipKind.Web &&
+            biliChip.Value.Equals("https://www.bilibili.com", StringComparison.OrdinalIgnoreCase),
+            biliChip?.Kind + " " + biliChip?.Value);
+        Check("bili 搜索改成 bilis", qbar.ResolveChip("bilis")?.Kind == ChipKind.Search);
+
+        // 参数里还留着 {q} 时，执行必须只提示、不能真把字面量传给程序。
+        string? guardNotice = null;
+        qbar.Execute(
+            new QbarResult(QbarKind.Run, "欧路词典", "eudic", "程序", "eudic.exe",
+                null, false, "-w {q}"),
+            new QbarService.QbarCallbacks(
+                notice => guardNotice = notice,
+                _ => { }, _ => { }, _ => { }, (_, _, _) => { }, _ => { }, _ => { }));
+        Check("缺少关键词时不把 {q} 传给程序", guardNotice != null, guardNotice);
+
+        /* 本地内容源：Windows 设置、PowerShell、固定项。 */
+        var display = qbar.Query("显示");
+        Check("Windows 设置可被搜到",
+            display.Any(r => r.Payload == "ms-settings:display"),
+            string.Join(",", display.Select(r => r.Payload).Take(5)));
+
+        var ps = qbar.Query("ps Get-Date");
+        Check("ps 前缀生成 PowerShell 结果",
+            ps.Any(r => r.Payload == "powershell.exe" && r.Arguments.Contains("Get-Date")),
+            string.Join(",", ps.Select(r => r.Arguments).Take(3)));
+
+        settings.Qbar.Pinned.Add(new QEntry
+        {
+            Key = "项目目录",
+            Value = @"C:\Windows",
+            Comment = "项目目录",
+        });
+        var pinnedHit = qbar.Query("项目");
+        Check("固定项可被搜到并排在前面",
+            pinnedHit.Count > 0 && pinnedHit[0].Kind == QbarKind.File,
+            pinnedHit.FirstOrDefault()?.Title);
     }
 
     /// <summary>Qbar 标签：输入 "bd " 之后 bd 变成标签、输入框只剩搜索词。</summary>
@@ -201,6 +293,7 @@ public static partial class SelfTest
         CheckEqual("标签名字优先用备注", chip?.Label, "百度");
         Check("bd 自带图标（优先显示图标）", chip?.HasIcon == true, chip?.IconPath);
 
+        settings.Run.Add(new QEntry { Key = "calc", Value = "calc.exe", Comment = "计算器" });
         var run = qbar.ResolveChip("calc");
         Check("calc 能解析成程序标签", run?.Kind == ChipKind.Run, run?.Kind.ToString());
         Check("程序标签自动带 exe 图标或首字兜底", run != null && (run.HasIcon || run.Initial.Length > 0));
@@ -710,17 +803,38 @@ public static partial class SelfTest
 
             notes.Clear();
             ctx.CaptureTextForTest = () => "";
+            ctx.ClipboardTextForTest = () => "";
             ctx.ManualCopyWaitForTest = _ => "";
             cat.Invoke("smartOpen", "");
-            Check("完全没取到内容时提示先选中",
-                notes.Any(n => n.Contains("先选中")), string.Join(" | ", notes));
+            Check("没选区、剪贴板也空着时什么都不做（不弹提示）",
+                notes.Count == 0 && openedUrl == null && openedFolder == null && openedFile == null,
+                string.Join(" | ", notes));
 
-            // 取词失败 → 用户手动 Ctrl+C 的保底路径要能接上
+            // 没有选区 → 用剪贴板里最新的一条（用户要的就是这条路径）
             openedFolder = null;
+            notes.Clear();
             ctx.CaptureTextForTest = () => "";
-            ctx.ManualCopyWaitForTest = _ => tmp;
+            ctx.ClipboardTextForTest = () => tmp;
             cat.Invoke("smartOpen", "");
-            CheckEqual("手动复制的内容也能直达", openedFolder, tmp);
+            CheckEqual("没选区时打开剪贴板里的文件夹", openedFolder, tmp);
+
+            // 剪贴板里是普通文字 → 同样不触发、不提示
+            openedUrl = null;
+            openedFolder = null;
+            openedFile = null;
+            notes.Clear();
+            ctx.ClipboardTextForTest = () => "这是一段普通文字";
+            cat.Invoke("smartOpen", "");
+            Check("剪贴板里不是链接时什么都不开",
+                openedUrl == null && openedFolder == null && openedFile == null);
+            Check("剪贴板里不是链接时不打扰用户", notes.Count == 0, string.Join(" | ", notes));
+
+            // 有选区时优先用选区，不看剪贴板
+            openedFolder = null;
+            ctx.CaptureTextForTest = () => tmp;
+            ctx.ClipboardTextForTest = () => @"C:\不存在的\剪贴板路径";
+            cat.Invoke("smartOpen", "");
+            CheckEqual("有选区时忽略剪贴板", openedFolder, tmp);
         }
         finally
         {
@@ -729,6 +843,7 @@ public static partial class SelfTest
             Core.Actions.ActionContext.OpenFileInterceptForTest = null;
             ctx.CaptureTextForTest = null;
             ctx.ManualCopyWaitForTest = null;
+            ctx.ClipboardTextForTest = null;
             try { Directory.Delete(tmp, true); } catch { }
         }
     }
@@ -1125,7 +1240,7 @@ public static partial class SelfTest
         var cat = Core.Actions.ActionCatalog.Create(ctx);
 
         // 常见引擎都必须有动作
-        foreach (string key in new[] { "bd", "zh", "bili", "go", "bi", "tb", "jd", "gh", "db", "wx" })
+        foreach (string key in new[] { "bd", "zh", "bilis", "go", "bi", "tb", "jd", "gh", "db", "wx" })
         {
             var item = cat.Items.FirstOrDefault(i => i.Id == "qbar:" + key);
             Check($"引擎 {key} 有可用动作", item != null,
@@ -1141,12 +1256,24 @@ public static partial class SelfTest
          * 早先那次"动作太多导致键盘页卡死"的真实原因是巡检定时器，与条数无关；
          * 定时器在诊断模式已停用，所以这里改为校验"覆盖完整"。 */
         int engineActions = cat.Items.Count(i => i.Id.StartsWith("qbar:"));
-        int engines = settings.Search.Count(x =>
-            !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(x.Value));
+        var expectedQbarKeys = new HashSet<string>(
+            settings.Search
+                .Where(x => !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase) &&
+                            !string.IsNullOrWhiteSpace(x.Value))
+                .Select(x => x.Key),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var web in settings.Web.Where(x => !string.IsNullOrWhiteSpace(x.Value)))
+        {
+            if (!string.IsNullOrWhiteSpace(web.Key)) expectedQbarKeys.Add(web.Key);
+        }
+        int engines = expectedQbarKeys.Count;
 
         Check("引擎动作覆盖全部引擎", engineActions == engines, $"{engineActions}/{engines}");
         Check("引擎动作够用（>= 20）", engineActions >= 20, engineActions.ToString());
+
+        var biliAction = cat.Items.FirstOrDefault(i => i.Id == "qbar:bili");
+        Check("bili 有打开首页的 Qbar 动作", biliAction != null && biliAction.Category == "Qbar 网址",
+            biliAction?.Category);
 
         var qbarAction = cat.Items.First(i => i.Id == "qbar");
         Check("Qbar 动作接受引擎参数", qbarAction.NeedsArg, "");

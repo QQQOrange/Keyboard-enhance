@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
@@ -377,9 +377,9 @@ public partial class KeysView : UserControl
     /// <summary>
     /// 编辑区主行的"降级换行"阈值（DIP，ScrollViewer 的可视宽度）。
     ///
-    /// 880 是照三组并排的舒适度定的：普通分类那一行 = 搜索 240 + 分类 150 +
-    /// 功能 *，功能下拉至少要 300 才看得全"直达链接 · 直达文件"这种值，
-    /// 再加两处 12 的组间距 ≈ 726；而「直达链接」那一行还多一个 200 的备注，
+    /// 880 是照两组并排的舒适度定的：普通分类那一行 = 分类 150 + 功能 *，
+    /// 功能下拉至少要 300 才看得全"直达链接 · 直达文件"这种值；
+    /// 而「直达链接」那一行还多一个 200 的备注，
     /// 目标框会被压到 400 以下 —— 网址长得快，400 根本不够看。
     ///
     /// 实际效果：键盘档「大 / 中」时编辑区 920+，保持四组并排；
@@ -396,11 +396,10 @@ public partial class KeysView : UserControl
     private bool? _editorCompact;
 
     /// <summary>
-    /// 窗口变窄时把次要字段（搜索、备注）从主行挪到第二行。
+    /// 窗口变窄时把次要字段（备注）从主行挪到第二行。
     ///
     /// 为什么不干脆让它们一起挤窄：备注从 200 挤到 120 还能用，
-    /// 但搜索框挤到 150 就只剩"搜索"两个字宽，输入的关键词根本看不见；
-    /// 功能下拉被压到 200 以下，长值会截成"直达链接 · 直…"。
+    /// 但功能下拉被压到 200 以下，长值会截成"直达链接 · 直…"。
     /// 与其所有字段一起受罪，不如让次要的整块下移 —— 横向省下的宽度
     /// 全部留给主字段。
     ///
@@ -420,16 +419,6 @@ public partial class KeysView : UserControl
     /// <summary>按"宽/窄"两种形态摆放编辑区的主行分组。</summary>
     private void LayoutEditorGroups(bool compact)
     {
-        if (SearchGroup == null) return;   // 设计器/极早期布局
-
-        // 搜索：宽时与分类、功能同一行；窄时自己占第二行（横跨整行）
-        Grid.SetRow(SearchGroup, compact ? 1 : 0);
-        Grid.SetColumn(SearchGroup, 0);
-        Grid.SetColumnSpan(SearchGroup, compact ? 3 : 1);
-        SearchGroup.Margin = compact
-            ? new Thickness(0, 12, 0, 0)
-            : new Thickness(0, 0, 12, 0);
-
         /* 备注：宽时留在主行最右（紧邻分类那一组），窄时下沉整行。
          * 三个面板共用同一套规则，只是宽屏时各自的列位置不同。 */
         PlaceNote(NoteGroupWeb, wideColumn: 1, compact);
@@ -500,8 +489,6 @@ public partial class KeysView : UserControl
     {
         LayoutEditorGroups(compact);
         return new EditorLayout(
-            SearchRow: Grid.GetRow(SearchGroup),
-            SearchSpan: Grid.GetColumnSpan(SearchGroup),
             NoteRow: Grid.GetRow(NoteGroupWeb),
             NoteSpan: Grid.GetColumnSpan(NoteGroupWeb),
             NoteMarginTop: NoteGroupWeb.Margin.Top,
@@ -514,6 +501,5 @@ public partial class KeysView : UserControl
 
 /// <summary>编辑区一次布局的形态快照（自检用）。</summary>
 internal sealed record EditorLayout(
-    int SearchRow, int SearchSpan,
     int NoteRow, int NoteSpan, double NoteMarginTop,
     int ArgRow, int ArgColumn, int ArgSpan, double ArgWidth);

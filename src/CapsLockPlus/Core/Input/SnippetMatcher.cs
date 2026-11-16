@@ -23,16 +23,109 @@ public static class SnippetMatcher
     /// <summary>缓冲区最多记多少字符（够放几个触发词，也防止无限增长）。</summary>
     public const int MaxBuffer = 64;
 
-    /// <summary>这个字符算"词字符"吗（字母/数字/下划线）。</summary>
+    /// <summary>
+    /// 这个字符算"词字符"吗（ASCII 字母 / 数字 / 下划线）。
+    ///
+    /// 刻意**只认 ASCII**：中文别名（「中文」「地址」这种）在钩子层是打不出来的，
+    /// 所以它们从"编辑框里的真实文本"匹配（见 TextMirror）。若把汉字也算词字符，
+    /// 这些触发词会被 IsValidTrigger 直接判非法、保存后永远不生效 —— 用户看到
+    /// 的就是"别名只能设英文"。
+    /// </summary>
     public static bool IsWordChar(char c)
-        => char.IsLetterOrDigit(c) || c == '_';
+        => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_';
+
+    /// <summary>
+    /// 把全角/中文标点折成它对应的半角 ASCII。
+    ///
+    /// 为什么必须折：击键钩子只能看到**物理键**。中文输入法下打 `、`
+    /// 按的是 `\` 键，缓冲区里记的也是 `\`；而用户在别名里写的触发词是
+    /// `、mail` —— 不折就永远匹配不上，表现就是"改成 `、` 之后不触发了"。
+    ///
+    /// 折叠是 1:1 的（一个字符换一个字符），所以下标运算不用改。
+    /// </summary>
+    public static char Fold(char c) => c switch
+    {
+        '、' => '\\',
+        '。' => '.',
+        '，' => ',',
+        '；' => ';',
+        '：' => ':',
+        '？' => '?',
+        '！' => '!',
+        '／' => '/',
+        '．' => '.',
+        '－' => '-',
+        '＿' => '_',
+        '＋' => '+',
+        '＝' => '=',
+        '＠' => '@',
+        '＃' => '#',
+        '＄' => '$',
+        '％' => '%',
+        '＆' => '&',
+        '＊' => '*',
+        '（' => '(',
+        '）' => ')',
+        '［' => '[',
+        '］' => ']',
+        '｛' => '{',
+        '｝' => '}',
+        '＜' => '<',
+        '＞' => '>',
+        '｜' => '|',
+        '～' => '~',
+        '＾' => '^',
+        '｀' => '`',
+        '＼' => '\\',
+        '＂' => '"',
+        '＇' => '\'',
+        '　' => ' ',
+        '“' => '"',
+        '”' => '"',
+        '‘' => '\'',
+        '’' => '\'',
+        '【' => '[',
+        '】' => ']',
+        '「' => '[',
+        '」' => ']',
+        '『' => '[',
+        '』' => ']',
+        '《' => '<',
+        '》' => '>',
+        _ => c,
+    };
+
+    /// <summary>整串折叠（见 <see cref="Fold(char)"/>）。</summary>
+    public static string Fold(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (char c in s) sb.Append(Fold(c));
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// 触发词是否以任一前缀开头（折叠后比较）。
+    /// 前缀列表为空 = 没配前缀，任何触发词都算通过。
+    /// </summary>
+    public static bool StartsWithAnyPrefix(string? trigger, IReadOnlyList<string>? prefixes)
+    {
+        if (prefixes == null || prefixes.Count == 0) return true;
+        string t = Fold(trigger);
+        foreach (string p in prefixes)
+        {
+            string fp = Fold(p);
+            if (fp.Length > 0 && t.StartsWith(fp, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
 
     /// <summary>配置的触发词是否合法（非空、以非字母数字开头、且不纯空白）。</summary>
     public static bool IsValidTrigger(string? trigger)
     {
         if (string.IsNullOrEmpty(trigger)) return false;
         if (trigger.Any(char.IsWhiteSpace)) return false;
-        return !IsWordChar(trigger[0]);
+        return !IsWordChar(Fold(trigger[0]));
     }
 
     /// <summary>
@@ -51,14 +144,22 @@ public static class SnippetMatcher
         if (snippets == null || string.IsNullOrEmpty(buffer)) return null;
 
         Snippet? best = null;
+
+        /* 缓冲区里是**物理键**折出来的字符，触发词是用户按屏上字符写的，
+         * 两边都折一遍才能对上（中文输入法里 `、` 与 `\` 是同一个键）。 */
+        string folded = Fold(buffer);
+
         foreach (var s in snippets)
         {
             if (s == null || !s.Enabled || !IsValidTrigger(s.Trigger)) continue;
             if (!AllowedIn(s, process)) continue;
-            if (!buffer.EndsWith(s.Trigger, StringComparison.Ordinal)) continue;
 
-            int start = buffer.Length - s.Trigger.Length;
-            if (start > 0 && IsWordChar(buffer[start - 1])) continue;   // 不在词边界
+            string ft = Fold(s.Trigger);
+            if (ft.Length == 0) continue;
+            if (!folded.EndsWith(ft, StringComparison.Ordinal)) continue;
+
+            int start = folded.Length - ft.Length;
+            if (start > 0 && IsWordChar(folded[start - 1])) continue;   // 不在词边界
 
             // 多个触发词同时命中时取最长的（更具体的优先）
             if (best == null || s.Trigger.Length > best.Trigger.Length) best = s;
@@ -83,12 +184,14 @@ public static class SnippetMatcher
         var hit = Match(snippets, buffer, process);
         if (hit == null) return false;
 
+        string fh = Fold(hit.Trigger);
+
         foreach (var s in snippets)
         {
             if (s == null || !s.Enabled || !IsValidTrigger(s.Trigger)) continue;
             if (!AllowedIn(s, process)) continue;
             if (s.Trigger.Length <= hit.Trigger.Length) continue;
-            if (s.Trigger.StartsWith(hit.Trigger, StringComparison.Ordinal)) return true;
+            if (Fold(s.Trigger).StartsWith(fh, StringComparison.Ordinal)) return true;
         }
         return false;
     }

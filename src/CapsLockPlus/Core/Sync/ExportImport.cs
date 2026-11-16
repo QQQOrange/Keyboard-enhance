@@ -61,8 +61,8 @@ public static class ExportImport
     /// </summary>
     public static readonly ExportGroup[] Groups =
     {
-        new("keys", "按键映射", "所有层的按键绑定（含自定义组合键与宏绑定）",
-            new[] { nameof(AppSettings.Keys), nameof(AppSettings.Layers) },
+        new("keys", "按键映射", "所有层的按键绑定（含自定义组合键与宏绑定、每只键盘/鼠标各自的方案）",
+            new[] { nameof(AppSettings.Keys), nameof(AppSettings.Layers), nameof(AppSettings.Profiles) },
             Private: false, DefaultChecked: true),
 
         /* Keys 必须把**组名承诺的东西**全列上：这一组叫"触发键与层"，
@@ -471,6 +471,10 @@ public static class ExportImport
                         }
                     }
                     settings.Layers = merged.Layers; break;
+                case nameof(AppSettings.Profiles):
+                    /* 设备方案跟着「按键映射」走。导到另一台机器时设备可能根本插不上，
+                     * 那些方案就静静躺着 —— 等同一只键盘插上自然生效，不用重配。 */
+                    settings.Profiles = merged.Profiles; break;
                 case nameof(AppSettings.Triggers):
                     settings.Triggers = merged.Triggers; break;
                 case nameof(AppSettings.Macros):

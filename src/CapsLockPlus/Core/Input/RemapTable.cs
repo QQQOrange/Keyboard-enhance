@@ -31,19 +31,33 @@ public sealed class RemapTable
     /// </summary>
     public HashSet<int> DeviceScopedKeys { get; } = new();
 
+    /// <summary>
+    /// 「独立方案」的设备：这些设备**不继承**通用设置 ——
+    /// 自己的表里没有的键，也不回退到 <see cref="All"/>（全局表除外）。
+    /// </summary>
+    public HashSet<string> Independent { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public bool IsEmpty => All.Count == 0 && ByDevice.Count == 0;
 
     /// <summary>
-    /// 查这个键在这只键盘上该变成什么。
+    /// 查这个键在这只设备上该变成什么。
     /// <paramref name="device"/> 为空表示拿不到设备 —— 此时只用全局规则。
     /// </summary>
     public bool TryGet(int vk, string? device, out int target)
     {
         string dev = KeyRemapMap.NormalizeDevice(device);
-        if (dev.Length > 0 &&
-            ByDevice.TryGetValue(dev, out var map) &&
-            map.TryGetValue(vk, out target))
-            return true;
+        if (dev.Length > 0 && ByDevice.TryGetValue(dev, out var map))
+        {
+            if (map.TryGetValue(vk, out target)) return true;
+
+            /* 独立方案：表里没有就是"这个键不参与改键"，绝不能落回 All ——
+             * 用户的诉求是"这套键位完全另起一套"，落回去等于两套混着用。 */
+            if (!Independent.Contains(dev))
+                return All.TryGetValue(vk, out target);
+
+            target = 0;
+            return false;
+        }
 
         return All.TryGetValue(vk, out target);
     }

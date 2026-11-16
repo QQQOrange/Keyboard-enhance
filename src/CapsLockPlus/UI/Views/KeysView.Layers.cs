@@ -22,6 +22,7 @@ public partial class KeysView : UserControl
         if (_host == null) return;
         _suppressEvents = true;
         LayerBox.Items.Clear();
+        int want = -1;
         foreach (var layer in _host.Settings.Layers.OrderBy(l => l.Id))
         {
             var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == layer.Id);
@@ -35,9 +36,19 @@ public partial class KeysView : UserControl
                 Content = $"{layer.Id}. {LayerName.Display(layer.Id, layer.Name)}{suffix}",
                 Tag = layer.Id,
             });
-            if (layer.Id == _layerId) LayerBox.SelectedIndex = LayerBox.Items.Count - 1;
+            if (layer.Id == _layerId) want = LayerBox.Items.Count - 1;
         }
-        if (LayerBox.SelectedIndex < 0 && LayerBox.Items.Count > 0) LayerBox.SelectedIndex = 0;
+
+        /* 原键替换层排在最后：它不是层（没有触发键），但用户就是"在层里改键"
+         * 这个心智，所以放在同一个下拉里，名字里直接写明"不用触发键"。 */
+        LayerBox.Items.Add(new ComboBoxItem
+        {
+            Content = Loc.T("原键替换（不用触发键）"),
+            Tag = ReplaceLayerId,
+        });
+        if (_layerId == ReplaceLayerId) want = LayerBox.Items.Count - 1;
+
+        LayerBox.SelectedIndex = want >= 0 ? want : 0;
         _suppressEvents = false;
     }
 
@@ -588,6 +599,9 @@ public partial class KeysView : UserControl
         }
 
         BuildKeyboard();
+
+        /* 鼠标那排也要跟着变：切换层/子层后同一个鼠标键的绑定可能完全不同。 */
+        BuildMouseKeys();
 
         /* 编辑区现在在键盘**下方**，两者离得远了：标题上必须写清"正在改哪个键"，
          * 否则用户往下滚之后会忘了自己在改谁（左右分栏时靠位置就能看出来）。 */

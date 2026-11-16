@@ -135,6 +135,55 @@ public partial class App : Application
             return;
         }
 
+        /* `--devices`：打印 Raw Input 看到的键盘/鼠标与它们的物理父设备（排查"设备列表里怎么这么多"）。 */
+        if (Core.CliFlags.Has(e.Args, "--devices"))
+        {
+            Environment.Exit(Core.DeviceDump.Run());
+            return;
+        }
+
+        /* `--probe-key <键>`：拿当前配置跑一遍判定，直接说"这个键会不会被吞、被哪条规则吞"。 */
+        if (Core.CliFlags.Has(e.Args, "--probe-key"))
+        {
+            Environment.Exit(Core.KeyProbe.Run(e.Args));
+            return;
+        }
+
+        /* `--dump-snippets`：只读地打印别名清单（当前配置或指定副本），排查"别名不见了"。 */
+        if (Core.CliFlags.Has(e.Args, "--dump-snippets"))
+        {
+            Environment.Exit(Core.SnippetDump.Run(e.Args));
+            return;
+        }
+
+        /* `--dump-macros`：只读打印宏步骤，排查"宏播放没效果"。 */
+        if (Core.CliFlags.Has(e.Args, "--dump-macros"))
+        {
+            Environment.Exit(Core.MacroDump.Run(e.Args));
+            return;
+        }
+
+        /* `--audit-qbar`：检查搜索/程序/网址三张表的关键字是否重复。 */
+        if (Core.CliFlags.Has(e.Args, "--audit-qbar"))
+        {
+            Environment.Exit(Core.QbarKeyAudit.Run(e.Args));
+            return;
+        }
+
+        /* `--dump-settings-json`：本地排查用，把解密后的配置写成 JSON。 */
+        if (Core.CliFlags.Has(e.Args, "--dump-settings-json"))
+        {
+            Environment.Exit(Core.SettingsJsonDump.Run(e.Args));
+            return;
+        }
+
+        /* `--repair-quickachieve-macro`：补上只录到修饰键的 Quick Achieve 网格宏。 */
+        if (Core.CliFlags.Has(e.Args, "--repair-quickachieve-macro"))
+        {
+            Environment.Exit(Core.MacroRepair.Run(e.Args));
+            return;
+        }
+
         /* `--capture-test`：打开自定义按键捕获窗并自检三路输入来源（诊断"按什么都没反应"）。 */
         if (Core.CliFlags.Has(e.Args, "--capture-test"))
         {

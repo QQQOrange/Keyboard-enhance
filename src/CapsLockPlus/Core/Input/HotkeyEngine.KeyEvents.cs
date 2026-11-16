@@ -30,8 +30,27 @@ public sealed partial class HotkeyEngine
 
 
 
+    /// <summary>
+    /// 对外入口：包一层鼠标事件日志，方便现场判断"按下侧键时系统到底报了哪个键"。
+    ///
+    /// 只在设置环境变量 <c>CLP_MOUSE_LOG=1</c> 时写 <c>%TEMP%\clp-mouse.log</c>，
+    /// 平时零开销、零文件。排查"侧键改中键却触发了中键的宏"这类串键问题时，
+    /// 让用户开这个变量按两下，日志会写明 vk、方向、是否注入、以及被哪条规则吞掉。
+    /// </summary>
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
+        bool swallowed = OnKeyEventCore(vk, down, injected);
+        LogMouseEvent(vk, down, injected, swallowed ? LastDecision : null);
+        return swallowed;
+    }
+
+    private bool OnKeyEventCore(int vk, bool down, bool injected)
+
+    {
+        /* 每次判定先清空"上次为什么吞"，探针（--probe-key）读的就是它。
+         * 只有吞键才写，放行留空。 */
+        LastDecision = null;
+
         /* 捕获模式：只上报、不吞键。 */
         if (CaptureMode)
         {
@@ -40,6 +59,18 @@ public sealed partial class HotkeyEngine
         }
 
         if (injected && !AcceptInjectedForTest) return false;   // 自己注入的按键放行
+
+        /* 注入标记丢了也要认出来。
+         *
+         * 有些鼠标驱动 / 中间层（Razer、罗技那套常驻软件）会把 SendInput 带的
+         * dwExtraInfo 抹掉，于是我们自己刚注入的那个键（例如"侧键→中键"发出的
+         * 中键）回到钩子时既没有标记、也不在 30ms 之外 —— 引擎把它当成用户真的
+         * 按了中键，又跑一遍规则，表现就是"按侧键触发了绑在中键上的宏"。
+         *
+         * WasInjectedRecently 是我们自己记的账（注入时按 vk 打时间戳），
+         * 与钩子带的标记无关，正好补上这个缺口。30ms 远小于人手连按两次的间隔，
+         * 不会挡住真正的重复按键。 */
+        if (!injected && InputSender.WasInjectedRecently(vk, 30)) return false;
 
         _lastKeyActivity = DateTime.Now;
 
@@ -72,7 +103,7 @@ public sealed partial class HotkeyEngine
          * 这样界面的"按键测试"仍然看得到这个键。 */
         if (KeyInterceptor is { } interceptor)
         {
-            try { if (interceptor(vk)) return true; }
+            try { if (interceptor(vk)) return SwallowFor("外部拦截器（Qbar 等）"); }
             catch (Exception ex) { CoreLog.Swallow(ex, "按键拦截器"); }
         }
 
@@ -107,6 +138,18 @@ public sealed partial class HotkeyEngine
             if (_triggerHeld || _layerActive) ResetTriggerState("钩子不可用");
             return false;
         }
+
+        /* ---- 0.4 这次事件来自哪只设备？这台设备归本软件管吗？----
+         *
+         * 用户在「设备与范围」里可以取消勾选某只键盘/鼠标，意思是
+         * "别管这台设备"。那就必须在**所有规则之前**放行：触发键、层、
+         * 改键、片段、宏录制统统不碰它 —— 这跟"把它的规则删掉"不是一回事，
+         * 删规则会让继承下来的全局规则重新生效。
+         *
+         * 只有"有规则的键"才会真去问设备（最多十几毫秒），
+         * 见 HotkeyEngine.Device.cs 的红线说明。 */
+        string? device = ResolveDeviceFor(settings, vk, down);
+        if (!IsDeviceActive(settings, device)) return false;
 
         /* ---- 0.5 在判定触发键之前，先记录修饰键的按下状态 ----
          *
@@ -166,7 +209,7 @@ public sealed partial class HotkeyEngine
             // 长按则彻底不发出。这样不会污染系统的按键状态。
             if (down) OnTriggerDown(settings, vk, wasPhysicallyDown);
             else OnTriggerUp(settings, vk);
-            return true;
+            return SwallowFor("这个键被配成了触发键");
         }
 
         // ---- 2. 触发键按住中，但还没到长按阈值 ----
@@ -216,20 +259,25 @@ public sealed partial class HotkeyEngine
             if (down && TryRunDoubleTapGesture(settings, vk, wasPhysicallyDown))
             {
                 _snippetBuffer.Clear();
-                return true;
+                return SwallowFor("双击手势");
             }
-            if (!down && _gestureSwallowUp.Remove(vk)) { _snippetBuffer.Clear(); return true; }
+            if (!down && _gestureSwallowUp.Remove(vk)) { _snippetBuffer.Clear(); return SwallowFor("双击手势（第二次抬起）"); }
 
             /* 按应用的叠加层：只接管**绑过**的组合，未绑定的键原样放行。 */
             if (down && TryRunAppLayerBinding(settings, vk))
             {
                 _snippetBuffer.Clear();
-                return true;
+                return SwallowFor("按应用叠加层里有这个组合");
             }
+
+            /* 原键替换层：不需要触发键，按下就直接执行绑定的功能。
+             * 放在基础改键之前 —— 用户既配了替换层又配了改键时，
+             * 替换层是更具体的意图（"这个键 = 这个功能"）。 */
+            if (TryApplyReplacement(settings, vk, down, device)) { _snippetBuffer.Clear(); return SwallowFor("原键替换层绑过这个键"); }
 
             /* 基础改键：只要不在层里就生效。
              * 放在"放行"之前 —— 命中就吞掉原键并改成目标键。 */
-            if (TryApplyRemap(settings, vk, down)) { _snippetBuffer.Clear(); return true; }
+            if (TryApplyRemap(settings, vk, down, device)) { _snippetBuffer.Clear(); return SwallowFor("基础改键（含设备专属改键）命中"); }
 
             /* 按下被我们吞过、抬起还没结账的键，这里必须补吞。
              *
@@ -248,7 +296,7 @@ public sealed partial class HotkeyEngine
             if (!down)
             {
                 _swallowedDown.TryRemove(vk, out _);
-                if (_swallowedUp.TryRemove(vk, out _)) { _snippetBuffer.Clear(); return true; }
+                if (_swallowedUp.TryRemove(vk, out _)) { _snippetBuffer.Clear(); return SwallowFor("补吞抬起（按下被吞过）"); }
                 return false;
             }
 
@@ -265,14 +313,21 @@ public sealed partial class HotkeyEngine
                  * 会把空格连同触发词的最后一个字母一起删掉，留下残字。
                  * 记进 _swallowedUp，抬起也一并吞掉。 */
                 _swallowedUp.TryAdd(vk, 0);
-                return true;
+                return SwallowFor("别名展开，这个字符被吞掉");
             }
 
             return false;
         }
 
         // ---- 4. 层模式内的按键 ----
+        /* 这一页明确关掉鼠标键改动时，鼠标事件直接放行：
+         * 不查绑定、不执行、也不吞。键盘绑定照常。 */
+        if (IsMouseVk(vk) && !DeviceProfiles.MouseKeysEnabled(settings, _activeLayer, device))
+            return false;
+
         _snippetBuffer.Clear();     // 层内按键一律被接管，不参与拼接
-        return down ? OnKeyDownInLayer(vk, wasPhysicallyDown) : OnKeyUpInLayer(vk);
+        if (!down ? OnKeyUpInLayer(vk, device) : OnKeyDownInLayer(vk, wasPhysicallyDown, device))
+            return SwallowFor("层模式内（触发键按住中）");
+        return false;
     }
 }

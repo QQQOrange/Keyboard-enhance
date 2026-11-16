@@ -143,17 +143,43 @@ public sealed class ActionCatalog
 
         // ---------------- 基础 ----------------
         c.Add("doNothing", "基础", "不绑定", "该组合键不执行任何动作", _ => true);
+        /* 「不绑定」和「禁用这个键」是两件事：
+         *   不绑定   = 没有规则，按键照常传给别的程序（原键替换层尤其重要）
+         *   禁用     = 有规则，把这个键吞掉、什么都不做
+         * 以前只有前者，用户想禁用一个键时只能靠"写一条 doNothing"，
+         * 而在替换层里这两者被混成了同一个效果 —— 中键到不了 wGesture 就是这么来的。 */
+        c.Add("swallowKey", "基础", "禁用这个键",
+            "按下后什么都不做，也不传给其它程序", _ => true, shortTitle: "禁用");
         c.Add("toggleCapsLock", "基础", "切换大小写", "等价于按一下 CapsLock", _ => { HotkeyEngineToggle(); return true; }, shortTitle: "大小写");
         c.Add("keepKey", "基础", "保留按键原功能",
             "短按触发键 = 这个键本来的意思。把 F5 设为触发键时，短按就是刷新", _ => true);
-        c.Add("esc", "基础", "Esc", "发送 Esc", _ => Send(VK_Esc));
-        c.Add("enter", "基础", "回车", "发送回车", _ => Send(VK_Enter));
-        c.Add("tab", "基础", "Tab", "发送 Tab", _ => Send(VK_Tab));
-        c.Add("space", "基础", "空格", "发送空格", _ => Send(VK_Space));
-        c.Add("backspace", "基础", "退格", "发送退格", _ => Send(VK_Back));
-        c.Add("delete", "基础", "删除", "发送 Delete", _ => Send(VK_Delete));
+        /* 下面六条是「键盘按键」分类里的同款动作（Esc/回车/Tab/空格/退格/删除）。
+         *
+         * 分类列表里不再重复列出（hidden），但 id 一定不能删：老配置里
+         * `"action": "esc"` 这样的绑定还指着它，删掉就变成"找不到动作"。
+         * 留着它们，只是不让用户再从下拉里选一遍。 */
+        c.Add("esc", "基础", "Esc", "发送 Esc", _ => Send(VK_Esc), hidden: true);
+        c.Add("enter", "基础", "回车", "发送回车", _ => Send(VK_Enter), hidden: true);
+        c.Add("tab", "基础", "Tab", "发送 Tab", _ => Send(VK_Tab), hidden: true);
+        c.Add("space", "基础", "空格", "发送空格", _ => Send(VK_Space), hidden: true);
+        c.Add("backspace", "基础", "退格", "发送退格", _ => Send(VK_Back), hidden: true);
+        c.Add("delete", "基础", "删除", "发送 Delete", _ => Send(VK_Delete), hidden: true);
         c.Add("openSettings", "基础", "打开设置", "打开 按键增强 设置窗口", _ => { ctx.RequestOpenSettings(); return true; }, shortTitle: "设置");
         c.Add("toggleEnabled", "基础", "启用/暂停", "临时暂停或恢复所有按键增强热键", _ => { ctx.RequestToggleEnabled(); return true; }, shortTitle: "启暂停");
+
+        // ---------------- 键盘按键 ----------------
+        /* 每个键一条「发送这个键」的动作：为了发一个 F7 不必再绕「自定义按键」。
+         * 鼠标键归「鼠标功能」；纯修饰键不列 —— 单独发一下 Ctrl 没有任何意义。 */
+        foreach (int code in KeyName.BindableKeys)
+        {
+            if (InputDevices.IsMouseButton(code) || IsBareModifier(code)) continue;
+            if (KeyName.NameOf(code) is not { } keyName) continue;
+
+            int vk = code;                       // 循环变量不能直接被 lambda 捕获
+            string label = KeyName.Display(keyName);
+            c.Add("key:" + vk.ToString("X2"), "键盘按键", label, "发送 " + label,
+                _ => Send(vk), shortTitle: KeycapOf(keyName, label));
+        }
 
         // ---------------- 光标 ----------------
         c.Add("moveLeft", "光标移动", "左移", "光标左移一个字符（可长按连续）", a => SendRepeat(0x25, a));
@@ -173,29 +199,29 @@ public sealed class ActionCatalog
         c.Add("enterWherever", "光标移动", "在行尾换行", "先 End 再回车（不管光标在哪）", _ => { Send(VK_End); Send(VK_Enter); return true; });
 
         // ---------------- 选择 ----------------
-        c.Add("selectLeft", "选择", "向左选中", "Shift+←", a => SendShiftRepeat(0x25, a), shortTitle: "选←");
-        c.Add("selectRight", "选择", "向右选中", "Shift+→", a => SendShiftRepeat(0x27, a), shortTitle: "选→");
-        c.Add("selectUp", "选择", "向上选中", "Shift+↑", a => SendShiftRepeat(0x26, a), shortTitle: "选↑");
-        c.Add("selectDown", "选择", "向下选中", "Shift+↓", a => SendShiftRepeat(0x28, a), shortTitle: "选↓");
-        c.Add("selectWordLeft", "选择", "向左选中单词", "Ctrl+Shift+←", a => SendCtrlShiftRepeat(0x25, a), shortTitle: "选词←");
-        c.Add("selectWordRight", "选择", "向右选中单词", "Ctrl+Shift+→", a => SendCtrlShiftRepeat(0x27, a), shortTitle: "选词→");
-        c.Add("selectHome", "选择", "选中到行首", "Shift+Home", _ => SendShift(0x24), shortTitle: "选行首");
-        c.Add("selectEnd", "选择", "选中到行尾", "Shift+End", _ => SendShift(0x23), shortTitle: "选行尾");
-        c.Add("selectToPageBeginning", "选择", "选中到文档开头", "Ctrl+Shift+Home", _ => SendCtrlShift(0x24), shortTitle: "选到首");
-        c.Add("selectToPageEnd", "选择", "选中到文档结尾", "Ctrl+Shift+End", _ => SendCtrlShift(0x23), shortTitle: "选到尾");
-        c.Add("selectCurrentWord", "选择", "选中当前单词", "Ctrl+← 再 Ctrl+Shift+→", _ => { SendCtrl(0x25); SendCtrlShift(0x27); return true; }, shortTitle: "选中词");
-        c.Add("selectCurrentLine", "选择", "选中当前行", "Home 再 Shift+End", _ => { TextActions.SelectLine(); return true; }, shortTitle: "选行");
-        c.Add("selectAll", "选择", "全选", "Ctrl+A", _ => SendCtrl(0x41));
+        c.Add("selectLeft", "文本编辑", "向左选中", "Shift+←", a => SendShiftRepeat(0x25, a), shortTitle: "选←");
+        c.Add("selectRight", "文本编辑", "向右选中", "Shift+→", a => SendShiftRepeat(0x27, a), shortTitle: "选→");
+        c.Add("selectUp", "文本编辑", "向上选中", "Shift+↑", a => SendShiftRepeat(0x26, a), shortTitle: "选↑");
+        c.Add("selectDown", "文本编辑", "向下选中", "Shift+↓", a => SendShiftRepeat(0x28, a), shortTitle: "选↓");
+        c.Add("selectWordLeft", "文本编辑", "向左选中单词", "Ctrl+Shift+←", a => SendCtrlShiftRepeat(0x25, a), shortTitle: "选词←");
+        c.Add("selectWordRight", "文本编辑", "向右选中单词", "Ctrl+Shift+→", a => SendCtrlShiftRepeat(0x27, a), shortTitle: "选词→");
+        c.Add("selectHome", "文本编辑", "选中到行首", "Shift+Home", _ => SendShift(0x24), shortTitle: "选行首");
+        c.Add("selectEnd", "文本编辑", "选中到行尾", "Shift+End", _ => SendShift(0x23), shortTitle: "选行尾");
+        c.Add("selectToPageBeginning", "文本编辑", "选中到文档开头", "Ctrl+Shift+Home", _ => SendCtrlShift(0x24), shortTitle: "选到首");
+        c.Add("selectToPageEnd", "文本编辑", "选中到文档结尾", "Ctrl+Shift+End", _ => SendCtrlShift(0x23), shortTitle: "选到尾");
+        c.Add("selectCurrentWord", "文本编辑", "选中当前单词", "Ctrl+← 再 Ctrl+Shift+→", _ => { SendCtrl(0x25); SendCtrlShift(0x27); return true; }, shortTitle: "选中词");
+        c.Add("selectCurrentLine", "文本编辑", "选中当前行", "Home 再 Shift+End", _ => { TextActions.SelectLine(); return true; }, shortTitle: "选行");
+        c.Add("selectAll", "文本编辑", "全选", "Ctrl+A", _ => SendCtrl(0x41));
 
         // ---------------- 编辑 ----------------
-        c.Add("deleteLine", "编辑", "删除整行", "End + Shift+Home + 退格", _ => { Send(VK_End); SendShift(0x24); Send(VK_Back); return true; }, shortTitle: "删行");
-        c.Add("deleteToLineBeginning", "编辑", "删除到行首", "Shift+Home + 退格", _ => { SendShift(0x24); Send(VK_Back); return true; }, shortTitle: "删到首");
-        c.Add("deleteToLineEnd", "编辑", "删除到行尾", "Shift+End + 退格", _ => { SendShift(0x23); Send(VK_Back); return true; }, shortTitle: "删到尾");
-        c.Add("deleteToPageBeginning", "编辑", "删除到文档开头", "Ctrl+Shift+Home + 退格", _ => { SendCtrlShift(0x24); Send(VK_Back); return true; }, shortTitle: "删到顶");
-        c.Add("deleteToPageEnd", "编辑", "删除到文档结尾", "Ctrl+Shift+End + 退格", _ => { SendCtrlShift(0x23); Send(VK_Back); return true; }, shortTitle: "删到底");
-        c.Add("deleteWord", "编辑", "删除前一个单词", "Ctrl+Shift+← 再删除", _ => { SendCtrlShift(0x25); Send(VK_Delete); return true; }, shortTitle: "删词");
-        c.Add("forwardDeleteWord", "编辑", "删除后一个单词", "Ctrl+Shift+→ 再删除", _ => { SendCtrlShift(0x27); Send(VK_Delete); return true; }, shortTitle: "删词后");
-        c.Add("wrapSelection", "编辑", "用符号包裹选区", "例如把选中的文字变成 (文字)，参数为起始符号", a =>
+        c.Add("deleteLine", "文本编辑", "删除整行", "End + Shift+Home + 退格", _ => { Send(VK_End); SendShift(0x24); Send(VK_Back); return true; }, shortTitle: "删行");
+        c.Add("deleteToLineBeginning", "文本编辑", "删除到行首", "Shift+Home + 退格", _ => { SendShift(0x24); Send(VK_Back); return true; }, shortTitle: "删到首");
+        c.Add("deleteToLineEnd", "文本编辑", "删除到行尾", "Shift+End + 退格", _ => { SendShift(0x23); Send(VK_Back); return true; }, shortTitle: "删到尾");
+        c.Add("deleteToPageBeginning", "文本编辑", "删除到文档开头", "Ctrl+Shift+Home + 退格", _ => { SendCtrlShift(0x24); Send(VK_Back); return true; }, shortTitle: "删到顶");
+        c.Add("deleteToPageEnd", "文本编辑", "删除到文档结尾", "Ctrl+Shift+End + 退格", _ => { SendCtrlShift(0x23); Send(VK_Back); return true; }, shortTitle: "删到底");
+        c.Add("deleteWord", "文本编辑", "删除前一个单词", "Ctrl+Shift+← 再删除", _ => { SendCtrlShift(0x25); Send(VK_Delete); return true; }, shortTitle: "删词");
+        c.Add("forwardDeleteWord", "文本编辑", "删除后一个单词", "Ctrl+Shift+→ 再删除", _ => { SendCtrlShift(0x27); Send(VK_Delete); return true; }, shortTitle: "删词后");
+        c.Add("wrapSelection", "文本编辑", "用符号包裹选区", "例如把选中的文字变成 (文字)，参数为起始符号", a =>
         {
             string open = string.IsNullOrEmpty(a) ? "(" : a;
             string close = open switch { "(" => ")", "[" => "]", "{" => "}", "<" => ">", "\"" => "\"", "'" => "'", _ => open };
@@ -203,11 +229,11 @@ public sealed class ActionCatalog
             return true;
         }, true, "例如 ( 或 [ 或 \"");
 
-        c.Add("deleteAll", "编辑", "清空内容", "Ctrl+A 再删除", _ => { SendCtrl(0x41); Send(VK_Delete); return true; });
-        c.Add("undoRedo", "编辑", "撤销 / 重做", "交替发送 Ctrl+Z 与 Ctrl+Y", _ => ctx.UndoRedo(), shortTitle: "撤销");
-        c.Add("upperCase", "编辑", "转大写", "把选中文本转成大写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Upper); return true; });
-        c.Add("lowerCase", "编辑", "转小写", "把选中文本转成小写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Lower); return true; });
-        c.Add("titleCase", "编辑", "首字母大写", "把选中文本转成词首大写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Title); return true; });
+        c.Add("deleteAll", "文本编辑", "清空内容", "Ctrl+A 再删除", _ => { SendCtrl(0x41); Send(VK_Delete); return true; });
+        c.Add("undoRedo", "文本编辑", "撤销 / 重做", "交替发送 Ctrl+Z 与 Ctrl+Y", _ => ctx.UndoRedo(), shortTitle: "撤销");
+        c.Add("upperCase", "文本编辑", "转大写", "把选中文本转成大写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Upper); return true; });
+        c.Add("lowerCase", "文本编辑", "转小写", "把选中文本转成小写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Lower); return true; });
+        c.Add("titleCase", "文本编辑", "首字母大写", "把选中文本转成词首大写", _ => { TextActions.ChangeCase(TextActions.CaseMode.Title); return true; });
 
         // ---------------- 剪贴板 ----------------
         c.Add("copy1", "剪贴板", "复制到剪贴板 1", "按下触发键 + C：复制到独立剪贴板 1", _ => ctx.Clipboard.Copy(1), shortTitle: "复制1");
@@ -224,7 +250,7 @@ public sealed class ActionCatalog
         /* Qbar：参数填引擎关键字（如 bili / gh）就默认用那个引擎搜索，
          * 留空 = 用上次的引擎。这样"面板里所有引擎"在按键映射里都能用，
          * 又不用为每个引擎注册一个动作（那样动作会逼近 600 条，键盘页布局扛不住）。 */
-        c.Add("qbar", "面板", "Qbar 快速启动",
+        c.Add("qbar", "基础", "Qbar 快速启动",
             "打开 Qbar。参数可填搜索引擎关键字（bd / bili / gh…），留空则用上次的引擎",
             a =>
             {
@@ -257,10 +283,30 @@ public sealed class ActionCatalog
                 Loc.F("打开 Qbar 并直接用「{0}」搜索", name),
                 _ => { ctx.RequestQbar(key); return true; });
         }
-        c.Add("mathBoard", "面板", "计算器", "打开带历史记录的计算器", _ => { ctx.RequestMathBoard(); return true; });
-        c.Add("tabScript", "面板", "Tab 计算 / 热字串", "把光标前的算式直接算出结果，或展开热字串", _ => ctx.RunTabScript(), shortTitle: "计算板");
-        c.Add("openDocs", "面板", "使用帮助", "打开内置帮助", _ => { ctx.RequestHelp(); return true; });
-        c.Add("reload", "面板", "重新加载配置", "重新读取设置并重装钩子", _ => { ctx.RequestReload(); return true; }, shortTitle: "重载");
+
+        /* 常用网址也注册成 qbar:<关键字>。
+         * 否则用户把 bili 绑到 Q 键时，动作列表里只有 bilis（B 站搜索），
+         * 没有“打开 B 站首页”这个动作。与搜索表同 Key 的条目跳过，
+         * 由搜索优先，避免动作 ID 重复。 */
+        var qbarActionKeys = new HashSet<string>(
+            ctx.Settings().Search
+                .Where(x => !x.Key.Equals("default", StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Key),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var e in ctx.Settings().Web.Where(x => !string.IsNullOrWhiteSpace(x.Value)))
+        {
+            string key = e.Key;
+            if (string.IsNullOrWhiteSpace(key) || !qbarActionKeys.Add(key)) continue;
+            string name = string.IsNullOrWhiteSpace(e.Comment) ? key : e.Comment;
+            c.Add("qbar:" + key, "Qbar 网址",
+                Loc.F("Qbar：{0}", name),
+                Loc.F("打开 Qbar 并直接打开「{0}」", name),
+                _ => { ctx.RequestQbar(key); return true; });
+        }
+        c.Add("mathBoard", "基础", "计算器", "打开带历史记录的计算器", _ => { ctx.RequestMathBoard(); return true; });
+        c.Add("tabScript", "基础", "Tab 计算 / 热字串", "把光标前的算式直接算出结果，或展开热字串", _ => ctx.RunTabScript(), shortTitle: "计算板");
+        c.Add("openDocs", "基础", "使用帮助", "打开内置帮助", _ => { ctx.RequestHelp(); return true; });
+        c.Add("reload", "基础", "重新加载配置", "重新读取设置并重装钩子", _ => { ctx.RequestReload(); return true; }, shortTitle: "重载");
 
         // ---------------- 直接搜索 ----------------
         //
@@ -290,39 +336,48 @@ public sealed class ActionCatalog
         }
 
         // ---------------- 窗口 ----------------
-        c.Add("winPin", "窗口", "窗口置顶 / 取消", "让当前窗口永远在最前面", _ => ctx.Windows.ToggleTopmost(), shortTitle: "置顶");
-        c.Add("winTransparent", "窗口", "窗口透明度切换", "在几档透明度之间循环", _ => ctx.Windows.CycleOpacity(), shortTitle: "透明");
-        c.Add("winMinimize", "窗口", "最小化窗口", "最小化当前窗口", _ => ctx.Windows.Minimize());
-        c.Add("winMaximize", "窗口", "最大化 / 还原", "切换最大化状态", _ => ctx.Windows.ToggleMaximize(), shortTitle: "最大化");
-        c.Add("winClose", "窗口", "关闭窗口", "关闭当前窗口", _ => ctx.Windows.Close());
-        c.Add("winCenter", "窗口", "窗口居中", "把窗口移到屏幕中央", _ => ctx.Windows.Center());
-        c.Add("winSnapLeft", "窗口", "贴左半屏", "Win11 风格贴边", _ => ctx.Windows.Snap(SnapSide.Left));
-        c.Add("winSnapRight", "窗口", "贴右半屏", "Win11 风格贴边", _ => ctx.Windows.Snap(SnapSide.Right));
-        c.Add("winSnapTop", "窗口", "贴上半屏", "顶部半屏", _ => ctx.Windows.Snap(SnapSide.Top));
-        c.Add("winSnapBottom", "窗口", "贴下半屏", "底部半屏", _ => ctx.Windows.Snap(SnapSide.Bottom));
-        c.Add("winSnapTopLeft", "窗口", "贴左上角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.TopLeft));
-        c.Add("winSnapTopRight", "窗口", "贴右上角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.TopRight));
-        c.Add("winSnapBottomLeft", "窗口", "贴左下角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.BottomLeft));
-        c.Add("winSnapBottomRight", "窗口", "贴右下角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.BottomRight));
-        c.Add("winSendToBottom", "窗口", "窗口置底", "把窗口压到最下面", _ => ctx.Windows.SendToBottom());
-        c.Add("winNextApp", "窗口", "同程序下一个窗口", "在当前程序的窗口间循环", _ => ctx.Windows.CycleSameApp(false), shortTitle: "下窗口");
-        c.Add("winPrevApp", "窗口", "同程序上一个窗口", "反向循环", _ => ctx.Windows.CycleSameApp(true), shortTitle: "上窗口");
-        c.Add("winLeft", "窗口", "激活左边的窗口", "按屏幕位置找左边最近的窗口", _ => ctx.Windows.ActivateDirectional("l"), shortTitle: "左窗");
-        c.Add("winRight", "窗口", "激活右边的窗口", "按屏幕位置找右边最近的窗口", _ => ctx.Windows.ActivateDirectional("r"), shortTitle: "右窗");
-        c.Add("winUp", "窗口", "激活上边的窗口", "按屏幕位置找上边最近的窗口", _ => ctx.Windows.ActivateDirectional("u"), shortTitle: "上窗");
-        c.Add("winDown", "窗口", "激活下边的窗口", "按屏幕位置找下边最近的窗口", _ => ctx.Windows.ActivateDirectional("d"), shortTitle: "下窗");
+        c.Add("winPin", "窗口功能", "窗口置顶 / 取消", "让当前窗口永远在最前面", _ => ctx.Windows.ToggleTopmost(), shortTitle: "置顶");
+        c.Add("winTransparent", "窗口功能", "窗口透明度切换", "在几档透明度之间循环", _ => ctx.Windows.CycleOpacity(), shortTitle: "透明");
+        c.Add("winMinimize", "窗口功能", "最小化窗口", "最小化当前窗口", _ => ctx.Windows.Minimize());
+        c.Add("winMaximize", "窗口功能", "最大化 / 还原", "切换最大化状态", _ => ctx.Windows.ToggleMaximize(), shortTitle: "最大化");
+        c.Add("winClose", "窗口功能", "关闭窗口", "关闭当前窗口", _ => ctx.Windows.Close());
+        c.Add("winCenter", "窗口功能", "窗口居中", "把窗口移到屏幕中央", _ => ctx.Windows.Center());
+        c.Add("winSnapLeft", "窗口功能", "贴左半屏", "Win11 风格贴边", _ => ctx.Windows.Snap(SnapSide.Left));
+        c.Add("winSnapRight", "窗口功能", "贴右半屏", "Win11 风格贴边", _ => ctx.Windows.Snap(SnapSide.Right));
+        c.Add("winSnapTop", "窗口功能", "贴上半屏", "顶部半屏", _ => ctx.Windows.Snap(SnapSide.Top));
+        c.Add("winSnapBottom", "窗口功能", "贴下半屏", "底部半屏", _ => ctx.Windows.Snap(SnapSide.Bottom));
+        c.Add("winSnapTopLeft", "窗口功能", "贴左上角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.TopLeft));
+        c.Add("winSnapTopRight", "窗口功能", "贴右上角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.TopRight));
+        c.Add("winSnapBottomLeft", "窗口功能", "贴左下角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.BottomLeft));
+        c.Add("winSnapBottomRight", "窗口功能", "贴右下角", "四分之一屏", _ => ctx.Windows.Snap(SnapSide.BottomRight));
+        c.Add("winSendToBottom", "窗口功能", "窗口置底", "把窗口压到最下面", _ => ctx.Windows.SendToBottom());
+        c.Add("winNextApp", "窗口功能", "同程序下一个窗口", "在当前程序的窗口间循环", _ => ctx.Windows.CycleSameApp(false), shortTitle: "下窗口");
+        c.Add("winPrevApp", "窗口功能", "同程序上一个窗口", "反向循环", _ => ctx.Windows.CycleSameApp(true), shortTitle: "上窗口");
+        c.Add("winLeft", "窗口功能", "激活左边的窗口", "按屏幕位置找左边最近的窗口", _ => ctx.Windows.ActivateDirectional("l"), shortTitle: "左窗");
+        c.Add("winRight", "窗口功能", "激活右边的窗口", "按屏幕位置找右边最近的窗口", _ => ctx.Windows.ActivateDirectional("r"), shortTitle: "右窗");
+        c.Add("winUp", "窗口功能", "激活上边的窗口", "按屏幕位置找上边最近的窗口", _ => ctx.Windows.ActivateDirectional("u"), shortTitle: "上窗");
+        c.Add("winDown", "窗口功能", "激活下边的窗口", "按屏幕位置找下边最近的窗口", _ => ctx.Windows.ActivateDirectional("d"), shortTitle: "下窗");
 
-        // ---------------- 鼠标 ----------------
-        c.Add("mouseLeft", "鼠标", "鼠标左移", "可长按加速", _ => ctx.Mouse.Move(-1, 0));
-        c.Add("mouseRight", "鼠标", "鼠标右移", "可长按加速", _ => ctx.Mouse.Move(1, 0));
-        c.Add("mouseUp", "鼠标", "鼠标上移", "可长按加速", _ => ctx.Mouse.Move(0, -1));
-        c.Add("mouseDown", "鼠标", "鼠标下移", "可长按加速", _ => ctx.Mouse.Move(0, 1));
-        c.Add("clickLeft", "鼠标", "鼠标左键", "点击左键", _ => { InputSender.Click(false); return true; });
-        c.Add("clickRight", "鼠标", "鼠标右键", "点击右键", _ => { InputSender.Click(true); return true; });
-        c.Add("wheelUp", "鼠标", "滚轮上滚", "向上滚动", a => { InputSender.Wheel(ParseInt(a, 3)); return true; });
-        c.Add("wheelDown", "鼠标", "滚轮下滚", "向下滚动", a => { InputSender.Wheel(-ParseInt(a, 3)); return true; });
-        c.Add("mouseSpeedUp", "鼠标", "鼠标速度 +", "进入层并按住 LAlt 时的鼠标速度加一", _ => ctx.ChangeMouseSpeed(1), shortTitle: "鼠速+");
-        c.Add("mouseSpeedDown", "鼠标", "鼠标速度 -", "鼠标速度减一", _ => ctx.ChangeMouseSpeed(-1), shortTitle: "鼠速-");
+        // ---------------- 鼠标功能 ----------------
+        /* 分类名从「鼠标」改成「鼠标功能」：里面不光有移动，还有点击中键/侧键和滚轮，
+         * 叫「鼠标」会让人以为只是移动。 */
+        c.Add("mouseLeft", "鼠标功能", "鼠标左移", "可长按加速", _ => ctx.Mouse.Move(-1, 0));
+        c.Add("mouseRight", "鼠标功能", "鼠标右移", "可长按加速", _ => ctx.Mouse.Move(1, 0));
+        c.Add("mouseUp", "鼠标功能", "鼠标上移", "可长按加速", _ => ctx.Mouse.Move(0, -1));
+        c.Add("mouseDown", "鼠标功能", "鼠标下移", "可长按加速", _ => ctx.Mouse.Move(0, 1));
+        c.Add("clickLeft", "鼠标功能", "鼠标左键", "点击左键", _ => { InputSender.Click(false); return true; }, shortTitle: "左键");
+        c.Add("clickRight", "鼠标功能", "鼠标右键", "点击右键", _ => { InputSender.Click(true); return true; }, shortTitle: "右键");
+        c.Add("clickMiddle", "鼠标功能", "鼠标中键", "点击中键", _ => Send(VK_Middle), shortTitle: "中键");
+        c.Add("clickX1", "鼠标功能", "鼠标侧键 1", "点击侧键 1（通常是「后退」）", _ => Send(VK_X1), shortTitle: "侧1");
+        c.Add("clickX2", "鼠标功能", "鼠标侧键 2", "点击侧键 2（通常是「前进」）", _ => Send(VK_X2), shortTitle: "侧2");
+        c.Add("wheelUp", "鼠标功能", "滚轮上滚", "向上滚动", a => { InputSender.Wheel(ParseInt(a, 3)); return true; });
+        c.Add("wheelDown", "鼠标功能", "滚轮下滚", "向下滚动", a => { InputSender.Wheel(-ParseInt(a, 3)); return true; });
+        c.Add("wheelLeft", "鼠标功能", "滚轮左拨", "向左滚动（水平滚轮）",
+            a => { InputSender.Wheel(-Math.Abs(ParseInt(a, 3)), horizontal: true); return true; }, shortTitle: "左拨");
+        c.Add("wheelRight", "鼠标功能", "滚轮右拨", "向右滚动（水平滚轮）",
+            a => { InputSender.Wheel(Math.Abs(ParseInt(a, 3)), horizontal: true); return true; }, shortTitle: "右拨");
+        c.Add("mouseSpeedUp", "鼠标功能", "鼠标速度 +", "进入层并按住 LAlt 时的鼠标速度加一", _ => ctx.ChangeMouseSpeed(1), shortTitle: "鼠速+");
+        c.Add("mouseSpeedDown", "鼠标功能", "鼠标速度 -", "鼠标速度减一", _ => ctx.ChangeMouseSpeed(-1), shortTitle: "鼠速-");
 
         // ---------------- 系统功能 ----------------
         //
@@ -542,7 +597,41 @@ public sealed class ActionCatalog
 
     // ---------------- 小工具 ----------------
     private const int VK_Back = 0x08, VK_Tab = 0x09, VK_Enter = 0x0D, VK_Esc = 0x1B, VK_Space = 0x20,
-                      VK_Home = 0x24, VK_End = 0x23, VK_Delete = 0x2E;
+                      VK_Home = 0x24, VK_End = 0x23, VK_Delete = 0x2E,
+                      VK_Middle = 0x04, VK_X1 = 0x05, VK_X2 = 0x06;
+
+    /// <summary>纯修饰键：单独"发一下"没有意义，不进「键盘按键」列表。</summary>
+    private static bool IsBareModifier(int vk)
+        => vk is 0x10 or 0x11 or 0x12 or 0x5B or 0x5C
+            or >= 0xA0 and <= 0xA5;
+
+    /// <summary>
+    /// 键帽上最多放 5 个字（见 <see cref="ActionInfo.KeycapTitle"/>）。
+    /// 长键名给一个能认出原键的中文短名，剩下的按前 5 个字符截。
+    /// </summary>
+    private static string KeycapOf(string keyName, string label)
+    {
+        string? shortName = keyName switch
+        {
+            "backspace" => "退格",
+            "capslock" => "大写",
+            "printScreen" => "截屏",
+            "insert" => "插入",
+            "delete" => "删除",
+            "numLock" => "数字",
+            "scrollLock" => "滚动",
+            "pageUp" => "上页",
+            "pageDown" => "下页",
+            "space" => "空格",
+            "enter" => "回车",
+            "apps" => "菜单",
+            "pause" => "暂停",
+            _ => null,
+        };
+
+        if (shortName != null) return shortName;
+        return label.Length <= 5 ? label : label[..5];
+    }
 
     private static bool Send(int vk) { InputSender.Tap(vk); return true; }
     private static bool SendCtrl(int vk) { InputSender.Ctrl(vk); return true; }

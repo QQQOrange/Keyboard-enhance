@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="CapsLockPlus.UI.Views.LayersView"
+<UserControl x:Class="CapsLockPlus.UI.Views.LayersView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -136,8 +136,61 @@
 
                                 <TextBlock Text="{loc:T '双击动作（留空 = 关闭双击）'}" Style="{StaticResource Text.Secondary}"
                                            Margin="0,14,0,6" />
-                                <ComboBox x:Name="DoubleTapBox" Style="{StaticResource ComboBox.Base}"
-                                          SelectionChanged="OnDoubleTapActionChanged" MaxDropDownHeight="320" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <!-- 搜索框：左侧放大镜 + 空内容时的提示文字，
+                                             一眼能看出这里是搜索，而不是一个空输入框。 -->
+                                        <Grid>
+                                            <TextBox x:Name="DoubleTapSearchBox" Style="{StaticResource TextBox.Base}"
+                                                     MinHeight="34" VerticalContentAlignment="Center"
+                                                     Padding="32,0,10,0"
+                                                     ToolTip="{loc:T '搜索动作名称、分类或 ID'}"
+                                                     TextChanged="OnDoubleTapSearchChanged" />
+                                            <TextBlock Text="&#xE721;"
+                                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                       FontSize="14"
+                                                       Foreground="{DynamicResource Brush.TextTertiary}"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                       Margin="11,0,0,0" IsHitTestVisible="False" />
+                                            <TextBlock Text="{loc:T '搜索动作名称、分类或 ID'}"
+                                                       Foreground="{DynamicResource Brush.TextTertiary}"
+                                                       FontSize="12"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                       Margin="33,0,10,0" IsHitTestVisible="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Text, ElementName=DoubleTapSearchBox}" Value="">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                        <ComboBox x:Name="DoubleTapCategoryBox" Style="{StaticResource ComboBox.Base}"
+                                                  Margin="0,8,0,0" MaxDropDownHeight="320"
+                                                  ToolTip="{loc:T '先选分类'}"
+                                                  SelectionChanged="OnDoubleTapCategoryChanged" />
+                                        <ComboBox x:Name="DoubleTapActionBox" Style="{StaticResource ComboBox.Base}"
+                                                  Margin="0,8,0,0" MaxDropDownHeight="320"
+                                                  ToolTip="{loc:T '再选具体功能'}" />
+                                        <TextBlock x:Name="DoubleTapCurrentLabel" Style="{StaticResource Text.Tertiary}"
+                                                   TextWrapping="Wrap" Margin="0,6,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                        <Button Content="{loc:T '应用'}" Style="{StaticResource Button.Primary}"
+                                                Padding="12,7" Click="OnApplyDoubleTapAction" />
+                                        <Button Content="{loc:T '清除'}" Style="{StaticResource Button.Ghost}"
+                                                Padding="12,7" Margin="0,8,0,0"
+                                                Click="OnClearDoubleTapAction" />
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
                         </StackPanel>
                     </Border>

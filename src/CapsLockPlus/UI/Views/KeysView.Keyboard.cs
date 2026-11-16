@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
@@ -121,14 +121,19 @@ public partial class KeysView : UserControl
         KeyboardPanel.Child = grid;
 
         // ---- 状态文字 ----
+        bool replaceLayer = _layerId == ReplaceLayerId;
         var tap = FindInCurrentLayer("press_caps");
         string tapTitle = tap != null ? _host.Actions.Get(tap.Action)?.Title ?? tap.Action : Loc.T("无");
         var layerObj = _host.Settings.Layers.FirstOrDefault(l => l.Id == _layerId);
-        string layerName = LayerName.Display(_layerId, layerObj?.Name);
+        string layerName = replaceLayer
+            ? Loc.T("原键替换")
+            : LayerName.Display(_layerId, layerObj?.Name);
         var trigger = _host.Settings.Triggers.FirstOrDefault(t => t.LayerId == _layerId);
-        string triggerText = trigger != null
-            ? Loc.F("触发键 {0}（键盘上已高亮）", KeyName.Display(trigger.Key))
-            : Loc.T("（没有触发键指向这一层）");
+        string triggerText = replaceLayer
+            ? Loc.T("这一层不需要触发键：按下绑过的键就直接执行功能")
+            : trigger != null
+                ? Loc.F("触发键 {0}（键盘上已高亮）", KeyName.Display(trigger.Key))
+                : Loc.T("（没有触发键指向这一层）");
 
         /* 修饰子层的提示必须能显示**组合**修饰键。
          *
@@ -136,9 +141,11 @@ public partial class KeysView : UserControl
          * 录了 Ctrl+Shift 就落到 `_ => ""`，界面完全看不出"正在看一个修饰子层"，
          * 只看到"0 个绑定"—— 用户会以为绑定被删了。
          * 顺便把"怎么回到普通键"写在同一行。 */
-        string modText = _layer != KeyModifiers.None
-            ? ModifierText(_layer)
-            : string.IsNullOrEmpty(_subLayerKey) ? "" : " + " + KeyName.Display(_subLayerKey);
+        string modText = replaceLayer
+            ? ""
+            : _layer != KeyModifiers.None
+                ? ModifierText(_layer)
+                : string.IsNullOrEmpty(_subLayerKey) ? "" : " + " + KeyName.Display(_subLayerKey);
         string backHint = modText.Length == 0
             ? ""
             : Loc.T("　·　点上方的「直接按」回到普通键");
@@ -147,7 +154,9 @@ public partial class KeysView : UserControl
          * 以前整句（含触发键、回到上层的提示）挤在一行，窗口一窄就被截断，
          * 而且这条信息每切一次层都变长变短，旁边的「键盘大小」跟着左右跳。
          * 现在主句固定为"第几层 + 有没有子层 + 几个绑定"，长度稳定。 */
-        LayerHint.Text = Loc.F("当前：第 {0} 层「{1}」{2}（{3} 个绑定）", _layerId, layerName, modText, bound);
+        LayerHint.Text = replaceLayer
+            ? Loc.F("当前：原键替换层（{0} 个替换）", bound)
+            : Loc.F("当前：第 {0} 层「{1}」{2}（{3} 个绑定）", _layerId, layerName, modText, bound);
         LayerHint.ToolTip = $"{triggerText}{backHint}";
 
         /* 顶部提示里的触发键必须**跟着当前层变**。
@@ -156,9 +165,19 @@ public partial class KeysView : UserControl
          * 切过去仍提示按住大写键 —— 与实际触发方式完全对不上。 */
         UpdateTriggerBadge(trigger);
 
-        CountText.Text = _layerId == 1
-            ? Loc.F("短按触发键：{0}　·　点键盘上任意键即可修改它的功能，修改立刻生效。", tapTitle)
-            : Loc.T("这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。");
+        CountText.Text = replaceLayer
+            ? Loc.T("按下这些键直接执行功能，不再输入原来的字符。想恢复原状，把绑定删掉即可。")
+            : _layerId == 1
+                ? Loc.F("短按触发键：{0}　·　点键盘上任意键即可修改它的功能，修改立刻生效。", tapTitle)
+                : Loc.T("这一层的按键绑定独立于其他层。要改短按行为，去「触发键与层」页。");
+        if (replaceLayer)
+        {
+            /* 这一层本来就没有触发键，不能复用"没有触发键，去设置"那句 ——
+             * 那会让人以为配置漏了，其实"不用触发"就是它的设计。 */
+            TriggerKeyBadge.Text = Loc.T("不用触发键");
+            TriggerKeySuffix.Text = Loc.T("按下绑过的键就直接生效");
+        }
+        else UpdateTriggerBadge(trigger);
         UpdateLayerButtons();
     }
 

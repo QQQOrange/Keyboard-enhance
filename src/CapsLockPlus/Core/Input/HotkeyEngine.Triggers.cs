@@ -368,14 +368,31 @@ public sealed partial class HotkeyEngine
 
             if (doubleTap)
             {
+                /* 第一次短按如果补发过 CapsLock，真实的大写状态已经被翻转了一次。
+                 * 双击动作（典型是打开 Qbar）执行前先补一次，把状态还原；
+                 * 否则用户双击唤出面板时，输入法/键盘已经处于大写。 */
+                bool undoFirstTapCaps = _lastTapReplayed && vk == 0x14;
                 _hasLastTap = false;            // 双击只算一次，避免三连击继续触发
+                _lastTapReplayed = false;
                 string dt = trigger.DoubleTapAction;
-                _queue.Post(() => RunTapAction(dt));
+                if (undoFirstTapCaps)
+                {
+                    _queue.Post(() =>
+                    {
+                        InputSender.Tap(0x14);
+                        RunTapAction(dt);
+                    });
+                }
+                else
+                {
+                    _queue.Post(() => RunTapAction(dt));
+                }
             }
             else
             {
                 _lastTapTime = DateTime.Now;
                 _hasLastTap = true;
+                _lastTapReplayed = false;
 
                 /* 短按行为的判定。
                  *
@@ -387,6 +404,8 @@ public sealed partial class HotkeyEngine
                  * 语义明确：短按 = 当这个键没被改造过一样用。 */
                 if (tapAction is "toggleCapsLock" or "" or "doNothing" or "keepKey")
                 {
+                    _lastTapReplayed = true;
+
                     /* 补发原键：对 CapsLock 是翻转大写，对 F5 是打开刷新，
                      * 对问号是正常输入 "?" —— 系统状态是真实产生的。 */
                     int vkToSend = vk;
@@ -398,7 +417,11 @@ public sealed partial class HotkeyEngine
                          * 不能挡 _triggerHeld：用户快速连按两下时，第二次按下
                          * 会把第一次的补发一起吞掉，表现为"按了没反应"。
                          * 补发属于**已经结束的那一次**按键，与新的按住无关。 */
-                        if (_layerActive) return;
+                        if (_layerActive)
+                        {
+                            _lastTapReplayed = false;
+                            return;
+                        }
                         TapReplayCountForTest++;
                         InputSender.Tap(vkToSend);
                     });
@@ -527,18 +550,36 @@ public sealed partial class HotkeyEngine
             return false;
         }
 
-        /* 只认一个前缀符号（用户可改、可清空、可切全角）。
-         * 过滤放在匹配之前：既实现"只认一个符号"，又不影响匹配器本身的语义。 */
+        /* 前缀可以配好几个（`;` `/` `、` 都行），比较时全角/半角等价
+         * —— 触发词按屏上字符写，缓冲区按物理键记，折叠之后才对得上。 */
         var opt = s.Hotstring ?? new HotstringOptions();
-        string prefix = opt.EffectivePrefix;
-        var list = string.IsNullOrEmpty(prefix)
+        var prefixes = opt.EffectivePrefixes;
+        var list = prefixes.Count == 0
             ? all
-            : all.Where(x => x.Trigger != null && x.Trigger.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+            : all.Where(x => SnippetMatcher.StartsWithAnyPrefix(x.Trigger, prefixes)).ToList();
 
         if (list.Count == 0)
         {
             _snippetBuffer.Clear();
             return false;
+        }
+
+        /* ---- 中文别名 ----
+         *
+         * 输入法组字对键盘钩子是隐形的：钩子只看得到物理键（拼音字母），
+         * 「中文」这两个字要等输入法提交才落进编辑框。所以配置里存在非 ASCII
+         * 触发词时，在"文字已经落进控件"的那几个键上（空格 / 回车 / 输入法提交
+         * 0xE5）把焦点控件的尾巴读回来，用真实文本匹配。
+         *
+         * 读不到（自绘控件、权限更高的窗口）就沿用按键缓冲区 —— 英文别名
+         * 完全不受影响，也不会因为某个程序不响应 WM_GETTEXT 就卡住打字。 */
+        if (vk is 0x20 or 0x0D or 0xE5 && HasNonAsciiTrigger(list))
+        {
+            if (TextMirror.TryReadTail(SnippetMatcher.MaxBuffer, out string mirror) && mirror.Length > 0)
+            {
+                _snippetBuffer.Clear();
+                _snippetBuffer.Append(SnippetMatcher.Trim(mirror));
+            }
         }
 
         /* 空格触发：打完触发词**再按空格**才替换（默认）。 */
@@ -589,6 +630,20 @@ public sealed partial class HotkeyEngine
         }
 
         ExpandSnippet(hit);
+        return false;
+    }
+
+    /// <summary>这批候选里有没有非 ASCII 触发词（中文/日文/全角符号）。</summary>
+    private static bool HasNonAsciiTrigger(List<Snippet> list)
+    {
+        for (int i = 0; i < list.Count; i++)
+        {
+            string trigger = list[i].Trigger ?? "";
+            for (int j = 0; j < trigger.Length; j++)
+            {
+                if (trigger[j] > 0x7F) return true;
+            }
+        }
         return false;
     }
 

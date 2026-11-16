@@ -97,6 +97,8 @@ public static class SettingsStore
         target.Hotstring = copy.Hotstring;
         target.SchemaVersion = copy.SchemaVersion;
         target.BuiltinEnginesVersion = copy.BuiltinEnginesVersion;
+        target.BuiltinWebVersion = copy.BuiltinWebVersion;
+        target.BuiltinRunVersion = copy.BuiltinRunVersion;
     }
 
     /// <summary>所有绑定列表（各层的 Keys + 老的顶层 Keys）。</summary>
@@ -216,6 +218,10 @@ public static class SettingsStore
                     return fresh;
                 }
 
+                /* 每天留一份原始副本：别名"更新几次就不见了"这类问题，
+                 * 事后只能靠历史文件找回来（程序无法凭空知道丢过什么）。 */
+                SnippetRecovery.SnapshotFile();
+
                 string raw = File.ReadAllText(AppPaths.SettingsFile);
 
                 /* 没有设置备份密码时也会用**本机密钥**加密（CLP2:）——
@@ -287,7 +293,7 @@ public static class SettingsStore
                 }
 
                 Normalize(s);
-                bool migrated = MigrateBuiltinEngines(s);
+                bool migrated = MigrateBuiltinEngines(s) | MigrateBuiltinWebAndRun(s);
 
                 /* 已经设了备份密码、但这份文件还是明文的旧数据 → 立刻以加密形式重存，
                  * 让"设了密码就不再留明文"当场生效，而不是等下一次改设置。 */
@@ -330,6 +336,13 @@ public static class SettingsStore
                 if (LocalCrypto.LastError is { Length: > 0 })
                     _dataLocked = true;
 
+                /* 主文件和备份都读不出来时，本次只能拿默认值让界面先起来；
+                 * 但**绝不能**让这份默认值随后落盘把原文件覆盖掉。
+                 * 之前正是这条路径在“文件被占用/复制到一半”时静默清空过用户配置。
+                 * 进入只读保护，等用户修好文件或从历史副本恢复。 */
+                if (File.Exists(AppPaths.SettingsFile))
+                    _dataLocked = true;
+
                 string keyNote = LocalCrypto.LastError is { Length: > 0 }
                     ? "\n" + LocalCrypto.LastError
                     : "";
@@ -337,7 +350,7 @@ public static class SettingsStore
                 LoadFailure = (brokenPath.Length > 0
                                   ? "设置文件读不出来，已把原文件另存为 " + brokenPath + "，\n"
                                   : "设置文件读不出来（原文件可能已被占用或权限不足）。\n") +
-                              "本次先用默认设置启动（原文件没有被删除，可以手工修复后换回去）。" +
+                              "本次先用默认设置启动，并已进入只读保护，不会覆盖原文件。" +
                               (backupError.Length > 0 ? "\n备份也无法读取：" + backupError : "") +
                               keyNote;
 
@@ -565,15 +578,23 @@ public static class SettingsStore
     /// 支持当前两种加密格式，也兼容旧版明文备份。
     /// </summary>
     private static bool TryLoadBackup(out AppSettings settings, out string error)
+        => TryLoadFile(AppPaths.SettingsFile + ".bak", out settings, out error);
+
+    /// <summary>
+    /// 从任意一份设置文件读配置（只读，不写盘、不改磁盘上的任何东西）。
+    ///
+    /// 用途：`--dump-snippets` 核对备份、以及"找回丢失的别名"扫描历史副本。
+    /// 与主流程的区别只有"路径由调用方给"这一条。
+    /// </summary>
+    internal static bool TryLoadFile(string path, out AppSettings settings, out string error)
     {
         settings = DefaultSettings.Create();
         error = "";
         try
         {
-            string path = AppPaths.SettingsFile + ".bak";
             if (!File.Exists(path))
             {
-                error = "备份文件不存在";
+                error = "文件不存在";
                 return false;
             }
 
@@ -581,30 +602,31 @@ public static class SettingsStore
             if (LocalCrypto.IsEncrypted(raw))
             {
                 raw = LocalCrypto.TryDecrypt(raw)
-                      ?? throw new InvalidOperationException("备份用本机密钥加密，当前无法解密");
+                      ?? throw new InvalidOperationException("这份文件用本机密钥加密，当前无法解密");
             }
 
             if (DataVault.LooksEncrypted(raw))
             {
                 if (!DataVault.IsUnlocked) DataVault.TryUnlockCached();
                 raw = DataVault.Decrypt(raw)
-                      ?? throw new InvalidOperationException("备份已加密，当前无法解密");
+                      ?? throw new InvalidOperationException("这份文件已加密，当前无法解密");
             }
 
             var candidate = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions);
-            if (candidate == null) throw new InvalidOperationException("备份内容为空");
+            if (candidate == null) throw new InvalidOperationException("内容为空");
             if (IsStructurallyEmpty(candidate))
-                throw new InvalidOperationException("备份里没有任何按键、层或宏");
+                throw new InvalidOperationException("里面没有任何按键、层或宏");
 
             Normalize(candidate);
             MigrateBuiltinEngines(candidate);
+            MigrateBuiltinWebAndRun(candidate);
             settings = candidate;
             return true;
         }
         catch (Exception ex)
         {
             error = ex.Message;
-            CoreLog.Warn("读取设置备份失败：" + ex.Message);
+            CoreLog.Warn("读取设置文件失败（" + path + "）：" + ex.Message);
             return false;
         }
     }
@@ -701,6 +723,30 @@ public static class SettingsStore
     /// </summary>
     private static bool MigrateBuiltinEngines(AppSettings s)
     {
+        /* 6：bili 现在是常用网址（B 站首页）的关键字，
+         * B 站搜索改用 bilis，避免同一个关键字在两张表里打架。 */
+        if (s.BuiltinEnginesVersion < 6)
+        {
+            var oldBili = s.Search.FirstOrDefault(e =>
+                e.Key.Equals("bili", StringComparison.OrdinalIgnoreCase));
+            if (oldBili != null)
+            {
+                var existing = s.Search.FirstOrDefault(e =>
+                    e.Key.Equals("bilis", StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
+                {
+                    oldBili.Key = "bilis";
+                    oldBili.Comment = "哔哩哔哩搜索";
+                    CoreLog.Info("搜索引擎 bili 已重命名为 bilis，bili 留给常用网址");
+                }
+                else
+                {
+                    s.Search.Remove(oldBili);
+                    CoreLog.Info("搜索引擎 bili 与 bilis 重复，移除旧 bili");
+                }
+            }
+        }
+
         if (s.BuiltinEnginesVersion >= DefaultSettings.BuiltinEnginesVersion) return false;
 
         // 旧版用过、现在已改名的关键字：直接删掉，免得用户看到 g 和 go 两个 Google。
@@ -793,6 +839,147 @@ public static class SettingsStore
             CoreLog.Info($"搜索引擎表更新：新增 {added} 个，图标升级 {upgraded} 个，" +
                          Loc.F("清理旧条目 {0} 个（引擎表版本 → {1}）", removedLegacy, s.BuiltinEnginesVersion));
         return true;
+    }
+
+    /// <summary>
+    /// 补齐内置的“启动程序 / 常用网址”表。
+    ///
+    /// 与搜索引擎表不同，这两张表以前只有个位数条目，老用户的设置文件里
+    /// 早就固化了，永远不会看到新加的条目。这里按 Key 去重追加：
+    /// 用户自己加的、改过的同 Key 条目一律保留，不覆盖。
+    /// </summary>
+    private static bool MigrateBuiltinWebAndRun(AppSettings s)
+    {
+        s.Run ??= new List<QEntry>();
+        s.Web ??= new List<QEntry>();
+
+        bool changed = false;
+
+        if (s.BuiltinRunVersion < DefaultSettings.BuiltinRunVersion)
+        {
+            /* 4.33 起默认不再填充启动程序表。
+             * 老设置里由我们自动加进去的内置条目要清掉，但只删
+             * Key + Value 完全匹配的内置项，用户自己改过路径的条目保留。 */
+            int removed = RemoveBuiltinEntries(s.Run, DefaultSettings.BuiltinRunEntries());
+            s.BuiltinRunVersion = DefaultSettings.BuiltinRunVersion;
+            changed = true;
+            if (removed > 0)
+                CoreLog.Info($"启动程序表清理：移除 {removed} 个内置项（版本 → {s.BuiltinRunVersion}）");
+        }
+
+        if (s.BuiltinWebVersion < DefaultSettings.BuiltinWebVersion)
+        {
+            int added = MergeBuiltinEntries(s.Web, DefaultSettings.BuiltinWebEntries());
+            s.BuiltinWebVersion = DefaultSettings.BuiltinWebVersion;
+            changed = true;
+            if (added > 0)
+                CoreLog.Info($"常用网址表更新：新增 {added} 个（版本 → {s.BuiltinWebVersion}）");
+        }
+
+        changed |= ResolveLegacyQbarKeyConflicts(s);
+
+        return changed;
+    }
+
+    /// <summary>
+    /// 清理历史上跨表重复的关键字。
+    ///
+    /// 旧版本的“常用网址”默认只有 gh / bili 两个短键，而搜索表里本来就有
+    /// gh（GitHub 搜索）和 bili（B 站搜索）。新版把网址补全后，这两组会各剩
+    /// 两个同名项，Qbar 只能按优先级选一个。这里把旧网址 gh 并到 github，
+    /// 把旧搜索 bl（B 站）并到 bilis，保留语义更明确的键。
+    /// </summary>
+    private static bool ResolveLegacyQbarKeyConflicts(AppSettings s)
+    {
+        bool changed = false;
+
+        var webGh = s.Web.FirstOrDefault(e => e.Key.Equals("gh", StringComparison.OrdinalIgnoreCase));
+        if (webGh != null)
+        {
+            var webGithub = s.Web.FirstOrDefault(e => e.Key.Equals("github", StringComparison.OrdinalIgnoreCase));
+            if (webGithub != null)
+            {
+                s.Web.Remove(webGh);
+                CoreLog.Info("常用网址 gh 与 github 重复，移除旧 gh（保留 github）");
+            }
+            else
+            {
+                webGh.Key = "github";
+                CoreLog.Info("常用网址 gh 已重命名为 github");
+            }
+            changed = true;
+        }
+
+        var bilis = s.Search.FirstOrDefault(e => e.Key.Equals("bilis", StringComparison.OrdinalIgnoreCase));
+        var searchBili = s.Search.FirstOrDefault(e =>
+            e.Key.Equals("bili", StringComparison.OrdinalIgnoreCase) &&
+            e.Value.Contains("search.bilibili.com", StringComparison.OrdinalIgnoreCase));
+        if (searchBili != null)
+        {
+            if (bilis != null)
+            {
+                s.Search.Remove(searchBili);
+                CoreLog.Info("搜索指令 bili 与 bilis 重复，移除旧 bili（保留 bilis）");
+            }
+            else
+            {
+                searchBili.Key = "bilis";
+                CoreLog.Info("搜索指令 bili 已重命名为 bilis");
+            }
+            changed = true;
+        }
+
+        var legacyBl = s.Search.FirstOrDefault(e =>
+            e.Key.Equals("bl", StringComparison.OrdinalIgnoreCase) &&
+            e.Value.Contains("search.bilibili.com", StringComparison.OrdinalIgnoreCase));
+        if (legacyBl != null)
+        {
+            if (bilis != null)
+            {
+                s.Search.Remove(legacyBl);
+                CoreLog.Info("搜索指令 bl 与 bilis 重复，移除旧 bl（保留 bilis）");
+            }
+            else
+            {
+                legacyBl.Key = "bilis";
+                CoreLog.Info("搜索指令 bl 已重命名为 bilis");
+            }
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static int MergeBuiltinEntries(List<QEntry> target, List<QEntry> builtins)
+    {
+        var keys = new HashSet<string>(
+            target.Select(e => e.Key ?? "").Where(k => k.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
+        int added = 0;
+        foreach (var entry in builtins)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Key) || !keys.Add(entry.Key)) continue;
+            target.Add(entry);
+            added++;
+        }
+        return added;
+    }
+
+    /// <summary>
+    /// 删除与内置项 Key + Value 完全一致的条目（忽略大小写）。
+    /// 用户改过路径的条目 Value 不再匹配，会保留下来。
+    /// </summary>
+    private static int RemoveBuiltinEntries(List<QEntry> target, List<QEntry> builtins)
+    {
+        var keys = new HashSet<string>(
+            builtins.Where(e => !string.IsNullOrWhiteSpace(e.Key))
+                    .Select(e => (e.Key ?? "") + "\u0000" + (e.Value ?? "")),
+            StringComparer.OrdinalIgnoreCase);
+
+        int before = target.Count;
+        target.RemoveAll(e => keys.Contains((e.Key ?? "") + "\u0000" + (e.Value ?? "")));
+        return before - target.Count;
     }
 
     /// <summary>
@@ -897,6 +1084,7 @@ public static class SettingsStore
 
         s.Global ??= new GlobalOptions();
         s.Qbar ??= new QbarOptions();
+        s.Qbar.Pinned ??= new List<QEntry>();
         s.Sync ??= new SyncOptions();
         s.Keys ??= new List<KeyBinding>();
         s.Search ??= new List<QEntry>();
@@ -1014,6 +1202,27 @@ public static class SettingsStore
 
         NormalizeLayers(s);
 
+        /* 设备方案也要"读回来就干净"：
+         *   · 通用设置只允许一份（历史上可能被写成好几份）；
+         *   · 空层、重复设备、非法层号在这里统一收掉；
+         *   · 没写过 Profiles 的老设置完全不受影响（列表为空＝什么都不做）。 */
+        DeviceProfiles.Normalize(s);
+
+        /* 老 KeyRemap.Device 字段（4.20.7 之前写了但不生效）现在真的按设备分流了，
+         * 读盘时把历史写法归一到运行时设备键，免得老规则静默失效。 */
+        DeviceProfiles.NormalizeLegacyDeviceKeys(s);
+
+        /* 基础层的 Caps+Q / Caps+R：默认方案里写的是 Qbar / Delete，但老配置里
+         * 这两条可能被存成空绑定（doNothing）或被删过 —— 用户看到的现象就是
+         * "Caps+Q 什么也不弹、Caps+R 也不删字"。只补"缺的/本来是废键的"，
+         * 用户自己改成别的动作一律不动；补一次就记标记。 */
+        EnsureBaseLayerDefaults(s);
+
+        /* 别名前缀：老配置只存了一个 Prefix（可能还开着"全角"）。
+         * 这里把列表物化一次，顺便把全角开关折算成字面字符 ——
+         * 之后运行时只读 Prefixes，不必到处判断两个字段谁优先。 */
+        s.Hotstring?.NormalizePrefixes();
+
         // 去掉重复的绑定项，保留最后一条
         var dup = s.Keys.GroupBy(k => k.Combo, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).ToList();
         foreach (var g in dup)
@@ -1030,6 +1239,39 @@ public static class SettingsStore
     ///   * 老设置里的 Keys 视为第 1 层的绑定，行为完全不变；
     ///   * 默认 10 层，每层独立；只创建缺失的层，不覆盖用户改过的。
     /// </summary>
+    /// <summary>
+    /// 基础层的 Q / R 补默认动作（Qbar 面板 / Delete）。
+    ///
+    /// 只在"这条绑定不存在"或"它现在是 doNothing"时补 —— 用户明明把 Caps+R 改成
+    /// 了别的动作，这里一动手就等于把他的设置吃掉。补过之后置标记，永不再跑。
+    /// </summary>
+    private static void EnsureBaseLayerDefaults(AppSettings s)
+    {
+        if (s.Global == null || s.Global.BaseLayerDefaultsFixed) return;
+        s.Global.BaseLayerDefaultsFixed = true;
+
+        var keys = s.LayerKeys(1);
+        if (keys == null) return;
+
+        Fix("caps_q", "qbar");
+        Fix("caps_r", "delete");
+
+        void Fix(string combo, string action)
+        {
+            var b = keys.FirstOrDefault(x => string.Equals(x.Combo, combo, StringComparison.OrdinalIgnoreCase));
+            if (b == null)
+            {
+                keys.Add(new KeyBinding { Combo = combo, Action = action });
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(b.Action) || b.Action == "doNothing")
+            {
+                b.Action = action;
+                b.Arg = "";
+            }
+        }
+    }
+
     private static void NormalizeLayers(AppSettings s)
     {
         const int DefaultLayerCount = 10;
@@ -1113,13 +1355,263 @@ public static class DefaultSettings
     ///   4 = 改用 QuickSearch（ui/data/engines.json）的完整引擎表，共 304 个，
     ///       图标全部换为其内置 PNG
     ///   5 = 旧条目改用内置图标（替换掉磁盘上的 svg 图标路径）
+    ///   6 = B 站搜索关键字 bili 改为 bilis，bili 留给常用网址首页
     /// </summary>
-    public const int BuiltinEnginesVersion = 5;
+    public const int BuiltinEnginesVersion = 6;
+
+    public const int BuiltinWebVersion = 2;
+
+    /// <summary>
+    /// 内置常用网址表。新增时把 <see cref="BuiltinWebVersion"/> +1，
+    /// 老用户启动时会按 Key 去重补齐（不覆盖用户改过的条目）。
+    /// </summary>
+    public static List<QEntry> BuiltinWebEntries() => new()
+    {
+new() { Key = "github", Value = "https://github.com", Comment = "GitHub" },
+            new() { Key = "gitlab", Value = "https://gitlab.com", Comment = "GitLab" },
+            new() { Key = "giteecom", Value = "https://gitee.com", Comment = "Gitee" },
+            new() { Key = "stackoverflow", Value = "https://stackoverflow.com", Comment = "Stack Overflow" },
+            new() { Key = "csdnnet", Value = "https://www.csdn.net", Comment = "CSDN" },
+            new() { Key = "juejinim", Value = "https://juejin.cn", Comment = "稀土掘金" },
+            new() { Key = "segmentfault", Value = "https://segmentfault.com", Comment = "SegmentFault" },
+            new() { Key = "v2ex", Value = "https://www.v2ex.com", Comment = "V2EX" },
+            new() { Key = "sspaicom", Value = "https://sspai.com", Comment = "少数派" },
+            new() { Key = "36kr", Value = "https://36kr.com", Comment = "36氪" },
+            new() { Key = "huxiu", Value = "https://www.huxiu.com", Comment = "虎嗅" },
+            new() { Key = "ifanr", Value = "https://www.ifanr.com", Comment = "爱范儿" },
+            new() { Key = "thepaper", Value = "https://www.thepaper.cn", Comment = "澎湃新闻" },
+            new() { Key = "zhihu", Value = "https://www.zhihu.com", Comment = "知乎" },
+            new() { Key = "douban", Value = "https://www.douban.com", Comment = "豆瓣" },
+            new() { Key = "baike", Value = "https://baike.baidu.com", Comment = "百度百科" },
+            new() { Key = "wikipedia", Value = "https://zh.wikipedia.org", Comment = "维基百科" },
+            new() { Key = "bilibili", Value = "https://www.bilibili.com", Comment = "哔哩哔哩" },
+            // bili 同时是搜索指令表里的 B 站搜索；网址表优先，
+            // 输入 bili + 空格直接得到首页地址，而不是“B 站搜索”标签。
+            new() { Key = "bili", Value = "https://www.bilibili.com", Comment = "哔哩哔哩" },
+            new() { Key = "youku", Value = "https://www.youku.com", Comment = "优酷" },
+            new() { Key = "iqiyicom", Value = "https://www.iqiyi.com", Comment = "爱奇艺" },
+            new() { Key = "tencentvideo", Value = "https://v.qq.com", Comment = "腾讯视频" },
+            new() { Key = "mgtv", Value = "https://www.mgtv.com", Comment = "芒果 TV" },
+            new() { Key = "netflix", Value = "https://www.netflix.com", Comment = "Netflix" },
+            new() { Key = "disneyplus", Value = "https://www.disneyplus.com", Comment = "Disney+" },
+            new() { Key = "primevideo", Value = "https://www.primevideo.com", Comment = "Prime Video" },
+            new() { Key = "youtube", Value = "https://www.youtube.com", Comment = "YouTube" },
+            new() { Key = "twitch", Value = "https://www.twitch.tv", Comment = "Twitch" },
+            new() { Key = "spotifyweb", Value = "https://open.spotify.com", Comment = "Spotify" },
+            new() { Key = "wyy", Value = "https://music.163.com", Comment = "网易云音乐" },
+            new() { Key = "qqmusic", Value = "https://y.qq.com", Comment = "QQ 音乐" },
+            new() { Key = "kugou", Value = "https://www.kugou.com", Comment = "酷狗音乐" },
+            new() { Key = "kuwo", Value = "https://www.kuwo.cn", Comment = "酷我音乐" },
+            new() { Key = "ximalaya", Value = "https://www.ximalaya.com", Comment = "喜马拉雅" },
+            new() { Key = "weread", Value = "https://weread.qq.com", Comment = "微信读书" },
+            new() { Key = "taobao", Value = "https://www.taobao.com", Comment = "淘宝" },
+            new() { Key = "tmall", Value = "https://www.tmall.com", Comment = "天猫" },
+            new() { Key = "jdcom", Value = "https://www.jd.com", Comment = "京东" },
+            new() { Key = "pinduoduo", Value = "https://www.pinduoduo.com", Comment = "拼多多" },
+            new() { Key = "suning", Value = "https://www.suning.com", Comment = "苏宁易购" },
+            new() { Key = "vipcom", Value = "https://www.vip.com", Comment = "唯品会" },
+            new() { Key = "amazon", Value = "https://www.amazon.com", Comment = "Amazon" },
+            new() { Key = "ebay", Value = "https://www.ebay.com", Comment = "eBay" },
+            new() { Key = "aliexpress", Value = "https://www.aliexpress.com", Comment = "AliExpress" },
+            new() { Key = "1688", Value = "https://www.1688.com", Comment = "1688" },
+            new() { Key = "booking", Value = "https://www.booking.com", Comment = "Booking.com" },
+            new() { Key = "airbnb", Value = "https://www.airbnb.com", Comment = "Airbnb" },
+            new() { Key = "ctrip", Value = "https://www.ctrip.com", Comment = "携程" },
+            new() { Key = "12306", Value = "https://www.12306.cn", Comment = "12306" },
+            new() { Key = "didi", Value = "https://www.didiglobal.com", Comment = "滴滴" },
+            new() { Key = "amap", Value = "https://www.amap.com", Comment = "高德地图" },
+            new() { Key = "baidumap", Value = "https://map.baidu.com", Comment = "百度地图" },
+            new() { Key = "weibo", Value = "https://weibo.com", Comment = "微博" },
+            new() { Key = "xiaohongshu", Value = "https://www.xiaohongshu.com", Comment = "小红书" },
+            new() { Key = "douyin", Value = "https://www.douyin.com", Comment = "抖音" },
+            new() { Key = "kuaishou", Value = "https://www.kuaishou.com", Comment = "快手" },
+            new() { Key = "wechatweb", Value = "https://weixin.qq.com", Comment = "微信" },
+            new() { Key = "qqcom", Value = "https://www.qq.com", Comment = "腾讯网" },
+            new() { Key = "telegramweb", Value = "https://telegram.org", Comment = "Telegram" },
+            new() { Key = "discordweb", Value = "https://discord.com", Comment = "Discord" },
+            new() { Key = "twitter", Value = "https://twitter.com", Comment = "Twitter / X" },
+            new() { Key = "xcom", Value = "https://x.com", Comment = "X" },
+            new() { Key = "reddit", Value = "https://www.reddit.com", Comment = "Reddit" },
+            new() { Key = "facebook", Value = "https://www.facebook.com", Comment = "Facebook" },
+            new() { Key = "instagram", Value = "https://www.instagram.com", Comment = "Instagram" },
+            new() { Key = "linkedin", Value = "https://www.linkedin.com", Comment = "LinkedIn" },
+            new() { Key = "tiktok", Value = "https://www.tiktok.com", Comment = "TikTok" },
+            new() { Key = "medium", Value = "https://medium.com", Comment = "Medium" },
+            new() { Key = "notion", Value = "https://www.notion.so", Comment = "Notion" },
+            new() { Key = "figma", Value = "https://www.figma.com", Comment = "Figma" },
+            new() { Key = "canva", Value = "https://www.canva.com", Comment = "Canva" },
+            new() { Key = "miro", Value = "https://miro.com", Comment = "Miro" },
+            new() { Key = "trello", Value = "https://trello.com", Comment = "Trello" },
+            new() { Key = "asana", Value = "https://asana.com", Comment = "Asana" },
+            new() { Key = "slackweb", Value = "https://slack.com", Comment = "Slack" },
+            new() { Key = "zoomweb", Value = "https://zoom.us", Comment = "Zoom" },
+            new() { Key = "teamsweb", Value = "https://www.microsoft.com/microsoft-teams", Comment = "Microsoft Teams" },
+            new() { Key = "google", Value = "https://www.google.com", Comment = "Google" },
+            new() { Key = "baidu", Value = "https://www.baidu.com", Comment = "百度" },
+            new() { Key = "bing", Value = "https://www.bing.com", Comment = "Bing" },
+            new() { Key = "duckduckgo", Value = "https://duckduckgo.com", Comment = "DuckDuckGo" },
+            new() { Key = "yandex", Value = "https://yandex.com", Comment = "Yandex" },
+            new() { Key = "naver", Value = "https://www.naver.com", Comment = "Naver" },
+            new() { Key = "yahoo", Value = "https://www.yahoo.com", Comment = "Yahoo" },
+            new() { Key = "office", Value = "https://www.office.com", Comment = "Microsoft 365" },
+            new() { Key = "microsoft", Value = "https://www.microsoft.com", Comment = "Microsoft" },
+            new() { Key = "apple", Value = "https://www.apple.com", Comment = "Apple" },
+            new() { Key = "windows", Value = "https://www.microsoft.com/windows", Comment = "Windows" },
+            new() { Key = "azure", Value = "https://azure.microsoft.com", Comment = "Azure" },
+            new() { Key = "aws", Value = "https://aws.amazon.com", Comment = "AWS" },
+            new() { Key = "aliyuncom", Value = "https://www.aliyun.com", Comment = "阿里云" },
+            new() { Key = "tencentcloud", Value = "https://cloud.tencent.com", Comment = "腾讯云" },
+            new() { Key = "huaweicloud", Value = "https://www.huaweicloud.com", Comment = "华为云" },
+            new() { Key = "vercel", Value = "https://vercel.com", Comment = "Vercel" },
+            new() { Key = "netlify", Value = "https://www.netlify.com", Comment = "Netlify" },
+            new() { Key = "cloudflare", Value = "https://www.cloudflare.com", Comment = "Cloudflare" },
+            new() { Key = "npm", Value = "https://www.npmjs.com", Comment = "npm" },
+            new() { Key = "nuget", Value = "https://www.nuget.org", Comment = "NuGet" },
+            new() { Key = "dockerhub", Value = "https://hub.docker.com", Comment = "Docker Hub" },
+            new() { Key = "huggingface", Value = "https://huggingface.co", Comment = "Hugging Face" },
+            new() { Key = "modelscope", Value = "https://www.modelscope.cn", Comment = "ModelScope" },
+            new() { Key = "kaggle", Value = "https://www.kaggle.com", Comment = "Kaggle" },
+            new() { Key = "leetcodecn", Value = "https://leetcode.cn", Comment = "力扣" },
+            new() { Key = "nowcoder", Value = "https://www.nowcoder.com", Comment = "牛客" },
+            new() { Key = "luogu", Value = "https://www.luogu.com.cn", Comment = "洛谷" },
+            new() { Key = "codeforces", Value = "https://codeforces.com", Comment = "Codeforces" },
+            new() { Key = "coursera", Value = "https://www.coursera.org", Comment = "Coursera" },
+            new() { Key = "udemy", Value = "https://www.udemy.com", Comment = "Udemy" },
+            new() { Key = "bbc", Value = "https://www.bbc.com", Comment = "BBC" },
+            new() { Key = "cnn", Value = "https://www.cnn.com", Comment = "CNN" },
+            new() { Key = "reuters", Value = "https://www.reuters.com", Comment = "Reuters" },
+            new() { Key = "nytimes", Value = "https://www.nytimes.com", Comment = "纽约时报" },
+            new() { Key = "theguardian", Value = "https://www.theguardian.com", Comment = "The Guardian" },
+            new() { Key = "economist", Value = "https://www.economist.com", Comment = "经济学人" },
+            new() { Key = "bloomberg", Value = "https://www.bloomberg.com", Comment = "Bloomberg" },
+            new() { Key = "forbes", Value = "https://www.forbes.com", Comment = "Forbes" },
+            new() { Key = "hbr", Value = "https://hbr.org", Comment = "哈佛商业评论" },
+            new() { Key = "mit", Value = "https://www.mit.edu", Comment = "MIT" },
+            new() { Key = "stanford", Value = "https://www.stanford.edu", Comment = "Stanford" },
+            new() { Key = "harvard", Value = "https://www.harvard.edu", Comment = "Harvard" },
+            new() { Key = "arxiv", Value = "https://arxiv.org", Comment = "arXiv" },
+            new() { Key = "claudeai", Value = "https://claude.ai", Comment = "Claude" },
+            new() { Key = "deepseekchat", Value = "https://chat.deepseek.com", Comment = "DeepSeek" },
+            new() { Key = "geminiapp", Value = "https://gemini.google.com", Comment = "Gemini" },
+            new() { Key = "pplx", Value = "https://www.perplexity.ai", Comment = "Perplexity" },
+            new() { Key = "kimichat", Value = "https://kimi.moonshot.cn", Comment = "Kimi" },
+            new() { Key = "doubaocom", Value = "https://www.doubao.com", Comment = "豆包" },
+            new() { Key = "chatgpt", Value = "https://chatgpt.com", Comment = "ChatGPT" },
+    };
+
+    public const int BuiltinRunVersion = 2;
+
+    /// <summary>
+    /// 内置启动程序表。只写可执行文件名/协议，不写死安装路径 ——
+    /// 具体装在哪由 App Paths / PATH / 系统协议决定，用户也可自行改成绝对路径。
+    /// </summary>
+    public static List<QEntry> BuiltinRunEntries() => new()
+    {
+new() { Key = "notepad", Value = "notepad.exe", Comment = "记事本" },
+            new() { Key = "calc", Value = "calc.exe", Comment = "计算器" },
+            new() { Key = "mspaint", Value = "mspaint.exe", Comment = "画图" },
+            new() { Key = "explorer", Value = "explorer.exe", Comment = "文件资源管理器" },
+            new() { Key = "cmd", Value = "cmd.exe", Comment = "命令提示符" },
+            new() { Key = "taskmgr", Value = "taskmgr.exe", Comment = "任务管理器" },
+            new() { Key = "powershell", Value = "powershell.exe", Comment = "PowerShell" },
+            new() { Key = "wt", Value = "wt.exe", Comment = "Windows Terminal" },
+            new() { Key = "regedit", Value = "regedit.exe", Comment = "注册表编辑器" },
+            new() { Key = "control", Value = "control.exe", Comment = "控制面板" },
+            new() { Key = "services", Value = "services.msc", Comment = "服务" },
+            new() { Key = "devmgmt", Value = "devmgmt.msc", Comment = "设备管理器" },
+            new() { Key = "diskmgmt", Value = "diskmgmt.msc", Comment = "磁盘管理" },
+            new() { Key = "eventvwr", Value = "eventvwr.msc", Comment = "事件查看器" },
+            new() { Key = "mstsc", Value = "mstsc.exe", Comment = "远程桌面" },
+            new() { Key = "snippingtool", Value = "snippingtool.exe", Comment = "截图工具" },
+            new() { Key = "wsl", Value = "wsl.exe", Comment = "WSL" },
+            new() { Key = "settings", Value = "ms-settings:", Comment = "Windows 设置" },
+            new() { Key = "store", Value = "ms-windows-store:", Comment = "Microsoft Store" },
+            new() { Key = "camera", Value = "microsoft.windows.camera:", Comment = "相机" },
+            new() { Key = "photos", Value = "ms-photos:", Comment = "照片" },
+            new() { Key = "code", Value = "Code.exe", Comment = "Visual Studio Code" },
+            new() { Key = "cursor", Value = "Cursor.exe", Comment = "Cursor" },
+            new() { Key = "sublime", Value = "sublime_text.exe", Comment = "Sublime Text" },
+            new() { Key = "notepad3", Value = "Notepad3.exe", Comment = "Notepad3" },
+            new() { Key = "typora", Value = "Typora.exe", Comment = "Typora" },
+            new() { Key = "obsidian", Value = "Obsidian.exe", Comment = "Obsidian" },
+            new() { Key = "logseq", Value = "Logseq.exe", Comment = "Logseq" },
+            new() { Key = "eudic", Value = "eudic.exe", Comment = "欧路词典" },
+            new() { Key = "youdao", Value = "YoudaoDict.exe", Comment = "有道词典" },
+            new() { Key = "wechat", Value = "WeChat.exe", Comment = "微信" },
+            new() { Key = "qqapp", Value = "QQ.exe", Comment = "QQ" },
+            new() { Key = "dingtalk", Value = "DingTalk.exe", Comment = "钉钉" },
+            new() { Key = "feishu", Value = "Feishu.exe", Comment = "飞书" },
+            new() { Key = "telegram", Value = "Telegram.exe", Comment = "Telegram" },
+            new() { Key = "discord", Value = "Discord.exe", Comment = "Discord" },
+            new() { Key = "slack", Value = "slack.exe", Comment = "Slack" },
+            new() { Key = "zoom", Value = "Zoom.exe", Comment = "Zoom" },
+            new() { Key = "teams", Value = "msteams:", Comment = "Microsoft Teams" },
+            new() { Key = "edge", Value = "msedge.exe", Comment = "Microsoft Edge" },
+            new() { Key = "chrome", Value = "chrome.exe", Comment = "Google Chrome" },
+            new() { Key = "firefox", Value = "firefox.exe", Comment = "Firefox" },
+            new() { Key = "brave", Value = "brave.exe", Comment = "Brave" },
+            new() { Key = "vlc", Value = "vlc.exe", Comment = "VLC" },
+            new() { Key = "potplayer", Value = "PotPlayerMini64.exe", Comment = "PotPlayer" },
+            new() { Key = "mpv", Value = "mpv.exe", Comment = "mpv" },
+            new() { Key = "spotify", Value = "Spotify.exe", Comment = "Spotify" },
+            new() { Key = "steam", Value = "steam.exe", Comment = "Steam" },
+            new() { Key = "epic", Value = "EpicGamesLauncher.exe", Comment = "Epic Games" },
+            new() { Key = "everything", Value = "Everything.exe", Comment = "Everything" },
+            new() { Key = "powertoys", Value = "PowerToys.exe", Comment = "PowerToys" },
+            new() { Key = "snipaste", Value = "Snipaste.exe", Comment = "Snipaste" },
+            new() { Key = "sharex", Value = "ShareX.exe", Comment = "ShareX" },
+            new() { Key = "7zip", Value = "7zFM.exe", Comment = "7-Zip" },
+            new() { Key = "bandizip", Value = "Bandizip.exe", Comment = "Bandizip" },
+            new() { Key = "winrar", Value = "WinRAR.exe", Comment = "WinRAR" },
+            new() { Key = "wiztree", Value = "WizTree.exe", Comment = "WizTree" },
+            new() { Key = "hwinfo", Value = "HWiNFO64.exe", Comment = "HWiNFO" },
+            new() { Key = "cpuz", Value = "cpuz_x64.exe", Comment = "CPU-Z" },
+            new() { Key = "gpuz", Value = "GPU-Z.exe", Comment = "GPU-Z" },
+            new() { Key = "putty", Value = "putty.exe", Comment = "PuTTY" },
+            new() { Key = "xshell", Value = "Xshell.exe", Comment = "Xshell" },
+            new() { Key = "mobaxterm", Value = "MobaXterm.exe", Comment = "MobaXterm" },
+            new() { Key = "finalshell", Value = "FinalShell.exe", Comment = "FinalShell" },
+            new() { Key = "winscp", Value = "WinSCP.exe", Comment = "WinSCP" },
+            new() { Key = "filezilla", Value = "filezilla.exe", Comment = "FileZilla" },
+            new() { Key = "wireshark", Value = "Wireshark.exe", Comment = "Wireshark" },
+            new() { Key = "fiddler", Value = "Fiddler.exe", Comment = "Fiddler" },
+            new() { Key = "postman", Value = "Postman.exe", Comment = "Postman" },
+            new() { Key = "apifox", Value = "Apifox.exe", Comment = "Apifox" },
+            new() { Key = "burp", Value = "BurpSuiteCommunity.exe", Comment = "Burp Suite" },
+            new() { Key = "navicat", Value = "Navicat.exe", Comment = "Navicat" },
+            new() { Key = "dbeaver", Value = "dbeaver.exe", Comment = "DBeaver" },
+            new() { Key = "redis", Value = "redis-cli.exe", Comment = "redis-cli" },
+            new() { Key = "mysql", Value = "mysql.exe", Comment = "MySQL" },
+            new() { Key = "gitbash", Value = "git-bash.exe", Comment = "Git Bash" },
+            new() { Key = "dockerdesktop", Value = "Docker Desktop.exe", Comment = "Docker Desktop" },
+            new() { Key = "idea", Value = "idea64.exe", Comment = "IntelliJ IDEA" },
+            new() { Key = "pycharm", Value = "pycharm64.exe", Comment = "PyCharm" },
+            new() { Key = "webstorm", Value = "webstorm64.exe", Comment = "WebStorm" },
+            new() { Key = "goland", Value = "goland64.exe", Comment = "GoLand" },
+            new() { Key = "clion", Value = "clion64.exe", Comment = "CLion" },
+            new() { Key = "androidstudio", Value = "studio64.exe", Comment = "Android Studio" },
+            new() { Key = "excel", Value = "EXCEL.EXE", Comment = "Excel" },
+            new() { Key = "word", Value = "WINWORD.EXE", Comment = "Word" },
+            new() { Key = "powerpoint", Value = "POWERPNT.EXE", Comment = "PowerPoint" },
+            new() { Key = "onenote", Value = "ONENOTE.EXE", Comment = "OneNote" },
+            new() { Key = "outlook", Value = "OUTLOOK.EXE", Comment = "Outlook" },
+            new() { Key = "wps", Value = "wps.exe", Comment = "WPS 文字" },
+            new() { Key = "wpset", Value = "et.exe", Comment = "WPS 表格" },
+            new() { Key = "wpp", Value = "wpp.exe", Comment = "WPS 演示" },
+            new() { Key = "acrobat", Value = "Acrobat.exe", Comment = "Adobe Acrobat" },
+            new() { Key = "sumatra", Value = "SumatraPDF.exe", Comment = "SumatraPDF" },
+            new() { Key = "calibre", Value = "calibre.exe", Comment = "Calibre" },
+    };
 
     public static AppSettings Create()
     {
-        var s = new AppSettings { BuiltinEnginesVersion = BuiltinEnginesVersion };
+        var s = new AppSettings { BuiltinEnginesVersion = BuiltinEnginesVersion, BuiltinWebVersion = BuiltinWebVersion, BuiltinRunVersion = BuiltinRunVersion };
         s.Keys = CapsloxScheme();
+
+        /* 新装的配置本来就是默认方案：Caps+Q = Qbar、Caps+R = Delete 都在
+         * CapsloxScheme() 里。迁移只用来给"老配置"补洞，新配置直接标记已完成 ——
+         * 否则后面 Normalize 会再往里塞一遍（同一份配置里出现两条同 combo 的绑定）。 */
+        s.Global.BaseLayerDefaultsFixed = true;
         s.Search = new List<QEntry>
         {
             new() { Key = "default", Value = "https://www.bing.com/search?q={q}", Comment = "默认搜索" },
@@ -1129,7 +1621,7 @@ public static class DefaultSettings
             // 关键字规则：国内引擎取拼音首字母，国外引擎取英文名前两个字母。
             new() { Key = "bd", Value = "https://www.baidu.com/s?wd={q}&ie=utf-8", Comment = "百度", EngineIcon = "bai_du" },
             new() { Key = "zh", Value = "https://www.zhihu.com/search?q={q}", Comment = "知乎", EngineIcon = "zhi_hu" },
-            new() { Key = "bili", Value = "https://search.bilibili.com/all?keyword={q}", Comment = "哔哩哔哩", EngineIcon = "bi_li_bi_li" },
+            new() { Key = "bilis", Value = "https://search.bilibili.com/all?keyword={q}", Comment = "哔哩哔哩搜索", EngineIcon = "bi_li_bi_li" },
             new() { Key = "tb", Value = "https://s.taobao.com/search?q={q}", Comment = "淘宝", EngineIcon = "tao_bao" },
             new() { Key = "wiki", Value = "https://zh.wikipedia.org/wiki/{q}", Comment = "维基百科", EngineIcon = "wei_ji_bai_ke" },
             new() { Key = "deepseek", Value = "https://chat.deepseek.com/?q={q}", Comment = "DeepSeek", EngineIcon = "deepseek" },
@@ -1426,20 +1918,10 @@ public static class DefaultSettings
             new() { Key = "wish", Value = "https://www.merriam-webster.com/dictionary/{q}", Comment = "韦氏词典", EngineIcon = "wei_shi_ci_dian" },
             new() { Key = "godd", Value = "https://www.amap.com/search?query={q}", Comment = "高德地图", EngineIcon = "gao_de_di_tu" },
         };
-        s.Run = new List<QEntry>
-        {
-            new() { Key = "notepad", Value = "notepad.exe", Comment = "记事本" },
-            new() { Key = "calc", Value = "calc.exe", Comment = "计算器" },
-            new() { Key = "mspaint", Value = "mspaint.exe", Comment = "画图" },
-            new() { Key = "explorer", Value = "explorer.exe", Comment = "文件资源管理器" },
-            new() { Key = "cmd", Value = "cmd.exe", Comment = "命令提示符" },
-            new() { Key = "taskmgr", Value = "taskmgr.exe", Comment = "任务管理器" },
-        };
-        s.Web = new List<QEntry>
-        {
-            new() { Key = "gh", Value = "https://github.com", Comment = "GitHub" },
-            new() { Key = "bili", Value = "https://www.bilibili.com", Comment = "B 站" },
-        };
+        /* 启动程序表默认留空：Qbar 已经会从开始菜单搜索应用，
+         * 再塞 90 多个 exe 反而把常用结果挤到后面。用户需要固定项时自己加。 */
+        s.Run = new List<QEntry>();
+        s.Web = BuiltinWebEntries();
         s.HotStrings = new List<QEntry>
         {
             new() { Key = "clp", Value = "CapsLock+", Comment = "展开成 CapsLock+" },
@@ -1637,6 +2119,11 @@ public static class DefaultSettings
     public static void ResetLayerOne(AppSettings s, string scheme)
     {
         s.Global.HotkeyScheme = scheme;
+
+        /* 刚套上一整套预设，Q/R 的默认动作已经在了；标记一下，
+         * 免得之后哪次 Normalize 又按"老配置补洞"的逻辑去动它。 */
+        s.Global.BaseLayerDefaultsFixed = true;
+
         var preset = scheme == "capslock_plus" ? ClassicScheme() : CapsloxScheme();
 
         var layer1 = s.Layers.FirstOrDefault(l => l.Id == 1);

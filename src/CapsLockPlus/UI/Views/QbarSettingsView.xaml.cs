@@ -1,6 +1,11 @@
+using System.Net;
+using System.Net.Http;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CapsLockPlus.Core.Icons;
 using CapsLockPlus.Core.Settings;
 
@@ -13,12 +18,36 @@ public partial class QbarSettingsView : UserControl
     private QEntry? _editing;
     private bool _suppress;
 
+    private readonly DispatcherTimer _titleTimer;
+    private int _titleToken;
+
+    private static readonly HttpClient TitleHttp = new() { Timeout = TimeSpan.FromSeconds(4) };
+
+    static QbarSettingsView()
+    {
+        try
+        {
+            TitleHttp.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) KeyboardEnhance/1.0");
+        }
+        catch { }
+    }
+
     private static readonly string[] Palette =
     {
         "#2B6CF6", "#6C4CF6", "#22C1E8", "#1F9D62", "#D9822B", "#E5484D", "#111827", "#8A93A6",
     };
 
-    public QbarSettingsView() => InitializeComponent();
+    public QbarSettingsView()
+    {
+        InitializeComponent();
+        _titleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        _titleTimer.Tick += async (_, _) =>
+        {
+            _titleTimer.Stop();
+            await FillWebTitleAsync();
+        };
+    }
 
     public void Initialize(AppHost host)
     {
@@ -76,6 +105,8 @@ public partial class QbarSettingsView : UserControl
         FontSizeSlider.Value = _host.Settings.Qbar.TextFontSize;
         UpdateFontPreview();
         ShowIconsBox.IsChecked = _host.Settings.Qbar.ShowIcons;
+        ImeOnOpenBox.IsChecked = _host.Settings.Qbar.SwitchToEnglishOnOpen;
+        ImeBackBox.IsChecked = _host.Settings.Qbar.SwitchBackOnEngine;
         _suppress = false;
         MarkSelectedSwatch();
         LoadEntries();
@@ -85,7 +116,7 @@ public partial class QbarSettingsView : UserControl
     {
         "run" => _host!.Settings.Run,
         "web" => _host!.Settings.Web,
-        "hotstring" => _host!.Settings.HotStrings,
+        "pinned" => _host!.Settings.Qbar.Pinned,
         _ => _host!.Settings.Search,
     };
 
@@ -102,7 +133,7 @@ public partial class QbarSettingsView : UserControl
         string filter = FilterBox?.Text?.Trim() ?? "";
         var all = CurrentList().ToList();
         int total = all.Count;
-        var items = QEntry.Filter(all, filter).Select(e => new EntryVm(e)).ToList();
+        var items = QEntry.Filter(all, filter).Select(e => new EntryVm(e, _tab != "run")).ToList();
         EntryList.ItemsSource = items;
         if (items.Count > 0) EntryList.SelectedIndex = 0;
         _suppress = false;
@@ -118,11 +149,10 @@ public partial class QbarSettingsView : UserControl
 
         ValueHelp.Text = _tab switch
         {
-            "search" => Loc.T("用 {q} 代表关键词。例如 https://www.bing.com/search?q={q}。关键字填 default 表示默认搜索。"),
-            "run" => Loc.T("填程序路径或命令，例如 C:\\Windows\\notepad.exe 或 notepad.exe。"),
+            "search" => Loc.T("用 {q} 代表关键词。可以填网址，例如 https://www.bing.com/search?q={q}；也可以填程序路径并在“参数”里写 -w {q}，直接调用欧路词典这类本地查词程序。"),
+            "run" => Loc.T("填程序路径或命令，例如 C:\\Windows\\notepad.exe 或 notepad.exe；参数写在下方“参数”里，{q} 代表 Qbar 中输入的内容。"),
             "web" => Loc.T("填完整网址，例如 https://github.com。"),
-            "hotstring" => Loc.T("在任意地方输入关键字后按 Caps+Tab，会被替换成这里的内容。") +
-                           Loc.T("（想打完触发词自动展开，用侧栏的「文本替换」。）"),
+            "pinned" => Loc.T("填文件、文件夹、网址或程序路径，例如 D:\\\\项目 或 C:\\\\Windows\\\\notepad.exe；输入名称就能在 Qbar 里直接打开。"),
             _ => "",
         };
         ValueLabel.Text = _tab switch
@@ -130,7 +160,7 @@ public partial class QbarSettingsView : UserControl
             "search" => Loc.T("搜索链接"),
             "run" => Loc.T("程序路径"),
             "web" => Loc.T("网址"),
-            "hotstring" => Loc.T("替换成"),
+            "pinned" => Loc.T("目标路径 / 网址"),
             _ => Loc.T("内容"),
         };
         EntryHint.Text = _tab switch
@@ -138,7 +168,7 @@ public partial class QbarSettingsView : UserControl
             "search" => Loc.T("Qbar 里输入「关键字 内容」即可用对应引擎搜索"),
             "run" => Loc.T("Qbar 里输入关键字回车即可启动"),
             "web" => Loc.T("Qbar 里输入关键字回车即可打开"),
-            "hotstring" => Loc.T("输入关键字后按 Caps+Tab 展开"),
+            "pinned" => Loc.T("Qbar 空面板会优先列出固定项，也可以直接搜索名称"),
             _ => "",
         };
     }
@@ -152,6 +182,9 @@ public partial class QbarSettingsView : UserControl
         ValueBox.Text = entry.Value;
         CommentBox.Text = entry.Comment;
         IconBox.Text = entry.IconPath;
+        ArgumentsBox.Text = entry.Arguments;
+        AdminBox.IsChecked = entry.RunAsAdmin;
+        ArgumentsRow.Visibility = _tab == "web" ? Visibility.Collapsed : Visibility.Visible;
         EditTitle.Text = string.IsNullOrEmpty(entry.Key) ? Loc.T("新条目") : Loc.F("正在编辑：{0}", entry.Key);
         _suppress = false;
         UpdateIconPreview(entry);
@@ -160,7 +193,29 @@ public partial class QbarSettingsView : UserControl
     /// <summary>图标预览：有图标显示图标，没有就显示首字（和 Qbar 里的表现一致）。</summary>
     private void UpdateIconPreview(QEntry entry)
     {
+        /* 先看内存，再看磁盘上的 favicon 缓存。
+           只看 ForEntry 的话，网址永远拿不到图标（它的图标是下载的），
+           每次点开条目都要先闪一下首字、等下载回来才换成真图标。 */
         var icon = IconCache.ForEntry(entry);
+        if (icon == null) icon = IconCache.GetWebIcon(entry.Value);
+
+        /* 真的没有缓存才去下载：这一条只会在第一次见到这个网址时走到。
+         * 用户此时可能已经切到别的条目，所以回调里要再核对一次。 */
+        if (icon == null && _tab == "web" && IsWebUrl(entry.Value))
+        {
+            IconCache.LoadWebIconAsync(entry.Value, image =>
+            {
+                if (image == null) return;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (!ReferenceEquals(_editing, entry)) return;
+                    IconPreview.Source = image;
+                    IconPreview.Visibility = Visibility.Visible;
+                    IconFallback.Visibility = Visibility.Collapsed;
+                });
+            });
+        }
+
         if (icon != null)
         {
             IconPreview.Source = icon;
@@ -201,6 +256,9 @@ public partial class QbarSettingsView : UserControl
         ValueBox.Text = "";
         CommentBox.Text = "";
         IconBox.Text = "";
+        ArgumentsBox.Text = "";
+        AdminBox.IsChecked = false;
+        ArgumentsRow.Visibility = _tab == "web" ? Visibility.Collapsed : Visibility.Visible;
         EditTitle.Text = Loc.T("（选择左边的条目，或点新增）");
         _suppress = false;
         IconPreview.Source = null;
@@ -237,7 +295,7 @@ public partial class QbarSettingsView : UserControl
         _host.SaveSettings();
         _suppress = true;
         EntryList.ItemsSource = null;
-        var items = CurrentList().Select(x => new EntryVm(x)).ToList();
+        var items = CurrentList().Select(x => new EntryVm(x, _tab != "run")).ToList();
         EntryList.ItemsSource = items;
         EntryList.SelectedIndex = items.Count - 1;
         _suppress = false;
@@ -267,10 +325,71 @@ public partial class QbarSettingsView : UserControl
         _editing.Value = ValueBox.Text.Trim();
         _editing.Comment = CommentBox.Text.Trim();
         _editing.IconPath = IconBox.Text.Trim();
+        _editing.Arguments = ArgumentsBox.Text.Trim();
+        _editing.RunAsAdmin = AdminBox.IsChecked == true;
         _host.SaveSettings();
         // 同步刷新左侧列表的显示（保持当前选择与编辑焦点）
         EntryList.Items.Refresh();
         UpdateIconPreview(_editing);
+
+        /* 新建网址：用户往往只粘贴链接，不想再手动写标题。
+         * 停手 700ms 后抓一次网页 <title>，只填空备注，绝不覆盖用户已写的备注。 */
+        if (_tab == "web" && string.IsNullOrWhiteSpace(_editing.Comment))
+        {
+            _titleToken++;
+            _titleTimer.Stop();
+            _titleTimer.Start();
+        }
+    }
+
+    private static bool IsWebUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    private async Task FillWebTitleAsync()
+    {
+        if (_host == null || _tab != "web" || _editing == null) return;
+        var entry = _editing;
+        string url = entry.Value?.Trim() ?? "";
+        if (!IsWebUrl(url) || !string.IsNullOrWhiteSpace(entry.Comment)) return;
+
+        int token = ++_titleToken;
+        string? title = null;
+        try
+        {
+            string html = await TitleHttp.GetStringAsync(url).ConfigureAwait(false);
+            var match = Regex.Match(html, @"<title[^>]*>(.*?)</title>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (match.Success) title = WebUtility.HtmlDecode(match.Groups[1].Value).Trim();
+        }
+        catch { }
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            try { title = new Uri(url).Host; } catch { title = null; }
+        }
+        if (string.IsNullOrWhiteSpace(title)) return;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            // 用户可能已经切走，或自己补了备注；两种情况下都不覆盖。
+            if (token != _titleToken || !ReferenceEquals(_editing, entry)
+                || !string.IsNullOrWhiteSpace(entry.Comment)) return;
+            entry.Comment = title!;
+            _suppress = true;
+            CommentBox.Text = title!;
+            _suppress = false;
+            _host.SaveSettings();
+            EntryList.Items.Refresh();
+        });
+    }
+
+    private void OnFlagsChanged(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _suppress || _editing == null) return;
+        _editing.RunAsAdmin = AdminBox.IsChecked == true;
+        _editing.Arguments = ArgumentsBox.Text.Trim();
+        _host.SaveSettings();
     }
 
     private void OnAppearanceChanged(object sender, RoutedEventArgs e)
@@ -279,6 +398,8 @@ public partial class QbarSettingsView : UserControl
         _host.Settings.Qbar.ListCount = (int)ListCountSlider.Value;
         _host.Settings.Qbar.TextFontSize = FontSizeSlider.Value;
         _host.Settings.Qbar.ShowIcons = ShowIconsBox.IsChecked == true;
+        _host.Settings.Qbar.SwitchToEnglishOnOpen = ImeOnOpenBox.IsChecked == true;
+        _host.Settings.Qbar.SwitchBackOnEngine = ImeBackBox.IsChecked == true;
         UpdateFontPreview();
         _host.SaveSettings();
     }
@@ -304,21 +425,62 @@ public partial class QbarSettingsView : UserControl
 
     private void OnTryClick(object sender, RoutedEventArgs e) => _host?.ShowQbar();
 
-    private sealed class EntryVm
+    private sealed class EntryVm : System.ComponentModel.INotifyPropertyChanged
     {
-        public EntryVm(QEntry entry)
+        public EntryVm(QEntry entry, bool loadIcon)
         {
             Entry = entry;
 
-            /* 图标：内置引擎有品牌图标（随程序打包），
-             * 程序条目会取 exe 图标，都没有则退回首字母色块。
-             * IconCache.ForEntry 已封装这套优先级，直接用。 */
-            try { Icon = IconCache.ForEntry(entry); } catch { Icon = null; }
+            /* 网站/搜索引擎显示品牌图标；启动程序列表不预取图标——
+             * 程序图标只在 Qbar 搜到 exe/lnk 时按需提取，
+             * 避免打开设置页时逐个读 90 多个 exe 拖慢界面。 */
+            if (loadIcon)
+            {
+                try
+                {
+                    Icon = IconCache.ForEntry(entry);
+
+                    /* 网址条目：先同步问一次磁盘 favicon 缓存。
+                     * 有就直接作为第一帧显示 —— 之前这里只有异步回调，
+                     * 于是每次进「常用网址」都先画首字、再闪成真图标。 */
+                    if (Icon == null) Icon = IconCache.GetWebIcon(entry.Value);
+                }
+                catch { Icon = null; }
+            }
+            else
+            {
+                /* 启动程序列表：先显示首字母，图标在后台解析完再替换。
+                 * 这样既有“本地有图标就用图标”的效果，又不会卡住设置页。 */
+                Task.Run(() =>
+                {
+                    ImageSource? image = null;
+                    try { image = IconCache.ForEntry(entry); } catch { }
+                    if (image == null) return;
+                    Application.Current?.Dispatcher.BeginInvoke(() => ApplyIcon(image));
+                });
+            }
 
             LetterBrush = new SolidColorBrush(ColorFor(entry.Key));
             Initial = string.IsNullOrWhiteSpace(entry.Key) ? "?"
                 : entry.Key[..1].ToUpperInvariant();
+
+            if (Icon == null && (entry.Value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                                 || entry.Value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+            {
+                IconCache.LoadWebIconAsync(entry.Value, image => Application.Current?.Dispatcher.BeginInvoke(() => ApplyIcon(image)));
+            }
         }
+
+        private void ApplyIcon(ImageSource? image)
+        {
+            if (image == null) return;
+            Icon = image;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Icon)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(HasIconVisibility)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(NoIconVisibility)));
+        }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
         public QEntry Entry { get; }
         public string Key => Entry.Key;
@@ -326,13 +488,17 @@ public partial class QbarSettingsView : UserControl
         public string Comment => Entry.DisplayName;   // 默认引擎那条的备注要跟着语言走
 
         /// <summary>图标（可能为 null）。</summary>
-        public System.Windows.Media.ImageSource? Icon { get; }
+        public System.Windows.Media.ImageSource? Icon { get; private set; }
 
         /// <summary>没有图标时显示的首字母。</summary>
         public string Initial { get; }
 
         /// <summary>首字母色块的背景色（按关键字取稳定颜色）。</summary>
         public System.Windows.Media.Brush LetterBrush { get; }
+
+        /// <summary>有图标时显示图片；没有图标时隐藏，避免和首字母色块叠在一起。</summary>
+        public System.Windows.Visibility HasIconVisibility =>
+            Icon == null ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
 
         /// <summary>有图标时隐藏色块。</summary>
         public System.Windows.Visibility NoIconVisibility =>

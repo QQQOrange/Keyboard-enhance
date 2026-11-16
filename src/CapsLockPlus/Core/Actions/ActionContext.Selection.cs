@@ -182,6 +182,12 @@ public sealed partial class ActionContext
     public Func<int, string>? ManualCopyWaitForTest { get; set; }
 
     /// <summary>
+    /// 自检用：指定"剪贴板里最新的一条内容"，避免自检受到真实剪贴板（可能是用户刚复制的密码）影响。
+    /// 返回 null / 空串表示剪贴板是空的。
+    /// </summary>
+    public Func<string?>? ClipboardTextForTest { get; set; }
+
+    /// <summary>
     /// 把一段文字直接输入到当前焦点处（具体走哪条通道见
     /// <see cref="InputSender.Text"/>：长文本剪贴板粘贴，短文本真实按键 / Unicode）。
     /// </summary>
@@ -233,34 +239,32 @@ public sealed partial class ActionContext
     public bool SmartOpen(string? overrideText = null)
     {
         string text = overrideText ?? "";
+        bool fromSelection = !string.IsNullOrWhiteSpace(text);
 
-        if (string.IsNullOrWhiteSpace(text))
+        if (!fromSelection)
         {
             text = CaptureSelectionText();
-            if (!string.IsNullOrWhiteSpace(text))
+            fromSelection = !string.IsNullOrWhiteSpace(text);
+            if (fromSelection)
                 CoreLog.Info($"[直达链接] 已取到选中文字 长度={text.Length}");
         }
 
-        if (string.IsNullOrWhiteSpace(text))
+        if (!fromSelection)
         {
-            /* 取词失败时的保底：请用户亲手按一下 Ctrl+C。
+            /* 没有选区：改看剪贴板里最新的一条。
              *
-             * 这不是偷懒 —— Chromium / Electron 会过滤程序合成的 Ctrl+C，
-             * 管理员模式下还会被 UIPI 拦掉，只有"真人按的"一定有效。
-             * 和「直接搜索」用的是同一条保底路径。 */
-            Notify(Core.ElevationHelper.IsElevated
-                ? "没读到选中内容（管理员模式取不到普通程序的选区）。请按一下 Ctrl+C，我马上打开它"
-                : "没读到选中内容，请按一下 Ctrl+C，我马上打开它");
-
-            var waitManualCopy = ManualCopyWaitForTest
-                                 ?? new Func<int, string>(Text.TextActions.WaitForManualCopy);
-            text = waitManualCopy(4000);
-        }
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            Notify("先选中一段文字（网址、文件夹或文件路径），再按这个键");
-            return true;
+             * 顺序＝系统剪贴板（资源管理器里 Ctrl+C 复制的文件/文件夹就在这里，是"路径"而不是文本）
+             *        → 本软件记下的历史第一条（有些程序复制完会立刻清空系统剪贴板）。
+             *
+             * 4.32.0 起不再弹「请按一下 Ctrl+C」：用户要的是"没选区就看剪贴板"，
+             * 剪贴板也空着就当这次没按 —— 静默返回，不打扰正在打字的人。 */
+            text = NewestClipboardText() ?? "";
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                CoreLog.Info("[直达链接] 没有选区，剪贴板里也没有内容：这次不触发");
+                return true;
+            }
+            CoreLog.Info($"[直达链接] 没有选区，改用剪贴板里的内容 长度={text.Length}");
         }
 
         var hit = SmartTargetDetector.Detect(text);
@@ -292,13 +296,46 @@ public sealed partial class ActionContext
                 break;
 
             default:
-                /* 选中了普通文字（一句话、一个单词）。不要试图去搜索 ——
-                 * 这个动作的名字是「直达链接」，猜错了打开浏览器比"什么都不做"更烦人。 */
-                Notify("选中的内容既不是网址，也不是文件夹或文件路径");
+                /* 普通文字（一句话、一个单词）不是链接。不要试图去搜索 ——
+                 * 这个动作的名字是「智能直达」，猜错了打开浏览器比"什么都不做"更烦人。
+                 *
+                 * 选区内容不对时提一句（用户刚选了东西、正等着结果）；
+                 * 剪贴板内容不对时完全静默 —— 他压根没打算用这个功能，
+                 * 只是顺路按了一下，弹提示反而打断打字。 */
+                if (fromSelection)
+                    Notify("选中的内容既不是网址，也不是文件夹或文件路径");
+                else
+                    CoreLog.Info("[直达链接] 剪贴板里的内容不是链接：这次不触发");
                 break;
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// 剪贴板里最新的一条：先看系统剪贴板（文件/文件夹优先，资源管理器复制的是路径不是文本），
+    /// 再退回本软件记下的历史第一条。
+    /// </summary>
+    private string? NewestClipboardText()
+    {
+        if (ClipboardTextForTest != null) return ClipboardTextForTest();
+
+        try
+        {
+            if (System.Windows.Clipboard.ContainsFileDropList())
+            {
+                var files = System.Windows.Clipboard.GetFileDropList();
+                if (files is { Count: > 0 }) return files[0];
+            }
+            if (System.Windows.Clipboard.ContainsText())
+                return System.Windows.Clipboard.GetText();
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "读取系统剪贴板");
+        }
+
+        return Clipboard.History.FirstOrDefault();
     }
 
     /// <summary>Caps+Tab：把光标前的算式算出结果 / 展开热字串。</summary>

@@ -40,14 +40,15 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Width="30" Height="30" CornerRadius="9" VerticalAlignment="Center"
+                    <Border x:Name="ModeIconBox" Grid.Column="0" Width="30" Height="30" CornerRadius="9" VerticalAlignment="Center"
+                            Visibility="Collapsed"
                             Background="{DynamicResource Brush.OverlayRowHover}">
                         <TextBlock x:Name="ModeIcon" Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    FontSize="14" Foreground="{DynamicResource Brush.OverlayText}" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,10,0"
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,10,0"
                                 VerticalAlignment="Center">
                         <!-- 关键词标签：输入 "bd " 后出现 -->
                         <Border x:Name="ChipBox" Visibility="Collapsed" CornerRadius="9" Height="32"
@@ -99,6 +100,7 @@
 
                 <!-- 结果列表 -->
                 <ListBox Grid.Row="2" x:Name="Results" Margin="8,8,8,4" Background="Transparent"
+                         PreviewMouseRightButtonDown="OnResultsRightClick"
                          BorderThickness="0" MaxHeight="420"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          PreviewMouseLeftButtonUp="OnResultClick"

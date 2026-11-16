@@ -33,29 +33,43 @@
                            Style="{StaticResource Text.Tertiary}" VerticalAlignment="Center"
                            TextWrapping="Wrap" Margin="14,0,14,0" />
 
-                <!-- 筛选框：加一条占位提示。
+                <!-- 筛选框：放大镜 + 占位提示，和其它页的搜索框保持同一副样子。
                      之前它就是一个空输入框，没有任何标签 —— 用户看不出这里能打字，
                      更不知道打进去会筛选什么（只有悬停才看到 ToolTip）。 -->
-                <Grid Grid.Column="2" Width="220">
-                    <TextBox x:Name="FilterBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
-                             VerticalContentAlignment="Center" TextChanged="OnFilterChanged"
-                             ToolTip="{loc:T '筛选按键或功能'}" />
-                    <TextBlock Text="{loc:T '筛选快捷键…'}" IsHitTestVisible="False"
-                               Margin="12,0,0,0" VerticalAlignment="Center"
-                               Foreground="{DynamicResource Brush.TextTertiary}">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <!-- 输入框为空时显示；一打字就消失（纯 XAML，不用代码去同步状态） -->
-                                    <DataTrigger Binding="{Binding Text, ElementName=FilterBox}" Value="">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </Grid>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Grid Width="220">
+                        <TextBox x:Name="FilterBox" Style="{StaticResource TextBox.Base}" MinHeight="36"
+                                 Padding="32,0,10,0"
+                                 VerticalContentAlignment="Center" TextChanged="OnFilterChanged"
+                                 ToolTip="{loc:T '筛选按键或功能'}" />
+                        <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   FontSize="13" Margin="11,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.TextTertiary}"
+                                   IsHitTestVisible="False" />
+                        <TextBlock Text="{loc:T '筛选快捷键…'}" IsHitTestVisible="False"
+                                   Margin="33,0,10,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.TextTertiary}"
+                                   TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <!-- 输入框为空时显示；一打字就消失（纯 XAML，不用代码去同步状态） -->
+                                        <DataTrigger Binding="{Binding Text, ElementName=FilterBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- 速查表最常见的用途是发给别人 / 贴进笔记，直接给一份纯文本 -->
+                    <Button x:Name="CopySheetButton" Content="{loc:T '复制速查表'}"
+                            Style="{StaticResource Button.Ghost}" Padding="12,7" Margin="8,0,0,0"
+                            Click="OnCopySheet"
+                            ToolTip="{loc:T '按当前筛选结果复制成纯文本（含层与分组）'}" />
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -81,6 +95,7 @@
 
         <!-- 快捷键速查表 -->
         <Border Grid.Row="2" Style="{StaticResource Card}" Padding="8">
+            <Grid>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <ItemsControl x:Name="Groups">
                     <ItemsControl.ItemTemplate>
@@ -131,6 +146,21 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+
+            <!-- 空态：筛选没命中、或一条绑定都还没有。以前这里是一片空白，
+                 用户分不清「没搜到」和「页面没加载」 -->
+            <StackPanel x:Name="EmptyHint" Visibility="Collapsed" VerticalAlignment="Center"
+                        HorizontalAlignment="Center" Margin="24">
+                <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                           FontSize="26" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource Brush.TextTertiary}" />
+                <TextBlock x:Name="EmptyTitle" Text="{loc:T '没有匹配的快捷键'}"
+                           Style="{StaticResource Text.Body}" HorizontalAlignment="Center" Margin="0,10,0,0" />
+                <TextBlock x:Name="EmptyDesc" Text="{loc:T '换个关键词试试，或到「按键映射」里添加绑定。'}"
+                           Style="{StaticResource Text.Tertiary}" HorizontalAlignment="Center"
+                           Margin="0,5,0,0" TextWrapping="Wrap" MaxWidth="360" TextAlignment="Center" />
+            </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

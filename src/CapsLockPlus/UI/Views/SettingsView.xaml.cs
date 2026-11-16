@@ -961,6 +961,27 @@ public partial class SettingsView : UserControl
         GestureAddButton.IsEnabled = keyOk && actionOk;
     }
 
+    private void OnPickGestureAction(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        string current = (GestureActionBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+        var picker = new ActionPickerWindow(_host.Actions.Items, current)
+        {
+            Owner = Window.GetWindow(this),
+        };
+        if (picker.ShowDialog() != true) return;
+
+        foreach (ComboBoxItem item in GestureActionBox.Items)
+        {
+            if (string.Equals(item.Tag as string, picker.SelectedId, StringComparison.OrdinalIgnoreCase))
+            {
+                GestureActionBox.SelectedItem = item;
+                break;
+            }
+        }
+        UpdateGestureAddState();
+    }
+
     private void OnAddGestureClick(object sender, RoutedEventArgs e)
     {
         if (_host == null || _suppress) return;
@@ -1132,7 +1153,17 @@ public partial class SettingsView : UserControl
          * Ctrl+S、Ctrl+V 全部变成别的意思），而按钮就在设置页上排成一排，
          * 很容易点着玩。用户反馈"我从没设置过 Ctrl 和 Alt 互换"就是这种情况。 */
         bool swapsModifier = preset.Pairs.Any(pair => IsModifierKey(pair.From) || IsModifierKey(pair.To));
-        bool alreadyOn = KeyRemapMap.IsActive(_host.Settings.Global.BaseRemaps, preset, device);
+
+        /* 改键现在按设备分开存：
+         *   · 选「所有设备」→ 写进全局 BaseRemaps（= 通用设置，谁都吃）；
+         *   · 选了某只键盘/鼠标 → 写进它自己的方案，只对它生效。
+         * 两个列表里每条规则的 Device 都是空的 —— 作用范围由"存在哪份列表"表达，
+         * 比给每条规则塞一个设备字符串更难出错（也不会有孤儿条目）。 */
+        var list = device.Length == 0
+            ? _host.Settings.Global.BaseRemaps
+            : DeviceProfiles.EnsureFor(_host.Settings, device).Remaps;
+
+        bool alreadyOn = KeyRemapMap.IsActive(list, preset, "");
 
         if (!alreadyOn && swapsModifier &&
             !UI.Windows.AppDialog.Confirm(Window.GetWindow(this),
@@ -1146,10 +1177,10 @@ public partial class SettingsView : UserControl
             return;
         }
 
-        bool on = KeyRemapMap.Toggle(_host.Settings.Global.BaseRemaps, preset, device);
+        bool on = KeyRemapMap.Toggle(list, preset, "");
         Save();
         RefreshRemapState();
-        string scope = device.Length == 0 ? "" : Loc.F("（仅 {0}）", device);
+        string scope = device.Length == 0 ? "" : Loc.F("（仅 {0}）", InputDevices.DisplayNameOf(device));
         _host.Notify(WithConflictHint(on
             ? Loc.F("已启用改键：{0}{1}", preset.Title, scope)
             : Loc.F("已取消改键：{0}{1}", preset.Title, scope), conflictsBefore));
@@ -1178,16 +1209,19 @@ public partial class SettingsView : UserControl
     {
         if (RemapDeviceBox == null || RemapDeviceBox.Items.Count > 0) return;
 
-        RemapDeviceBox.Items.Add(new ComboBoxItem { Content = Loc.T("所有键盘"), Tag = "" });
+        RemapDeviceBox.Items.Add(new ComboBoxItem { Content = Loc.T("所有设备（通用设置）"), Tag = "" });
 
-        foreach (var g in KeyboardDevices.Group(KeyboardDevices.List()))
+        /* 键盘和鼠标一起列：鼠标侧键也能改键，用户得能选中它。
+         * 用 InputDevices 而不是 KeyboardDevices —— 这里要的是"所有输入设备"。 */
+        foreach (var d in Core.Input.InputDevices.All())
         {
-            string key = KeyboardDevices.KeyOf(g.Sample);
-            if (key.Length == 0) continue;
+            if (d.Key.Length == 0) continue;
             RemapDeviceBox.Items.Add(new ComboBoxItem
             {
-                Content = Loc.F("{0}（{1}）", g.Name, g.Kind),
-                Tag = key,
+                /* 名字走 DisplayNameOf：用户给设备起过备注就用备注，
+                 * 否则系统里五条「HID Keyboard Device」在这里又分不清了。 */
+                Content = Loc.F("{0}（{1}）", Core.Input.InputDevices.DisplayNameOf(d.Key), d.Kind),
+                Tag = d.Key,
             });
         }
 
@@ -1198,16 +1232,37 @@ public partial class SettingsView : UserControl
     {
         if (RemapStateText == null) return;
 
-        var list = _host?.Settings.Global.BaseRemaps;
+        string device = SelectedRemapDevice();
+        var list = device.Length == 0
+            ? _host?.Settings.Global.BaseRemaps
+            : DeviceProfiles.ForDevice(_host!.Settings, device)?.Remaps;
+
         string desc = list == null || list.Count == 0 ? "" : KeyRemapMap.Describe(list);
 
         /* 涉及修饰键的改键要额外警告：用户会把"Ctrl+C 变成 Alt+C"当成 bug，
          * 而它其实是这条规则的必然结果。写在设置页，比事后排查便宜得多。 */
         bool swapsModifier = list != null && list.Any(r => IsModifierKey(r.From) || IsModifierKey(r.To));
 
-        string text = string.IsNullOrEmpty(desc)
-            ? Loc.T("当前未启用任何基础改键")
-            : Loc.F("当前生效：{0}", desc);
+        string text;
+        if (device.Length == 0)
+        {
+            text = string.IsNullOrEmpty(desc)
+                ? Loc.T("当前未启用任何基础改键")
+                : Loc.F("当前生效：{0}", desc);
+        }
+        else if (string.IsNullOrEmpty(desc))
+        {
+            /* 这台设备没有自己的改键：说清楚它现在吃的是通用设置，
+             * 而不是让人误以为"我给这只键盘配的东西丢了"。 */
+            var own = DeviceProfiles.ForDevice(_host!.Settings, device);
+            text = own is { Inherit: false }
+                ? Loc.F("「{0}」是独立方案：没有改键，也不继承通用设置", InputDevices.DisplayNameOf(device))
+                : Loc.F("「{0}」没有专属改键，正在用通用设置", InputDevices.DisplayNameOf(device));
+        }
+        else
+        {
+            text = Loc.F("「{0}」专属：{1}", InputDevices.DisplayNameOf(device), desc);
+        }
 
         if (swapsModifier)
             text += "\n" + Loc.T("注意：这些规则会换掉修饰键本身 —— 开了 Ctrl→Alt 之后，Ctrl+C 在前台程序看来就是 Alt+C。不需要就点「清除」。");

@@ -106,8 +106,24 @@ public static class KeyboardDevices
     /// </summary>
     public static string KeyOf(string? path)
     {
-        string vidpid = VidPidOf(path ?? "");
-        return vidpid.Length > 0 ? vidpid : (path ?? "").Trim();
+        string raw = path ?? "";
+
+        /* 先问物理设备那层的 VID/PID：一只键盘的"多媒体键集合""系统控制集合"
+         * 在系统里是不同实例，但物理上是同一只键盘 —— 归到同一个标识，
+         * 列表里才只占一行，用户勾"不接管"时也不用逐条勾。 */
+        string phys = DeviceTree.Physical(DeviceTree.InstanceOf(raw));
+        string vidpid = VidPidOf(phys);
+        if (vidpid.Length == 0) vidpid = VidPidOf(raw);
+        if (vidpid.Length > 0) return vidpid;
+
+        /* 没有 VID/PID（内置 ACPI 键盘、虚拟设备）：用「枚举器\硬件ID」，
+         * 去掉随插拔/换口会变的实例段，标识才稳定。 */
+        string id = phys.Length > 0 ? phys : DeviceTree.InstanceOf(raw);
+        int lastSlash = id.LastIndexOf('\\');
+        if (lastSlash > 0) id = id[..lastSlash];
+        if (id.Length > 0) return id.ToUpperInvariant();
+
+        return raw.Trim();
     }
 
     /// <summary>设备句柄 → 设备路径（Raw Input 事件里只有句柄）。</summary>
@@ -247,30 +263,120 @@ public static class KeyboardDevices
     ///   `\\?\HID#VID_046D&PID_C31C&MI_00#8&2f...&0&0000#{guid}` 
     ///   → `HKLM\SYSTEM\CurrentControlSet\Enum\HID\VID_046D&PID_C31C&MI_00\8&2f...&0&0000`
     /// </summary>
-    public static string FriendlyName(string path)
-    {
-        string reg = RegistryPathOf(path);
-        if (reg.Length > 0)
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(reg);
-                if (key?.GetValue("DeviceDesc") is string desc && desc.Length > 0)
-                {
-                    // 形如 "@%SystemRoot%\System32\xxx.dll,-123" 的是本地化资源引用，
-                    // 直接解析要 LoadString，代价不值当 —— 退回用 VID/PID。
-                    if (!desc.StartsWith('@')) return desc;
+    public static string FriendlyName(string path) => FriendlyName(path, null);
 
-                    if (key.GetValue("FriendlyName") is string friendly && friendly.Length > 0)
-                        return friendly;
-                }
-            }
-            catch (Exception ex) { CoreLog.Swallow(ex, "读取键盘设备名"); }
+    /// <summary>
+    /// 同上，但允许调用方指定"实在问不出来时贴什么标签"。
+    /// 鼠标要传自己的类别 —— 否则会贴成「外接键盘（HID）」，看着像认错了设备。
+    /// </summary>
+    internal static string FriendlyName(string path, string? kindFallback)
+    {
+        /* 先往上找物理设备的产品名。
+         * HID 集合这层的 DeviceDesc 是驱动默认名（「HID Keyboard Device」），
+         * 五只键盘四只同名；真正的型号挂在 USB 节点上（「Razer Mouse Dock Pro」）。 */
+        string product = DeviceTree.ProductName(DeviceTree.InstanceOf(path));
+        if (product.Length > 0) return product;
+
+        string named = NameFromRegistry(path);
+        string vidpid = VidPidOf(path);
+        string vendor = DeviceTree.VendorOf(vidpid);
+
+        /* 驱动默认名里其实藏着"这是什么东西"：「HID-compliant touch pad」。
+         * 配上厂商就成了「Apple 触控板」—— 比「Apple 设备」有用得多。 */
+        if (DeviceTree.IsGeneric(named))
+        {
+            string kind = CategoryOfGeneric(named);
+            if (vendor.Length > 0 && kind.Length > 0) return Loc.F("{0} {1}", vendor, kind);
+            if (vendor.Length > 0) return Loc.F("{0} 设备", vendor);
         }
 
-        string vidpid = VidPidOf(path);
+        if (named.Length > 0) return named;
         if (vidpid.Length > 0) return vidpid;
-        return KindOf(path);
+        return kindFallback ?? KindOf(path);
+    }
+
+    /// <summary>把驱动的通用名翻成"这是什么"（触控板/鼠标/键盘…）；认不出返回空串。</summary>
+    private static string CategoryOfGeneric(string named)
+    {
+        string n = (named ?? "").ToLowerInvariant();
+        if (n.Contains("touch pad") || n.Contains("touchpad") || n.Contains("触摸板")) return Loc.T("触控板");
+        if (n.Contains("system controller")) return Loc.T("系统控制");
+        if (n.Contains("consumer control")) return Loc.T("多媒体键");
+        if (n.Contains("vendor-defined") || n.Contains("厂商")) return Loc.T("自定义功能");
+        if (n.Contains("mouse") || n.Contains("鼠标")) return Loc.T("鼠标");
+        if (n.Contains("keyboard") || n.Contains("键盘")) return Loc.T("键盘");
+        if (n.Contains("input device") || n.Contains("输入设备")) return Loc.T("输入设备");
+        return "";
+    }
+
+    /// <summary>
+    /// HID 集合这一层自己的名字（FriendlyName → DeviceDesc，解资源引用）。
+    /// 多半是驱动默认名，调用方需要自行判断是否够用。
+    /// </summary>
+    private static string NameFromRegistry(string path)
+    {
+        string reg = RegistryPathOf(path);
+        if (reg.Length == 0) return "";
+
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(reg);
+
+            /* 顺序：FriendlyName（型号）→ DeviceDesc（类别）。
+             * 现代 HID 设备这两个值多半是 "@...dll,-123" 这种资源引用，
+             * 不解析的话界面上就只能看到 VID/PID，两只键盘长得一模一样。 */
+            if (key?.GetValue("FriendlyName") is string friendly && friendly.Length > 0)
+            {
+                string named = ResolveIndirect(friendly);
+                if (named.Length > 0) return named;
+            }
+
+            if (key?.GetValue("DeviceDesc") is string desc && desc.Length > 0)
+            {
+                string named = ResolveIndirect(desc);
+                if (named.Length > 0) return named;
+            }
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "读取键盘设备名"); }
+
+        return "";
+    }
+
+    /// <summary>
+    /// 解析 "@%SystemRoot%\System32\xxx.dll,-123" 形式的资源引用。
+    /// 普通字符串原样返回；解析不出来返回空串，让调用方走下一级兜底。
+    /// </summary>
+    private static string ResolveIndirect(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+
+        string text = raw.Trim();
+        if (!text.StartsWith('@')) return text;
+
+        /* 最常见的形态其实不用 P/Invoke：
+         *   "@keyboard.inf,%hid.keyboarddevice%;HID Keyboard Device"
+         * 分号后面就是本地化好的名字，直接取。 */
+        int semi = text.LastIndexOf(';');
+        if (semi > 0 && semi < text.Length - 1)
+        {
+            string tail = text[(semi + 1)..].Trim();
+            if (tail.Length > 0 && !tail.StartsWith('@')) return tail;
+        }
+
+        try
+        {
+            var buffer = new StringBuilder(512);
+            int hr = SHLoadIndirectString(text, buffer, buffer.Capacity, IntPtr.Zero);
+            if (hr != 0) return "";
+
+            string resolved = buffer.ToString().Trim();
+            return resolved.Length > 0 && !resolved.StartsWith('@') ? resolved : "";
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Swallow(ex, "解析设备资源名");
+            return "";
+        }
     }
 
     /// <summary>设备路径 → 注册表 Enum 子键路径（不含 HKLM\SYSTEM\CurrentControlSet\Enum\ 前缀）。</summary>

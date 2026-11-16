@@ -98,6 +98,18 @@ public sealed partial class AppHost : IDisposable
 
         Qbar = new QbarService(() => Settings, () => Clipboard.History, () => Actions.Items);
 
+        /* 后台预热「常用网址」的 favicon：图标下载好之后会落到磁盘缓存，
+         * 进设置页时第一帧就是真图标，不会先画首字母再闪一下。
+         * 只排队、不等结果，启动速度不受影响。 */
+        try
+        {
+            var webUrls = new System.Collections.Generic.List<string>();
+            foreach (var entry in settings.Web)
+                if (!string.IsNullOrWhiteSpace(entry.Value)) webUrls.Add(entry.Value);
+            Core.Icons.IconCache.WarmWebIcons(webUrls);
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "预热网页图标"); }
+
         Engine = new HotkeyEngine(_queue, () => Settings, InvokeAction);
         // 让引擎知道宏播放器：播放中按 Esc 需要能取消
         Engine.MacroPlayer = Context.MacroPlayer;
@@ -112,6 +124,9 @@ public sealed partial class AppHost : IDisposable
          * 于是失败通知、使用统计、按应用层这些既有语义全部自动生效。 */
         Context.MacroPlayer.ActionInvoker = (id, arg) => InvokeAction(id, arg);
         Context.MacroPlayer.ActionTitle = id => ActionCatalog.TitleOf(id) ?? id;
+        /* 固定延迟在播放阶段再读一次：用户可以在录完之后才勾上，
+         * 只靠录制时写入步骤的话，已有宏仍然按旧间隔播放。 */
+        Context.MacroPlayer.FixedDelayProvider = () => Settings.Global.MacroFixedDelayMs;
 
         /* 规则体检：启动时记一条日志。
          * 用户报"某个键时灵时不灵"时，这条日志能立刻把范围缩小到配置冲突。 */

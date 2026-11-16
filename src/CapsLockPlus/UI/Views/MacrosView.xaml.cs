@@ -18,6 +18,14 @@ namespace CapsLockPlus.UI.Views;
 public partial class MacrosView : UserControl
 {
     private AppHost? _host;
+
+    private static readonly HashSet<string> ModifierKeyNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ctrl", "control", "lctrl", "rctrl",
+        "alt", "lalt", "ralt",
+        "shift", "lshift", "rshift",
+        "win", "lwin", "rwin",
+    };
     private Macro? _editing;
 
     /// <summary>程序化填充控件时置 true，避免把回填当成用户输入再存一遍。</summary>
@@ -233,6 +241,8 @@ public partial class MacrosView : UserControl
     // 英文界面下状态行是 "Playing…"，拿中文去比永远不成立，
     // 于是播放结束后状态行停在"播放中"，而且这个 bug 只在切到英文时才出现。
     private bool _playing;
+    private bool _playStarting;
+    private string? _recordTargetId;
 
     private void OnRecordClick(object sender, RoutedEventArgs e)
     {
@@ -264,8 +274,8 @@ public partial class MacrosView : UserControl
                 return;
             }
 
-            // 停止录制 -> 生成宏
-            var macro = rec.Stop(Loc.T("新宏 ") + Loc.FormatTime(DateTime.Now), FixedDelayMs);
+            // 停止录制 -> 生成宏（如果当前正在编辑某个宏，就追加到它，而不是另建一条）
+            var recorded = rec.Stop(Loc.T("新宏 ") + Loc.FormatTime(DateTime.Now), FixedDelayMs);
 
             /* 这条对照日志是给"录不到按键"准备的定位信息：
              *   钩子增加 > 0、录制 0 个 → 事件没进录制器（挂载/实例问题）；
@@ -274,16 +284,47 @@ public partial class MacrosView : UserControl
                          $"（钩子 {rec.HookEventCount} / Raw Input 补录 {rec.RawEventCount}），" +
                          $"钩子期间累计增加 {_host.Engine.KeyEventCount - _hookCountAtStart} 个");
             _host.SetMacroRecorder(null);          // 告诉引擎：录制结束
-            _host.Settings.Macros.Add(macro);
-            _editing = macro;
-            SaveAndRebuild();
-            Reload();
+
+            /* 关键修复：录制按钮不再“无条件新建宏”。
+             * 用户先选中/新建了一个宏，再点录制，本意是往这个宏里加步骤；
+             * 以前这里一律 Macros.Add(...)，于是编辑完就多出一条新宏，
+             * 原来的绑定还指向旧宏，表现就是“触发宏没反应、测试播放也没反应”。 */
+            var target = _recordTargetId != null
+                ? _host.Settings.Macros.FirstOrDefault(m => m.Id == _recordTargetId)
+                : null;
+
+            if (target != null)
+            {
+                target.Steps.AddRange(recorded.Steps);
+                _editing = target;
+                SaveAndRebuild();
+                Reload();
+                RecordStatus.Text = Loc.F("已追加到「{0}」· 共 {1} 步 · {2}",
+                    target.Name, target.Steps.Count, target.DurationText);
+                _host.Notify(Loc.F("已追加 {0} 步到「{1}」", recorded.Steps.Count, target.Name));
+            }
+            else
+            {
+                _host.Settings.Macros.Add(recorded);
+                _editing = recorded;
+                SaveAndRebuild();
+                Reload();
+                RecordStatus.Text = Loc.F("已生成「{0}」· {1} 步 · {2}",
+                    recorded.Name, recorded.Steps.Count, recorded.DurationText);
+                _host.Notify(Loc.F("宏已录制：{0} 步", recorded.Steps.Count));
+            }
+
+            bool hasModifier = recorded.Steps.Any(s => s.Kind == "keyDown");
+            bool hasLetter = recorded.Steps.Any(s => s.Kind == "keyDown" &&
+                !ModifierKeyNames.Contains(s.Key));
+            if (hasModifier && !hasLetter)
+                _host.Notify(Loc.T("这个宏只录到了 Ctrl/Alt/Shift，没有字母键；快捷键宏请把最后一个字母也录进去"));
+
+            _recordTargetId = null;
             StopTick();
             RecordingHudWindow.HideHud();
             ApplyIdleUi();
-            RecordStatus.Text = Loc.F("已生成「{0}」· {1} 步 · {2}", macro.Name, macro.Steps.Count, macro.DurationText);
             Focus();                       // 焦点从"停止并保存"按钮上挪开，别再被下一次敲键触发
-            _host.Notify(Loc.F("宏已录制：{0} 步", macro.Steps.Count));
             return;
         }
 
@@ -300,6 +341,7 @@ public partial class MacrosView : UserControl
         // 开始录制：钩子继续透传，只记录事件
         rec.Start();
         _host.SetMacroRecorder(rec);
+        _recordTargetId = _editing?.Id;   // 记住这次录到哪个宏里；null = 录完新建
         _hookCountAtStart = _host.Engine.KeyEventCount;
 
         /* 探活：钩子"被系统摘掉"和"线程卡死"时，句柄与 IsHookAlive 都还是正常的，
@@ -330,6 +372,7 @@ public partial class MacrosView : UserControl
         if (_host == null || !Recorder.IsRecording) return;
         Recorder.Abort();
         _host.SetMacroRecorder(null);
+        _recordTargetId = null;
         StopTick();
         RecordingHudWindow.HideHud();
         ApplyIdleUi();
@@ -527,7 +570,7 @@ public partial class MacrosView : UserControl
         _host.Notify(Loc.F("已删除宏「{0}」", name));
     }
 
-    private void OnTestClick(object sender, RoutedEventArgs e)
+    private async void OnTestClick(object sender, RoutedEventArgs e)
     {
         if (_host == null || _editing == null)
         {
@@ -539,21 +582,52 @@ public partial class MacrosView : UserControl
             StatusText.Text = Loc.T("这个宏还没有步骤");
             return;
         }
-        if (!_host.Context.MacroPlayer.TryPlay(_editing, onCompleted: () =>
-                Dispatcher.BeginInvoke(OnPlayFinished)))
-        {
-            // 配对错误之类：直接说清楚哪一条不对，别让用户对着不动的界面猜
-            _playing = false;
-            StatusText.Text = Loc.F("没能播放：{0}",
-                _host.Context.MacroPlayer.LastError ?? Loc.T("未知原因"));
-            return;
-        }
+        if (_playing || _playStarting) return;
 
-        _playing = true;
-        StatusText.Text = Loc.T("播放中…按 Esc 或点「停止」可中断");
-        StopPlayButton.Visibility = Visibility.Visible;
-        ClearCurrentMarker();
-        StartPlayTick();
+        /* 测试播放最容易“看起来没生效”的原因：用户点完按钮后，
+         * 焦点还在 Keyboard Enhance 自己的窗口里，宏敲出来的键全打在了
+         * 本程序界面上。先给 3 秒倒计时，让用户切到记事本/浏览器等目标窗口。
+         *
+         * 这段等待也让按键注入线程与前台窗口切换错开，避免前几个键
+         * 落在正在失焦的窗口上。 */
+        string macroId = _editing.Id;
+        _playStarting = true;
+        try
+        {
+            for (int remaining = 3; remaining > 0; remaining--)
+            {
+                StatusText.Text = Loc.F("{0} 秒后开始，请切到目标窗口…", remaining);
+                await Task.Delay(1000);
+                if (_host == null) return;
+            }
+
+            var macro = _host.Settings.Macros.FirstOrDefault(m => m.Id == macroId) ?? _editing;
+            if (macro == null || macro.Steps.Count == 0)
+            {
+                StatusText.Text = Loc.T("这个宏已经被删除了");
+                return;
+            }
+
+            if (!_host.Context.MacroPlayer.TryPlay(macro, onCompleted: () =>
+                    Dispatcher.BeginInvoke(OnPlayFinished)))
+            {
+                // 配对错误之类：直接说清楚哪一条不对，别让用户对着不动的界面猜
+                _playing = false;
+                StatusText.Text = Loc.F("没能播放：{0}",
+                    _host.Context.MacroPlayer.LastError ?? Loc.T("未知原因"));
+                return;
+            }
+
+            _playing = true;
+            StatusText.Text = Loc.T("播放中…按 Esc 或点「停止」可中断");
+            StopPlayButton.Visibility = Visibility.Visible;
+            ClearCurrentMarker();
+            StartPlayTick();
+        }
+        finally
+        {
+            _playStarting = false;
+        }
     }
 
     /// <summary>停止正在播放的宏（Esc 之外的第二入口 —— 引擎被暂停时
