@@ -1,4 +1,4 @@
-using CapsLockPlus.Core.Macro;
+﻿using CapsLockPlus.Core.Macro;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Windows;
 using static CapsLockPlus.Core.Interop.NativeMethods;
@@ -47,6 +47,15 @@ public sealed partial class HotkeyEngine
     /// <summary>本次事件被判定成"注入回声"时的日志备注（只在诊断日志里用）。</summary>
     private string? _echoNote;
 
+    /// <summary>
+    /// 刚看到带标记的注入回声之后，多久之内的同键鼠标事件按“副本”处理。
+    ///
+    /// 第三方鼠标工具复制事件、抹标记再重发的间隔实测只有个位数毫秒；留 300ms
+    /// 是给它们排队/被调度延迟的余量。只作用于鼠标键：键盘注入后用户马上再按
+    /// 同一个键（打字、连按）并不罕见，窗口开大了会吞真按键。
+    /// </summary>
+    private const int MouseEchoCopyMs = 300;
+
     private bool OnKeyEventCore(int vk, bool down, bool injected)
 
     {
@@ -86,6 +95,30 @@ public sealed partial class HotkeyEngine
         {
             _echoNote = "注入回声";
             return false;
+        }
+
+        /* 回声的**副本**：带标记的那一份回来时已经把账销掉了，紧接着系统里又冒出
+         * 一颗同键、无标记的事件。现场日志（CLP_MOUSE_LOG=1）长这样：
+         *
+         *   0x06 ↓ 吞：原键替换层         ← 真按侧键
+         *   0x04 ↓ inj=1 放行             ← 我们发的（侧键→中键）
+         *   0x04 ↑ inj=1 放行
+         *   0x04 ↓ inj=0 吞：原键替换层   ← 副本，账已空，被当成真按键
+         *
+         * 副本来自 WGestures / 厂商驱动 / 滚轮增强这类常驻工具：它们把 SendInput 的
+         * 事件复制一份、抹掉 dwExtraInfo 再发出来。账已经销了，配对认不出它，只能靠
+         * "刚见过这个键的注入回声"这个短窗兜住 —— 否则中键上的宏会跟着跑一遍，
+         * 用户看到的就是"侧键触发中键，又触发宏"的连环。
+         *
+         * 只对鼠标键开这个窗：键盘注入后用户真按同一个键的间隔可以很短（打字），
+         * 鼠标不会。 */
+        if (!injected && vk is >= 0x01 and <= 0x06
+            && InputSender.WasEchoSeenRecently(vk, MouseEchoCopyMs))
+        {
+            /* 这一颗是副本，系统还没见过它 —— 吞掉，别让前台收到第二颗中键；
+             * 我们原来那一颗（带标记的）已经放行过了。 */
+            LastDecision = "注入回声副本";
+            return true;
         }
 
         _lastKeyActivity = DateTime.Now;

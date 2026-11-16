@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -1712,6 +1712,19 @@ public static partial class SelfTest
                 /* 账销完之后，用户真按中键必须照常触发 —— 不能被上一笔残留吃掉。 */
                 bool realFired = eEcho2.SimulateKey(0x04, true);
                 Check("鼠标串键：真按中键仍然照常触发", realFired, "");
+
+                /* 回声的副本：带标记的那一份先回来（销账），紧接着第三方鼠标工具
+                 * （WGestures / 厂商驱动 / 滚轮增强）又把同一颗中键复制一份、抹掉
+                 * 标记发出来。账已经空了，配对认不出它 —— 现场就是这样：
+                 *   inj=1 放行 → 4ms 后 inj=0「吞：原键替换层」
+                 * 副本不能当成用户真按的中键，否则中键上的宏会再跑一遍。 */
+                Core.Input.InputSender.NoteInjectedForTest(0x04);
+                Core.Input.InputSender.MarkInjectedEcho(0x04);      // 带标记的那一份
+                bool copySwallowed = eEcho2.SimulateKey(0x04, true);   // 无标记的副本
+                eEcho2.SimulateKey(0x04, false);
+                Check("鼠标串键：回声副本（无标记）被吞掉，不会再跑中键的宏", copySwallowed, "");
+                Check("鼠标串键：副本窗口会过期，不会永久吞键",
+                    !Core.Input.InputSender.WasEchoSeenRecently(0x04, -1), "");
             }
             finally
             {

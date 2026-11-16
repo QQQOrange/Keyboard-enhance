@@ -11,7 +11,7 @@
 >
 > [简体中文](README.md) ｜ **English**
 
-**Version v5.0.2** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
+**Version v5.0.3** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
 
 > ### ⚠️ You must install the .NET 10 Desktop Runtime first
 >
@@ -73,9 +73,9 @@ file in any folder:
 | Your system | Download | Runtime |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+, **64-bit** (most PCs) | `KeyboardEnhance.exe` | Requires the .NET 10 Desktop Runtime |
-| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.0.2-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
-| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.0.2-x64-Win7-SelfContained.exe` | **No runtime needed** |
-| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.0.2-x86-Win7-SelfContained.exe` | **No runtime needed** |
+| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.0.3-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
+| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.0.3-x64-Win7-SelfContained.exe` | **No runtime needed** |
+| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.0.3-x86-Win7-SelfContained.exe` | **No runtime needed** |
 
 > GitHub rewrites non-alphanumeric characters in asset filenames to dots, hence the
 > `x86 / x64 / Win7 / SelfContained` suffixes on the release page.
@@ -593,7 +593,7 @@ powershell -ExecutionPolicy Bypass -File tools\release.ps1
 # All command-line switches
 dist\KeyboardEnhance.exe --help
 
-# Self-test: ~3929 checks (varies slightly by system environment) (key model, expressions, Qbar, chips, migration, hooks,
+# Self-test: ~3930 checks (varies slightly by system environment) (key model, expressions, Qbar, chips, migration, hooks,
 # combo state machine, OSD ratios, localisation, snippets, popups, window cache, UIA, shutdown)
 dist\KeyboardEnhance.exe --selftest
 
@@ -666,7 +666,7 @@ Design notes:
 | Idle CPU | 0 % |
 | Tray footprint | ~60 MB private |
 | Executable | 2.9 MB (single file, framework-dependent) |
-| Self-test | ~3929 checks, all passing |
+| Self-test | ~3930 checks, all passing |
 
 The hot path is micro-optimised because the hook has a hard 300 ms budget: trigger matching
 uses a cached `HashSet<int>`, layer lookup a prebuilt case-insensitive dictionary, and layer

@@ -294,12 +294,39 @@ public static class InputSender
     private const int EchoPendingMax = 4;
     private static readonly Dictionary<int, Queue<long>> InjectedPending = new();
 
+    /* 「最近一次看到这个键的注入回声」的时刻。
+     *
+     * 配对记账只管"账上还有没有没回来的注入"。但现场实测（CLP_MOUSE_LOG=1）会看到
+     * 这样的序列：带标记的中键回来（销账）→ 4ms 后系统里又冒出一颗**没有标记**的中键。
+     * 来源是第三方鼠标工具（WGestures、厂商驱动、滚轮增强那类常驻进程）：它们把
+     * SendInput 的事件复制一份、抹掉 dwExtraInfo 再发出来。
+     *
+     * 账已经被带标记的那一份销掉了，副本就没人认，于是被当成"用户真按了中键"，
+     * 中键上的宏再跑一遍 —— 用户看到的就是"按一次侧键，既点了中键又跑了宏"。
+     * 所以再记一个"刚见过回声"的时间戳，短窗内同键的无标记事件按副本处理。 */
+    private static readonly Dictionary<int, long> EchoSeenAt = new();
+
     /// <summary>这个键是不是刚刚由我们注入过（用来识别回声）。</summary>
     public static bool WasInjectedRecently(int vk, int withinMs = 30)
     {
         lock (InjectedGate)
         {
             if (!InjectedAt.TryGetValue(vk, out long at)) return false;
+            return Environment.TickCount64 - at <= withinMs;
+        }
+    }
+
+    /// <summary>
+    /// 这个键最近一次"带标记的注入回声"是不是刚过去 <paramref name="withinMs"/> 毫秒。
+    ///
+    /// 专用在"副本"上：第三方鼠标工具会把我们注入的事件复制一份、抹掉标记再发一遍。
+    /// 带标记的那一份已经把配对账销掉了，副本只能靠这个时间戳认。
+    /// </summary>
+    public static bool WasEchoSeenRecently(int vk, int withinMs)
+    {
+        lock (InjectedGate)
+        {
+            if (!EchoSeenAt.TryGetValue(vk, out long at)) return false;
             return Environment.TickCount64 - at <= withinMs;
         }
     }
@@ -323,6 +350,10 @@ public static class InputSender
     {
         lock (InjectedGate)
         {
+            long now = Environment.TickCount64;
+            if (EchoSeenAt.Count > 128) EchoSeenAt.Clear();
+            EchoSeenAt[vk] = now;
+
             if (!InjectedPending.TryGetValue(vk, out var q) || q.Count == 0) return;
             q.Dequeue();
             if (q.Count == 0) InjectedPending.Remove(vk);
