@@ -1,4 +1,4 @@
-<Window x:Class="CapsLockPlus.UI.Windows.GestureOverlayWindow"
+﻿<Window x:Class="CapsLockPlus.UI.Windows.GestureOverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="手势轨迹"
@@ -40,6 +40,36 @@
                        Foreground="#FFF8FAFC"
                        FontSize="13"
                        FontWeight="SemiBold" />
+        </Border>
+
+        <!-- 方向串：画的过程中实时显示 ↑→，让用户知道"系统现在认为我在往哪拐" -->
+        <Border x:Name="PatternBox"
+                Canvas.Left="0" Canvas.Top="0"
+                Padding="12,4"
+                CornerRadius="8"
+                Background="#CC0B1220"
+                BorderBrush="#6658A6FF"
+                BorderThickness="1"
+                Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <TextBlock x:Name="PatternText"
+                       Foreground="#FFEAF2FF"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       FontFamily="Segoe UI Symbol" />
+        </Border>
+
+        <!-- 下一步能接什么：只列"当前方向串再加一个方向"的手势，照 FlowMouse 的提示来 -->
+        <Border x:Name="SuggestionBox"
+                Canvas.Left="0" Canvas.Top="0"
+                Padding="10,7"
+                CornerRadius="8"
+                Background="#B30B1220"
+                BorderBrush="#33FFFFFF"
+                BorderThickness="1"
+                Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <StackPanel x:Name="SuggestionList" />
         </Border>
     </Canvas>
 </Window>

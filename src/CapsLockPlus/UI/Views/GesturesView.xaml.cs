@@ -49,6 +49,8 @@ public partial class GesturesView
             TrailBox.IsChecked = opts.ShowTrail;
             MinMoveBox.Text = opts.MinMove.ToString();
             ThresholdBox.Text = opts.MatchThreshold.ToString("0.00");
+            ActivationBox.Text = opts.ActivationDistance.ToString();
+            TurnBox.Text = opts.TurnTolerance.ToString("0.00");
             LoadList(selectId: _current.Id);
         }
         finally { _loading = false; }
@@ -148,11 +150,16 @@ public partial class GesturesView
     private static string Describe(MouseGesture g)
     {
         string button = Loc.T(GestureButtons.Display(g.Button));
+        if (g.Kind == "stroke") g.EnsurePattern();
         return g.Kind switch
         {
             "corner" => Loc.F("{0} · 屏幕{1}", button, CornerName(g.Corner)),
             "wheel" => Loc.F("{0} · 滚轮{1}", button, WheelName(g.Wheel)),
             "click" => Loc.F("{0} · 单击", button),
+            "stroke" => Loc.F("{0} · {1}", button,
+                !string.IsNullOrEmpty(g.Pattern)
+                    ? string.Join(" ", GesturePattern.Arrows(g.Pattern))
+                    : DescribeShape(g.Path)),
             _ => Loc.F("{0} · {1}", button, DescribeShape(g.Path))
         };
     }
@@ -313,6 +320,8 @@ public partial class GesturesView
         var o = _host.Settings.GestureOptions;
         if (int.TryParse(MinMoveBox.Text, out int min) && min is >= 4 and <= 400) o.MinMove = min;
         if (double.TryParse(ThresholdBox.Text, out double th) && th is >= 0.05 and <= 0.9) o.MatchThreshold = th;
+        if (int.TryParse(ActivationBox.Text, out int act) && act is >= 4 and <= 200) o.ActivationDistance = act;
+        if (double.TryParse(TurnBox.Text, out double turn) && turn is >= 0 and <= 1) o.TurnTolerance = turn;
         _host.SaveSettings();
     }
 
@@ -426,6 +435,7 @@ public partial class GesturesView
         _host.Gestures.BeginRecord(g =>
         {
             _current.Path = g.Path;
+            _current.Pattern = g.Pattern;
             if (g.Button.Length > 0) _current.Button = g.Button;
             _current.Kind = "stroke";
             LoadEditor();
@@ -480,7 +490,16 @@ public partial class GesturesView
     private void DrawPreview()
     {
         PreviewLine.Points.Clear();
-        if (!_current.HasPath) return;
+        PatternBadge.Text = "";
+        if (!_current.HasPath)
+        {
+            if (!string.IsNullOrEmpty(_current.Pattern))
+                PatternBadge.Text = string.Join(" ", GesturePattern.Arrows(_current.Pattern));
+            return;
+        }
+
+        _current.EnsurePattern();
+        PatternBadge.Text = string.Join(" ", GesturePattern.Arrows(_current.Pattern));
 
         double w = PreviewCanvas.ActualWidth > 10 ? PreviewCanvas.ActualWidth : 340;
         double h = PreviewCanvas.ActualHeight > 10 ? PreviewCanvas.ActualHeight : 118;

@@ -37,6 +37,16 @@ public sealed class MouseGesture
     /// </summary>
     public List<int> Path { get; set; } = new();
 
+    /// <summary>
+    /// 方向串：<c>↑→↓←</c> 的组合，识别时按它做精确匹配。
+    ///
+    /// 为什么不再只靠 <see cref="Path"/> 的形状：手势的本意是"往哪个方向拐"，
+    /// 不是"描出同样一条曲线"。方向串既好匹配（拐弯对了就中），又好显示
+    /// （列表里直接写 ↑→），编辑时用户一眼就知道自己配了什么。
+    /// 老数据没有这个字段，读的时候用 <see cref="EnsurePattern"/> 从 Path 反推。
+    /// </summary>
+    public string Pattern { get; set; } = "";
+
     /// <summary>滚轮方向：-1 上、+1 下、-2 左、+2 右（仅 Kind=wheel）。</summary>
     public int Wheel { get; set; } = -1;
 
@@ -63,6 +73,20 @@ public sealed class MouseGesture
     public int PathPointCount => Path.Count / 2;
 
     public bool HasPath => Path.Count >= 4;
+
+    /// <summary>通配手势：任何方向都能触发（FlowMouse 的 <c>*</c>）。</summary>
+    public bool IsWildcard => Pattern == GesturePattern.Wildcard;
+
+    /// <summary>
+    /// 保证 <see cref="Pattern"/> 有值：老数据 / 导入时漏算的，从归一化路径反推一次。
+    /// 只补齐空值，绝不覆盖用户已有的方向串。
+    /// </summary>
+    public void EnsurePattern()
+    {
+        if (!string.IsNullOrEmpty(Pattern)) return;
+        if (Kind != "stroke" || !HasPath) return;
+        Pattern = GesturePattern.FromNormalized(Points());
+    }
 
     /// <summary>把扁平数组还原成点列（识别时用）。</summary>
     public List<GestureMath.Pt> Points()
@@ -96,6 +120,7 @@ public sealed class MouseGesture
         Button = Button,
         Kind = Kind,
         Path = new List<int>(Path),
+        Pattern = Pattern,
         Wheel = Wheel,
         Corner = Corner,
         Action = Action,
@@ -113,6 +138,7 @@ public sealed class MouseGesture
         Button = other.Button;
         Kind = other.Kind;
         Path = new List<int>(other.Path);
+        Pattern = other.Pattern;
         Wheel = other.Wheel;
         Corner = other.Corner;
         Action = other.Action;
@@ -139,6 +165,18 @@ public sealed class GestureOptions
 
     /// <summary>起点到当前点超过这么多像素才算"画了一笔"，否则当单击处理。</summary>
     public int MinMove { get; set; } = 30;
+
+    /// <summary>起手距离：走出这么多像素才开始记方向（FlowMouse 默认 20）。</summary>
+    public int ActivationDistance { get; set; } = 20;
+
+    /// <summary>
+    /// 转折系数：换方向要越过 起手距离 + 上一段长度 × 这个系数。
+    /// 越大越"懒得拐弯"，适合手抖；越小越容易切出短段落。
+    /// </summary>
+    public double TurnTolerance { get; set; } = 0.10;
+
+    /// <summary>最大转折距离：再长的一笔，换方向也不该超过这么多像素。</summary>
+    public int MaxTurnDistance { get; set; } = 120;
 
     /// <summary>形状匹配阈值：平均偏差 / 归一化尺寸，越小越严格。</summary>
     public double MatchThreshold { get; set; } = 0.26;

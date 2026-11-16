@@ -17,6 +17,18 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        /* ---- 软件渲染逃生口 ----
+         *
+         * 极少数显卡驱动/远程桌面会话里，WPF 的硬件合成会让整窗只剩背景色（全黑），
+         * 而同一台机器上简单的 WPF 窗口却正常。这种时候用 `--software` 启动
+         * （或设环境变量 CLP_SOFTWARE_RENDER=1）强制走软件渲染，界面立刻恢复。 */
+        if (Array.Exists(e.Args, a => a.Equals("--software", StringComparison.OrdinalIgnoreCase))
+            || Environment.GetEnvironmentVariable("CLP_SOFTWARE_RENDER") == "1")
+        {
+            System.Windows.Media.RenderOptions.ProcessRenderMode =
+                System.Windows.Interop.RenderMode.SoftwareOnly;
+        }
+
         /* ---- 取词代理：一次性、普通权限 ----
          *
          * 必须在**单实例检查与提权逻辑之前**处理：

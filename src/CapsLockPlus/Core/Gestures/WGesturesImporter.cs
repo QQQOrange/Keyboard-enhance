@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -158,6 +158,12 @@ public static class WGesturesImporter
             g.Kind = "stroke";
             g.Path = GestureMath.ToFlat(GestureMath.Normalize(path));
             if (g.Path.Count < 4) return null;      // 起止点重合，画不出一条线
+
+            /* 方向串按原始像素算：WGestures 的笔是按屏幕坐标记的，
+             * 归一化后再算会让"斜着一小段"被放大成整段，串就变了。 */
+            g.Pattern = GesturePattern.FromPoints(
+                path, GesturePattern.DefaultActivation,
+                GesturePattern.DefaultTurnTolerance, GesturePattern.DefaultMaxTurn);
         }
         else if (button != null)
         {

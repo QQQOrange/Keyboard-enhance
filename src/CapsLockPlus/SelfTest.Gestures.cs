@@ -146,6 +146,43 @@ public static partial class SelfTest
         Check("同一手势：应用里配了就用应用的那条", inApp.Hit?.Id == "scoped", inApp.Hit?.Name ?? "null");
         Check("同一个手势换到别的程序走全局", elsewhere.Hit?.Id == "global", elsewhere.Hit?.Name ?? "null");
 
+        // ---- 方向串：识别真正用的键 ----
+        var rightPts = new List<GestureMath.Pt>();
+        for (int x = 100; x <= 420; x += 20) rightPts.Add(new GestureMath.Pt(x, 300));
+        CheckEqual("向右一笔读成 →",
+            GesturePattern.FromPoints(rightPts, 20, 0.10, 120), "→");
+
+        var upRight = new List<GestureMath.Pt>();
+        for (int y = 600; y >= 300; y -= 20) upRight.Add(new GestureMath.Pt(400, y));
+        for (int x = 420; x <= 720; x += 20) upRight.Add(new GestureMath.Pt(x, 300));
+        CheckEqual("先上再右读成 ↑→",
+            GesturePattern.FromPoints(upRight, 20, 0.10, 120), "↑→");
+
+        // 手抖：来回 4px 不该被读成一个新方向
+        var shaky = new List<GestureMath.Pt> { new(100, 300) };
+        for (int i = 0; i < 20; i++) shaky.Add(new GestureMath.Pt(100 + i * 10, 300 + (i % 2 == 0 ? 4 : -4)));
+        CheckEqual("横向手抖不会多出一段", GesturePattern.FromPoints(shaky, 20, 0.10, 120), "→");
+
+        Check("方向串能画成箭头", GesturePattern.Describe("↑→") == "↑ →", GesturePattern.Describe("↑→"));
+
+        // ---- 通配 * 兜底，但精确串优先 ----
+        var wildSettings = new AppSettings();
+        var anyFlat = new List<int> { 0, 0, 1000, 0, 1000, 1000, 0, 1000 };
+        wildSettings.Gestures.Add(new MouseGesture
+        {
+            Id = "wild", Name = "通配", Kind = "stroke", Button = "right",
+            Pattern = GesturePattern.Wildcard, Path = anyFlat, Action = "copy"
+        });
+        wildSettings.Gestures.Add(new MouseGesture
+        {
+            Id = "exact", Name = "精确", Kind = "stroke", Button = "right",
+            Pattern = "→", Path = flat, Action = "paste"
+        });
+        var exactHit = GestureService.PickStroke(wildSettings, 0x02, "", "→", rightPts, wildSettings.GestureOptions);
+        Check("有精确方向串时不用通配", exactHit.Hit?.Id == "exact", exactHit.Hit?.Id ?? "null");
+        var wildHit = GestureService.PickStroke(wildSettings, 0x02, "", "↑↓", rightPts, wildSettings.GestureOptions);
+        Check("没配过的串交给通配", wildHit.Hit?.Id == "wild", wildHit.Hit?.Id ?? "null");
+
         // ---- 改键回声的「手势通行证」一次性 ----
         InputSender.AllowGesturePass(0x04);
         Check("改键回声放行一次手势", InputSender.TakeGesturePass(0x04));

@@ -11,7 +11,7 @@
 >
 > [简体中文](README.md) ｜ **English**
 
-**Version v5.2.0** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
+**Version v5.3.0** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
 
 > ### ⚠️ You must install the .NET 10 Desktop Runtime first
 >
@@ -73,9 +73,9 @@ file in any folder:
 | Your system | Download | Runtime |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+, **64-bit** (most PCs) | `KeyboardEnhance.exe` | Requires the .NET 10 Desktop Runtime |
-| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.2.0-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
-| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.2.0-x64-Win7-SelfContained.exe` | **No runtime needed** |
-| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.2.0-x86-Win7-SelfContained.exe` | **No runtime needed** |
+| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.3.0-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
+| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.3.0-x64-Win7-SelfContained.exe` | **No runtime needed** |
+| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.3.0-x86-Win7-SelfContained.exe` | **No runtime needed** |
 
 > GitHub rewrites non-alphanumeric characters in asset filenames to dots, hence the
 > `x86 / x64 / Win7 / SelfContained` suffixes on the release page.
@@ -447,7 +447,7 @@ to 10% and can be overridden per binding; hold to repeat.
 
 ---
 
-## 12. Mouse gestures (since v5.1, steadier in v5.2)
+## 12. Mouse gestures (since v5.1, direction-string matching since v5.3)
 
 Hold the right button, the middle button, or either side button, draw a shape, release — the action runs.
 Gestures share the same action catalogue as key bindings, with no WGestures-style tool needed.
@@ -459,7 +459,11 @@ Gestures share the same action catalogue as key bindings, with no WGestures-styl
 | Hold + wheel | While holding the button, turn the wheel one notch (up / down / left / right) |
 | Single click | Press and release without moving |
 
-- Matching: the path is normalised to 1000x1000, resampled to 32 points and compared by mean distance; default tolerance 0.26. A stroke must travel at least 30 px, otherwise it counts as a click.
+- Recognition: the path is turned into a direction string (`↑ ↓ ← →`) as you draw, and the string is matched exactly on release; if several gestures share a string, their shape distance breaks the tie. The approach follows [FlowMouse](https://github.com/Hmily-LCG/FlowMouse).
+- No accidental turns: nothing is recorded until the pointer travels the *start distance* (20 px by default), and a turn only counts once it passes the *turn factor* (0.1 by default), so a shaky hand will not produce extra segments. Both are adjustable at the top of the page.
+- While drawing, the overlay shows the direction string so far plus up to four "draw this next" candidates, so you do not have to memorise strokes.
+- Wildcard: set a gesture's direction string to `*` and it becomes the fallback when nothing else matches.
+- Older data (imported from WGestures, or recorded before 5.3) gets its direction string derived from the stored path when the page opens; no re-recording needed.
 - The physical press/release is swallowed so releasing never opens a context menu; when nothing matches, a real click is replayed.
 - *Show trail* draws the stroke on a click-through topmost overlay and flashes the gesture name on a hit.
 - *Only in this app* accepts a full exe path or a process name, case-insensitive; blank means everywhere.
@@ -492,7 +496,7 @@ The first launch imports an existing WGestures file once when the gesture list i
 | Clipboard | Both clipboards, recent history |
 | Macros | Record, edit, bind |
 | Trigger keys & layers | Triggers, thresholds, tap actions, 10 layers and their sub-layers |
-| Mouse gestures | Draw with a mouse button to run an action; trail overlay, hot corners, hold + wheel; app gestures beat global ones, scope picked with Choose app… / Pick window / All apps; one-click WGestures import (v5.1, trigger chain fixed in v5.2) |
+| Mouse gestures | Draw with a mouse button to run an action; direction-string matching with live arrows and candidates, trail overlay, hot corners, hold + wheel; app gestures beat global ones, scope picked with Choose app… / Pick window / All apps; one-click WGestures import (v5.1, trigger chain fixed in v5.2, recogniser rewritten in v5.3) |
 | Sync & backup | WebDAV, backup list, import/export, startup password lives under Settings |
 | Settings | Autostart, tray, tap behaviour, repeat, animations, feedback, mouse, volume/brightness steps, theme, language (Chinese / English, instant), startup password, snippets, base remap |
 | Test | Live hook status, current layer, recent keys, matched actions, diagnostics |
@@ -628,7 +632,7 @@ powershell -ExecutionPolicy Bypass -File tools\release.ps1
 # All command-line switches
 dist\KeyboardEnhance.exe --help
 
-# Self-test: ~3950 checks (varies slightly by system environment) (key model, expressions, Qbar, chips, migration, hooks,
+# Self-test: ~3956 checks (varies slightly by system environment) (key model, expressions, Qbar, chips, migration, hooks,
 # combo state machine, OSD ratios, localisation, snippets, popups, window cache, UIA, shutdown)
 dist\KeyboardEnhance.exe --selftest
 
@@ -701,7 +705,7 @@ Design notes:
 | Idle CPU | 0 % |
 | Tray footprint | ~60 MB private |
 | Executable | 2.9 MB (single file, framework-dependent) |
-| Self-test | ~3950 checks, all passing |
+| Self-test | ~3956 checks, all passing |
 
 The hot path is micro-optimised because the hook has a hard 300 ms budget: trigger matching
 uses a cached `HashSet<int>`, layer lookup a prebuilt case-insensitive dictionary, and layer

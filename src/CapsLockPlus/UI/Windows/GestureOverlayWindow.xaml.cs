@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using CapsLockPlus.Core.Gestures;
 
 namespace CapsLockPlus.UI.Windows;
 
@@ -85,6 +86,9 @@ public sealed partial class GestureOverlayWindow : Window
         catch { }
         Trail.Points.Clear();
         LabelBox.Visibility = Visibility.Collapsed;
+        PatternBox.Visibility = Visibility.Collapsed;
+        SuggestionBox.Visibility = Visibility.Collapsed;
+        SuggestionList.Children.Clear();
         try { Trail.Stroke = new BrushConverter().ConvertFromString(color) as Brush ?? Brushes.DodgerBlue; }
         catch { Trail.Stroke = Brushes.DodgerBlue; }
         Trail.StrokeThickness = thickness <= 0 ? 3 : thickness;
@@ -116,10 +120,67 @@ public sealed partial class GestureOverlayWindow : Window
         Canvas.SetTop(LabelBox, y);
     }
 
+    /// <summary>
+    /// 实时方向串（↑→ 这种）。位置跟着轨迹末端走，夹在屏幕内。
+    /// 传空串就把方向串收起来。
+    /// </summary>
+    public void SetPattern(string pattern, double px, double py)
+    {
+        if (string.IsNullOrEmpty(pattern))
+        {
+            PatternBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        PatternText.Text = string.Join(" ", GesturePattern.Arrows(pattern));
+        PatternBox.Visibility = Visibility.Visible;
+        PatternBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = PatternBox.DesiredSize;
+        var p = ToCanvas(px, py);
+        double x = Math.Min(Math.Max(0, p.X + 18), Math.Max(0, Width - size.Width - 4));
+        double y = Math.Min(Math.Max(0, p.Y + 52), Math.Max(0, Height - size.Height - 4));
+        Canvas.SetLeft(PatternBox, x);
+        Canvas.SetTop(PatternBox, y);
+    }
+
+    /// <summary>下一步能接哪些手势。只画字，不接事件。</summary>
+    public void SetSuggestions(IReadOnlyList<string> lines, double px, double py)
+    {
+        SuggestionList.Children.Clear();
+        foreach (var line in lines)
+        {
+            SuggestionList.Children.Add(new TextBlock
+            {
+                Text = line,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xC7, 0xD6, 0xEA)),
+                FontSize = 12,
+                Margin = new Thickness(0, 1, 0, 1)
+            });
+        }
+
+        if (SuggestionList.Children.Count == 0)
+        {
+            SuggestionBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        SuggestionBox.Visibility = Visibility.Visible;
+        SuggestionBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = SuggestionBox.DesiredSize;
+        var p = ToCanvas(px, py);
+        double x = Math.Min(Math.Max(0, p.X + 18), Math.Max(0, Width - size.Width - 4));
+        double y = Math.Min(Math.Max(0, p.Y + 92), Math.Max(0, Height - size.Height - 4));
+        Canvas.SetLeft(SuggestionBox, x);
+        Canvas.SetTop(SuggestionBox, y);
+    }
+
     public void Clear()
     {
         Trail.Points.Clear();
         LabelBox.Visibility = Visibility.Collapsed;
+        PatternBox.Visibility = Visibility.Collapsed;
+        SuggestionBox.Visibility = Visibility.Collapsed;
+        SuggestionList.Children.Clear();
     }
 
     /// <summary>让窗口"存在但不打扰"：不激活、不进 Alt+Tab、不抢鼠标。</summary>

@@ -43,6 +43,7 @@ public sealed class GestureService : IDisposable
     private bool _active;
     private string _appPath = "";
     private MouseGesture? _cornerCandidate;
+    private GesturePattern.Tracker? _tracker;
 
     private Action<MouseGesture>? _recordDone;
 
@@ -159,6 +160,7 @@ public sealed class GestureService : IDisposable
             IsRecording = true;
             _active = false;
             _points.Clear();
+            _tracker = null;
         }
     }
 
@@ -168,6 +170,7 @@ public sealed class GestureService : IDisposable
         {
             _recordDone = null;
             IsRecording = false;
+            _tracker = null;
         }
         HideOverlay(0);
     }
@@ -231,6 +234,8 @@ public sealed class GestureService : IDisposable
                 _points.Add(_start);
                 _appPath = app;
                 _cornerCandidate = CornerCandidate(candidates, px, py, opts.CornerSize);
+                _tracker = new GesturePattern.Tracker(opts.ActivationDistance, opts.TurnTolerance, opts.MaxTurnDistance);
+                _tracker.Start(px, py);
             }
 
             var o = opts;
@@ -267,6 +272,9 @@ public sealed class GestureService : IDisposable
                 _start = new GestureMath.Pt(px, py);
                 _last = _start;
                 _points.Add(_start);
+                var recordOpts = _host.Settings.GestureOptions;
+                _tracker = new GesturePattern.Tracker(recordOpts.ActivationDistance, recordOpts.TurnTolerance, recordOpts.MaxTurnDistance);
+                _tracker.Start(px, py);
             }
             var opts = _host.Settings.GestureOptions;
             Ui(() =>
@@ -353,7 +361,8 @@ public sealed class GestureService : IDisposable
     private void OnPoll(object? sender, EventArgs e)
     {
         var (px, py) = CursorPos();
-        bool add;
+        bool add, grew;
+        string pattern;
         lock (_gate)
         {
             if (!_active) return;
@@ -364,11 +373,22 @@ public sealed class GestureService : IDisposable
                 _last = new GestureMath.Pt(px, py);
                 _points.Add(_last);
             }
+            grew = add && (_tracker?.Move(px, py) ?? false);
+            pattern = _tracker?.Pattern ?? "";
         }
 
         if (!add) return;
         if (Settings().GestureOptions.ShowTrail)
             _overlay?.AddPoint(px, py);
+
+        /* 方向串一变就刷新提示。只画字，不重排轨迹，成本很低；
+         * 但它决定了"画到一半知不知道自己在画什么"，值得每段都刷。 */
+        if (!grew) return;
+        int vk;
+        string app;
+        lock (_gate) { vk = _vk; app = _appPath; }
+        _overlay?.SetPattern(pattern, px, py);
+        _overlay?.SetSuggestions(SuggestionLines(Settings(), vk, app, pattern), px, py);
     }
 
     /// <summary>
@@ -383,6 +403,7 @@ public sealed class GestureService : IDisposable
         int vk;
         string app;
         MouseGesture? corner;
+        string pattern;
         lock (_gate)
         {
             _active = false;
@@ -391,6 +412,8 @@ public sealed class GestureService : IDisposable
             vk = _vk;
             app = _appPath;
             corner = _cornerCandidate;
+            pattern = _tracker?.Pattern ?? "";
+            _tracker = null;
         }
         _poll?.Stop();
 
@@ -402,9 +425,9 @@ public sealed class GestureService : IDisposable
         double score = 1;
         if (execute)
         {
-            if (extent >= opts.MinMove)
+            if (pattern.Length > 0 && extent >= opts.MinMove)
             {
-                (hit, score) = PickStroke(Settings(), vk, app, points, opts);
+                (hit, score) = PickStroke(Settings(), vk, app, pattern, points, opts);
             }
             else if (corner != null)
             {
@@ -443,7 +466,9 @@ public sealed class GestureService : IDisposable
                 Id = MouseGesture.NewId(),
                 Button = GestureButtons.FromVk(vk),
                 Kind = "stroke",
-                Path = GestureMath.ToFlat(GestureMath.Normalize(points))
+                Path = GestureMath.ToFlat(GestureMath.Normalize(points)),
+                Pattern = GesturePattern.FromPoints(
+                    points, opts.ActivationDistance, opts.TurnTolerance, opts.MaxTurnDistance)
             };
             HideOverlay(0);
             try { done?.Invoke(recorded); }
@@ -479,7 +504,7 @@ public sealed class GestureService : IDisposable
         });
     }
 
-    private string ActionCatalogTitle(MouseGesture g)
+    private static string ActionCatalogTitle(MouseGesture g)
         => ActionCatalog.TitleOf(g.Action) ?? "";
 
     // ───────────────────────── 查询 ─────────────────────────
@@ -492,7 +517,11 @@ public sealed class GestureService : IDisposable
             if (!g.Enabled) continue;
             if (GestureButtons.ToVk(g.Button) != vk) continue;
             if (!includeWheel && g.Kind == "wheel") continue;
-            if (g.Kind == "stroke" && !g.HasPath) continue;
+            if (g.Kind == "stroke")
+            {
+                g.EnsurePattern();
+                if (!g.HasPath && string.IsNullOrEmpty(g.Pattern)) continue;
+            }
             if (!AppMatches(g, app)) continue;
             list.Add(g);
         }
@@ -506,18 +535,86 @@ public sealed class GestureService : IDisposable
     internal static (MouseGesture? Hit, double Score) PickStroke(
         AppSettings settings, int vk, string app, IReadOnlyList<GestureMath.Pt> points, GestureOptions opts)
     {
+        string pattern = GesturePattern.FromPoints(
+            points, opts.ActivationDistance, opts.TurnTolerance, opts.MaxTurnDistance);
+        return PickStroke(settings, vk, app, pattern, points, opts);
+    }
+
+    /// <summary>
+    /// 方向串优先，形状只在同一串里分胜负。
+    ///
+    /// 顺序是硬的：应用专属的精确串 → 全局精确串 → 应用专属通配 → 全局通配。
+    /// 这样"浏览器里 ↑ 是新标签、桌面 ↑ 是上滚"能同时成立，而通配只是兜底，
+    /// 永远不会抢走一条正好写了串的手势。
+    /// </summary>
+    internal static (MouseGesture? Hit, double Score) PickStroke(
+        AppSettings settings, int vk, string app, string pattern,
+        IReadOnlyList<GestureMath.Pt> points, GestureOptions opts)
+    {
         var strokes = Candidates(settings, vk, app, includeWheel: false)
             .Where(g => g.Kind == "stroke").ToList();
+        foreach (var g in strokes) g.EnsurePattern();
 
         var scoped = strokes.Where(g => !string.IsNullOrWhiteSpace(g.AppPath)).ToList();
-        if (scoped.Count > 0)
+        var global = strokes.Where(g => string.IsNullOrWhiteSpace(g.AppPath)).ToList();
+
+        if (!string.IsNullOrEmpty(pattern))
         {
-            var (hit, score) = GestureMath.Match(scoped, points, opts.MatchThreshold);
-            if (hit != null) return (hit, score);
+            var hit = Exact(scoped, pattern, points, opts);
+            if (hit.Hit != null) return hit;
+            hit = Exact(global, pattern, points, opts);
+            if (hit.Hit != null) return hit;
         }
 
-        return GestureMath.Match(
-            strokes.Where(g => string.IsNullOrWhiteSpace(g.AppPath)), points, opts.MatchThreshold);
+        foreach (var bucket in new[] { scoped, global })
+        {
+            var wild = bucket.Where(g => g.IsWildcard).ToList();
+            if (wild.Count == 0) continue;
+            var (hit, score) = GestureMath.Match(wild, points, opts.MatchThreshold);
+            return (hit ?? wild[0], hit != null ? score : 0);
+        }
+
+        return (null, 1);
+    }
+
+    private static (MouseGesture? Hit, double Score) Exact(
+        List<MouseGesture> bucket, string pattern, IReadOnlyList<GestureMath.Pt> points, GestureOptions opts)
+    {
+        var same = bucket.Where(g => string.Equals(g.Pattern, pattern, StringComparison.Ordinal)).ToList();
+        if (same.Count == 0) return (null, 1);
+        if (same.Count == 1) return (same[0], 0);
+
+        var (hit, score) = GestureMath.Match(same, points, opts.MatchThreshold);
+        return (hit ?? same[0], hit != null ? score : 0);
+    }
+
+    /// <summary>
+    /// "画到这里还能往哪拐"：只列比当前串多一个方向的手势，按拐弯偏好排序。
+    /// 偏好照 FlowMouse —— 横着画完先提示上/下，竖着画完先提示左/右。
+    /// </summary>
+    internal static List<string> SuggestionLines(AppSettings settings, int vk, string app, string pattern)
+    {
+        var list = new List<string>();
+        var strokes = Candidates(settings, vk, app, includeWheel: false)
+            .Where(g => g.Kind == "stroke").ToList();
+        foreach (var g in strokes) g.EnsurePattern();
+
+        var scoped = strokes.Where(g => !string.IsNullOrWhiteSpace(g.AppPath)).ToList();
+        var bucket = scoped.Count > 0 ? scoped : strokes.Where(g => string.IsNullOrWhiteSpace(g.AppPath)).ToList();
+
+        string last = pattern.Length == 0 ? "" : pattern[^1..];
+        string[] order = last is "↑" or "↓"
+            ? new[] { "←", "→", "↑", "↓" }
+            : new[] { "↑", "↓", "←", "→" };
+
+        foreach (var dir in order)
+        {
+            var next = pattern + dir;
+            var g = bucket.FirstOrDefault(x => x.Pattern == next);
+            if (g != null) list.Add($"{string.Join(" ", GesturePattern.Arrows(next))}  {g.Title(ActionCatalogTitle(g))}");
+            if (list.Count >= 4) break;
+        }
+        return list;
     }
 
     private static bool AppMatches(MouseGesture g, string foreground)
