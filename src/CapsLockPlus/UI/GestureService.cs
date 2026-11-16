@@ -46,6 +46,17 @@ public sealed class GestureService : IDisposable
 
     private Action<MouseGesture>? _recordDone;
 
+    /* 手势专用鼠标钩子。
+     *
+     * 不能用 Engine.Hook：宿主模式（--hookhost）下真正的钩子在最小进程里，
+     * 主进程这颗是没装过的空壳 —— 订阅它等于一条手势也收不到。
+     * 这里自己装一颗**只装鼠标**的钩子，和宿主/引擎互不影响。 */
+    private KeyboardHook? _gestureHook;
+
+    /* 手势动作执行后的抑制窗：动作里可能再发鼠标键（“点击中键”之类），
+     * 那些注入不能被当成新手势的开头。 */
+    private long _gestureSuppressUntil;
+
     public GestureService(AppHost host)
     {
         _host = host;
@@ -62,8 +73,14 @@ public sealed class GestureService : IDisposable
 
     public void Attach()
     {
-        _host.Engine.Hook.GestureButtonEvent += OnButton;
-        _host.Engine.Hook.GestureWheelEvent += OnWheel;
+        try
+        {
+            _gestureHook = new KeyboardHook();
+            _gestureHook.GestureButtonEvent += OnButton;
+            _gestureHook.GestureWheelEvent += OnWheel;
+            _gestureHook.Start(mouseOnly: true);
+        }
+        catch (Exception ex) { CoreLog.Swallow(ex, "安装手势鼠标钩子"); }
 
         // 第一次启动时把 WGestures 的手势搬过来：用户升级上来就能直接用，
         // 不用先学会"导入"在哪。放到空闲优先级，等主窗口建好再改设置。
@@ -113,8 +130,13 @@ public sealed class GestureService : IDisposable
     {
         try
         {
-            _host.Engine.Hook.GestureButtonEvent -= OnButton;
-            _host.Engine.Hook.GestureWheelEvent -= OnWheel;
+            if (_gestureHook != null)
+            {
+                _gestureHook.GestureButtonEvent -= OnButton;
+                _gestureHook.GestureWheelEvent -= OnWheel;
+                _gestureHook.Dispose();
+                _gestureHook = null;
+            }
         }
         catch (Exception ex) { CoreLog.Swallow(ex, "卸载手势钩子"); }
 
@@ -154,7 +176,28 @@ public sealed class GestureService : IDisposable
 
     private bool OnButton(int vk, bool down, bool injected)
     {
-        if (injected) return false;
+        if (injected)
+        {
+            /* 注入的鼠标键默认不算手势开头 —— 否则“点击中键”这类动作会自己
+             * 触发一轮新手势，越点越深。唯一的例外：改键把侧键换成中键时，
+             * 那颗中键是我们自己发的，但用户的手指确实按了侧键。这种“改键
+             * 回声”由 InputSender 发一张一次性通行证，允许它当手势起点。 */
+            if (Environment.TickCount64 < Interlocked.Read(ref _gestureSuppressUntil)) return false;
+
+            /* 通行证只在"按下"时用一次；抬起要去收尾已经开始的这一笔，
+             * 不能再要一张新票 —— 否则侧键→中键这种一次按压只发一张票的
+             * 场景，按下开始了、抬起却进不来，手势永远收不了尾。 */
+            if (down)
+            {
+                if (!InputSender.TakeGesturePass(vk)) return false;
+            }
+            else
+            {
+                bool tracking;
+                lock (_gate) tracking = _active && _vk == vk;
+                if (!tracking) return false;
+            }
+        }
 
         var settings = _host.Settings;
         var opts = settings.GestureOptions;
@@ -361,9 +404,7 @@ public sealed class GestureService : IDisposable
         {
             if (extent >= opts.MinMove)
             {
-                var strokes = Candidates(Settings(), vk, app, includeWheel: false)
-                    .Where(g => g.Kind == "stroke");
-                (hit, score) = GestureMath.Match(strokes, points, opts.MatchThreshold);
+                (hit, score) = PickStroke(Settings(), vk, app, points, opts);
             }
             else if (corner != null)
             {
@@ -373,8 +414,10 @@ public sealed class GestureService : IDisposable
             {
                 /* 没画形状，但配置里可能就是"单击这个键"（WGestures 里
                  * 中键单击=静音 那种）。先找 click，找不到才补发单击。 */
-                hit = Candidates(Settings(), vk, app, includeWheel: false)
-                    .FirstOrDefault(g => g.Kind == "click");
+                var clicks = Candidates(Settings(), vk, app, includeWheel: false)
+                    .Where(g => g.Kind == "click").ToList();
+                hit = clicks.FirstOrDefault(g => !string.IsNullOrWhiteSpace(g.AppPath))
+                      ?? clicks.FirstOrDefault();
             }
 
             if (hit == null && extent < opts.MinMove)
@@ -428,6 +471,7 @@ public sealed class GestureService : IDisposable
         if (string.IsNullOrWhiteSpace(g.Action)) return;
         string action = g.Action;
         string arg = g.Arg;
+        Interlocked.Exchange(ref _gestureSuppressUntil, Environment.TickCount64 + 700);
         Ui(() =>
         {
             try { _host.InvokeAction(action, arg); }
@@ -453,6 +497,27 @@ public sealed class GestureService : IDisposable
             list.Add(g);
         }
         return list;
+    }
+
+    /// <summary>
+    /// 笔画匹配：应用手势优先。给某个程序单独配过的手势，先只在"这个程序的"里找；
+    /// 找不到再退回全局的 —— 否则全局的"↑ 上滚"会抢在浏览器的"↑ 新标签页"前面。
+    /// </summary>
+    internal static (MouseGesture? Hit, double Score) PickStroke(
+        AppSettings settings, int vk, string app, IReadOnlyList<GestureMath.Pt> points, GestureOptions opts)
+    {
+        var strokes = Candidates(settings, vk, app, includeWheel: false)
+            .Where(g => g.Kind == "stroke").ToList();
+
+        var scoped = strokes.Where(g => !string.IsNullOrWhiteSpace(g.AppPath)).ToList();
+        if (scoped.Count > 0)
+        {
+            var (hit, score) = GestureMath.Match(scoped, points, opts.MatchThreshold);
+            if (hit != null) return (hit, score);
+        }
+
+        return GestureMath.Match(
+            strokes.Where(g => string.IsNullOrWhiteSpace(g.AppPath)), points, opts.MatchThreshold);
     }
 
     private static bool AppMatches(MouseGesture g, string foreground)

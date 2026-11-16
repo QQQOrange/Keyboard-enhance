@@ -367,7 +367,13 @@ public sealed class ActionCatalog
         c.Add("mouseDown", "鼠标功能", "鼠标下移", "可长按加速", _ => ctx.Mouse.Move(0, 1));
         c.Add("clickLeft", "鼠标功能", "鼠标左键", "点击左键", _ => { InputSender.Click(false); return true; }, shortTitle: "左键");
         c.Add("clickRight", "鼠标功能", "鼠标右键", "点击右键", _ => { InputSender.Click(true); return true; }, shortTitle: "右键");
-        c.Add("clickMiddle", "鼠标功能", "鼠标中键", "点击中键", _ => Send(VK_Middle), shortTitle: "中键");
+        c.Add("clickMiddle", "鼠标功能", "鼠标中键", "点击中键", _ =>
+        {
+            /* 告诉手势服务“这颗中键是改键发出来的”，允许它当手势起点：
+             * 用户把侧键换成中键，就是希望中键上的手势照样能用。 */
+            InputSender.AllowGesturePass(VK_Middle);
+            return Send(VK_Middle);
+        }, shortTitle: "中键");
         c.Add("clickX1", "鼠标功能", "鼠标侧键 1", "点击侧键 1（通常是「后退」）", _ => Send(VK_X1), shortTitle: "侧1");
         c.Add("clickX2", "鼠标功能", "鼠标侧键 2", "点击侧键 2（通常是「前进」）", _ => Send(VK_X2), shortTitle: "侧2");
         c.Add("wheelUp", "鼠标功能", "滚轮上滚", "向上滚动", a => { InputSender.Wheel(ParseInt(a, 3)); return true; });

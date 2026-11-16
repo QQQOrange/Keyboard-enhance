@@ -68,7 +68,13 @@ public partial class GesturesView
             string subtitle = Describe(g);
             string hay = title + " " + subtitle + " " + g.AppPath + " " + g.Note;
             if (filter.Length > 0 && hay.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
-            _rows.Add(new GestureRow(g, title, subtitle, g.FromWGestures ? "WG" : "", GlyphFor(g)));
+            /* 以前这里显示「WG」——用户看不出那是"从 WGestures 导入"的标记，
+             反而会以为手势只能在 WGestures 里用。现在只在"限定了程序"时
+             显示一颗小标签，导入来源只在详情里用一句话说明。 */
+            string badge = string.IsNullOrWhiteSpace(g.AppPath)
+                ? ""
+                : Loc.T("仅此应用");
+            _rows.Add(new GestureRow(g, title, subtitle, badge, GlyphFor(g)));
         }
 
         GestureList.ItemsSource = null;
@@ -314,9 +320,20 @@ public partial class GesturesView
 
     private void OnNewClick(object sender, RoutedEventArgs e)
     {
-        _current = new MouseGesture { Id = MouseGesture.NewId(), Button = "right", Kind = "stroke", Enabled = true };
+        /* 新建时给个好用的默认值：否则动作下拉是空的，用户画完一笔点保存
+         * 只会收到「先给手势选一个动作」，看起来就像"加不进去"。 */
+        _current = new MouseGesture
+        {
+            Id = MouseGesture.NewId(),
+            Name = Loc.T("新手势"),
+            Button = "right",
+            Kind = "stroke",
+            Action = "sendKeys",
+            Enabled = true,
+        };
         LoadEditor();
         NameBox.Focus();
+        NameBox.SelectAll();
     }
 
     private void OnSaveClick(object sender, RoutedEventArgs e)
@@ -370,15 +387,38 @@ public partial class GesturesView
         _host.Notify(Loc.T("手势已删除"));
     }
 
-    private void OnBrowseApp(object sender, RoutedEventArgs e)
+    /// <summary>入口一：从资源管理器挑 exe（和「按应用自动启用层」同一个交互）。</summary>
+    private void OnPickAppFile(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = Loc.T("选择程序"),
-            Filter = "程序 (*.exe)|*.exe|所有文件 (*.*)|*.*"
+            Title = Loc.T("选择这条手势只在哪个程序里生效"),
+            Filter = Loc.T("程序 (*.exe)|*.exe|所有文件 (*.*)|*.*"),
+            CheckFileExists = true,
         };
         if (dlg.ShowDialog() == true) AppBox.Text = dlg.FileName;
     }
+
+    /// <summary>入口二：十字准星点选窗口，取它的 exe 全路径。</summary>
+    private void OnPickAppWindow(object sender, RoutedEventArgs e)
+    {
+        var picker = new UI.Windows.WindowPickerWindow();
+        if (Window.GetWindow(this) is { } owner) picker.Owner = owner;
+        picker.ShowDialog();
+
+        var h = picker.PickedWindow;
+        if (h == IntPtr.Zero) return;       // 用户按了 Esc
+
+        var info = Core.Windows.WindowService.Describe(h);
+        if (info == null || string.IsNullOrEmpty(info.ExePath))
+        {
+            _host?.Notify(Loc.T("取不到这个窗口的程序，改用「选择程序…」挑 exe"));
+            return;
+        }
+        AppBox.Text = info.ExePath;
+    }
+
+    private void OnClearApp(object sender, RoutedEventArgs e) => AppBox.Text = "";
 
     private void OnRecordClick(object sender, RoutedEventArgs e)
     {

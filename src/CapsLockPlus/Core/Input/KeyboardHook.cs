@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using CapsLockPlus.Core.Interop;
 using static CapsLockPlus.Core.Interop.NativeMethods;
@@ -12,6 +12,11 @@ namespace CapsLockPlus.Core.Input;
 /// </summary>
 public sealed class KeyboardHook : IDisposable
 {
+    /* 只装鼠标钩子。
+     *
+     * 手势服务需要一颗“自己的”鼠标钩子：宿主模式（--hookhost）下键盘/鼠标钩子
+     * 在最小进程里，主进程的 Engine.Hook 根本没装 —— 手势订阅它等于订阅空气。 */
+    private bool _mouseOnly;
     private readonly HookProc _proc;          // 必须保存引用，防止被 GC
     private IntPtr _hook = IntPtr.Zero;
     private Thread? _thread;
@@ -120,9 +125,10 @@ public sealed class KeyboardHook : IDisposable
         _mouseProc = MouseCallback;
     }
 
-    public void Start()
+    public void Start(bool mouseOnly = false)
     {
         if (_running) return;
+        _mouseOnly = mouseOnly;
 
         /* 实验：CLP_HOOK_UI_THREAD=1 时把钩子装在**调用线程**（界面线程）上。
          *
@@ -153,7 +159,9 @@ public sealed class KeyboardHook : IDisposable
              * 句柄非零、线程还活着、状态全正常，但一个按键都收不到。
              * 这正好是"钩子时好时坏、重装也救不回来"的成因。 */
             string desktopText = AlignToInputDesktop();
-            var myHook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
+            var myHook = _mouseOnly
+                ? IntPtr.Zero
+                : SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
             _hook = myHook;
             CoreLog.Info($"钩子线程 tid={_threadId} 安装结果=0x{myHook.ToInt64():X}；{desktopText}");
 
@@ -162,7 +170,7 @@ public sealed class KeyboardHook : IDisposable
                 ? IntPtr.Zero
                 : SetWindowsHookEx(WH_MOUSE_LL, _mouseProc!, GetModuleHandle(null), 0);
             _mouseHook = myMouseHook;
-            if (_hook == IntPtr.Zero)
+            if (!_mouseOnly && _hook == IntPtr.Zero)
             {
                 LastErrorTime = DateTime.Now;
                 CoreLog.Error($"键盘钩子安装失败，错误码 {Marshal.GetLastWin32Error()}");
@@ -199,7 +207,8 @@ public sealed class KeyboardHook : IDisposable
         _thread.Start();
         // 等钩子装好，避免界面已经显示但按键还不生效
         var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 1500 && _hook == IntPtr.Zero && _running) Thread.Sleep(10);
+        while (sw.ElapsedMilliseconds < 1500 && _running
+               && (_mouseOnly ? _mouseHook == IntPtr.Zero : _hook == IntPtr.Zero)) Thread.Sleep(10);
         StartWatchdog();
     }
 
@@ -529,8 +538,11 @@ public sealed class KeyboardHook : IDisposable
     /// </summary>
     private void RearmHooks()
     {
-        var fresh = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
-        if (fresh != IntPtr.Zero)
+        var fresh = _mouseOnly
+            ? IntPtr.Zero
+            : SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(null), 0);
+        if (_mouseOnly) { /* 只装鼠标：键盘句柄留空 */ }
+        else if (fresh != IntPtr.Zero)
         {
             var old = _hook;
             _hook = fresh;

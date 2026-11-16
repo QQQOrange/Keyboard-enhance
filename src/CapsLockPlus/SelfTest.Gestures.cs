@@ -1,9 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using CapsLockPlus.Core.Gestures;
+using CapsLockPlus.Core.Input;
+using CapsLockPlus.UI;
 using CapsLockPlus.Core.Settings;
 
 namespace CapsLockPlus;
@@ -123,6 +125,32 @@ public static partial class SelfTest
 
         var again = WGesturesImporter.ImportFile(path, settings);
         CheckEqual("重复导入不产生重复手势", again.Imported, 0);
+
+        // ---- 应用手势优先于全局手势 ----
+        var scopedSettings = new AppSettings();
+        var strokePts = new List<GestureMath.Pt> { new(100, 100), new(300, 100), new(500, 100) };
+        var flat = GestureMath.ToFlat(GestureMath.Normalize(strokePts));
+        scopedSettings.Gestures.Add(new MouseGesture
+        {
+            Id = "global", Name = "全局", Kind = "stroke", Button = "right", Path = flat, Action = "copy"
+        });
+        scopedSettings.Gestures.Add(new MouseGesture
+        {
+            Id = "scoped", Name = "应用", Kind = "stroke", Button = "right", Path = flat,
+            Action = "winClose", AppPath = @"C:\Apps\browser.exe"
+        });
+        var inApp = GestureService.PickStroke(
+            scopedSettings, 0x02, @"C:\Apps\browser.exe", strokePts, scopedSettings.GestureOptions);
+        var elsewhere = GestureService.PickStroke(
+            scopedSettings, 0x02, @"C:\Apps\notepad.exe", strokePts, scopedSettings.GestureOptions);
+        Check("同一手势：应用里配了就用应用的那条", inApp.Hit?.Id == "scoped", inApp.Hit?.Name ?? "null");
+        Check("同一个手势换到别的程序走全局", elsewhere.Hit?.Id == "global", elsewhere.Hit?.Name ?? "null");
+
+        // ---- 改键回声的「手势通行证」一次性 ----
+        InputSender.AllowGesturePass(0x04);
+        Check("改键回声放行一次手势", InputSender.TakeGesturePass(0x04));
+        Check("通行证用完即作废", !InputSender.TakeGesturePass(0x04));
+        Check("没申请过的键不会被放行", !InputSender.TakeGesturePass(0x05));
 
         try { File.Delete(path); } catch { }
     }

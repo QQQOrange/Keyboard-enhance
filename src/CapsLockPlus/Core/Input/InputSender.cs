@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using CapsLockPlus.Core.Interop;
 using static CapsLockPlus.Core.Interop.NativeMethods;
 
@@ -322,6 +322,24 @@ public static class InputSender
     /// 专用在"副本"上：第三方鼠标工具会把我们注入的事件复制一份、抹掉标记再发一遍。
     /// 带标记的那一份已经把配对账销掉了，副本只能靠这个时间戳认。
     /// </summary>
+    /* “改键回声”通行证：把侧键换成中键之后，那颗中键是我们注入的，
+     * 但用户确实按了鼠标 —— 手势服务默认跳过注入事件，这里给它开一张
+     * 一次性的票，让这次中键仍然能当手势起点。 */
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, long> GesturePass = new();
+
+    public static void AllowGesturePass(int vk, int withinMs = 1200)
+    {
+        if (vk == 0) return;
+        GesturePass[vk] = Environment.TickCount64 + Math.Max(100, withinMs);
+        if (GesturePass.Count > 32) GesturePass.Clear();
+    }
+
+    public static bool TakeGesturePass(int vk)
+    {
+        if (!GesturePass.TryRemove(vk, out long until)) return false;
+        return Environment.TickCount64 <= until;
+    }
+
     public static bool WasEchoSeenRecently(int vk, int withinMs)
     {
         lock (InjectedGate)

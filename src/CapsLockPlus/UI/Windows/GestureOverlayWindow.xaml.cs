@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -51,13 +51,38 @@ public sealed partial class GestureOverlayWindow : Window
         if (_scale <= 0.1) _scale = 1;
     }
 
+    /* DPI 比例不能只靠 SourceInitialized 那次取：窗口没显示时
+     * GetDpiForWindow 可能返回 0，于是 _scale 落到 1，
+     * 200% 缩放下轨迹会画到两倍远的地方。每帧按当前视觉树再问一次最稳。 */
+    private double Scale
+    {
+        get
+        {
+            try
+            {
+                double s = VisualTreeHelper.GetDpi(this).DpiScaleX;
+                return s > 0.1 ? s : 1;
+            }
+            catch { return 1; }
+        }
+    }
+
     /// <summary>物理像素 → 画布坐标（DIP，相对虚拟屏幕左上角）。</summary>
     private Point ToCanvas(double px, double py)
-        => new(px / _scale - SystemParameters.VirtualScreenLeft,
-               py / _scale - SystemParameters.VirtualScreenTop);
+    {
+        double scale = Scale;
+        return new(px / scale - SystemParameters.VirtualScreenLeft,
+                   py / scale - SystemParameters.VirtualScreenTop);
+    }
 
     public void Begin(string color, double thickness)
     {
+        try
+        {
+            var src = PresentationSource.FromVisual(this);
+            double m11 = src?.CompositionTarget?.TransformToDevice.M11 ?? -1;
+        }
+        catch { }
         Trail.Points.Clear();
         LabelBox.Visibility = Visibility.Collapsed;
         try { Trail.Stroke = new BrushConverter().ConvertFromString(color) as Brush ?? Brushes.DodgerBlue; }
@@ -111,6 +136,7 @@ public sealed partial class GestureOverlayWindow : Window
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(
         IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
 }
