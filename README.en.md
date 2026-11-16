@@ -1,4 +1,4 @@
-# Keyboard Enhance
+﻿# Keyboard Enhance
 
 > Author: **QQQOrange**
 >
@@ -11,7 +11,7 @@
 >
 > [简体中文](README.md) ｜ **English**
 
-**Version v5.0.0** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
+**Version v5.0.1** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
 
 > ### ⚠️ You must install the .NET 10 Desktop Runtime first
 >
@@ -73,9 +73,9 @@ file in any folder:
 | Your system | Download | Runtime |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+, **64-bit** (most PCs) | `KeyboardEnhance.exe` | Requires the .NET 10 Desktop Runtime |
-| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.0.0-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
-| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.0.0-x64-Win7-SelfContained.exe` | **No runtime needed** |
-| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.0.0-x86-Win7-SelfContained.exe` | **No runtime needed** |
+| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.0.1-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
+| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.0.1-x64-Win7-SelfContained.exe` | **No runtime needed** |
+| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.0.1-x86-Win7-SelfContained.exe` | **No runtime needed** |
 
 > GitHub rewrites non-alphanumeric characters in asset filenames to dots, hence the
 > `x86 / x64 / Win7 / SelfContained` suffixes on the release page.
@@ -529,7 +529,7 @@ The updater downloads into the data folder, verifies SHA-256 when provided, rena
 binary, installs the new one and restarts; leftovers are cleaned on the next launch. It uses
 its own HTTP client (5-minute timeout, up to 3 retries) for flaky networks.
 
-> For maintainers: the updater reads the latest GitHub Release, so tag releases as `v5.0.0`
+> For maintainers: the updater reads the latest GitHub Release, so tag releases as `vX.Y.Z`
 > and attach the `.exe` assets.
 
 ---

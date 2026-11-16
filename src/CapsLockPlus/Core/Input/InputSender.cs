@@ -76,6 +76,8 @@ public static class InputSender
 
     private static bool Send(params INPUT[] inputs)
     {
+        if (BeforeSendForTest is { } probe) probe();
+
         if (inputs.Length == 0 || DryRun) return true;
 
         if (DateTime.Now < QuietUntil)
@@ -242,6 +244,13 @@ public static class InputSender
     /// 有了它才能验证改键的按下/抬起是否成对 —— 否则自检会真的往系统里打字。
     /// </summary>
     internal static Action<int, bool>? SenderForTest { get; set; }
+
+    /// <summary>
+    /// 自检用：真正调用 SendInput **之前**执行一次。
+    /// 低级钩子是在 SendInput 内部同步回调的，自检要复现"注入的事件当场回到钩子"
+    /// 这个时序，才能验证"记账早于发送"（见鼠标改键的串键回归）。
+    /// </summary>
+    internal static Action? BeforeSendForTest { get; set; }
 
     /* ---- 修饰键账本 ----
      *
@@ -1001,8 +1010,11 @@ public static class InputSender
                 },
             },
         };
-        Send(input);
+        /* 记账必须早于 Send：低级钩子是在 SendInput **内部**同步回调的，
+         * 等 Send 返回再记就已经晚了 —— 自己注入的中键会先走一遍改键，
+         * 于是"侧键→中键、中键→R"会变成按侧键直接出 R。 */
         NoteInjected(vk);
+        Send(input);
     }
 
     /// <summary>
@@ -1042,8 +1054,11 @@ public static class InputSender
                 },
             },
         };
-        Send(input);
+        /* 记账必须早于 Send：低级钩子是在 SendInput **内部**同步回调的，
+         * 等 Send 返回再记就已经晚了 —— 自己注入的中键会先走一遍改键，
+         * 于是"侧键→中键、中键→R"会变成按侧键直接出 R。 */
         NoteInjected(vk);
+        Send(input);
     }
 
     /// <summary>

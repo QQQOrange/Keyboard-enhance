@@ -1634,6 +1634,43 @@ public static partial class SelfTest
             }
         }
 
+        /* ---- 鼠标改键的串键回归 ---- */
+        {
+            /* 侧键→中键、中键→R：低级鼠标钩子是在 SendInput **内部**同步回调的，
+             * 注入的中键在 Send 返回之前就已经回到引擎。记账若写在 Send 之后，
+             * 中键就被当成用户真按的键，再走一遍「中键→R」——
+             * 表现就是按侧键直接出 R。这里用 BeforeSendForTest 复现那个时序。 */
+            var sMouse = DefaultSettings.Create();
+            foreach (var t in sMouse.Triggers) t.Enabled = false;
+            sMouse.Global.BaseRemaps.Clear();
+            sMouse.Global.BaseRemaps.Add(new KeyRemap { From = "mouseX1", To = "mouseMiddle" });
+            sMouse.Global.BaseRemaps.Add(new KeyRemap { From = "mouseMiddle", To = "r" });
+
+            var eMouse = new HotkeyEngine(new ActionQueue(), () => sMouse, (_, _) => true);
+            bool dryMouse = Core.Input.InputSender.DryRun;
+            bool fired = false;
+            bool remappedEcho = true;
+            Core.Input.InputSender.DryRun = true;
+            Core.Input.InputSender.BeforeSendForTest = () =>
+            {
+                if (fired) return;      // 真被再改键时发出的 R 会再次进来，别递归
+                fired = true;
+                remappedEcho = eMouse.SimulateKey(0x04, true);   // 钩子看到「无标记的中键按下」
+            };
+            try
+            {
+                Core.Input.InputSender.Press(0x04, down: true);  // 侧键改键实际发出的中键
+            }
+            finally
+            {
+                Core.Input.InputSender.BeforeSendForTest = null;
+                Core.Input.InputSender.DryRun = dryMouse;
+            }
+
+            Check("鼠标改键：注入记账发生在 SendInput 之前", fired, "");
+            Check("鼠标改键：自己注入的中键不会再被改键（侧键→中键→R）", !remappedEcho, "");
+        }
+
         /* ---- 全局搜索 ---- */
         {
             var s = DefaultSettings.Create();
