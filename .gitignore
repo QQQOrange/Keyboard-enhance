@@ -76,3 +76,7 @@ $RECYCLE.BIN/
 artifacts/
 .rel-tmp/
 .selftest-*/
+
+# 本地自检/导入工具留下的临时物
+tools/__pycache__/
+selftest-stderr.txt

@@ -1,3 +1,4 @@
+using CapsLockPlus.Core.Gestures;
 using System.Text.Json.Serialization;
 using CapsLockPlus.Core.Input;
 
@@ -1238,6 +1239,18 @@ public sealed class AppSettings
     /// 就是全部行为，升级上来不会有任何变化。
     /// </summary>
     public List<DeviceProfile> Profiles { get; set; } = new();
+
+    /// <summary>
+    /// 鼠标手势：在任意程序上按住鼠标键画一笔 → 执行一个动作。
+    ///
+    /// 与「原键替换层」的分工：替换层是"这颗键从此就是这个功能"，
+    /// 手势是"按住这颗键再画个形状"。两者可以绑同一颗键 —— 手势服务
+    /// 挂在钩子最前面，真按下时它先决定要不要接管。
+    /// </summary>
+    public List<MouseGesture> Gestures { get; set; } = new();
+
+    /// <summary>手势功能的全局选项（开关、轨迹、阈值）。</summary>
+    public GestureOptions GestureOptions { get; set; } = new();
 
     public KeyBinding? FindBinding(string combo) =>
         Keys.FirstOrDefault(k => string.Equals(k.Combo, combo, StringComparison.OrdinalIgnoreCase));

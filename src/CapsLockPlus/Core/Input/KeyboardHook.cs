@@ -71,6 +71,25 @@ public sealed class KeyboardHook : IDisposable
     /// </summary>
     public event Func<int, bool, bool, bool>? MouseButtonEvent;
 
+    /// <summary>
+    /// 手势的**前置**鼠标按键回调：(vk, down, injected) → 是否吞掉。
+    ///
+    /// 必须先于 <see cref="MouseButtonEvent"/> 触发：用户把侧键配成手势起点时，
+    /// 这颗键就不该再走"改键 / 层内动作"那套逻辑，否则同一次按下会既开始画手势
+    /// 又执行一遍绑定。返回 true 时后面的回调一概不跑，事件直接吞掉。
+    ///
+    /// 注入事件也会送进来（injected = true），由手势服务自己决定放行 ——
+    /// 这样"识别失败时补发的单击"不会被当成用户又按了一次。
+    /// </summary>
+    public Func<int, bool, bool, bool>? GestureButtonEvent;
+
+    /// <summary>
+    /// 手势的前置滚轮回调：(方向, injected, 是否水平) → 是否吞掉。
+    /// 方向：垂直 +1 上滚 / -1 下滚；水平 +1 右拨 / -1 左拨。
+    /// 与 <see cref="WheelEvent"/> 的区别同按键：手势优先，没接手才轮到改键/滚动逻辑。
+    /// </summary>
+    public Func<int, bool, bool, bool>? GestureWheelEvent;
+
     private HookProc? _mouseProc;
     private IntPtr _mouseHook = IntPtr.Zero;
 
@@ -351,7 +370,14 @@ public sealed class KeyboardHook : IDisposable
                 {
                     int delta = (short)((data.mouseData >> 16) & 0xFFFF);
                     if (delta != 0)
+                    {
+                        /* 手势优先：按住起始键时滚轮可能是一条手势。
+                         * 手势没接手才往下走原有的滚动逻辑。 */
+                        if (GestureWheelEvent is { } gestureWheel
+                            && gestureWheel(delta > 0 ? 1 : -1, false, false))
+                            return new IntPtr(1);
                         WheelEvent?.Invoke(delta > 0 ? 1 : -1, false, false);
+                    }
                 }
             }
             else if (msg == WM_MOUSEHWHEEL)
@@ -367,10 +393,13 @@ public sealed class KeyboardHook : IDisposable
                 int delta = (short)((data.mouseData >> 16) & 0xFFFF);
                 if (delta != 0)
                 {
+                    bool injected = data.dwExtraInfo == InputSender.InjectionTag;
+                    if (GestureWheelEvent is { } gestureWheel
+                        && gestureWheel(delta > 0 ? 1 : -1, injected, true))
+                        return new IntPtr(1);
                     int wheelVk = delta > 0 ? VK.WheelRight : VK.WheelLeft;
                     if (MouseButtonEvent is { } wheelHandler)
                     {
-                        bool injected = data.dwExtraInfo == InputSender.InjectionTag;
                         bool swallowed = wheelHandler(wheelVk, true, injected);
                         wheelHandler(wheelVk, false, injected);
                         if (swallowed) return new IntPtr(1);
@@ -379,6 +408,14 @@ public sealed class KeyboardHook : IDisposable
             }
             else if (TryMouseButton(msg, lParam, out int vk, out bool down, out var data))
             {
+                bool injected = data.dwExtraInfo == InputSender.InjectionTag;
+
+                /* 手势优先级最高：起点键一旦被某条手势占用，就由手势服务接管
+                 * 这颗键的按下/抬起（识别失败时它会补发一次单击，用户不会
+                 * 丢掉"右键菜单"这类基本操作）。 */
+                if (GestureButtonEvent is { } gestureButton && gestureButton(vk, down, injected))
+                    return new IntPtr(1);
+
                 /* Qbar 的"点面板外面就收起"只关心按下，且**只认真人操作** ——
                  * 自己注入的点击不能把面板关掉。 */
                 if (down && msg is WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN
@@ -392,7 +429,6 @@ public sealed class KeyboardHook : IDisposable
                  * 观察必须先看到原始事件。 */
                 if (MouseButtonEvent is { } handler)
                 {
-                    bool injected = data.dwExtraInfo == InputSender.InjectionTag;
                     if (handler(vk, down, injected)) return new IntPtr(1);
                 }
             }

@@ -11,7 +11,7 @@
 >
 > [简体中文](README.md) ｜ **English**
 
-**Version v5.0.3** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
+**Version v5.1.0** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
 
 > ### ⚠️ You must install the .NET 10 Desktop Runtime first
 >
@@ -47,7 +47,7 @@ Release it and everything is back to normal.
 | Mouse | Directional movement (hold to accelerate), buttons, wheel, speed steps; **mouse left/right/middle/side 1/side 2 can be remapped and used as send targets** |
 | Qbar | One box for search / launch / open URL / math, **299 built-in search engines (298 with built-in icons)**; URL keywords such as `bili` expand into the full address in the box |
 | Macros | Record keystrokes into editable steps and bind them anywhere; **keys show on screen while recording**; optional fixed delay for even pacing |
-| System | Media keys, volume, brightness, calculator / Explorer / Task Manager, lock screen, screenshot |
+| System | Media keys, volume, brightness, **send a key sequence (e.g. `ctrl+t ctrl+w`)**, calculator / Explorer / Task Manager, lock screen, screenshot |
 | OSD | Volume and brightness bars **pixel-aligned with Windows 11** (see section 11) |
 | Data safety | Local data, backups and exports are **AES-256-GCM encrypted** by default; WebDAV sync; GitHub token travels with encrypted backups |
 | Updates | Built-in updater (GitHub Releases), resumable retries, SHA-256 verification |
@@ -73,9 +73,9 @@ file in any folder:
 | Your system | Download | Runtime |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+, **64-bit** (most PCs) | `KeyboardEnhance.exe` | Requires the .NET 10 Desktop Runtime |
-| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.0.3-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
-| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.0.3-x64-Win7-SelfContained.exe` | **No runtime needed** |
-| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.0.3-x86-Win7-SelfContained.exe` | **No runtime needed** |
+| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.1.0-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
+| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.1.0-x64-Win7-SelfContained.exe` | **No runtime needed** |
+| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.1.0-x86-Win7-SelfContained.exe` | **No runtime needed** |
 
 > GitHub rewrites non-alphanumeric characters in asset filenames to dots, hence the
 > `x86 / x64 / Win7 / SelfContained` suffixes on the release page.
@@ -447,7 +447,41 @@ to 10% and can be overridden per binding; hold to repeat.
 
 ---
 
-## 12. The UI
+## 12. Mouse gestures (v5.1)
+
+Hold the right button, the middle button, or either side button, draw a shape, release — the action runs.
+Gestures share the same action catalogue as key bindings, with no WGestures-style tool needed.
+
+| Trigger | How it works |
+| --- | --- |
+| Stroke | Hold the start button, draw a shape, release |
+| Corner click | Move to a screen corner (24 px hot zone by default) and click the button |
+| Hold + wheel | While holding the button, turn the wheel one notch (up / down / left / right) |
+| Single click | Press and release without moving |
+
+- Matching: the path is normalised to 1000x1000, resampled to 32 points and compared by mean distance; default tolerance 0.26. A stroke must travel at least 30 px, otherwise it counts as a click.
+- The physical press/release is swallowed so releasing never opens a context menu; when nothing matches, a real click is replayed.
+- *Show trail* draws the stroke on a click-through topmost overlay and flashes the gesture name on a hit.
+- *Only in this app* accepts a full exe path or a process name, case-insensitive; blank means everywhere.
+
+### Migrating from WGestures
+
+Use **Import from WGestures** and pick `%APPDATA%\WGestures2\<version>\gestures.json`.
+
+| WGestures | Here |
+| --- | --- |
+| MOUSE:1 / 2 / 3 / 4 | Right / middle / side 1 / side 2 |
+| Stroke | Stroke |
+| MoveToEdgeCorner | Corner click |
+| VSCROLL +-120 | Hold + wheel |
+
+SendKeys becomes *send key sequence*, RunApp becomes *run program*, WebSearch becomes *open URL*, WindowControl becomes window actions, Cmd becomes `cmd.exe /c ...`; Lua scripts are skipped and counted in the result.
+
+The first launch imports an existing WGestures file once when the gesture list is still empty (the source path is remembered, so deleting gestures will not resurrect them).
+
+![Mouse gestures](docs/screenshots/gestures.png)
+
+## 13. The UI
 
 | Page | Purpose |
 | --- | --- |
@@ -458,6 +492,7 @@ to 10% and can be overridden per binding; hold to repeat.
 | Clipboard | Both clipboards, recent history |
 | Macros | Record, edit, bind |
 | Trigger keys & layers | Triggers, thresholds, tap actions, 10 layers and their sub-layers |
+| Mouse gestures | Draw with a mouse button to run an action; trail overlay, hot corners, hold + wheel, per-app scope, one-click WGestures import (v5.1) |
 | Sync & backup | WebDAV, backup list, import/export, startup password lives under Settings |
 | Settings | Autostart, tray, tap behaviour, repeat, animations, feedback, mouse, volume/brightness steps, theme, language (Chinese / English, instant), startup password, snippets, base remap |
 | Test | Live hook status, current layer, recent keys, matched actions, diagnostics |
@@ -475,7 +510,7 @@ what the last key resolves to, and can copy a diagnostic report.
 
 ---
 
-## 13. Data, backup, sync and migration
+## 14. Data, backup, sync and migration
 
 | Content | Location |
 | --- | --- |
@@ -516,7 +551,7 @@ listed for manual confirmation.
 
 ---
 
-## 14. Updates
+## 15. Updates
 
 *About* has two entry points:
 
@@ -534,7 +569,7 @@ its own HTTP client (5-minute timeout, up to 3 retries) for flaky networks.
 
 ---
 
-## 15. Differences from upstream
+## 16. Differences from upstream
 
 Kept: all Caps-combo semantics, both keymap presets, Qbar search/launch/math, standalone
 clipboards, window binding, Tab evaluation and hotstrings.
@@ -554,7 +589,7 @@ clipboards, window binding, Tab evaluation and hotstrings.
 
 ---
 
-## 16. FAQ
+## 17. FAQ
 
 **Double-clicking does nothing.** The .NET 10 Desktop Runtime is missing — see the top of
 this file.
@@ -582,7 +617,7 @@ whichever hooks first. Disable the overlapping hotkeys in one of them.
 
 ---
 
-## 17. Build from source
+## 18. Build from source
 
 Requires the **.NET 10 SDK**. See [BUILD.md](BUILD.md).
 
@@ -593,14 +628,14 @@ powershell -ExecutionPolicy Bypass -File tools\release.ps1
 # All command-line switches
 dist\KeyboardEnhance.exe --help
 
-# Self-test: ~3930 checks (varies slightly by system environment) (key model, expressions, Qbar, chips, migration, hooks,
+# Self-test: ~3946 checks (varies slightly by system environment) (key model, expressions, Qbar, chips, migration, hooks,
 # combo state machine, OSD ratios, localisation, snippets, popups, window cache, UIA, shutdown)
 dist\KeyboardEnhance.exe --selftest
 
 # Hook-chain diagnostics (injects an F24 probe, 6/6 expected)
 dist\KeyboardEnhance.exe --diag
 
-# Off-screen render of every page (docs / regression; 46 images)
+# Off-screen render of every page (docs / regression; 47 images)
 dist\KeyboardEnhance.exe --render docs\screenshots
 ```
 
@@ -658,7 +693,7 @@ Design notes:
 
 ---
 
-## 18. Performance
+## 19. Performance
 
 | Metric | Measured |
 | --- | --- |
@@ -666,7 +701,7 @@ Design notes:
 | Idle CPU | 0 % |
 | Tray footprint | ~60 MB private |
 | Executable | 2.9 MB (single file, framework-dependent) |
-| Self-test | ~3930 checks, all passing |
+| Self-test | ~3946 checks, all passing |
 
 The hot path is micro-optimised because the hook has a hard 300 ms budget: trigger matching
 uses a cached `HashSet<int>`, layer lookup a prebuilt case-insensitive dictionary, and layer
@@ -674,7 +709,7 @@ key lists are reused instead of reallocated.
 
 ---
 
-## 19. License
+## 20. License
 
 Upstream CapsLock+ is GPL-3.0; this derivative is **GPL-3.0** as well. See [LICENSE](LICENSE).
 The upstream sources are kept in `upstream/` for reference.

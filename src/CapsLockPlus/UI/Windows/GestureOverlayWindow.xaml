@@ -1,0 +1,45 @@
+<Window x:Class="CapsLockPlus.UI.Windows.GestureOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="手势轨迹"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Focusable="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        IsHitTestVisible="False"
+        SnapsToDevicePixels="True">
+    <!--
+        全屏透明覆盖层：只负责"看见"，不接任何输入。
+        点击穿透靠 WS_EX_TRANSPARENT（见 code-behind），IsHitTestVisible 只挡住
+        WPF 内部的命中测试，挡不住窗口本身。
+    -->
+    <Canvas x:Name="Root" Background="Transparent" IsHitTestVisible="False">
+        <Polyline x:Name="Trail"
+                  Stroke="#3B82F6"
+                  StrokeThickness="3"
+                  StrokeLineJoin="Round"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  IsHitTestVisible="False" />
+
+        <Border x:Name="LabelBox"
+                Canvas.Left="0" Canvas.Top="0"
+                Padding="10,5"
+                CornerRadius="8"
+                Background="#E6111827"
+                BorderBrush="#553B82F6"
+                BorderThickness="1"
+                Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <TextBlock x:Name="LabelText"
+                       Foreground="#FFF8FAFC"
+                       FontSize="13"
+                       FontWeight="SemiBold" />
+        </Border>
+    </Canvas>
+</Window>

@@ -27,6 +27,12 @@ namespace CapsLockPlus.Core.Input;
 public sealed partial class HotkeyEngine : IDisposable
 {
     private readonly KeyboardHook _hook = new();
+
+    /// <summary>
+    /// 底层钩子（手势服务要挂 <see cref="KeyboardHook.GestureButtonEvent"/>）。
+    /// 钩子归引擎所有：引擎负责安装/自愈，外部只订阅事件，不负责生命周期。
+    /// </summary>
+    public KeyboardHook Hook => _hook;
     private readonly ActionQueue _queue;
     private readonly Func<AppSettings> _settings;
     private readonly Func<string, string, bool> _invoke;

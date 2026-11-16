@@ -1,0 +1,277 @@
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.GesturesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
+             FontFamily="{StaticResource Font.Ui}">
+    <UserControl.Resources>
+        <!-- 列表行：整行可点。
+             Button.Base 的模板把 ContentPresenter 写死成 HorizontalAlignment=Center，
+             行内容于是被居中成一小坨；这里换成"内容拉满"的模板，整行才是统一宽度。 -->
+        <Style x:Key="Button.GestureRow" TargetType="Button" BasedOn="{StaticResource Button.Ghost}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Brush.Hover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    <Grid Margin="24,4,20,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部说明 -->
+        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16,13" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <Border Width="34" Height="36" CornerRadius="10" Background="{DynamicResource Brush.AccentSoft}">
+                        <TextBlock Text="&#xE962;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                                   Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{loc:T '鼠标手势：按住鼠标键画一笔，执行一个动作'}" Style="{StaticResource Text.H3}" />
+                        <TextBlock Text="{loc:T '在任意程序里按住右键 / 中键 / 侧键画个形状，松手即执行。不用离开键盘，也不依赖别的软件。'}"
+                                   Style="{StaticResource Text.Tertiary}" Margin="0,3,0,0" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="{loc:T '从 WGestures 导入'}" Style="{StaticResource Button.Ghost}"
+                            Padding="12,7" Click="OnImportClick" Margin="0,0,8,0" />
+                    <Button Content="{loc:T '录制新手势'}" Style="{StaticResource Button.Primary}"
+                            Padding="14,7" Click="OnRecordNewClick" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 全局选项条 -->
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="16,10" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <CheckBox x:Name="EnabledBox" Style="{StaticResource CheckBox.Text}"
+                          Content="{loc:T '启用手势'}" VerticalAlignment="Center"
+                          Checked="OnOptionsChanged" Unchecked="OnOptionsChanged" />
+                <CheckBox x:Name="TrailBox" Style="{StaticResource CheckBox.Text}" Margin="18,0,0,0"
+                          Content="{loc:T '显示轨迹'}" VerticalAlignment="Center"
+                          Checked="OnOptionsChanged" Unchecked="OnOptionsChanged" />
+
+                <TextBlock Text="{loc:T '笔画最短'}" Style="{StaticResource Text.Secondary}" Margin="24,0,6,0"
+                           VerticalAlignment="Center" />
+                <TextBox x:Name="MinMoveBox" Style="{StaticResource TextBox.Base}" Width="62"
+                         MinHeight="30" Padding="8,2" VerticalContentAlignment="Center"
+                         TextChanged="OnOptionsTextChanged" />
+                <TextBlock Text="{loc:T '像素'}" Style="{StaticResource Text.Tertiary}" Margin="6,0,0,0"
+                           VerticalAlignment="Center" />
+
+                <TextBlock Text="{loc:T '匹配容差'}" Style="{StaticResource Text.Secondary}" Margin="20,0,6,0"
+                           VerticalAlignment="Center" />
+                <TextBox x:Name="ThresholdBox" Style="{StaticResource TextBox.Base}" Width="62"
+                         MinHeight="30" Padding="8,2" VerticalContentAlignment="Center"
+                         TextChanged="OnOptionsTextChanged" />
+
+                <TextBlock x:Name="SummaryText" Style="{StaticResource Text.Tertiary}" Margin="24,0,0,0"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="400" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左：手势列表 -->
+            <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0" Padding="16,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <TextBox x:Name="FilterBox" Style="{StaticResource TextBox.Base}" MinHeight="32"
+                                 Padding="32,4,10,4" VerticalContentAlignment="Center"
+                                 TextChanged="OnFilterChanged" />
+                        <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   FontSize="13" Margin="11,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.TextTertiary}" IsHitTestVisible="False" />
+                        <TextBlock x:Name="FilterHint" Text="{loc:T '筛选手势…'}" Margin="33,0,10,0"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextTertiary}"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=FilterBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+                    <ScrollViewer x:Name="ListScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="GestureList" HorizontalAlignment="Stretch">
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource Button.GestureRow}" HorizontalAlignment="Stretch"
+                                            Padding="10,8" Margin="0,0,0,4" Click="OnPickGesture">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0" Width="34" Height="34" CornerRadius="9"
+                                                    Background="{DynamicResource Brush.AccentSoft}">
+                                                <TextBlock Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                           FontSize="14" Foreground="{DynamicResource Brush.Accent}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Title}" Style="{StaticResource Text.Body}"
+                                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Text.Tertiary}"
+                                                           Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+
+                                            <TextBlock Grid.Column="2" Text="{Binding Badge}" Style="{StaticResource Text.Tertiary}"
+                                                       VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <TextBlock Grid.Row="2" x:Name="EmptyHint" Margin="0,16,0,4"
+                               Text="{loc:T '还没有手势。点右上角「录制新手势」，或从 WGestures 导入现有配置。'}"
+                               Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Visibility="Collapsed" />
+                </Grid>
+            </Border>
+
+            <!-- 右：编辑器 -->
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="18,16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="{loc:T '手势详情'}" Style="{StaticResource Text.H3}" Margin="0,0,0,12" />
+
+                        <TextBlock Text="{loc:T '名称'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
+                        <TextBox x:Name="NameBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
+                                 Padding="10,4" VerticalContentAlignment="Center" Margin="0,0,0,12" />
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{loc:T '起始键'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
+                                <ComboBox x:Name="ButtonBox" Style="{StaticResource ComboBox.Base}"
+                                          SelectionChanged="OnEditorChanged" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{loc:T '触发方式'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
+                                <ComboBox x:Name="KindBox" Style="{StaticResource ComboBox.Base}"
+                                          SelectionChanged="OnEditorChanged" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid x:Name="WheelRow" Margin="0,0,0,12" Visibility="Collapsed">
+                            <TextBlock Text="{loc:T '滚轮方向'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
+                            <ComboBox x:Name="WheelBox" Style="{StaticResource ComboBox.Base}" Margin="0,22,0,0" />
+                        </Grid>
+
+                        <Grid x:Name="CornerRow" Margin="0,0,0,12" Visibility="Collapsed">
+                            <TextBlock Text="{loc:T '感应角落'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
+                            <ComboBox x:Name="CornerBox" Style="{StaticResource ComboBox.Base}" Margin="0,22,0,0" />
+                        </Grid>
+
+                        <StackPanel x:Name="StrokeRow" Margin="0,0,0,12">
+                            <TextBlock Text="{loc:T '笔画'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
+                            <Border CornerRadius="10" Background="{DynamicResource Brush.SurfaceAlt}"
+                                    BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Height="120">
+                                <Canvas x:Name="PreviewCanvas" ClipToBounds="True">
+                                    <Polyline x:Name="PreviewLine" Stroke="{DynamicResource Brush.Accent}"
+                                              StrokeThickness="3" StrokeLineJoin="Round"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                </Canvas>
+                            </Border>
+                            <Button Content="{loc:T '按住鼠标键画一笔（重新录制）'}" Style="{StaticResource Button.Ghost}"
+                                    Padding="12,7" Margin="0,8,0,0" HorizontalAlignment="Left"
+                                    Click="OnRecordClick" />
+                        </StackPanel>
+
+                        <TextBlock Text="{loc:T '动作'}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
+                        <ComboBox x:Name="ActionBox" Style="{StaticResource ComboBox.Base}"
+                                  SelectionChanged="OnActionChanged" Margin="0,0,0,8" />
+
+                        <TextBox x:Name="ArgBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
+                                 Padding="10,4" VerticalContentAlignment="Center"
+                                 Margin="0,0,0,12" Visibility="Collapsed" />
+
+                        <TextBlock Text="{loc:T '只在指定程序生效（留空 = 全部程序）'}"
+                                   Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="AppBox" Grid.Column="0" Style="{StaticResource TextBox.Base}" MinHeight="34"
+                                     Padding="10,4" VerticalContentAlignment="Center" />
+                            <Button Grid.Column="1" Content="{loc:T '浏览…'}" Style="{StaticResource Button.Ghost}"
+                                    Padding="10,5" Margin="8,0,0,0" Click="OnBrowseApp" />
+                        </Grid>
+
+                        <TextBlock x:Name="EditorNote" Style="{StaticResource Text.Tertiary}"
+                                   TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Button Content="{loc:T '保存'}" Style="{StaticResource Button.Primary}"
+                                    Padding="18,7" Click="OnSaveClick" />
+                            <Button Content="{loc:T '新建'}" Style="{StaticResource Button.Ghost}"
+                                    Padding="12,7" Margin="8,0,0,0" Click="OnNewClick" />
+                            <Button Content="{loc:T '删除'}" Style="{StaticResource Button.Danger}"
+                                    Padding="12,7" Margin="8,0,0,0" Click="OnDeleteClick" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

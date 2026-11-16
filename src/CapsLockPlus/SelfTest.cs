@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
@@ -70,6 +70,9 @@ public static partial class SelfTest
 
         Section("按键模型");
         TestKeyNames();
+
+        Section("鼠标手势");
+        TestGestures();
 
         Section("搜索引擎");
         TestSearchEngines();

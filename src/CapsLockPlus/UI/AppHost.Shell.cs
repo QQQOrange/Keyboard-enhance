@@ -88,6 +88,7 @@ public sealed partial class AppHost
         _disposed = true;
         _watchdog.Dispose();
         _clipboard.Dispose();
+        try { Gestures.Dispose(); } catch { }
         Engine.Dispose();
         _tray?.Dispose();
         _queue.Dispose();

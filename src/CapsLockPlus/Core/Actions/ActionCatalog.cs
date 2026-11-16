@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using CapsLockPlus.Core.Input;
 using CapsLockPlus.Core.Text;
 using CapsLockPlus.Core.Windows;
@@ -539,6 +539,22 @@ public sealed class ActionCatalog
             },
             needsArg: false, shortTitle: "自定义");
 
+        // ---------------- 按键序列 ----------------
+        //
+        // 一段命令里发好几个组合键，例如 ctrl+t ctrl+w 或 ctrl+v enter。
+        // 手势导入器把 WGestures 的 SendKeys 翻译成这个动作 —— 单靠
+        // customKey 只能发一个组合键，"粘贴后回车"这类就还原不出来了。
+
+        c.Add("sendKeys", "系统功能", "发送按键序列",
+            "用空格分开多段，例如 ctrl+t 或 ctrl+v enter",
+            a =>
+            {
+                string spec = (a ?? "").Trim();
+                if (spec.Length == 0) return ctx.MissingArg("要发送的按键，例如 ctrl+t");
+                return SendKeySequence(spec);
+            },
+            needsArg: true, argHint: "ctrl+t ctrl+w", shortTitle: "按键序列");
+
         // ---------------- 输入文本 ----------------
         //
         // 把一段预设文字直接打到**当前焦点所在的输入框**里。
@@ -631,6 +647,70 @@ public sealed class ActionCatalog
 
         if (shortName != null) return shortName;
         return label.Length <= 5 ? label : label[..5];
+    }
+
+    /// <summary>
+    /// "ctrl+shift+k space enter" → 依次按下。
+    ///
+    /// 段与段之间留 40 毫秒：目标窗口收到第一段后要先处理完（刷新、弹窗、
+    /// 移动焦点），第二段紧接着到，很容易被并成同一个组合键。
+    /// </summary>
+    private static bool SendKeySequence(string spec)
+    {
+        int sent = 0;
+        var tokens = spec.Split(new[] { ' ', ',', ';', '，', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var token in tokens)
+        {
+            var parts = token.Split('+', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) continue;
+
+            var mods = new List<int>();
+            int i = 0;
+            for (; i < parts.Length - 1; i++)
+            {
+                int m = ModifierVk(parts[i]);
+                if (m == 0) break;
+                mods.Add(m);
+            }
+
+            int vk = VkFor(string.Join("+", parts[i..]));
+            if (vk == 0) continue;                 // 不认识的键跳过，别把整串废掉
+
+            InputSender.WithModifiers(mods, () => InputSender.Tap(vk));
+            sent++;
+            System.Threading.Thread.Sleep(40);
+        }
+        return sent > 0;
+    }
+
+    private static int ModifierVk(string name) => name.Trim().ToLowerInvariant() switch
+    {
+        "ctrl" or "control" or "lctrl" => VK.Control,
+        "shift" or "lshift" => VK.Shift,
+        "alt" or "lalt" => VK.Menu,
+        "win" or "lwin" => VK.LWin,
+        _ => 0
+    };
+
+    private static int VkFor(string name)
+    {
+        string key = name.Trim().ToLowerInvariant();
+        int special = key switch
+        {
+            "pageup" or "pgup" => VK.PageUp,
+            "pagedown" or "pgdn" => VK.PageDown,
+            "printscreen" or "prtsc" => 0x2C,
+            "volumemute" => 0xAD,
+            "volumedown" => 0xAE,
+            "volumeup" => 0xAF,
+            "medianext" => 0xB0,
+            "mediaprev" => 0xB1,
+            "mediastop" => 0xB2,
+            "mediaplay" or "mediaplaypause" => 0xB3,
+            _ => 0
+        };
+        if (special != 0) return special;
+        return KeyName.VkOf(key) ?? 0;
     }
 
     private static bool Send(int vk) { InputSender.Tap(vk); return true; }

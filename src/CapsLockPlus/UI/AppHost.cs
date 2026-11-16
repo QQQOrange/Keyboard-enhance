@@ -39,6 +39,9 @@ public sealed partial class AppHost : IDisposable
     public ClipboardService Clipboard { get; }
     public WindowBindingService Bindings { get; }
     public QbarService Qbar { get; }
+
+    /// <summary>鼠标手势：钩子里接管起始键、识别笔画、执行动作。</summary>
+    public GestureService Gestures { get; }
     public bool Enabled => Engine.Enabled;
     public bool HookAlive => Engine.IsHookAlive;
 
@@ -113,6 +116,11 @@ public sealed partial class AppHost : IDisposable
         Engine = new HotkeyEngine(_queue, () => Settings, InvokeAction);
         // 让引擎知道宏播放器：播放中按 Esc 需要能取消
         Engine.MacroPlayer = Context.MacroPlayer;
+
+        /* 手势挂在引擎自己的钩子上：订阅是幂等的，钩子还没安装也没关系，
+         * 安装之后事件自然就来了。 */
+        Gestures = new GestureService(this);
+        Gestures.Attach();
 
         /* 宏播放是异步的：`PlayMacro` 早就返回了，失败只能事后弹。
          * 复用动作失败那条出口（同一个 Toast、同一个 ✗ 前缀），
