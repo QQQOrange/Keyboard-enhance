@@ -280,6 +280,20 @@ public static class InputSender
     private static readonly Dictionary<int, long> InjectedAt = new();
     private static readonly object InjectedGate = new();
 
+    /* 「还没回来的注入」账本。
+     *
+     * 30ms 的时间窗对键盘够用（注入是同步回调的），对鼠标却不一定：
+     * 鼠标驱动常驻软件会把 SendInput 的事件截下来、抹掉 dwExtraInfo 再重新发一遍，
+     * 这个来回可能几十毫秒；期间界面线程要是正忙（播放宏、画 OSD），钩子排队更久，
+     * 30ms 就漏了 —— 表现正是"按侧键跑了中键的宏"。
+     *
+     * 所以改成配对记账：每注入一个键记一笔，等它回到钩子时销账；
+     * 带标记回来（正常情况）销一笔，不带标记回来（驱动抹了标记）也销一笔并放行。
+     * 只有账上确实有"还没回来的注入"时才拦，不会误伤正常的连按。 */
+    private const int EchoWindowMs = 1500;
+    private const int EchoPendingMax = 4;
+    private static readonly Dictionary<int, Queue<long>> InjectedPending = new();
+
     /// <summary>这个键是不是刚刚由我们注入过（用来识别回声）。</summary>
     public static bool WasInjectedRecently(int vk, int withinMs = 30)
     {
@@ -287,6 +301,57 @@ public static class InputSender
         {
             if (!InjectedAt.TryGetValue(vk, out long at)) return false;
             return Environment.TickCount64 - at <= withinMs;
+        }
+    }
+
+    /// <summary>账上还有几笔"注入后没回来"的记录（诊断用）。</summary>
+    public static int PendingEchoCount(int vk)
+    {
+        lock (InjectedGate)
+        {
+            return InjectedPending.TryGetValue(vk, out var q) ? q.Count : 0;
+        }
+    }
+
+    /// <summary>
+    /// 我们注入的键回到了钩子（带标记）：把对应的"待回声"账销掉。
+    ///
+    /// 不销账的话，之后用户真的按一次这个键会被当成回声吞掉一次 ——
+    /// 而正常情况（标记没丢）恰恰是最常见的路径。
+    /// </summary>
+    public static void MarkInjectedEcho(int vk)
+    {
+        lock (InjectedGate)
+        {
+            if (!InjectedPending.TryGetValue(vk, out var q) || q.Count == 0) return;
+            q.Dequeue();
+            if (q.Count == 0) InjectedPending.Remove(vk);
+        }
+    }
+
+    /// <summary>
+    /// 这个键带着"没有注入标记"回来，但账上还有未销的注入 —— 判定为回声。
+    ///
+    /// 认了就从账上销一笔，返回 true（调用方放行，不参与改键 / 替换层）。
+    /// 账上没有就返回 false，让真正的按键照常走规则。
+    /// </summary>
+    public static bool ConsumeInjectedEcho(int vk, int withinMs = EchoWindowMs)
+    {
+        lock (InjectedGate)
+        {
+            if (!InjectedPending.TryGetValue(vk, out var q) || q.Count == 0) return false;
+
+            long now = Environment.TickCount64;
+            while (q.Count > 0 && now - q.Peek() > withinMs) q.Dequeue();
+            if (q.Count == 0)
+            {
+                InjectedPending.Remove(vk);
+                return false;
+            }
+
+            q.Dequeue();
+            if (q.Count == 0) InjectedPending.Remove(vk);
+            return true;
         }
     }
 
@@ -382,13 +447,11 @@ public static class InputSender
     private static void SendKey(int vk, bool up)
     {
         if (SenderForTest is { } spy) { spy(vk, up); return; }
-        lock (InjectedGate)
-        {
-            /* 只留最近 128 条：这个表只是"回声识别"，不需要历史。 */
-            if (InjectedAt.Count > 128) InjectedAt.Clear();
-            InjectedAt[vk] = Environment.TickCount64;
-        }
 
+        /* 与鼠标走同一本账：注入时记一笔（InjectedAt + 待回声队列），
+         * 回来的那一颗再由钩子销账。键盘回声一般是同步的，但这本账
+         * 也给"别的工具复制键盘事件"留了兜底。 */
+        NoteInjected(vk);
         Send(KeyInput(vk, up));
     }
 
@@ -1082,14 +1145,33 @@ public static class InputSender
     public static void ReleaseInput(int vk) => Press(vk, down: false);
 
     /// <summary>记一条"这个键刚被我们注入过"（回声识别用；鼠标键也要记）。</summary>
-    private static void NoteInjected(int vk)
+    private static void NoteInjected(int vk, bool force = false)
     {
         lock (InjectedGate)
         {
+            long now = Environment.TickCount64;
             if (InjectedAt.Count > 128) InjectedAt.Clear();
-            InjectedAt[vk] = Environment.TickCount64;
+            InjectedAt[vk] = now;
+
+            /* 干跑（自检 / 渲染）根本没把事件发出去，也就不会有回声回来。
+             * 这时候还记账的话，后面真正的按键会被当成"还没回来的回声"吞掉。 */
+            if (DryRun && !force) return;
+
+            if (!InjectedPending.TryGetValue(vk, out var q))
+            {
+                q = new Queue<long>();
+                InjectedPending[vk] = q;
+            }
+
+            /* 超时没回来的注入不能留着 —— 否则用户真按一次会被当成回声吞掉。 */
+            while (q.Count > 0 && now - q.Peek() > EchoWindowMs) q.Dequeue();
+            q.Enqueue(now);
+            while (q.Count > EchoPendingMax) q.Dequeue();
         }
     }
+
+    /// <summary>自检用：干跑下也记一笔"待回声"，用来验证配对记账。</summary>
+    internal static void NoteInjectedForTest(int vk) => NoteInjected(vk, force: true);
 
     /// <summary>相对移动鼠标（像素）。</summary>
     public static void MoveRelative(int dx, int dy)

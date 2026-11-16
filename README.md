@@ -10,7 +10,7 @@
 >
 > **简体中文** ｜ [English](README.en.md)
 
-**版本 v5.0.1** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
+**版本 v5.0.2** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -71,9 +71,9 @@ dotnet --list-runtimes | findstr WindowsDesktop
 | 你的系统 | 下载哪个 | 运行时要求 |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
-| Windows 10 1809+，**32 位** | `KeyboardEnhance-5.0.1-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
-| **Windows 7 SP1**，64 位 | `KeyboardEnhance-5.0.1-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
-| **Windows 7 SP1**，32 位 | `KeyboardEnhance-5.0.1-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-5.0.2-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-5.0.2-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-5.0.2-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
 
 > 发布页文件名用 `x86 / x64 / Win7 / SelfContained` 标注，是因为 GitHub 会自动把资产文件名里的
 > 非字母数字字符（含中文）改写成点号；本地构建产物可以保留中文名，不影响使用。
@@ -866,7 +866,7 @@ powershell -ExecutionPolicy Bypass -File tools\release.ps1
 # 用法总览（自检 / 诊断 / 出图 / 界面，全部开关都在这里）
 dist\KeyboardEnhance.exe --help
 
-# 自检：3920 项左右（随系统环境浮动），覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、
+# 自检：3929 项左右（随系统环境浮动），覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、
 # 横条比例穷举、界面多语言、片段匹配、浮层定位、窗口搜索缓存、UIA 超时、关闭行为
 dist\KeyboardEnhance.exe --selftest
 
@@ -914,7 +914,7 @@ dist\KeyboardEnhance.exe --render docs\screenshots
 > 永远一致。
 
 ```powershell
-# 自检（3920 项左右（随系统环境浮动），覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、横条比例穷举、界面多语言、片段匹配、浮层定位、关闭行为）
+# 自检（3929 项左右（随系统环境浮动），覆盖按键模型、表达式、Qbar、标签、迁移、钩子、组合键状态机、横条比例穷举、界面多语言、片段匹配、浮层定位、关闭行为）
 dist\KeyboardEnhance.exe --selftest
 
 # 离屏渲染所有界面（文档/回归用，不受桌面遮挡与 DPI 影响）

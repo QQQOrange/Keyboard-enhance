@@ -1671,6 +1671,54 @@ public static partial class SelfTest
             Check("鼠标改键：自己注入的中键不会再被改键（侧键→中键→R）", !remappedEcho, "");
         }
 
+        /* ---- 驱动抹标记 + 事件排队：更长窗口的回声配对 ---- */
+        {
+            /* 30ms 时间窗对鼠标不够用：罗技/雷蛇那类常驻软件会把注入的事件
+             * 截下来、抹掉 dwExtraInfo 再重发，来回几十毫秒；界面线程忙的时候
+             * 钩子排队更久。这里用"注入记一笔、回来销一笔"的配对来复现。 */
+            var sEcho2 = DefaultSettings.Create();
+            foreach (var t in sEcho2.Triggers) t.Enabled = false;
+            sEcho2.Replacements.Clear();
+            sEcho2.Replacements.Add(new KeyBinding { Combo = "caps_mouseMiddle", Action = "key:0D" });
+
+            var eEcho2 = new HotkeyEngine(new ActionQueue(), () => sEcho2, (_, _) => true);
+            bool dryEcho = Core.Input.InputSender.DryRun;
+            Core.Input.InputSender.DryRun = true;
+            try
+            {
+                Core.Input.InputSender.NoteInjectedForTest(0x71);
+                Check("回声记账：注入后账上有一笔",
+                    Core.Input.InputSender.PendingEchoCount(0x71) == 1, "");
+                Check("回声记账：回来一次就销账",
+                    Core.Input.InputSender.ConsumeInjectedEcho(0x71), "");
+                Check("回声记账：只销一笔，不会多销",
+                    !Core.Input.InputSender.ConsumeInjectedEcho(0x71), "");
+
+                Core.Input.InputSender.NoteInjectedForTest(0x71);
+                Core.Input.InputSender.MarkInjectedEcho(0x71);
+                Check("回声记账：带标记回来也销账（不留残账）",
+                    Core.Input.InputSender.PendingEchoCount(0x71) == 0, "");
+
+                Core.Input.InputSender.NoteInjectedForTest(0x72);
+                Check("回声记账：超过窗口就不认（不会误伤真按键）",
+                    !Core.Input.InputSender.ConsumeInjectedEcho(0x72, -1), "");
+
+                /* 侧键→中键发出的一颗中键，标记被驱动抹掉、稍晚才回到钩子：
+                 * 账上还有那一笔，就该判成回声放行，不能跑中键上的宏。 */
+                Core.Input.InputSender.NoteInjectedForTest(0x04);
+                bool echoFired = eEcho2.SimulateKey(0x04, true);
+                Check("鼠标串键：驱动抹标记后回来也不触发中键的宏", !echoFired, "");
+
+                /* 账销完之后，用户真按中键必须照常触发 —— 不能被上一笔残留吃掉。 */
+                bool realFired = eEcho2.SimulateKey(0x04, true);
+                Check("鼠标串键：真按中键仍然照常触发", realFired, "");
+            }
+            finally
+            {
+                Core.Input.InputSender.DryRun = dryEcho;
+            }
+        }
+
         /* ---- 全局搜索 ---- */
         {
             var s = DefaultSettings.Create();

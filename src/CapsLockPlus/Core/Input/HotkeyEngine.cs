@@ -235,7 +235,7 @@ public sealed partial class HotkeyEngine : IDisposable
     /// 键盘有 --probe-key 可以拿配置静态判定，鼠标串键却常常取决于
     /// "系统到底报了哪个 vk / 我们的注入有没有被驱动抹掉标记" —— 那只能看现场。
     /// </summary>
-    internal void LogMouseEvent(int vk, bool down, bool injected, string? decision)
+    internal void LogMouseEvent(int vk, bool down, bool injected, string? decision, string? note = null)
     {
         if (!MouseLogOn) return;
         if (vk is < 0x01 or > 0x0B) return;          // 只记鼠标键（含滚轮左右拨）
@@ -246,6 +246,7 @@ public sealed partial class HotkeyEngine : IDisposable
             File.AppendAllText(path,
                 $"{DateTime.Now:HH:mm:ss.fff} vk=0x{vk:X2} {(down ? "↓" : "↑")} " +
                 $"inj={(injected ? 1 : 0)} {(decision == null ? "放行" : "吞：" + decision)}" +
+                (note == null ? "" : " " + note) +
                 Environment.NewLine);
             _mouseLogLines++;
         }

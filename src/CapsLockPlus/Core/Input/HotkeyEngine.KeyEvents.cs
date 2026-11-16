@@ -40,9 +40,12 @@ public sealed partial class HotkeyEngine
     private bool OnKeyEvent(int vk, bool down, bool injected)
     {
         bool swallowed = OnKeyEventCore(vk, down, injected);
-        LogMouseEvent(vk, down, injected, swallowed ? LastDecision : null);
+        LogMouseEvent(vk, down, injected, swallowed ? LastDecision : null, _echoNote);
         return swallowed;
     }
+
+    /// <summary>本次事件被判定成"注入回声"时的日志备注（只在诊断日志里用）。</summary>
+    private string? _echoNote;
 
     private bool OnKeyEventCore(int vk, bool down, bool injected)
 
@@ -50,6 +53,7 @@ public sealed partial class HotkeyEngine
         /* 每次判定先清空"上次为什么吞"，探针（--probe-key）读的就是它。
          * 只有吞键才写，放行留空。 */
         LastDecision = null;
+        _echoNote = null;
 
         /* 捕获模式：只上报、不吞键。 */
         if (CaptureMode)
@@ -58,7 +62,14 @@ public sealed partial class HotkeyEngine
             return false;
         }
 
-        if (injected && !AcceptInjectedForTest) return false;   // 自己注入的按键放行
+        if (injected)
+        {
+            /* 自己注入的键回来了（标记还在）：先销掉"待回声"那一笔，
+             * 再按老规矩放行。销账这一步不能省 —— 否则下一次真正的按键
+             * 会被当成还没回来的回声。 */
+            InputSender.MarkInjectedEcho(vk);
+            if (!AcceptInjectedForTest) return false;
+        }
 
         /* 注入标记丢了也要认出来。
          *
@@ -67,10 +78,15 @@ public sealed partial class HotkeyEngine
          * 中键）回到钩子时既没有标记、也不在 30ms 之外 —— 引擎把它当成用户真的
          * 按了中键，又跑一遍规则，表现就是"按侧键触发了绑在中键上的宏"。
          *
-         * WasInjectedRecently 是我们自己记的账（注入时按 vk 打时间戳），
-         * 与钩子带的标记无关，正好补上这个缺口。30ms 远小于人手连按两次的间隔，
-         * 不会挡住真正的重复按键。 */
-        if (!injected && InputSender.WasInjectedRecently(vk, 30)) return false;
+         * 早先只用一个 30ms 的时间窗兜底，遇到"驱动抹标记 + 界面线程忙"就会漏：
+         * 事件排队超过 30ms 才回到钩子，时间窗已经过期。现在换成配对记账
+         * （见 InputSender.NoteInjected / ConsumeInjectedEcho）：注入时记一笔，
+         * 回来时销一笔，只要账上还有就认，不再依赖两个事件挨得有多近。 */
+        if (!injected && InputSender.ConsumeInjectedEcho(vk))
+        {
+            _echoNote = "注入回声";
+            return false;
+        }
 
         _lastKeyActivity = DateTime.Now;
 
