@@ -10,7 +10,7 @@
 >
 > **简体中文** ｜ [English](README.en.md)
 
-**版本 v5.4.0** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
+**版本 v5.4.1** ｜ **Windows 10 1809+ / Windows 11（x64 / x86）· Windows 7 SP1（x64 / x86）** ｜ **单文件：Win10+ 约 2.9 MB（依赖 .NET 10 桌面运行时）/ Win7 约 140 MB / 32 位约 130 MB（自带运行时）**
 
 > ### ⚠️ 运行前必须先装 .NET 10 桌面运行时
 >
@@ -71,9 +71,9 @@ dotnet --list-runtimes | findstr WindowsDesktop
 | 你的系统 | 下载哪个 | 运行时要求 |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+，**64 位**（绝大多数电脑） | `KeyboardEnhance.exe` | 需装 .NET 10 桌面运行时（见第 1 步） |
-| Windows 10 1809+，**32 位** | `KeyboardEnhance-5.4.0-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
-| **Windows 7 SP1**，64 位 | `KeyboardEnhance-5.4.0-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
-| **Windows 7 SP1**，32 位 | `KeyboardEnhance-5.4.0-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
+| Windows 10 1809+，**32 位** | `KeyboardEnhance-5.4.1-x86-Win10-Win11.exe` | 需装 .NET 10 桌面运行时（x86） |
+| **Windows 7 SP1**，64 位 | `KeyboardEnhance-5.4.1-x64-Win7-SelfContained.exe` | **不用装任何运行时** |
+| **Windows 7 SP1**，32 位 | `KeyboardEnhance-5.4.1-x86-Win7-SelfContained.exe` | **不用装任何运行时** |
 
 > 发布页文件名用 `x86 / x64 / Win7 / SelfContained` 标注，是因为 GitHub 会自动把资产文件名里的
 > 非字母数字字符（含中文）改写成点号；本地构建产物可以保留中文名，不影响使用。
@@ -646,6 +646,7 @@ Windows 自己调音量、自己弹它自己那条横条。**不自己画**，�
 | 组合手势 | 按住起始键时再点另一颗键，比如右键按住 + 左键单击 |
 
 - 左侧「作用目标」把**全局手势**和**每个应用的手势**分开：点某个应用只看它自己的手势，新录的也默认落在它下面；同一个形状应用里配了就优先走应用的那条，否则走全局。
+- 添加应用用「选择程序…」或「点选窗口」（和「按键映射 → 按应用自动启用层」同一套按钮）；手势详情里不再单独选程序，属于谁由左边选中的作用目标决定。
 - 「录制新手势」会弹一个独立窗口，在框里按住鼠标画：能认出按的是右键、中键还是侧键，松手就显示方向串，点「用这一笔」填进手势，再保存。
 - 组合手势：起始键按住时再点另一颗键（例如右键按住再点左键），可以绑一套动作；它不参与普通笔画匹配，所以不会抢右键菜单。
 - 起始键可选鼠标右键、中键、侧键 1、侧键 2。

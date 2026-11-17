@@ -136,7 +136,8 @@ public partial class GesturesView
         LoadList(selectId: "");
     }
 
-    private void OnAddTarget(object sender, RoutedEventArgs e)
+    /// <summary>入口一：从资源管理器挑 exe（和「按应用自动启用层」同一个交互）。</summary>
+    private void OnPickTargetFile(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
         var dlg = new Microsoft.Win32.OpenFileDialog
@@ -145,12 +146,35 @@ public partial class GesturesView
             Filter = Loc.T("程序 (*.exe)|*.exe|所有文件 (*.*)|*.*"),
             CheckFileExists = true,
         };
-        if (dlg.ShowDialog() != true) return;
+        if (dlg.ShowDialog() == true) AddTarget(dlg.FileName);
+    }
 
+    /// <summary>入口二：十字准星点选窗口，取它的 exe 全路径。</summary>
+    private void OnPickTargetWindow(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var picker = new UI.Windows.WindowPickerWindow();
+        if (Window.GetWindow(this) is { } owner) picker.Owner = owner;
+        picker.ShowDialog();
+
+        var h = picker.PickedWindow;
+        if (h == IntPtr.Zero) return;       // 用户按了 Esc
+
+        var info = Core.Windows.WindowService.Describe(h);
+        if (info == null || string.IsNullOrEmpty(info.ExePath))
+        {
+            _host.Notify(Loc.T("取不到这个窗口的程序，改用「选择程序…」挑 exe"));
+            return;
+        }
+        AddTarget(info.ExePath);
+    }
+
+    private void AddTarget(string path)
+    {
+        if (_host == null || string.IsNullOrWhiteSpace(path)) return;
         var targets = _host.Settings.GestureOptions.Targets;
-        if (!targets.Contains(dlg.FileName, StringComparer.OrdinalIgnoreCase))
-            targets.Add(dlg.FileName);
-        _targetApp = dlg.FileName;
+        if (!targets.Contains(path, StringComparer.OrdinalIgnoreCase)) targets.Add(path);
+        _targetApp = path;
         _host.SaveSettings();
         BuildTargets();
         LoadList(selectId: "");
@@ -231,7 +255,6 @@ public partial class GesturesView
             SelectValue(CornerBox, _current.Corner);
             SelectTag(ActionBox, _current.Action);
             ArgBox.Text = _current.Arg;
-            AppBox.Text = _current.AppPath;
             EditorNote.Text = _current.Note;
             EditorNote.Visibility = string.IsNullOrWhiteSpace(_current.Note) ? Visibility.Collapsed : Visibility.Visible;
             UpdateKindRows();
@@ -482,7 +505,9 @@ public partial class GesturesView
         g.Corner = int.TryParse(SelectedValue(CornerBox), out int c) ? c : 0;
         g.Action = SelectedValue(ActionBox) ?? "";
         g.Arg = ArgBox.Text;
-        g.AppPath = AppBox.Text.Trim();
+        /* 限定程序不再在手势里选：由左边选中的「作用目标」决定，
+         * 编辑时原样保留，避免把应用手势改成全局手势。 */
+        g.AppPath = _current.AppPath ?? "";
 
         if (string.IsNullOrWhiteSpace(g.Action))
         {
@@ -531,38 +556,6 @@ public partial class GesturesView
         _host.Notify(Loc.T("手势已删除"));
     }
 
-    /// <summary>入口一：从资源管理器挑 exe（和「按应用自动启用层」同一个交互）。</summary>
-    private void OnPickAppFile(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = Loc.T("选择这条手势只在哪个程序里生效"),
-            Filter = Loc.T("程序 (*.exe)|*.exe|所有文件 (*.*)|*.*"),
-            CheckFileExists = true,
-        };
-        if (dlg.ShowDialog() == true) AppBox.Text = dlg.FileName;
-    }
-
-    /// <summary>入口二：十字准星点选窗口，取它的 exe 全路径。</summary>
-    private void OnPickAppWindow(object sender, RoutedEventArgs e)
-    {
-        var picker = new UI.Windows.WindowPickerWindow();
-        if (Window.GetWindow(this) is { } owner) picker.Owner = owner;
-        picker.ShowDialog();
-
-        var h = picker.PickedWindow;
-        if (h == IntPtr.Zero) return;       // 用户按了 Esc
-
-        var info = Core.Windows.WindowService.Describe(h);
-        if (info == null || string.IsNullOrEmpty(info.ExePath))
-        {
-            _host?.Notify(Loc.T("取不到这个窗口的程序，改用「选择程序…」挑 exe"));
-            return;
-        }
-        AppBox.Text = info.ExePath;
-    }
-
-    private void OnClearApp(object sender, RoutedEventArgs e) => AppBox.Text = "";
 
     /// <summary>
     /// 录制：弹一个专门的窗口让用户在里面画，窗口自己收鼠标事件。

@@ -11,7 +11,7 @@
 >
 > [简体中文](README.md) ｜ **English**
 
-**Version v5.4.0** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
+**Version v5.4.1** ｜ **Windows 10 1809+ / Windows 11 (x64 / x86) · Windows 7 SP1 (x64 / x86)** ｜ **Single file: ~2.9 MB on Win10+ (needs the .NET 10 Desktop Runtime) / ~140 MB Win7 / ~130 MB 32-bit (runtime bundled)**
 
 > ### ⚠️ You must install the .NET 10 Desktop Runtime first
 >
@@ -73,9 +73,9 @@ file in any folder:
 | Your system | Download | Runtime |
 | --- | --- | --- |
 | Windows 11 / Windows 10 1809+, **64-bit** (most PCs) | `KeyboardEnhance.exe` | Requires the .NET 10 Desktop Runtime |
-| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.4.0-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
-| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.4.0-x64-Win7-SelfContained.exe` | **No runtime needed** |
-| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.4.0-x86-Win7-SelfContained.exe` | **No runtime needed** |
+| Windows 10 1809+, **32-bit** | `KeyboardEnhance-5.4.1-x86-Win10-Win11.exe` | Requires the .NET 10 Desktop Runtime (x86) |
+| **Windows 7 SP1**, 64-bit | `KeyboardEnhance-5.4.1-x64-Win7-SelfContained.exe` | **No runtime needed** |
+| **Windows 7 SP1**, 32-bit | `KeyboardEnhance-5.4.1-x86-Win7-SelfContained.exe` | **No runtime needed** |
 
 > GitHub rewrites non-alphanumeric characters in asset filenames to dots, hence the
 > `x86 / x64 / Win7 / SelfContained` suffixes on the release page.
@@ -461,6 +461,7 @@ Gestures share the same action catalogue as key bindings, with no WGestures-styl
 | Chord | Hold the start button, then click another one (e.g. hold right, click left) |
 
 - The **Targets** column separates global gestures from per-app ones: pick an app to see only its gestures, and new ones are filed there by default. A shape bound in an app wins over the global one.
+- Add an app with **Choose program…** or **Pick window** (the same pair of buttons as *Keys → enable a layer per app*). The gesture details no longer ask for a program — the selected target decides who owns the gesture.
 - **Record gesture** opens a small window: hold a mouse button and draw inside it. It recognises right, middle and side buttons, shows the direction string as you draw, and *Use this stroke* fills it into the gesture before you save.
 - Chords: hold the start button and click another one (hold right, click left). Chords never take part in ordinary stroke matching, so the right-click menu stays yours.
 - Recognition: the path is turned into a direction string (`↑ ↓ ← →`) as you draw, and the string is matched exactly on release; if several gestures share a string, their shape distance breaks the tie. The approach follows [FlowMouse](https://github.com/Hmily-LCG/FlowMouse).

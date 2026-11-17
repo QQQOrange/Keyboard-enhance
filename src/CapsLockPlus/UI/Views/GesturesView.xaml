@@ -1,4 +1,4 @@
-<UserControl x:Class="CapsLockPlus.UI.Views.GesturesView"
+﻿<UserControl x:Class="CapsLockPlus.UI.Views.GesturesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
@@ -116,7 +116,7 @@
 
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="248" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="400" />
             </Grid.ColumnDefinitions>
@@ -170,9 +170,8 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <Button x:Name="AddTargetButton" Content="{loc:T '+ 添加应用'}"
-                                    Style="{StaticResource Button.Ghost}" Padding="8,6" Margin="0,6,0,0"
-                                    HorizontalContentAlignment="Left" Click="OnAddTarget" />
+                            <controls:AppPickButtons Margin="0,6,0,0" HorizontalAlignment="Stretch"
+                                                     PickFile="OnPickTargetFile" PickWindow="OnPickTargetWindow" />
                         </StackPanel>
                     </ScrollViewer>
 
@@ -345,33 +344,6 @@
                         <TextBox x:Name="ArgBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
                                  Padding="10,4" VerticalContentAlignment="Center"
                                  Margin="0,0,0,12" Visibility="Collapsed" />
-
-                        <TextBlock Text="{loc:T '范围：所有程序，或只在某个程序里生效'}"
-                                   Style="{StaticResource Text.Secondary}" Margin="0,0,0,4" />
-                        <Grid Margin="0,0,0,8">
-                            <TextBox x:Name="AppBox" Style="{StaticResource TextBox.Base}" MinHeight="34"
-                                     Padding="10,4" VerticalContentAlignment="Center" IsReadOnly="True"
-                                     ToolTip="{loc:T '留空 = 所有程序都生效；填了程序 = 只在这个程序里生效，并且优先于全局手势'}" />
-                            <TextBlock Text="{loc:T '所有程序'}" Margin="12,0,10,0" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource Brush.TextTertiary}" IsHitTestVisible="False">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Text, ElementName=AppBox}" Value="">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                            <controls:AppPickButtons PickFile="OnPickAppFile" PickWindow="OnPickAppWindow" />
-                            <Button Content="{loc:T '所有程序'}" Style="{StaticResource Button.Ghost}"
-                                    Padding="10,5" Margin="8,0,0,0" Click="OnClearApp"
-                                    ToolTip="{loc:T '清掉限定程序，这条手势就对所有程序生效'}" />
-                        </StackPanel>
 
                         <TextBlock x:Name="EditorNote" Style="{StaticResource Text.Tertiary}"
                                    TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed" />

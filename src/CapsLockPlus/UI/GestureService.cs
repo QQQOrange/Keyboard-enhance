@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -71,6 +71,10 @@ public sealed class GestureService : IDisposable
      * 鼠标下的窗口；这里记下句柄，执行前先把它切到前台，
      * 这样「↓→ 关闭」的 Ctrl+W 才会落在用户以为的那个窗口上。 */
     private IntPtr _targetWindow;
+
+    /* 补发单击之后的一小段静默期：这段里同一个键再来（包括被别的鼠标
+     * 工具复制出来的无标记副本）都直接放行，不再开新手势。 */
+    private readonly Dictionary<int, long> _replayUntil = new();
 
     /* 组合手势触发后，那颗"第二键"的抬起还要吞掉一次，
      * 否则系统会看到一次"无按下"的抬起。 */
@@ -241,7 +245,21 @@ public sealed class GestureService : IDisposable
         {
             bool active;
             int current;
-            lock (_gate) { active = _active; current = _vk; }
+            lock (_gate)
+            {
+                /* 刚补发出去的那一下会带着别人的标记回来（鼠标增强工具会把
+                 * 事件复制一份重发），别再当成新手势的开头，原样交给系统。 */
+                if (_replayUntil.TryGetValue(vk, out long until))
+                {
+                    /* 静默期里再来的一颗，多半是鼠标增强工具复制我们补发的那一下
+                     * （标记被抹掉）。吞掉它 —— 放过去的话系统会看到两次右键，
+                     * 菜单刚弹出来又被第二下关掉。 */
+                    if (Environment.TickCount64 <= until) return false;
+                    _replayUntil.Remove(vk);
+                }
+                active = _active;
+                current = _vk;
+            }
 
             if (active)
             {
@@ -523,8 +541,15 @@ public sealed class GestureService : IDisposable
             {
                 /* 没画出形状 → 用户只是想点一下。补发一次被吞掉的按键。
                  * 带注入标记，所以不会再被自己的钩子接住。 */
-                try { InputSender.Tap(vk); }
-                catch (Exception ex) { CoreLog.Swallow(ex, "手势补发单击"); }
+                /* 补发不能在钩子回调里做：SendInput 会同步把事件送回同一个
+                 * 钩子线程，回调里再发就自锁，要等系统超时（实测 1 秒）才返回，
+                 * 表现就是"按一下鼠标，整台电脑卡一下"。丢到线程池发。 */
+                lock (_gate) { _replayUntil[vk] = Environment.TickCount64 + 300; }
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    try { InputSender.Tap(vk); }
+                    catch (Exception ex) { CoreLog.Swallow(ex, "手势补发单击"); }
+                });
             }
         }
         else
