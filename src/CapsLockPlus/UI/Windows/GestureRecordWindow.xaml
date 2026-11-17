@@ -1,0 +1,91 @@
+<Window x:Class="CapsLockPlus.UI.Windows.GestureRecordWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:CapsLockPlus.UI.Markup;assembly=CapsLockPlus.Localization"
+        Title="{loc:T '录制新手势'}" Width="760" Height="540"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        ResizeMode="NoResize" FontFamily="{StaticResource Font.Ui}">
+
+    <Grid Margin="14">
+        <!-- 和别的浮窗一样：三层递减底衬当柔和投影，不用 DropShadowEffect -->
+        <Border CornerRadius="24" Background="{DynamicResource Brush.OverlayShadow}" Opacity="0.35" Margin="-6,-2,-6,10" />
+        <Border CornerRadius="21" Background="{DynamicResource Brush.OverlayShadow}" Opacity="0.65" Margin="-3,2,-3,6" />
+        <Border CornerRadius="18" Background="{DynamicResource Brush.OverlayShadow}" Margin="0,5,0,2" />
+
+        <Border CornerRadius="16" BorderThickness="1.5" Background="{DynamicResource Brush.Surface}"
+                BorderBrush="{DynamicResource Brush.Border}">
+            <Grid Margin="22,18,22,18">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="{loc:T '录一条新手势'}" Style="{StaticResource Text.H2}" />
+                    <TextBlock Text="{loc:T '在下面的框里按住鼠标键画一笔 —— 右键、中键、侧键都行。松手就会显示识别出的方向串。Esc 取消。'}"
+                               Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                </StackPanel>
+
+                <!-- 画板 -->
+                <Border x:Name="PadBorder" Grid.Row="1" Margin="0,14,0,0" CornerRadius="12"
+                        Background="{DynamicResource Brush.SurfaceAlt}"
+                        BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
+                        ClipToBounds="True">
+                    <Grid x:Name="Pad" Background="Transparent" ClipToBounds="True"
+                          PreviewMouseDown="OnPadDown" PreviewMouseMove="OnPadMove"
+                          PreviewMouseUp="OnPadUp" LostMouseCapture="OnPadLostCapture">
+                        <Canvas x:Name="PadCanvas" ClipToBounds="True" IsHitTestVisible="False">
+                            <Polyline x:Name="TrailLine" Stroke="{DynamicResource Brush.Accent}"
+                                      StrokeThickness="4" StrokeLineJoin="Round"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        </Canvas>
+
+                        <StackPanel x:Name="PadHint" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    IsHitTestVisible="False">
+                            <TextBlock Text="&#xE962;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="30" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource Brush.TextTertiary}" />
+                            <TextBlock Text="{loc:T '按住鼠标键，在这里画一笔'}" Style="{StaticResource Text.Secondary}"
+                                       HorizontalAlignment="Center" Margin="0,10,0,0" />
+                            <TextBlock Text="{loc:T '画歪了也没关系，方向串对就算同一条手势'}" Style="{StaticResource Text.Tertiary}"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0" />
+                        </StackPanel>
+
+                        <!-- 实时：按键 + 方向串 -->
+                        <Border x:Name="LiveBadge" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="12" Padding="10,6" CornerRadius="9"
+                                Background="{DynamicResource Brush.Surface}"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
+                                Visibility="Collapsed" IsHitTestVisible="False">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="LiveButton" Text="" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center" />
+                                <TextBlock x:Name="LivePattern" Text="" FontSize="18" FontWeight="Bold" Margin="10,0,0,0"
+                                           FontFamily="Segoe UI Symbol" Foreground="{DynamicResource Brush.Accent}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 结果说明 -->
+                <Grid Grid.Row="2" Margin="0,12,0,0">
+                    <TextBlock x:Name="StatusText" Style="{StaticResource Text.Tertiary}" TextWrapping="Wrap"
+                               Text="{loc:T '还没有画。按住鼠标键在框里画一笔。'}" VerticalAlignment="Center" />
+                </Grid>
+
+                <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button Content="{loc:T '重画'}" Style="{StaticResource Button.Ghost}" Padding="12,7"
+                            Margin="0,0,8,0" Click="OnClearClick" />
+                    <Button Content="{loc:T '取消'}" Style="{StaticResource Button.Ghost}" Padding="14,7"
+                            Margin="0,0,8,0" Click="OnCancelClick" />
+                    <Button x:Name="UseButton" Content="{loc:T '用这一笔'}" Style="{StaticResource Button.Primary}"
+                            Padding="18,7" IsEnabled="False" Click="OnUseClick" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

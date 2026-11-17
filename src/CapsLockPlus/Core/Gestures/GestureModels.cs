@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -25,6 +25,13 @@ public sealed class MouseGesture
 
     /// <summary>起始键：left / right / middle / x1 / x2。</summary>
     public string Button { get; set; } = "right";
+
+    /// <summary>
+    /// 组合键：按住 <see cref="Button"/> 的同时再点这一颗。
+    /// 空 = 普通手势。WGestures 里「按住右键再点左键」这类特殊手势就靠它，
+    /// 导入时第二颗鼠标键落在这里，不丢。
+    /// </summary>
+    public string Chord { get; set; } = "";
 
     /// <summary>触发类型：stroke / corner / wheel。</summary>
     public string Kind { get; set; } = "stroke";
@@ -118,6 +125,7 @@ public sealed class MouseGesture
         Id = Id,
         Name = Name,
         Button = Button,
+        Chord = Chord,
         Kind = Kind,
         Path = new List<int>(Path),
         Pattern = Pattern,
@@ -136,6 +144,7 @@ public sealed class MouseGesture
     {
         Name = other.Name;
         Button = other.Button;
+        Chord = other.Chord;
         Kind = other.Kind;
         Path = new List<int>(other.Path);
         Pattern = other.Pattern;
@@ -157,6 +166,12 @@ public sealed class GestureOptions
 
     /// <summary>拖动时在屏幕上画轨迹。</summary>
     public bool ShowTrail { get; set; } = true;
+
+    /// <summary>
+    /// 没画出形状的单击，是否也去匹配「单击这个键」的手势。
+    /// 默认关：右键按下又松开就该弹右键菜单，软件不能把普通单击吃掉。
+    /// </summary>
+    public bool ClickGestures { get; set; }
 
     /// <summary>轨迹颜色（#RRGGBB）。</summary>
     public string TrailColor { get; set; } = "#3B82F6";
@@ -189,6 +204,12 @@ public sealed class GestureOptions
     /// 空 = 还没导过；非空 = 只导一次，用户删光手势也不会被重新塞回来。
     /// </summary>
     public string AutoImportSource { get; set; } = "";
+
+    /// <summary>
+    /// 手势页左侧「作用目标」里手动加过、但还没配手势的应用。
+    /// 只有这些路径也列出来，用户才能先建目标再画手势。
+    /// </summary>
+    public List<string> Targets { get; set; } = new();
 
     /// <summary>画完后多少毫秒内仍显示识别出的手势名。</summary>
     public int LabelLingerMs { get; set; } = 450;

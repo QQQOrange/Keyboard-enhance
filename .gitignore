@@ -80,3 +80,8 @@ artifacts/
 # 本地自检/导入工具留下的临时物
 tools/__pycache__/
 selftest-stderr.txt
+
+# 临时自检/渲染数据目录
+.rd*/
+.st5*/
+.render5*/

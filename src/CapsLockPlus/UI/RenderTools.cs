@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -86,6 +86,31 @@ public static class RenderTools
             main.Navigate(page);
             Pump(220);
             Save(main, Path.Combine(outDir, $"{page}.png"));
+
+            /* 手势录制窗口：不单独拍一张的话，回归时根本看不到它长什么样。
+             * 它是模态窗，这里用 Show() 而不是 ShowDialog()，拍完就关。 */
+            if (page == "gestures")
+            {
+                try
+                {
+                    var dlg = new GestureRecordWindow
+                    {
+                        Owner = main,
+                        ShowInTaskbar = false,
+                        WindowStartupLocation = WindowStartupLocation.Manual,
+                        Left = 80,
+                        Top = 60,
+                    };
+                    dlg.Show();
+                    Pump(240);
+                    Save(dlg, Path.Combine(outDir, "gesture-record.png"));
+                    dlg.Close();
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn("渲染手势录制窗口失败：" + ex.Message);
+                }
+            }
 
             /* 额外截一张"窗口绑定面板"的样子。
              *

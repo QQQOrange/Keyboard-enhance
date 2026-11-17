@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +9,7 @@ using CapsLockPlus.Core;
 using CapsLockPlus.Core.Actions;
 using CapsLockPlus.Core.Gestures;
 using CapsLockPlus.Core.Input;
+using CapsLockPlus.Core.Interop;
 using CapsLockPlus.Core.Settings;
 using CapsLockPlus.Core.Windows;
 using CapsLockPlus.UI.Windows;
@@ -57,6 +58,23 @@ public sealed class GestureService : IDisposable
     /* 手势动作执行后的抑制窗：动作里可能再发鼠标键（“点击中键”之类），
      * 那些注入不能被当成新手势的开头。 */
     private long _gestureSuppressUntil;
+
+    /* 设置页弹「录一条新手势」时临时挂起：
+     * 那个窗口要自己收鼠标按下/抬起，全局手势如果还在这儿拦一道，
+     * 画出来的笔会被吞掉，窗口里什么都收不到。 */
+    public bool Suspended { get; set; }
+
+    /* 手势开始时鼠标下的那个顶层窗口。
+     *
+     * 手势是"在某个窗口上画"的，但画的时候左键/右键被我们吞掉了，
+     * 那个窗口根本没被激活。WGestures 的做法是把动作发给画手势时
+     * 鼠标下的窗口；这里记下句柄，执行前先把它切到前台，
+     * 这样「↓→ 关闭」的 Ctrl+W 才会落在用户以为的那个窗口上。 */
+    private IntPtr _targetWindow;
+
+    /* 组合手势触发后，那颗"第二键"的抬起还要吞掉一次，
+     * 否则系统会看到一次"无按下"的抬起。 */
+    private int _chordSwallow;
 
     public GestureService(AppHost host)
     {
@@ -179,6 +197,13 @@ public sealed class GestureService : IDisposable
 
     private bool OnButton(int vk, bool down, bool injected)
     {
+        if (Suspended) return false;
+
+        lock (_gate)
+        {
+            if (!down && _chordSwallow == vk) { _chordSwallow = 0; return true; }
+        }
+
         if (injected)
         {
             /* 注入的鼠标键默认不算手势开头 —— 否则“点击中键”这类动作会自己
@@ -214,9 +239,17 @@ public sealed class GestureService : IDisposable
 
         if (down)
         {
-            lock (_gate)
+            bool active;
+            int current;
+            lock (_gate) { active = _active; current = _vk; }
+
+            if (active)
             {
-                if (_active) return false;      // 画到一半又按别的键：交给系统（例如右键菜单）
+                /* 画到一半又按了第二颗鼠标键：先当"组合手势"试一次
+                 * （WGestures 的「按住右键再点左键」就是这种）。
+                 * 对不上就把这颗键原样交给系统，别把右键菜单之类的弄丢。 */
+                if (TryChord(settings, current, vk, opts)) return true;
+                return false;
             }
 
             string app = ForegroundExe();
@@ -224,6 +257,7 @@ public sealed class GestureService : IDisposable
             if (candidates.Count == 0) return false;
 
             var (px, py) = CursorPos();
+            IntPtr target = RootWindowAtCursor();
             lock (_gate)
             {
                 _active = true;
@@ -233,6 +267,7 @@ public sealed class GestureService : IDisposable
                 _last = _start;
                 _points.Add(_start);
                 _appPath = app;
+                _targetWindow = target;
                 _cornerCandidate = CornerCandidate(candidates, px, py, opts.CornerSize);
                 _tracker = new GesturePattern.Tracker(opts.ActivationDistance, opts.TurnTolerance, opts.MaxTurnDistance);
                 _tracker.Start(px, py);
@@ -256,6 +291,45 @@ public sealed class GestureService : IDisposable
         }
 
         Finish(execute: true);
+        return true;
+    }
+
+    /// <summary>按住 <paramref name="primaryVk"/> 时又点了 <paramref name="chordVk"/>：按组合手势处理。</summary>
+    private bool TryChord(AppSettings settings, int primaryVk, int chordVk, GestureOptions opts)
+    {
+        string chordName = GestureButtons.FromVk(chordVk);
+        if (chordName.Length == 0) return false;
+
+        string pattern;
+        string app;
+        lock (_gate)
+        {
+            pattern = _tracker?.Pattern ?? "";
+            app = _appPath;
+        }
+
+        MouseGesture? hit = null;
+        foreach (var g in Candidates(settings, primaryVk, app, includeWheel: false, includeChords: true))
+        {
+            if (!string.Equals(g.Chord, chordName, StringComparison.OrdinalIgnoreCase)) continue;
+            g.EnsurePattern();
+            if (g.IsWildcard || string.Equals(g.Pattern ?? "", pattern, StringComparison.Ordinal))
+            {
+                hit = g;
+                break;
+            }
+        }
+
+        if (hit == null) return false;
+
+        lock (_gate)
+        {
+            _active = false;
+            _tracker = null;
+            _chordSwallow = chordVk;
+        }
+        Ui(() => HideOverlay(0));
+        Execute(hit, 0, 0);
         return true;
     }
 
@@ -298,6 +372,7 @@ public sealed class GestureService : IDisposable
 
     private bool OnWheel(int direction, bool injected, bool horizontal)
     {
+        if (Suspended) return false;
         if (injected) return false;
 
         var settings = _host.Settings;
@@ -433,10 +508,11 @@ public sealed class GestureService : IDisposable
             {
                 hit = corner;
             }
-            else
+            else if (opts.ClickGestures)
             {
-                /* 没画形状，但配置里可能就是"单击这个键"（WGestures 里
-                 * 中键单击=静音 那种）。先找 click，找不到才补发单击。 */
+                /* 只有用户明确打开「单击也触发手势」时，才拿单击去配 click。
+                 * 默认关着：右键按下又松开应该弹右键菜单，不能被改成一键
+                 * 「重命名」之类的动作。 */
                 var clicks = Candidates(Settings(), vk, app, includeWheel: false)
                     .Where(g => g.Kind == "click").ToList();
                 hit = clicks.FirstOrDefault(g => !string.IsNullOrWhiteSpace(g.AppPath))
@@ -496,12 +572,62 @@ public sealed class GestureService : IDisposable
         if (string.IsNullOrWhiteSpace(g.Action)) return;
         string action = g.Action;
         string arg = g.Arg;
+
+        IntPtr target;
+        lock (_gate)
+        {
+            target = _targetWindow;
+            _targetWindow = IntPtr.Zero;
+        }
+
         Interlocked.Exchange(ref _gestureSuppressUntil, Environment.TickCount64 + 700);
         Ui(() =>
         {
-            try { _host.InvokeAction(action, arg); }
-            catch (Exception ex) { CoreLog.Swallow(ex, "执行手势动作"); }
+            void Run()
+            {
+                try { _host.InvokeAction(action, arg); }
+                catch (Exception ex) { CoreLog.Swallow(ex, "执行手势动作"); }
+            }
+
+            /* 先切窗口再发键：快捷键型动作（Ctrl+W / Ctrl+C …）落在焦点窗口上，
+             * 而画手势时那颗按键被我们吞了，焦点还停在上一个窗口。切过去
+             * 等一帧，让目标窗口真的拿到焦点，再发键。 */
+            if (target != IntPtr.Zero)
+            {
+                try
+                {
+                    if (WindowService.Activate(target))
+                    {
+                        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(70) };
+                        t.Tick += (_, _) => { t.Stop(); Run(); };
+                        t.Start();
+                        return;
+                    }
+                }
+                catch (Exception ex) { CoreLog.Swallow(ex, "切到手势目标窗口"); }
+            }
+
+            Run();
         });
+    }
+
+    /// <summary>鼠标位置下的顶层窗口；属于本进程（设置页/浮窗）时返回 0，不去切它。</summary>
+    private static IntPtr RootWindowAtCursor()
+    {
+        try
+        {
+            if (!NativeMethods.GetCursorPos(out var pt)) return IntPtr.Zero;
+            var hwnd = NativeMethods.WindowFromPoint(pt);
+            if (hwnd == IntPtr.Zero) return IntPtr.Zero;
+
+            hwnd = NativeMethods.GetAncestor(hwnd, NativeMethods.GA_ROOT);
+            if (hwnd == IntPtr.Zero) return IntPtr.Zero;
+
+            NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == (uint)Environment.ProcessId) return IntPtr.Zero;
+            return hwnd;
+        }
+        catch { return IntPtr.Zero; }
     }
 
     private static string ActionCatalogTitle(MouseGesture g)
@@ -509,12 +635,13 @@ public sealed class GestureService : IDisposable
 
     // ───────────────────────── 查询 ─────────────────────────
 
-    private static List<MouseGesture> Candidates(AppSettings settings, int vk, string app, bool includeWheel)
+    private static List<MouseGesture> Candidates(AppSettings settings, int vk, string app, bool includeWheel, bool includeChords = false)
     {
         var list = new List<MouseGesture>();
         foreach (var g in settings.Gestures)
         {
             if (!g.Enabled) continue;
+            if (!includeChords && g.Chord.Length > 0) continue;   // 组合手势只在按住时点第二键触发
             if (GestureButtons.ToVk(g.Button) != vk) continue;
             if (!includeWheel && g.Kind == "wheel") continue;
             if (g.Kind == "stroke")

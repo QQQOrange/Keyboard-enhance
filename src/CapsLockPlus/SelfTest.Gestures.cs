@@ -94,6 +94,14 @@ public static partial class SelfTest
                 "Command": { "$type": "RunApp", "Path": "taskmgr.exe", "Cmd": "" }
               },
               {
+                "Name": "右键加左键",
+                "Gesture": [
+                  { "$type": "KeyDown", "Key": "MOUSE:1" },
+                  { "$type": "KeyDown", "Key": "MOUSE:0" }
+                ],
+                "Command": { "$type": "SendKeys", "Keys": "^v{ENTER}" }
+              },
+              {
                 "Name": "自家脚本",
                 "Gesture": [
                   { "$type": "KeyDown", "Key": "MOUSE:1" },
@@ -112,13 +120,16 @@ public static partial class SelfTest
 
         var settings = new AppSettings();
         var (imported, skipped) = WGesturesImporter.ImportFile(path, settings);
-        CheckEqual("导入三条、跳过一条脚本", $"{imported}/{skipped}", "3/1");
+        CheckEqual("导入四条、跳过一条脚本", $"{imported}/{skipped}", "4/1");
         Check("粘贴导入成笔画 + sendKeys",
             settings.Gestures.Any(g => g.Name == "粘贴" && g.Kind == "stroke" &&
                                        g.Action == "sendKeys" && g.Arg == "ctrl+v" && g.HasPath));
         Check("静音导入成中键单击动作",
             settings.Gestures.Any(g => g.Name == "静音" && g.Kind == "click" &&
                                        g.Action == "volumeMute" && g.Button == "middle"));
+        Check("右键+左键导入成组合单击，两颗键都不丢",
+            settings.Gestures.Any(g => g.Name == "右键加左键" && g.Kind == "click" &&
+                                       g.Button == "right" && g.Chord == "left"));
         Check("角落 + 侧键导入成 corner",
             settings.Gestures.Any(g => g.Name == "任务管理器" && g.Kind == "corner" &&
                                        g.Corner == 1 && g.Button == "x2" && g.Action == "runProgram"));

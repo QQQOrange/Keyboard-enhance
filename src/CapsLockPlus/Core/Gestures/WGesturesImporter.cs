@@ -80,6 +80,7 @@ public static class WGesturesImporter
         if (string.IsNullOrWhiteSpace(name)) name = "WG 手势";
 
         string? button = null;                   // left/right/middle/x1/x2
+        string? chord = null;                    // 第二颗鼠标键：按住 button 再点它
         int wheel = 0;                            // -1 上、+1 下
         int corner = 0;
         List<GestureMath.Pt>? path = null;
@@ -93,7 +94,14 @@ public static class WGesturesImporter
                     case "KeyDown":
                         string key = Str(part, "Key");
                         if (key.StartsWith("MOUSE:", StringComparison.OrdinalIgnoreCase))
-                            button ??= MouseButton(key[6..]);
+                        {
+                            string b = MouseButton(key[6..]);
+                            if (b.Length > 0)
+                            {
+                                if (button == null) button = b;
+                                else if (chord == null && b != button) chord = b;
+                            }
+                        }
                         else if (key.StartsWith("VSCROLL:", StringComparison.OrdinalIgnoreCase))
                         {
                             if (int.TryParse(key[8..], out int delta))
@@ -133,6 +141,7 @@ public static class WGesturesImporter
             Id = MouseGesture.NewId(),
             Name = name,
             Button = button ?? (wheel != 0 ? "" : GestureButtons.Right),
+            Chord = chord ?? "",
             Action = action,
             Arg = arg,
             AppPath = appPath ?? "",
@@ -167,7 +176,7 @@ public static class WGesturesImporter
         }
         else if (button != null)
         {
-            g.Kind = "click";                       // 只写了起始键 = "单击这个键"
+            g.Kind = "click";                       // 只写了起始键 = "单击这个键"；带 chord 就是"按住再点"
         }
         else
         {

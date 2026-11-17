@@ -22,7 +22,9 @@ public partial class GesturesView
 {
     private AppHost? _host;
     private readonly List<GestureRow> _rows = new();
+    private readonly List<TargetRow> _targetRows = new();
     private MouseGesture _current = new();
+    private string _targetApp = "";
     private bool _loading;
 
     public GesturesView()
@@ -47,13 +49,111 @@ public partial class GesturesView
             var opts = _host.Settings.GestureOptions;
             EnabledBox.IsChecked = opts.Enabled;
             TrailBox.IsChecked = opts.ShowTrail;
+            ClickBox.IsChecked = opts.ClickGestures;
             MinMoveBox.Text = opts.MinMove.ToString();
             ThresholdBox.Text = opts.MatchThreshold.ToString("0.00");
             ActivationBox.Text = opts.ActivationDistance.ToString();
             TurnBox.Text = opts.TurnTolerance.ToString("0.00");
+            BuildTargets();
             LoadList(selectId: _current.Id);
         }
         finally { _loading = false; }
+    }
+
+    // ───────────────────────── 列表 ─────────────────────────
+
+    // ───────────────────── 作用目标 ─────────────────────
+
+    /// <summary>
+    /// 重建左侧「作用目标」：全局 + 每个配过手势的应用 + 手动加过但还没配的空目标。
+    /// 手势里存的是 exe 全路径，这里只显示程序名，完整路径放在 ToolTip。
+    /// </summary>
+    private void BuildTargets()
+    {
+        var settings = _host!.Settings;
+        var options = settings.GestureOptions;
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var g in settings.Gestures)
+        {
+            string key = g.AppPath ?? "";
+            counts[key] = counts.TryGetValue(key, out int n) ? n + 1 : 1;
+        }
+
+        var scopePaths = new List<string>();
+        foreach (string path in counts.Keys)
+            if (!string.IsNullOrWhiteSpace(path)) scopePaths.Add(path);
+        foreach (string path in options.Targets)
+            if (!string.IsNullOrWhiteSpace(path)
+                && !scopePaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+                scopePaths.Add(path);
+        scopePaths.Sort(StringComparer.OrdinalIgnoreCase);
+
+        _targetRows.Clear();
+        counts.TryGetValue("", out int globalCount);
+        _targetRows.Add(new TargetRow("", Loc.T("全局"), globalCount > 0 ? globalCount.ToString() : "",
+            "\uE774", Loc.T("所有程序里都生效、且优先级低于应用手势"),
+            string.Equals(_targetApp, "", StringComparison.OrdinalIgnoreCase)));
+
+        foreach (string path in scopePaths)
+        {
+            counts.TryGetValue(path, out int count);
+            _targetRows.Add(new TargetRow(path, AppName(path), count > 0 ? count.ToString() : "",
+                "\uE71D", path, string.Equals(_targetApp, path, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        // 选中的目标被删光后，退回全局，避免列表莫名其妙停在空页上。
+        if (_targetRows.All(r => !r.Selected))
+            _targetApp = "";
+
+        TargetList.ItemsSource = null;
+        TargetList.ItemsSource = _targetRows;
+    }
+
+    private static string AppName(string path)
+    {
+        try
+        {
+            /* 优先用文件里的显示名：exe 名常常是 msedge / explorer / cmd，
+             * 摆在一列里像日志而不像"应用程序"。FileDescription 是
+             * "Microsoft Edge" / "Windows 资源管理器" / "Windows 命令处理程序"，
+             * 读不到（绿色版、被删掉）再退回文件名。 */
+            string? desc = System.Diagnostics.FileVersionInfo.GetVersionInfo(path).FileDescription;
+            if (!string.IsNullOrWhiteSpace(desc)) return desc.Trim();
+
+            string name = System.IO.Path.GetFileNameWithoutExtension(path);
+            return string.IsNullOrWhiteSpace(name) ? path : name;
+        }
+        catch { return path; }
+    }
+
+    private void OnPickTarget(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TargetRow row) return;
+        if (string.Equals(row.AppPath, _targetApp, StringComparison.OrdinalIgnoreCase)) return;
+        _targetApp = row.AppPath;
+        BuildTargets();
+        LoadList(selectId: "");
+    }
+
+    private void OnAddTarget(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = Loc.T("手势对哪个程序生效"),
+            Filter = Loc.T("程序 (*.exe)|*.exe|所有文件 (*.*)|*.*"),
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        var targets = _host.Settings.GestureOptions.Targets;
+        if (!targets.Contains(dlg.FileName, StringComparer.OrdinalIgnoreCase))
+            targets.Add(dlg.FileName);
+        _targetApp = dlg.FileName;
+        _host.SaveSettings();
+        BuildTargets();
+        LoadList(selectId: "");
     }
 
     // ───────────────────────── 列表 ─────────────────────────
@@ -63,9 +163,14 @@ public partial class GesturesView
         string filter = FilterBox.Text.Trim();
         var settings = _host!.Settings;
 
+        TargetTitle.Text = string.IsNullOrEmpty(_targetApp)
+            ? Loc.T("全局的手势")
+            : Loc.F("{0} 的手势", AppName(_targetApp));
+
         _rows.Clear();
         foreach (var g in settings.Gestures)
         {
+            if (!string.Equals(g.AppPath ?? "", _targetApp, StringComparison.OrdinalIgnoreCase)) continue;
             string title = g.Title(ActionCatalog.TitleOf(g.Action));
             string subtitle = Describe(g);
             string hay = title + " " + subtitle + " " + g.AppPath + " " + g.Note;
@@ -81,11 +186,13 @@ public partial class GesturesView
 
         GestureList.ItemsSource = null;
         GestureList.ItemsSource = _rows;
-        EmptyHint.Visibility = _rows.Count == 0 && settings.Gestures.Count == 0
-            ? Visibility.Visible : Visibility.Collapsed;
-        SummaryText.Text = settings.Gestures.Count == 0
-            ? Loc.T("还没有手势")
-            : Loc.F("{0} 条手势", settings.Gestures.Count);
+        EmptyHint.Text = string.IsNullOrEmpty(_targetApp)
+            ? Loc.T("全局还没有手势。点右上角「录制新手势」，会记在「全局」下面。")
+            : Loc.F("「{0}」还没有手势。点右上角「录制新手势」，会记在这个应用下面。", AppName(_targetApp));
+        EmptyHint.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        SummaryText.Text = _rows.Count == 0
+            ? Loc.T("这个目标下还没有手势")
+            : Loc.F("这个目标 {0} 条 · 全部 {1} 条", _rows.Count, settings.Gestures.Count);
 
         var pick = _rows.FirstOrDefault(r => r.Gesture.Id == selectId) ?? _rows.FirstOrDefault();
         if (pick != null)
@@ -96,7 +203,13 @@ public partial class GesturesView
         {
             // 一条都没有时也要把右侧填成"一条合法的默认手势"，
             // 否则下拉框是空的，用户点「保存」才发现什么都没选。
-            _current = new MouseGesture { Kind = "stroke", Button = GestureButtons.Right };
+            _current = new MouseGesture
+            {
+                Id = MouseGesture.NewId(),
+                Kind = "stroke",
+                Button = GestureButtons.Right,
+                AppPath = _targetApp,
+            };
         }
         LoadEditor();
 
@@ -112,6 +225,7 @@ public partial class GesturesView
         {
             NameBox.Text = _current.Name;
             SelectTag(ButtonBox, _current.Button);
+            SelectTag(ChordBox, _current.Chord);
             SelectTag(KindBox, _current.Kind);
             SelectValue(WheelBox, _current.Wheel);
             SelectValue(CornerBox, _current.Corner);
@@ -150,6 +264,8 @@ public partial class GesturesView
     private static string Describe(MouseGesture g)
     {
         string button = Loc.T(GestureButtons.Display(g.Button));
+        if (!string.IsNullOrWhiteSpace(g.Chord))
+            button = Loc.F("{0} + {1}", button, Loc.T(GestureButtons.Display(g.Chord)));
         if (g.Kind == "stroke") g.EnsurePattern();
         return g.Kind switch
         {
@@ -239,6 +355,12 @@ public partial class GesturesView
         ButtonBox.DisplayMemberPath = "Text";
         ButtonBox.SelectedValuePath = "Value";
 
+        ChordBox.ItemsSource = new List<Choice> { new("", Loc.T("不组合")) }
+            .Concat(GestureButtons.All.Select(b => new Choice(b, Loc.T(GestureButtons.Display(b)))))
+            .ToList();
+        ChordBox.DisplayMemberPath = "Text";
+        ChordBox.SelectedValuePath = "Value";
+
         KindBox.ItemsSource = new List<Choice>
         {
             new("stroke", Loc.T("画一笔")),
@@ -311,6 +433,7 @@ public partial class GesturesView
         var o = _host.Settings.GestureOptions;
         o.Enabled = EnabledBox.IsChecked == true;
         o.ShowTrail = TrailBox.IsChecked == true;
+        o.ClickGestures = ClickBox.IsChecked == true;
         _host.SaveSettings();
     }
 
@@ -338,6 +461,7 @@ public partial class GesturesView
             Button = "right",
             Kind = "stroke",
             Action = "sendKeys",
+            AppPath = _targetApp,
             Enabled = true,
         };
         LoadEditor();
@@ -351,6 +475,8 @@ public partial class GesturesView
         var g = _current;
         g.Name = NameBox.Text.Trim();
         g.Button = SelectedValue(ButtonBox) ?? "right";
+        g.Chord = SelectedTag(ChordBox) ?? "";
+        if (string.Equals(g.Chord, g.Button, StringComparison.OrdinalIgnoreCase)) g.Chord = "";
         g.Kind = SelectedTag(KindBox) ?? "stroke";
         g.Wheel = int.TryParse(SelectedValue(WheelBox), out int w) ? w : -1;
         g.Corner = int.TryParse(SelectedValue(CornerBox), out int c) ? c : 0;
@@ -380,6 +506,8 @@ public partial class GesturesView
         }
 
         _host.SaveSettings();
+        _targetApp = g.AppPath ?? "";
+        BuildTargets();
         LoadList(selectId: g.Id);
         _host.Notify(Loc.T("手势已保存"));
     }
@@ -391,7 +519,14 @@ public partial class GesturesView
         if (existing == null) return;
         _host.Settings.Gestures.Remove(existing);
         _host.SaveSettings();
-        _current = new MouseGesture();
+        _current = new MouseGesture
+        {
+            Id = MouseGesture.NewId(),
+            Kind = "stroke",
+            Button = GestureButtons.Right,
+            AppPath = _targetApp,
+        };
+        BuildTargets();
         LoadList(selectId: "");
         _host.Notify(Loc.T("手势已删除"));
     }
@@ -429,19 +564,36 @@ public partial class GesturesView
 
     private void OnClearApp(object sender, RoutedEventArgs e) => AppBox.Text = "";
 
+    /// <summary>
+    /// 录制：弹一个专门的窗口让用户在里面画，窗口自己收鼠标事件。
+    ///
+    /// 不用全局钩子录，是因为"设置页里点一下按钮 → 去别的窗口上画"这条路
+    /// 一遇到焦点变化就断；在自家窗口里画，按的是哪颗键、笔画什么样，全都确定。
+    /// </summary>
     private void OnRecordClick(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        _host.Gestures.BeginRecord(g =>
+        var dlg = new UI.Windows.GestureRecordWindow
         {
-            _current.Path = g.Path;
-            _current.Pattern = g.Pattern;
-            if (g.Button.Length > 0) _current.Button = g.Button;
-            _current.Kind = "stroke";
-            LoadEditor();
-            _host.Notify(Loc.T("笔画已录制，记得点保存"));
-        });
-        _host.Notify(Loc.T("现在按住鼠标键画一笔"));
+            Owner = Window.GetWindow(this),
+            Options = _host.Settings.GestureOptions,
+        };
+
+        bool accepted;
+        _host.Gestures.Suspended = true;
+        try { accepted = dlg.ShowDialog() == true; }
+        finally { _host.Gestures.Suspended = false; }
+
+        if (!accepted || dlg.Result == null) return;
+
+        var recorded = dlg.Result;
+        _current.Path = recorded.Path;
+        _current.Pattern = recorded.Pattern;
+        if (recorded.Button.Length > 0) _current.Button = recorded.Button;
+        _current.Kind = "stroke";
+        if (string.IsNullOrWhiteSpace(_current.AppPath)) _current.AppPath = _targetApp;
+        LoadEditor();
+        _host.Notify(Loc.T("笔画已录制，记得点保存"));
     }
 
     private void OnRecordNewClick(object sender, RoutedEventArgs e)
@@ -475,6 +627,7 @@ public partial class GesturesView
         {
             var result = WGesturesImporter.ImportFile(dlg.FileName, _host.Settings);
             _host.SaveSettings();
+            BuildTargets();
             LoadList(selectId: "");
             _host.Notify(Loc.F("已导入 {0} 条，跳过 {1} 条", result.Imported, result.Skipped));
         }
@@ -510,9 +663,11 @@ public partial class GesturesView
         double minY = pts.Min(p => p.Y), maxY = pts.Max(p => p.Y);
         double spanX = Math.Max(1, maxX - minX), spanY = Math.Max(1, maxY - minY);
         double scale = Math.Min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
+        // 居中：直线笔画也不会贴着左边画
+        double offX = (w - spanX * scale) / 2, offY = (h - spanY * scale) / 2;
 
         foreach (var p in pts)
-            PreviewLine.Points.Add(new Point(pad + (p.X - minX) * scale, pad + (p.Y - minY) * scale));
+            PreviewLine.Points.Add(new Point(offX + (p.X - minX) * scale, offY + (p.Y - minY) * scale));
     }
 
     // ───────────────────────── 小工具 ─────────────────────────
@@ -541,4 +696,6 @@ public partial class GesturesView
     }
 
     private sealed record GestureRow(MouseGesture Gesture, string Title, string Subtitle, string Badge, string Glyph);
+
+    private sealed record TargetRow(string AppPath, string Title, string Count, string Glyph, string Tooltip, bool Selected);
 }
